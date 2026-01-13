@@ -33,7 +33,6 @@ const emit = defineEmits<Emits>();
     <div class="space-y-6">
         <div class="grid grid-cols-1 gap-6 md:grid-cols-4">
             <PhotoUploadSection
-                v-if="!staff"
                 class="md:col-span-4"
                 :image-preview="imagePreview"
                 :cafe-id="form.cafeId"

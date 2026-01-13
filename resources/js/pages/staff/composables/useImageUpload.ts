@@ -1,9 +1,9 @@
 import { ref } from 'vue';
 
 export function useImageUpload() {
-    const fileInput = ref(null);
-    const imagePreview = ref(null);
-    const selectedFile = ref(null);
+    const fileInput = ref<HTMLInputElement | null>(null);
+    const imagePreview = ref<string | null>(null);
+    const selectedFile = ref<File | null>(null);
 
     const triggerFileInput = () => {
         fileInput.value?.click();
@@ -50,5 +50,6 @@ export function useImageUpload() {
         triggerFileInput,
         handleImageUpload,
         removeImage,
+        selectedFile,
     };
 }

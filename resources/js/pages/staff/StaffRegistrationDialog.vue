@@ -69,7 +69,25 @@ if (props.staff) {
     });
 }
 
-const { fileInput, imagePreview, triggerFileInput, handleImageUpload, removeImage } = useImageUpload();
+import { watch } from 'vue';
+
+const { fileInput, imagePreview, triggerFileInput, handleImageUpload, removeImage, selectedFile } = useImageUpload();
+
+watch(
+    () => props.staff,
+    (newStaff) => {
+        if (newStaff && newStaff.photo) {
+            imagePreview.value = newStaff.photo.url.startsWith('http')
+                ? newStaff.photo.url
+                : `/storage/${newStaff.photo.url}`;
+        }
+    },
+    { immediate: true }
+);
+
+watch(selectedFile, (newFile) => {
+    form.photo = newFile;
+});
 
 const { filesRequired, showAlert, alertMessage, handleFileUpload: uploadFile, handleDateFile: dateUpload } = useFileUpload();
 

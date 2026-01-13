@@ -34,6 +34,11 @@ class Staff extends Model
         'user_id',
     ];
 
+    public function photo()
+    {
+        return $this->hasOne(StaffPhoto::class);
+    }
+
     public function staff_files(): HasMany
     {
         return $this->hasMany(Staff_file::class);

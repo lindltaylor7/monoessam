@@ -16,7 +16,7 @@ export function useStaffForm() {
         contactname: '',
         contactcell: '',
         cafeId: null,
-        files: [],
+        photo: null,
         tipoContrato: '',
         regimenLaboral: '',
         children: 0,
@@ -126,7 +126,11 @@ export function useStaffForm() {
     const updateStaff = (onSuccess: () => void, staffId: number) => {
         console.log(form);
         form.prendas = prendasFijas.value;
-        form.put(route('staff.update', staffId), {
+        form.transform((data) => ({
+            ...data,
+            _method: 'PUT',
+        })).post(route('staff.update', staffId), {
+            forceFormData: true,
             onSuccess: (res) => {
                 //form.reset();
                 onSuccess();

@@ -77,6 +77,9 @@ export interface Cafe {
         id: number;
         name: string;
     };
+    // Properties used in Headcount context
+    assigned_roles?: any[];
+    roles?: any[];
 }
 
 export interface Dish {
@@ -159,6 +162,10 @@ export interface Staff {
     cafe_id: number;
     role_id: number;
     staff_files?: StaffFile[];
+    photo?: {
+        id: number;
+        url: string;
+    };
 }
 
 export interface StaffFile {

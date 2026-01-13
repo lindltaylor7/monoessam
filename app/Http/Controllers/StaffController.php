@@ -27,6 +27,7 @@ class StaffController extends Controller
         return Inertia::render('staff/Index', [
             'cafes' => Cafe::with('unit')->get(),
             'staff' => Staff::with([
+                'photo',
                 'staff_files',
                 'staff_financial',
                 'staff_clothes',
@@ -141,6 +142,13 @@ class StaffController extends Controller
             }
         }
 
+        if ($request->hasFile('photo')) {
+            $path = $request->file('photo')->store('photos', 'public');
+            $staff->photo()->create([
+                'url' => $path
+            ]);
+        }
+
         $staff_financial = Staff_financial::create([
             'staff_id' => $staff->id,
             'district' => $request->district,
@@ -199,7 +207,21 @@ class StaffController extends Controller
     public function update(Request $request, string $id)
     {
 
-        $staff = Staff::with(['staff_financial', 'staff_clothes'])->find($id);
+        $staff = Staff::with(['staff_financial', 'staff_clothes', 'photo'])->find($id);
+
+        if ($request->hasFile('photo')) {
+            $path = $request->file('photo')->store('photos', 'public');
+            if ($staff->photo) {
+                Storage::disk('public')->delete($staff->photo->url);
+                $staff->photo()->update([
+                    'url' => $path
+                ]);
+            } else {
+                $staff->photo()->create([
+                    'url' => $path
+                ]);
+            }
+        }
 
         $staff->update([
             'name' => $request->name,
@@ -267,6 +289,10 @@ class StaffController extends Controller
     {
         $staff = Staff::find($id);
         $staff_files = Staff_file::where('staff_id', $id)->get();
+        if ($staff->photo) {
+            Storage::disk('public')->delete($staff->photo->url);
+            $staff->photo()->delete();
+        }
         foreach ($staff_files as $file) {
             Storage::disk('public')->delete($file->file_path);
         }
