@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Input } from '@/components/ui/input';
-import { Paperclip } from 'lucide-vue-next';
+import { AlertCircle, Calendar, CalendarCheck, Paperclip } from 'lucide-vue-next';
 import { ref } from 'vue';
 
 interface Props {
@@ -14,17 +14,17 @@ interface Props {
 
 interface Emits {
     (e: 'upload', event: Event, label: string): void;
-    (e: 'uploadDate', selectedDate: string): void;
+    (e: 'uploadDate', selectedDate: string, index: number): void;
 }
 
 const props = defineProps<Props>();
-
 const emit = defineEmits<Emits>();
 
-const nameFile = ref(null);
+const nameFile = ref<string | null>(null);
 
 const manageFile = (event: Event) => {
-    nameFile.value = (event.target as HTMLInputElement).files[0]?.name || '';
+    const target = event.target as HTMLInputElement;
+    nameFile.value = target.files?.[0]?.name || '';
     emit('upload', event, props.file.label);
 };
 
@@ -35,76 +35,88 @@ const manageFileDate = (event: Event) => {
 </script>
 
 <template>
-    <div
-        class="group rounded-xl border border-zinc-200 bg-gradient-to-br from-white to-zinc-50/30 p-5 shadow-sm transition-all duration-300 hover:border-zinc-300 hover:shadow-lg"
-    >
-        <div class="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
-            <!-- Label y estado con icono mejorado -->
+    <div class="group rounded-xl border border-zinc-200 bg-white p-5 shadow-sm transition-all duration-300 hover:border-zinc-300 hover:shadow-md">
+        <div class="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
             <div class="flex items-center gap-4">
                 <div
-                    class="relative flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-md transition-transform duration-300 group-hover:scale-105"
+                    class="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 transition-colors group-hover:bg-blue-600 group-hover:text-white"
                 >
-                    <Paperclip class="h-5 w-5 text-white" :stroke-width="2.5" />
-                    <div
-                        class="absolute -inset-1 rounded-xl bg-blue-500/20 opacity-0 blur-md transition-opacity duration-300 group-hover:opacity-100"
-                    ></div>
+                    <Paperclip class="h-5 w-5" />
                 </div>
-                <div>
-                    <h3 class="text-base font-semibold text-zinc-900">{{ file.label }}</h3>
+                <div class="min-w-0">
+                    <h3 class="truncate text-sm font-bold text-zinc-900 md:text-base">{{ file.label }}</h3>
                     <p class="mt-0.5 flex items-center gap-1.5 text-xs text-zinc-500">
-                        <span class="inline-block h-1 w-1 rounded-full bg-zinc-400"></span>
-                        Formatos: PDF, JPEG
+                        <span class="h-1.5 w-1.5 rounded-full bg-blue-400"></span>
+                        Formatos aceptados: PDF, JPG
                     </p>
                 </div>
             </div>
 
-            <!-- Controles mejorados -->
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
-                <!-- Input File con diseño moderno -->
-                <div class="relative">
-                    <Input type="file" :id="`file-${index}`" class="hidden" accept="application/pdf, image/jpeg" @change="manageFile($event)" />
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-end lg:items-center">
+                <div class="relative w-full sm:w-auto">
+                    <Input type="file" :id="`file-${index}`" class="hidden" accept="application/pdf, image/jpeg" @change="manageFile" />
                     <label
                         :for="`file-${index}`"
-                        class="group/btn relative flex cursor-pointer items-center gap-2.5 overflow-hidden rounded-lg border-2 border-zinc-200 bg-white px-5 py-2.5 text-sm font-medium text-zinc-700 transition-all duration-300 hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-[0.98]"
-                        :class="nameFile ? 'border-green-300 bg-green-50 text-green-700' : ''"
+                        class="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-2.5 text-sm font-semibold transition-all"
+                        :class="
+                            nameFile
+                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-blue-400 hover:bg-blue-50 hover:text-blue-600'
+                        "
                     >
-                        <div
-                            class="absolute inset-0 bg-gradient-to-r from-blue-500/0 via-blue-500/5 to-blue-500/0 opacity-0 transition-opacity duration-300 group-hover/btn:opacity-100"
-                        ></div>
-                        <i :class="nameFile ? 'ri-file-check-line' : 'ri-upload-cloud-line'" class="relative text-base"></i>
-                        <span class="relative max-w-[180px] truncate">
-                            {{ nameFile == null ? 'Seleccionar archivo' : nameFile }}
+                        <i :class="nameFile ? 'ri-checkbox-circle-fill' : 'ri-upload-2-line'" class="text-lg"></i>
+                        <span class="max-w-[150px] truncate">
+                            {{ nameFile || 'Subir documento' }}
                         </span>
                     </label>
                 </div>
 
-                <!-- Input Date mejorado -->
-                <div v-if="file.expirationDate === null" class="min-w-[200px]">
-                    <label class="mb-1.5 block text-xs font-semibold tracking-wide text-zinc-600 uppercase"> Fecha de expiración </label>
-                    <div class="relative">
-                        <Input
+                <div v-if="file.expirationDate !== undefined" class="min-w-[220px] space-y-1.5">
+                    <label class="flex items-center gap-1 text-[10px] font-bold tracking-wider text-zinc-400 uppercase">
+                        <Calendar class="h-3 w-3" />
+                        Fecha de Expiración
+                    </label>
+
+                    <div class="group/date relative">
+                        <input
                             type="date"
-                            class="w-full rounded-lg border-2 border-zinc-200 bg-white px-3 py-2.5 text-sm font-medium text-zinc-700 transition-all duration-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                            @change="manageFileDate($event)"
+                            :value="file.expirationDate"
+                            @change="manageFileDate"
+                            class="w-full rounded-lg border-2 bg-white px-3 py-2 text-sm font-medium transition-all outline-none focus:ring-4 focus:ring-blue-100"
+                            :class="
+                                file.expirationDate
+                                    ? 'border-emerald-500/30 bg-emerald-50/30 text-emerald-700 focus:border-emerald-500'
+                                    : 'border-zinc-200 text-zinc-500 focus:border-blue-500'
+                            "
                         />
-                        <i class="ri-calendar-line pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-zinc-400"></i>
+                        <div class="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2">
+                            <CalendarCheck v-if="file.expirationDate" class="h-4 w-4 text-emerald-600" />
+                            <Calendar v-else class="h-4 w-4 text-zinc-400" />
+                        </div>
                     </div>
                 </div>
-                <div v-else-if="!file.expirationDate" class="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-                    <i class="ri-error-warning-line text-amber-600"></i>
-                    <span class="text-sm font-medium text-amber-700">Sin fecha de expiración</span>
-                </div>
-                <div v-else class="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
-                    <div class=""></div>
 
-                    <span class="text-sm font-semibold text-emerald-700">{{ file.expirationDate }}</span>
-                    <!-- <Input
-                        type="date"
-                        class="w-full rounded-lg border-2 border-zinc-200 bg-white px-3 py-2.5 text-sm font-medium text-zinc-700 transition-all duration-200 focus:border-blue-500 focus:ring-4 focus:ring-blue-100"
-                        @change="manageFileDate($event)"
-                    /> -->
+                <div v-else class="flex h-[42px] items-center gap-2 rounded-lg border border-zinc-100 bg-zinc-50 px-4">
+                    <AlertCircle class="h-4 w-4 text-zinc-400" />
+                    <span class="text-xs font-medium text-zinc-500">No requiere vigencia</span>
                 </div>
             </div>
         </div>
     </div>
 </template>
+
+<style scoped>
+/* Estética para el input date en navegadores que lo soportan */
+input[type='date']::-webkit-calendar-picker-indicator {
+    background: transparent;
+    bottom: 0;
+    color: transparent;
+    cursor: pointer;
+    height: auto;
+    left: 0;
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: auto;
+}
+</style>
