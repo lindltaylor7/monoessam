@@ -412,7 +412,6 @@ const isExpired = (expirationDate: string | null) => {
                                                 <input
                                                     type="date"
                                                     v-model="fileType.expirationDate"
-                                                    @change="updateExpirationDate(fileType, ($event.target as HTMLInputElement).value)"
                                                     class="ms-1 rounded border border-gray-300 px-2 py-1 text-xs"
                                                     :min="new Date().toISOString().split('T')[0]"
                                                 />
