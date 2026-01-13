@@ -50,7 +50,7 @@ class CafeController extends Controller
             'staffs.role',
             'guards.assignedRoles.role',
             'guards.assignedRoles.staff',
-            'periods.users'
+            'periods.staffs'
         ])->find($id);
 
 

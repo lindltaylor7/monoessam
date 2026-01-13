@@ -2,7 +2,7 @@
 import Badge from '@/components/ui/badge/Badge.vue';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { User } from '@/types';
+import { Staff, User } from '@/types';
 import { useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import { Trash } from 'lucide-vue-next';
@@ -57,10 +57,10 @@ const getStatusDetails = (statusId: number | string | undefined) => {
 };
 
 // Obtener el ID del status actual para un usuario en un periodo
-const getCurrentStatusId = (user: User, period: any) => {
-    const userFound = period.users.find((u: any) => u.id === user?.id);
+const getCurrentStatusId = (staff: Staff, period: any) => {
+    const staffFound = period.staffs.find((s: any) => s.id === staff?.id);
     // Convertimos a String porque el Select Value suele trabajar mejor con strings
-    return userFound?.pivot?.status ? String(userFound.pivot.status) : undefined;
+    return staffFound?.pivot?.status ? String(staffFound.pivot.status) : undefined;
 };
 
 const formatDate = (dateString: string) => {
@@ -108,7 +108,7 @@ const deletePeriod = (periodId: string) => {
 const updateUserStatus = (newStatus: string, userId: number, periodId: number) => {
     axios
         .put(`/periods/user/${periodId}`, {
-            user_id: userId,
+            staff_id: userId,
             period_id: periodId,
             status: newStatus,
         })
@@ -187,15 +187,15 @@ const updateUserStatus = (newStatus: string, userId: number, periodId: number) =
                         <TableCell class="font-medium"> {{ role.role.name }} - {{ role.staff?.name }} </TableCell>
                         <TableCell v-for="period in props.periods" :key="period.id" class="p-2 text-center">
                             <Select
-                                :model-value="getCurrentStatusId(role.user, period)"
-                                @update:model-value="(val) => updateUserStatus(val, role.user.id, period.id)"
+                                :model-value="getCurrentStatusId(role.staff, period)"
+                                @update:model-value="(val) => updateUserStatus(val, role.staff.id, period.id)"
                             >
                                 <SelectTrigger class="flex h-auto w-full justify-center border-0 bg-transparent p-0 shadow-none focus:ring-0">
                                     <Badge
                                         class="cursor-pointer border-0 px-3 py-1 text-white shadow-sm transition-all hover:scale-105"
-                                        :class="getStatusDetails(getCurrentStatusId(role.user, period)).color"
+                                        :class="getStatusDetails(getCurrentStatusId(role.staff, period)).color"
                                     >
-                                        {{ getStatusDetails(getCurrentStatusId(role.user, period)).label }}
+                                        {{ getStatusDetails(getCurrentStatusId(role.staff, period)).label }}
                                     </Badge>
                                     <span class="sr-only">Toggle menu</span>
                                 </SelectTrigger>

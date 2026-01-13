@@ -38,9 +38,9 @@ class PeriodController extends Controller
         ]);
 
         foreach ($request->users as $user) {
-            DB::table('period_users')->insert([
+            DB::table('period_staffs')->insert([
                 'period_id' => $period->id,
-                'user_id' => $user['id'],
+                'staff_id' => $user['id'],
                 'status' => $request->status
             ]);
         }
@@ -86,10 +86,10 @@ class PeriodController extends Controller
     public function periodUser($id, Request $request)
     {
         // updateOrInsert( [Condiciones de búsqueda], [Valores a actualizar/insertar] )
-        DB::table('period_users')->updateOrInsert(
+        DB::table('period_staffs')->updateOrInsert(
             [
                 'period_id' => $request->period_id, // (o usar $id si viene de la ruta)
-                'user_id'   => $request->user_id
+                'staff_id'   => $request->staff_id
             ],
             [
                 'status'    => $request->status
