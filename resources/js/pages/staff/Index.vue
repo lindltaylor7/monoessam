@@ -131,7 +131,10 @@ watch(props, () => {
                                 <td class="p-4">{{ staff.dni }}</td>
                                 <td class="p-4">{{ staff.cell }}</td>
                                 <td class="p-4">
-                                    <p>{{ staff.staffable?.name ?? 'Sin asignar' }}</p>
+                                    <p>
+                                        {{ staff.staffable?.name || 'Sin asignar' }}
+                                        <span v-if="staff.staffable?.unit" class="text-gray-500"> ({{ staff.staffable.unit.name }}) </span>
+                                    </p>
                                 </td>
                                 <td class="p-4">
                                     <TooltipProvider v-for="file in staff.staff_files" :key="file.id">

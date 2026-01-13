@@ -34,7 +34,12 @@ class StaffController extends Controller
                     $query->orderBy('created_at', 'desc');
                 },
                 'observations.user',
-                'staffable'
+                'staffable' => function ($query) {
+                    $query->morphWith([
+                        Cafe::class => ['unit'], // Solo cargará 'unit' si el modelo es Cafe
+                        Area::class => [],       // No carga nada extra si es Area
+                    ]);
+                }
             ])->get(),
             'roles' => Role::all(),
             'units' => Unit::with('cafes')->get(),
