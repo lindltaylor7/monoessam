@@ -76,7 +76,10 @@ const { filesRequired, showAlert, alertMessage, handleFileUpload: uploadFile, ha
 const nextTab = () => {
     const tabs = ['personal', 'adjuntos', 'financiero', 'tallas'];
     const currentIndex = tabs.indexOf(activeTab.value);
-    if (currentIndex < tabs.length - 1) {
+
+    if (props.staff && currentIndex == 0) {
+        activeTab.value = tabs[currentIndex + 2];
+    } else if (currentIndex < tabs.length - 1) {
         activeTab.value = tabs[currentIndex + 1];
     }
 };
@@ -84,7 +87,9 @@ const nextTab = () => {
 const prevTab = () => {
     const tabs = ['personal', 'adjuntos', 'financiero', 'tallas'];
     const currentIndex = tabs.indexOf(activeTab.value);
-    if (currentIndex > 0) {
+    if (props.staff && currentIndex == 2) {
+        activeTab.value = tabs[currentIndex - 2];
+    } else if (currentIndex > 0) {
         activeTab.value = tabs[currentIndex - 1];
     }
 };
