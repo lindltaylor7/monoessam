@@ -1,6 +1,7 @@
 export const STAFF_STATUSES = [
     'Lista negra',
     'En proceso',
+    'Completo - RRHH',
     'Contratado',
     'Cesado',
     'Retirado',
@@ -11,6 +12,7 @@ export const STAFF_STATUSES = [
 export const STAFF_STATUS_COLORS = [
     'bg-zinc-500 text-white',
     'bg-yellow-500 text-white',
+    'bg-green-500 text-white',
     'bg-green-500 text-white',
     'bg-gray-500 text-white',
     'bg-red-500 text-white',

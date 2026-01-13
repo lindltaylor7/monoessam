@@ -43,11 +43,12 @@ const open = ref(false);
 const statusesStaff: Record<number, string> = {
     0: 'Lista negra',
     1: 'En proceso',
-    2: 'Contratado',
-    3: 'Cesado',
-    4: 'Retirado',
-    5: 'Abandono',
-    6: 'Cumplió Contrato',
+    2: 'Completo - RRHH',
+    3: 'Contratado',
+    4: 'Cesado',
+    5: 'Retirado',
+    6: 'Abandono',
+    7: 'Cumplió Contrato',
 };
 
 const formatDate = (date: string | undefined) => {
@@ -73,11 +74,12 @@ const getStatusColor = (status: number) => {
     const colors: Record<number, string> = {
         0: 'bg-red-500',
         1: 'bg-yellow-500',
-        2: 'bg-green-500',
-        3: 'bg-gray-500',
-        4: 'bg-blue-500',
-        5: 'bg-orange-500',
-        6: 'bg-purple-500',
+        2: 'En proceso',
+        3: 'bg-green-500',
+        4: 'bg-gray-500',
+        5: 'bg-blue-500',
+        6: 'bg-orange-500',
+        7: 'bg-purple-500',
     };
     return colors[status] || 'bg-gray-500';
 };
