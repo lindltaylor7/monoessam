@@ -268,8 +268,20 @@ const viewFile = (file: StaffFile) => {
 };
 
 // Función para actualizar fecha de expiración
-const updateExpirationDate = (fileType: object, expirationDate: string) => {
-    console.log(fileType, expirationDate);
+const updateExpirationDate = (fileId: number, expirationDate: string) => {
+    const form = useForm({
+        fileId: fileId,
+        expirationDate: expirationDate,
+    });
+
+    form.post(route('staff.update-filedate'), {
+        onSuccess: () => {
+            alert('Fecha actualizada correctamente');
+        },
+        onError: (errors) => {
+            alert('Error en la actualizacion');
+        },
+    });
 };
 
 // Agrupar archivos por tipo

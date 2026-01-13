@@ -360,6 +360,15 @@ class StaffController extends Controller
         }
     }
 
+    public function uploadFileDate(Request $request)
+    {
+        $staff_file = Staff_file::find($request->fileId);
+
+        $staff_file->update([
+            'expiration_date' => $request->expirationDate
+        ]);
+    }
+
     public function deleteFile($id)
     {
         $staff_file = Staff_file::find($id);
