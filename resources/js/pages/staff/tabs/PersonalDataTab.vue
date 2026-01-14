@@ -13,7 +13,7 @@ interface Props {
     units: Unit[];
     roles: Role[];
     businneses: Business[];
-    staff: Staff;
+    staff?: Staff;
 }
 
 interface Emits {
@@ -34,10 +34,14 @@ const emit = defineEmits<Emits>();
         <div class="grid grid-cols-1 gap-6 md:grid-cols-4">
             <PhotoUploadSection
                 class="md:col-span-4"
+                :headquarter="staff?.staffable?.headquarters?.[0]"
                 :image-preview="imagePreview"
                 :cafe-id="form.cafeId"
                 :unit-id="form.unitId"
+                :area-id="form.areaId"
+                :workplace="form.workplace"
                 :role-id="form.roleId"
+                @update:workplace="form.workplace = $event"
                 :roles="roles"
                 :cafes="cafes"
                 :units="units"

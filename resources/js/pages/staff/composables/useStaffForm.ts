@@ -44,6 +44,7 @@ export function useStaffForm() {
         unitSelectedText: '',
         filesData: [],
         areaId: 0,
+        workplace: '',
     });
 
     const errorsSend = ref([]);

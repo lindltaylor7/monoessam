@@ -24,7 +24,7 @@ class UsersController extends Controller
     public function index()
     {
         return Inertia::render('users/Index', [
-            'mines' => Mine::with(['units', 'services', 'units.cafes', 'units.cafes.users', 'units.cafes.guards', 'units.cafes.guards.roles', 'units.cafes.staffs'])->get(),
+            'mines' => Mine::with(['units', 'services', 'units.cafes', 'units.cafes.users', 'units.cafes.guards', 'units.cafes.guards.roles', 'units.cafes.staffs', 'units.cafes.staffs.staff_files'])->get(),
             'roles' => Role::with(['permissions', 'users'])->get(),
         ]);
     }

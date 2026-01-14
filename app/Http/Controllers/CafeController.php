@@ -49,7 +49,7 @@ class CafeController extends Controller
         $cafe = Cafe::with([
             'staffs.role',
             'guards.assignedRoles.role',
-            'guards.assignedRoles.staff',
+            'guards.assignedRoles.staff.staff_files',
             'periods.staffs'
         ])->find($id);
 
