@@ -163,6 +163,7 @@ watch(areaSelected, (newValue) => {
                             Lugar de trabajo
                         </label>
                         <div class="pl-7">
+                            {{ workplace }}
                             <Select class="w-full" v-model="workplace">
                                 <SelectTrigger class="h-11 border-zinc-200 bg-white hover:bg-zinc-50">
                                     <SelectValue placeholder="Seleccionar lugar de trabajo" />

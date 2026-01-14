@@ -252,30 +252,44 @@ class StaffController extends Controller
             $staff->save();
         }
 
-        $staff->staff_financial->update([
-            'district' => $request->district,
-            'province' => $request->province,
-            'department' => $request->department,
-            'start_date' => $request->fechaIngreso,
-            'children' => $request->children,
-            'afp' => $request->afp,
-            'onp' => $request->onp,
-            'address' => $request->address,
-            'account_number' => $request->account_number,
-            'system_work' => $request->workSystem,
-            'replacement' => $request->replacement,
-            'salary' => $request->salary,
-            'observations' => $request->observations,
-            'account_number' => $request->cc,
-            'bank_entity' => empty($request->bankEntity) || $request->bankEntity === 'null'
-                ? null
-                : $request->bankEntity,
-            'pensioncontribution' => $request->pensioncontrbution,
-            'cci' => $request->cci,
-            'contract_end_date' => empty($request->contractEndDate) || $request->contractEndDate === 'null'
-                ? null
-                : $request->contractEndDate
-        ]);
+        if ($request->cafeId && !$request->areaId) {
+            $staff->staffable_id = $request->cafeId;
+            $staff->staffable_type = Cafe::class;
+            $staff->save();
+        } else if ($request->areaId && !$request->cafeId) {
+            $staff->staffable_id = $request->areaId;
+            $staff->staffable_type = Area::class;
+            $staff->save();
+        }
+
+        if ($staff->staff_financial) {
+            $staff->staff_financial->update([
+                'district' => $request->district,
+                'province' => $request->province,
+                'department' => $request->department,
+                'start_date' => $request->fechaIngreso,
+                'children' => $request->children,
+                'afp' => $request->afp,
+                'onp' => $request->onp,
+                'address' => $request->address,
+                'account_number' => $request->account_number,
+                'system_work' => $request->workSystem,
+                'replacement' => $request->replacement,
+                'salary' => $request->salary,
+                'observations' => $request->observations,
+                'account_number' => $request->cc,
+                'bank_entity' => empty($request->bankEntity) || $request->bankEntity === 'null'
+                    ? null
+                    : $request->bankEntity,
+                'pensioncontribution' => $request->pensioncontrbution,
+                'cci' => $request->cci,
+                'contract_end_date' => empty($request->contractEndDate) || $request->contractEndDate === 'null'
+                    ? null
+                    : $request->contractEndDate
+            ]);
+        }
+
+
 
         $staff->staff_clothes->each->delete();
 
