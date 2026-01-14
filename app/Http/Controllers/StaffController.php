@@ -38,7 +38,7 @@ class StaffController extends Controller
                 'staffable' => function ($query) {
                     $query->morphWith([
                         Cafe::class => ['unit'], // Solo cargará 'unit' si el modelo es Cafe
-                        Area::class => [],       // No carga nada extra si es Area
+                        Area::class => ['headquarters', 'headquarters.business'],       // No carga nada extra si es Area
                     ]);
                 }
             ])->get(),
@@ -238,9 +238,19 @@ class StaffController extends Controller
             'civilstatus' => $request->civilstatus,
             'contactname' => $request->contactname,
             'contactcell' => $request->contactcell,
-            'status' => 1,
+            'role_id' => $request->roleId,
             'user_id' => Auth::id()
         ]);
+
+        if ($request->workplace == 1 && $request->areaId) {
+            $staff->staffable_id = $request->areaId;
+            $staff->staffable_type = Area::class;
+            $staff->save();
+        } else if ($request->workplace == 2 && $request->cafeId) {
+            $staff->staffable_id = $request->cafeId;
+            $staff->staffable_type = Cafe::class;
+            $staff->save();
+        }
 
         $staff->staff_financial->update([
             'district' => $request->district,

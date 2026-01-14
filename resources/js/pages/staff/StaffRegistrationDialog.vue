@@ -4,7 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Business, Staff, Unit } from '@/types';
 import { Pencil } from 'lucide-vue-next';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import AlertErrors from '../users/AlertErrors.vue';
 import { useFileUpload } from './composables/useFileUpload';
 import { useImageUpload } from './composables/useImageUpload';
@@ -19,7 +19,7 @@ interface Props {
     roles: any[];
     units: Unit[];
     businneses: Business[];
-    staff: Staff;
+    staff?: Staff;
 }
 
 const props = defineProps<Props>();
@@ -30,56 +30,89 @@ const activeTab = ref('personal');
 const { form, errorsSend, showErrors, prendasFijas, cafesUnitSelected, handleSubmit, updateStaff, selectCafe, selectRole, selectUnit, selectArea } =
     useStaffForm();
 
-if (props.staff) {
-    console.log(props.staff);
-
-    form.name = props.staff.name;
-    form.dni = props.staff.dni;
-    form.cell = props.staff.cell;
-    form.birthdate = String(props.staff.birthdate);
-    form.age = props.staff.age;
-    form.sex = String(props.staff.sex);
-    form.email = props.staff.email;
-    form.country = props.staff.country;
-    form.civilstatus = String(props.staff.civilstatus);
-    form.contactname = props.staff.contactname;
-    form.contactcell = props.staff.contactcell;
-
-    form.district = props.staff.staff_financial?.district;
-    form.province = props.staff.staff_financial?.province;
-    form.department = props.staff.staff_financial?.department;
-    form.address = props.staff.staff_financial?.address;
-    form.workSystem = props.staff.staff_financial?.system_work;
-    form.replacement = props.staff.staff_financial?.replacement;
-    form.salary = props.staff.staff_financial?.salary;
-    form.observations = props.staff.staff_financial?.observations;
-
-    form.bankEntity = String(props.staff.staff_financial?.bank_entity);
-    form.cc = props.staff.staff_financial?.account_number;
-    form.cci = props.staff.staff_financial?.cci;
-    form.pensioncontribution = String(props.staff.staff_financial?.pensioncontribution);
-    form.startDate = String(props.staff.staff_financial?.start_date);
-    form.contractEndDate = String(props.staff.staff_financial?.contract_end_date);
-
-    form.children = props.staff.staff_financial?.children;
-
-    props.staff.staff_clothes.forEach((clothe) => {
-        const prendaFound = prendasFijas.value.find((prenda) => prenda.label == clothe.clothe_name);
-        prendaFound.talla = clothe.clothing_size;
-    });
-}
-
-import { watch } from 'vue';
-
 const { fileInput, imagePreview, triggerFileInput, handleImageUpload, removeImage, selectedFile } = useImageUpload();
 
 watch(
     () => props.staff,
     (newStaff) => {
-        if (newStaff && newStaff.photo) {
-            imagePreview.value = newStaff.photo.url.startsWith('http')
-                ? newStaff.photo.url
-                : `/storage/${newStaff.photo.url}`;
+        if (newStaff) {
+            console.log(newStaff);
+
+            form.name = newStaff.name;
+            form.dni = newStaff.dni;
+            form.cell = newStaff.cell;
+            form.birthdate = String(newStaff.birthdate);
+            form.age = newStaff.age;
+            form.sex = String(newStaff.sex);
+            form.email = newStaff.email;
+            form.country = newStaff.country;
+            form.civilstatus = String(newStaff.civilstatus);
+            form.contactname = newStaff.contactname;
+            form.contactcell = newStaff.contactcell;
+
+            form.district = newStaff.staff_financial?.district;
+            form.province = newStaff.staff_financial?.province;
+            form.department = newStaff.staff_financial?.department;
+            form.address = newStaff.staff_financial?.address;
+            form.workSystem = newStaff.staff_financial?.system_work;
+            form.replacement = newStaff.staff_financial?.replacement;
+            form.salary = newStaff.staff_financial?.salary;
+            form.observations = newStaff.staff_financial?.observations;
+
+            form.bankEntity = String(newStaff.staff_financial?.bank_entity);
+            form.cc = newStaff.staff_financial?.account_number;
+            form.cci = newStaff.staff_financial?.cci;
+            form.pensioncontribution = String(newStaff.staff_financial?.pensioncontribution);
+            form.startDate = String(newStaff.staff_financial?.start_date);
+            form.contractEndDate = String(newStaff.staff_financial?.contract_end_date);
+
+            form.children = newStaff.staff_financial?.children;
+
+            // Reset prendas first
+            prendasFijas.value.forEach((prenda) => (prenda.talla = ''));
+            newStaff.staff_clothes.forEach((clothe) => {
+                const prendaFound = prendasFijas.value.find((prenda) => prenda.label == clothe.clothe_name);
+                if (prendaFound) prendaFound.talla = clothe.clothing_size;
+            });
+
+            form.roleId = newStaff.role_id;
+
+            if (newStaff.staffable_type == 'App\\Models\\Cafe') {
+                form.workplace = '2';
+                form.cafeId = newStaff.staffable_id;
+                const cafe = newStaff.staffable as any;
+                if (cafe && cafe.unit) {
+                    form.unitId = cafe.unit.id;
+                    // Populamos cafesUnitSelected para que el selector de café tenga opciones
+                    const unit = props.units.find((u) => u.id === cafe.unit.id);
+                    if (unit) {
+                        cafesUnitSelected.value = unit.cafes;
+                    }
+                }
+            } else if (newStaff.staffable_type == 'App\\Models\\Area') {
+                form.workplace = '1';
+                form.areaId = newStaff.staffable_id;
+            } else {
+                form.workplace = 0;
+                form.cafeId = null;
+                form.unitId = 0;
+                form.areaId = 0;
+            }
+
+            console.log(form.workplace)
+
+            if (newStaff.photo) {
+                imagePreview.value = newStaff.photo.url.startsWith('http')
+                    ? newStaff.photo.url
+                    : `/storage/${newStaff.photo.url}`;
+            } else {
+                imagePreview.value = null;
+            }
+        } else {
+            form.reset();
+            form.workplace = 0;
+            imagePreview.value = null;
+            prendasFijas.value.forEach((prenda) => (prenda.talla = ''));
         }
     },
     { immediate: true }

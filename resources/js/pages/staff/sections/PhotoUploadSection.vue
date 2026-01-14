@@ -14,9 +14,12 @@ interface Props {
     cafes: any[];
     units: Unit[];
     unitId: number;
+    areaId: number;
+    workplace: string;
     roleId: number;
     roles: Role[];
     businneses: Business[];
+    headquarter: any;
 }
 
 interface Emits {
@@ -26,17 +29,36 @@ interface Emits {
     (e: 'select-unit', unit: Unit): void;
     (e: 'select-role', role: Role): void;
     (e: 'select-area', areaId: number): void;
+    (e: 'update:workplace', workplace: number): void;
 }
 
 const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
 
-const workplace = ref(0);
+const workplace = ref('');
 const businnesSelected = ref(0);
 const headquartersSelected = ref([]);
 const headquarterSelected = ref(0);
 const areasSelected = ref([]);
 const areaSelected = ref(0);
+
+if(props.workplace != 0){
+    workplace.value = props.workplace
+    console.log(props)
+
+    if(props.areaId != 0){
+        businnesSelected.value = props.headquarter?.business?.id,
+        
+        headquartersSelected.value = props.businneses.find((b) => b.id == businnesSelected.value).headquarters
+
+        headquarterSelected.value = props.headquarter?.id,
+
+        areasSelected.value = headquartersSelected.value.find((h) => h.id == headquarterSelected.value).areas
+
+        areaSelected.value = props.areaId
+    }
+
+}   
 
 watch(businnesSelected, (newValue) => {
     headquartersSelected.value = props.businneses.find((b) => b.id == newValue).headquarters;
@@ -166,7 +188,7 @@ watch(areaSelected, (newValue) => {
                     <!-- Sección dinámica basada en selección -->
                     <div class="transition-all duration-300">
                         <!-- Sede (Oficina) -->
-                        <div v-if="workplace == 1" class="space-y-3 pl-7">
+                        <div v-if="workplace == '1'" class="space-y-3 pl-7">
                             <div class="rounded-xl border border-zinc-100 bg-zinc-50/50 p-4">
                                 <div class="space-y-3">
                                     <!-- Título de sección -->
@@ -268,7 +290,7 @@ watch(areaSelected, (newValue) => {
                         </div>
 
                         <!-- Unidad y Café (Unidad) -->
-                        <div v-if="workplace == 2" class="space-y-5 pl-7">
+                        <div v-if="workplace == '2'" class="space-y-5 pl-7">
                             <div class="rounded-xl border border-zinc-100 bg-zinc-50/50 p-4">
                                 <div class="space-y-4">
                                     <!-- Unidad -->

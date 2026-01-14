@@ -56,6 +56,7 @@ export interface Permission {
 export interface Area {
     id: number;
     name: string;
+    headquarter_id?: number;
 }
 
 export interface Mine {
@@ -67,6 +68,7 @@ export interface Unit {
     id: number;
     name: string;
     mine_id: number;
+    cafes: Cafe[];
 }
 
 export interface Cafe {
@@ -76,6 +78,7 @@ export interface Cafe {
     unit: {
         id: number;
         name: string;
+        cafes: Cafe[];
     };
     // Properties used in Headcount context
     assigned_roles?: any[];
@@ -92,11 +95,14 @@ export interface Dish {
 export interface Business {
     id: number;
     name: string;
+    headquarters: Headquarter[];
 }
 
 export interface Headquarter {
     id: number;
     name: string;
+    business_id?: number;
+    areas: Area[];
 }
 
 export interface Ingredient {

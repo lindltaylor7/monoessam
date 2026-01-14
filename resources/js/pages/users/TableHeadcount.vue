@@ -7,6 +7,7 @@ import { useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import { Trash } from 'lucide-vue-next';
 import { ref } from 'vue';
+import { filesRequired } from '../staff/composables/useStaffForm'
 
 // Interfaces
 interface DateColumn {
@@ -39,6 +40,20 @@ const form = useForm({
 
 const newStartDate = ref('');
 const newEndDate = ref('');
+
+const filesRequired = ref([
+        { label: 'CV Documentado', file: {} },
+        { label: 'Certificado Único Laboral (CUL)', file: {}, expirationDate: null },
+        { label: 'Certificado de Estudios', file: {} },
+        { label: 'Certificados de Trabajo', file: {} },
+        { label: 'DNI escaneado', file: {}, expirationDate: null },
+        { label: 'Antecedentes Penales y Policiales', file: {}, expirationDate: null },
+        { label: 'Carné de sanidad', file: {}, expirationDate: null },
+        { label: 'Carné de vacunación contra el COVID', file: {} },
+        { label: 'Examen Medico Ocupacional (EMO)', file: {}, expirationDate: null },
+        { label: 'SCTR', file: {}, expirationDate: null },
+        { label: 'Contrato', file: {}, expirationDate: null },
+    ]);
 
 // --- Helpers ---
 
@@ -103,6 +118,10 @@ const deletePeriod = (periodId: string) => {
             .catch((err) => console.error(err));
     }
 };
+
+const getFilesIncomplete = (staff:Staff) => {
+    console.log(staff)
+}
 
 // --- NUEVA FUNCIÓN: Actualizar celda individual ---
 const updateUserStatus = (newStatus: string, userId: number, periodId: number) => {
@@ -183,8 +202,7 @@ const updateUserStatus = (newStatus: string, userId: number, periodId: number) =
                         <TableCell v-if="index === 0" class="font-medium" :rowspan="guard.assigned_roles.length">
                             {{ guard.name }}
                         </TableCell>
-
-                        <TableCell class="font-medium"> {{ role.role.name }} - {{ role.staff?.name }} </TableCell>
+                        <TableCell class="font-medium"> {{ role.role.name }} - {{ role.staff?.name }} {{ getFilesIncomplete(role.staff) }} </TableCell>
                         <TableCell v-for="period in props.periods" :key="period.id" class="p-2 text-center">
                             <Select
                                 :model-value="getCurrentStatusId(role.staff, period)"
