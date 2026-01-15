@@ -9,6 +9,7 @@ use App\Http\Controllers\DishCategoryController;
 use App\Http\Controllers\DishController;
 use App\Http\Controllers\FoodController;
 use App\Http\Controllers\GuardController;
+use App\Http\Controllers\HeadcountController;
 use App\Http\Controllers\IngredientCategoryController;
 use App\Http\Controllers\IngredientController;
 use App\Http\Controllers\LogisticController;
@@ -54,12 +55,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // ========================================================================
     // GESTIÓN DE USUARIOS Y PERMISOS
     // ========================================================================
+
+
     Route::prefix('users')->name('users.')->group(function () {
         Route::get('/', [UsersController::class, 'index'])->name('index');
         Route::post('/', [UsersController::class, 'store'])->name('store');
         Route::get('ban/{id}', [UsersController::class, 'banUser'])->name('ban');
         Route::get('blacklist/{id}', [UsersController::class, 'blacklist'])->name('blacklist');
         Route::get('assigned/{id}', [UsersController::class, 'assignedUsers'])->name('assigned');
+    });
+
+    Route::prefix('headcount')->name('headcount.')->group(function () {
+        Route::get('/', [HeadcountController::class, 'index'])->name('index');
+        Route::post('/', [HeadcountController::class, 'store'])->name('store');
+        Route::get('ban/{id}', [HeadcountController::class, 'banUser'])->name('ban');
+        Route::get('blacklist/{id}', [HeadcountController::class, 'blacklist'])->name('blacklist');
+        Route::get('assigned/{id}', [HeadcountController::class, 'assignedUsers'])->name('assigned');
     });
 
     Route::prefix('roles')->name('roles.')->group(function () {

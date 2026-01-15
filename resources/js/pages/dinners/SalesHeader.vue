@@ -125,6 +125,7 @@ const addServiceSelected = (service: Service) => {
                         <Coffee class="h-4 w-4 text-amber-500" />
                         <span>Cafetería</span>
                     </label>
+                    
                     <ToggleGroup v-model="cafeSelected" type="single" class="flex flex-wrap gap-1 rounded-lg bg-gray-50 p-1">
                         <ToggleGroupItem
                             v-for="cafe in cafes"
