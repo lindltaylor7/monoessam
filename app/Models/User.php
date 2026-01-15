@@ -75,4 +75,8 @@ class User extends Authenticatable
     {
         return $this->hasMany(Dish::class);
     }
+    public function units(): BelongsToMany
+    {
+        return $this->belongsToMany(Unit::class, 'user_units', 'user_id', 'unit_id');
+    }
 }

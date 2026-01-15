@@ -34,4 +34,8 @@ class Unit extends Model
     {
         return $this->morphToMany(Business::class, 'businessable');
     }
+    public function users(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'user_units', 'unit_id', 'user_id');
+    }
 }
