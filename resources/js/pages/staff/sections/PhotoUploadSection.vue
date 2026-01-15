@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import InputSearchRole from '@/pages/users/InputSearchRole.vue';
-import InputSearchSelectable from '@/pages/users/InputSearchSelectable.vue';
+import InputSearchRole from '@/pages/headcount/InputSearchRole.vue';
+import InputSearchSelectable from '@/pages/headcount/InputSearchSelectable.vue';
 import { Business, Role, Unit } from '@/types';
 import { BriefcaseBusiness, Building, LayoutList, MapPin, Store, Truck, User2, X } from 'lucide-vue-next';
 import { ref, watch } from 'vue';

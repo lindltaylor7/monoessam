@@ -32,10 +32,11 @@ class DinnerController extends Controller
         $user = auth()->user();
 
         // Cargar relaciones básicas
-        $user->load(['areas.cafe.services']);
+        $user->load(['areas.cafe.services', 'units.cafes.services']);
 
-        // Obtener cafés del usuario
-        $cafeIds = $user->areas->pluck('cafe.id')->unique();
+        // Obtener cafés de todas las unidades del usuario
+        $cafes = $user->units->flatMap->cafes->unique('id')->values();
+        $cafeIds = $cafes->pluck('id');
 
         // Obtener ventas paginadas por separado
         $todaySales = Sale::whereIn('cafe_id', $cafeIds)
@@ -47,8 +48,8 @@ class DinnerController extends Controller
         return Inertia::render('dinners/Index', [
             'dinners' => Dinner::with('cafe')->get(),
             'services' => Service::all(),
-            'units' => Unit::with('services')->get(),
-            'cafes' => $user->areas->pluck('cafe')->unique(),
+            'units' => $user->units()->with('cafes')->get(),
+            'cafes' => $cafes,
             'todaySales' => $todaySales, // Esto incluirá los links de paginación
             'sale_types' => Sale_type::all(),
             'receipt_types' => Receipt_type::all(),
@@ -96,7 +97,19 @@ class DinnerController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        //
+        $dinner = Dinner::findOrFail($id);
+
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'dni' => 'required|string|max:8|unique:dinners,dni,' . $dinner->id,
+            'phone' => 'nullable|string|max:15',
+            'subdealership_id' => 'required|exists:subdealerships,id',
+            'cafe_id' => 'required|exists:cafes,id',
+        ]);
+
+        $dinner->update($request->all());
+
+        return redirect()->back();
     }
 
     /**
@@ -104,7 +117,10 @@ class DinnerController extends Controller
      */
     public function destroy(string $id)
     {
-        //
+        $dinner = Dinner::findOrFail($id);
+        $dinner->delete();
+
+        return redirect()->back();
     }
 
     public function search(string $word, string $id)

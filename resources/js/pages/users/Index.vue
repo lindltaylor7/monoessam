@@ -11,25 +11,9 @@ import {
     TableHeader,
     TableRow,
 } from '@/components/ui/table';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import Icon from '@/components/Icon.vue';
+import UserModal from './UserModal.vue';
 
 interface User {
     id: number;
@@ -37,6 +21,7 @@ interface User {
     email: string;
     roles: { id: number; name: string }[];
     areas: { id: number; name: string; pivot?: { role_id: number; area_id: number } }[];
+    units: { id: number; name: string }[];
 }
 
 interface PaginationLinks {
@@ -66,10 +51,16 @@ interface Area {
     name: string;
 }
 
+interface Unit {
+    id: number;
+    name: string;
+}
+
 const props = defineProps<{
     users: PaginatedUsers;
     roles: Role[];
     areas: Area[];
+    units: Unit[];
 }>();
 
 const breadcrumbs = [
@@ -79,51 +70,19 @@ const breadcrumbs = [
 const isModalOpen = ref(false);
 const editingUser = ref<User | null>(null);
 
-const form = useForm({
-    name: '',
-    email: '',
-    password: '',
-    role_id: '',
-    area_id: '',
-});
+const form = useForm({});
 
 // Accessing route globally from Ziggy
 declare const route: any;
 
 const openCreateModal = () => {
     editingUser.value = null;
-    form.reset();
-    form.clearErrors();
     isModalOpen.value = true;
 };
 
 const openEditModal = (user: User) => {
     editingUser.value = user;
-    form.name = user.name;
-    form.email = user.email;
-    form.password = '';
-    form.role_id = user.roles[0]?.id.toString() || '';
-    form.area_id = user.areas[0]?.id.toString() || '';
-    form.clearErrors();
     isModalOpen.value = true;
-};
-
-const submit = () => {
-    if (editingUser.value) {
-        form.put(route('users.update', editingUser.value.id), {
-            onSuccess: () => {
-                isModalOpen.value = false;
-                form.reset();
-            },
-        });
-    } else {
-        form.post(route('users.store'), {
-            onSuccess: () => {
-                isModalOpen.value = false;
-                form.reset();
-            },
-        });
-    }
 };
 
 const deleteUser = (id: number) => {
@@ -143,7 +102,7 @@ const deleteUser = (id: number) => {
             <div class="flex justify-between items-center mb-6">
                 <div>
                     <h1 class="text-2xl font-bold tracking-tight">Usuarios</h1>
-                    <p class="text-muted-foreground text-sm">Administra los usuarios del sistema, sus roles y áreas.</p>
+                    <p class="text-muted-foreground text-sm">Administra los usuarios del sistema, sus roles, áreas y unidades.</p>
                 </div>
                 <Button @click="openCreateModal">
                     <Icon name="plus" class="mr-2 h-4 w-4" />
@@ -155,10 +114,10 @@ const deleteUser = (id: number) => {
                 <Table>
                     <TableHeader>
                         <TableRow class="bg-muted/30">
-                            <TableHead class="w-[300px]">Nombre</TableHead>
+                            <TableHead class="w-[280px]">Nombre</TableHead>
                             <TableHead>Email</TableHead>
-                            <TableHead>Rol</TableHead>
-                            <TableHead>Área</TableHead>
+                            <TableHead>Rol / Área</TableHead>
+                            <TableHead>Unidades</TableHead>
                             <TableHead class="text-right">Acciones</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -177,19 +136,26 @@ const deleteUser = (id: number) => {
                             </TableCell>
                             <TableCell class="text-sm text-muted-foreground">{{ user.email }}</TableCell>
                             <TableCell>
-                                <div class="flex flex-wrap gap-1">
-                                    <Badge v-for="role in user.roles" :key="role.id" variant="secondary" class="font-normal px-2 py-0 h-5">
-                                        {{ role.name }}
-                                    </Badge>
-                                    <span v-if="user.roles.length === 0" class="text-muted-foreground text-xs italic">Sin rol</span>
+                                <div class="flex flex-col gap-1">
+                                    <div class="flex flex-wrap gap-1">
+                                        <Badge v-for="role in user.roles" :key="role.id" variant="secondary" class="font-normal px-2 py-0 h-5">
+                                            {{ role.name }}
+                                        </Badge>
+                                    </div>
+                                    <div class="flex flex-wrap gap-1">
+                                        <Badge v-for="area in user.areas" :key="area.id" variant="outline" class="font-normal border-primary/20 bg-primary/5 text-primary px-2 py-0 h-5">
+                                            {{ area.name }}
+                                        </Badge>
+                                    </div>
+                                    <span v-if="user.roles.length === 0 && user.areas.length === 0" class="text-muted-foreground text-xs italic">Sin asignar</span>
                                 </div>
                             </TableCell>
                             <TableCell>
-                                <div class="flex flex-wrap gap-1">
-                                    <Badge v-for="area in user.areas" :key="area.id" variant="outline" class="font-normal border-primary/20 bg-primary/5 text-primary px-2 py-0 h-5">
-                                        {{ area.name }}
+                                <div class="flex flex-wrap gap-1 max-w-[200px]">
+                                    <Badge v-for="unit in user.units" :key="unit.id" variant="outline" class="font-normal bg-orange-50 text-orange-700 border-orange-200 px-2 py-0 h-5">
+                                        {{ unit.name }}
                                     </Badge>
-                                    <span v-if="user.areas.length === 0" class="text-muted-foreground text-xs italic">Sin área</span>
+                                    <span v-if="user.units.length === 0" class="text-muted-foreground text-xs italic">Sin unidades</span>
                                 </div>
                             </TableCell>
                             <TableCell class="text-right">
@@ -229,84 +195,12 @@ const deleteUser = (id: number) => {
             </div>
         </div>
 
-
-        <Dialog v-model:open="isModalOpen">
-            <DialogContent class="sm:max-w-[450px] overflow-hidden p-0 gap-0 border-none shadow-2xl">
-                <div class="bg-primary px-6 py-8 text-primary-foreground relative">
-                    <DialogHeader>
-                        <DialogTitle class="text-2xl font-bold">{{ editingUser ? 'Editar Usuario' : 'Crear Usuario' }}</DialogTitle>
-                        <DialogDescription class="text-primary-foreground/70">
-                            {{ editingUser ? 'Actualiza la información y permisos del usuario.' : 'Ingresa los datos del nuevo usuario para el sistema.' }}
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div class="absolute -bottom-6 right-6 h-12 w-12 rounded-full bg-background flex items-center justify-center shadow-lg border">
-                         <Icon :name="editingUser ? 'user-cog' : 'user-plus'" class="h-6 w-6 text-primary" />
-                    </div>
-                </div>
-
-                <form @submit.prevent="submit" class="space-y-4 px-6 pt-10 pb-6 bg-background">
-                    <div class="grid gap-2">
-                        <Label for="name" class="text-xs font-bold uppercase tracking-wider text-muted-foreground">Nombre Completo</Label>
-                        <Input id="name" v-model="form.name" placeholder="Ej. Juan Pérez" :class="{'border-destructive shadow-sm': form.errors.name}" class="h-10 border-muted-foreground/20 focus-visible:ring-primary" />
-                        <p v-if="form.errors.name" class="text-[0.7rem] font-semibold text-destructive uppercase tracking-tight">{{ form.errors.name }}</p>
-                    </div>
-
-                    <div class="grid gap-2">
-                        <Label for="email" class="text-xs font-bold uppercase tracking-wider text-muted-foreground">Correo Electrónico</Label>
-                        <Input id="email" type="email" v-model="form.email" placeholder="juan@empresa.com" :class="{'border-destructive shadow-sm': form.errors.email}" class="h-10 border-muted-foreground/20 focus-visible:ring-primary" />
-                        <p v-if="form.errors.email" class="text-[0.7rem] font-semibold text-destructive uppercase tracking-tight">{{ form.errors.email }}</p>
-                    </div>
-
-                    <div class="grid gap-2">
-                        <Label for="password" class="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                            Contraseña 
-                            <span v-if="editingUser" class="text-muted-foreground/60 font-normal lowercase">(Dejar en blanco para no cambiar)</span>
-                        </Label>
-                        <Input id="password" type="password" v-model="form.password" :class="{'border-destructive shadow-sm': form.errors.password}" class="h-10 border-muted-foreground/20 focus-visible:ring-primary" />
-                        <p v-if="form.errors.password" class="text-[0.7rem] font-semibold text-destructive uppercase tracking-tight">{{ form.errors.password }}</p>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="grid gap-2">
-                            <Label for="role_id" class="text-xs font-bold uppercase tracking-wider text-muted-foreground">Rol Asignado</Label>
-                            <Select v-model="form.role_id">
-                                <SelectTrigger :class="{'border-destructive shadow-sm': form.errors.role_id}" class="h-10 border-muted-foreground/20 focus:ring-primary">
-                                    <SelectValue placeholder="Seleccionar" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem v-for="role in roles" :key="role.id" :value="role.id.toString()">
-                                        {{ role.name }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <p v-if="form.errors.role_id" class="text-[0.7rem] font-semibold text-destructive uppercase tracking-tight">{{ form.errors.role_id }}</p>
-                        </div>
-
-                        <div class="grid gap-2">
-                            <Label for="area_id" class="text-xs font-bold uppercase tracking-wider text-muted-foreground">Área Principal</Label>
-                            <Select v-model="form.area_id">
-                                <SelectTrigger :class="{'border-destructive shadow-sm': form.errors.area_id}" class="h-10 border-muted-foreground/20 focus:ring-primary">
-                                    <SelectValue placeholder="Seleccionar" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem v-for="area in areas" :key="area.id" :value="area.id.toString()">
-                                        {{ area.name }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <p v-if="form.errors.area_id" class="text-[0.7rem] font-semibold text-destructive uppercase tracking-tight">{{ form.errors.area_id }}</p>
-                        </div>
-                    </div>
-
-                    <DialogFooter class="pt-6 flex gap-2">
-                        <Button type="button" variant="ghost" @click="isModalOpen = false" class="border">Cancelar</Button>
-                        <Button type="submit" :disabled="form.processing" class="flex-1 bg-primary hover:bg-primary/90 shadow-md">
-                            <Icon v-if="form.processing" name="loader-2" class="mr-2 h-4 w-4 animate-spin" />
-                            {{ editingUser ? 'Guardar Cambios' : 'Crear Usuario' }}
-                        </Button>
-                    </DialogFooter>
-                </form>
-            </DialogContent>
-        </Dialog>
+        <UserModal 
+            v-model:open="isModalOpen"
+            :user="editingUser"
+            :roles="roles"
+            :areas="areas"
+            :units="units"
+        />
     </AppLayout>
 </template>

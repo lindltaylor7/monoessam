@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { Cafe, Service } from '@/types';
+import { Cafe, Service, Unit } from '@/types';
 import { Coffee, File, Tag } from 'lucide-vue-next';
 import { ref, watch } from 'vue';
 import DatePicker from './DatePicker.vue';
@@ -16,6 +16,7 @@ interface Props {
     receipt_types: any[];
     sale_types: any[];
     subdealerships: any[];
+    units: Unit[]
 }
 
 interface SaleFormData {
@@ -120,22 +121,30 @@ const addServiceSelected = (service: Service) => {
                 </div>
 
                 <!-- Selector de Cafetería -->
-                <div class="space-y-1">
+                <div class="space-y-2">
                     <label class="flex items-center gap-2 text-sm font-medium text-gray-700">
                         <Coffee class="h-4 w-4 text-amber-500" />
-                        <span>Cafetería</span>
+                        <span>Cafetería por Unidad</span>
                     </label>
-                    
-                    <ToggleGroup v-model="cafeSelected" type="single" class="flex flex-wrap gap-1 rounded-lg bg-gray-50 p-1">
-                        <ToggleGroupItem
-                            v-for="cafe in cafes"
-                            :value="cafe.id"
-                            :key="cafe.id"
-                            class="min-w-[120px] flex-1 rounded-md px-2 py-2 text-center text-sm transition-all hover:bg-amber-50 hover:text-amber-600 data-[state=on]:bg-amber-500 data-[state=on]:text-white"
-                        >
-                            <span class="truncate">{{ cafe.name }}</span>
-                        </ToggleGroupItem>
-                    </ToggleGroup>
+                    <div class="space-y-4 max-h-[300px] overflow-y-auto pr-1">
+                        <div v-for="unit in units" :key="unit.id" class="space-y-1.5">
+                            <span class="text-[10px] font-bold uppercase text-gray-400 tracking-widest flex items-center gap-2 px-1">
+                                {{ unit.name }}
+                                <div class="h-[1px] flex-1 bg-gray-100"></div>
+                            </span>
+                            <ToggleGroup v-model="cafeSelected" type="single" class="flex flex-wrap gap-1 rounded-lg bg-gray-50/50 p-1">
+                                <ToggleGroupItem
+                                    v-for="cafe in unit.cafes"
+                                    :value="cafe.id"
+                                    :key="cafe.id"
+                                    class="min-w-[120px] flex-1 rounded-md px-2 py-2 text-center text-sm border border-transparent transition-all hover:bg-amber-50 hover:text-amber-600 data-[state=on]:border-amber-200 data-[state=on]:bg-amber-500 data-[state=on]:text-white data-[state=on]:shadow-sm"
+                                >
+                                    <span class="truncate">{{ cafe.name }}</span>
+                                </ToggleGroupItem>
+                            </ToggleGroup>
+                            <p v-if="unit.cafes.length === 0" class="text-[10px] italic text-gray-400 px-2 leading-none">Sin cafeterías asignadas</p>
+                        </div>
+                    </div>
                 </div>
                 <DatePicker @updateDate="updateDate" class="w-full" />
             </div>

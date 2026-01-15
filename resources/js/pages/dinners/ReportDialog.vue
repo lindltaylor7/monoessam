@@ -27,7 +27,7 @@ const handleFileChange = async () => {
 
     isLoading.value = true;
     try {
-        const response = await axios.get(`/sales-report/${dateInitial.value}/${dateFinal.value}`);
+        const response = await axios.get(`/sales/report/${dateInitial.value}/${dateFinal.value}`);
         resultsReport.value = response.data;
     } catch (error) {
         console.error('Error al obtener el reporte:', error);

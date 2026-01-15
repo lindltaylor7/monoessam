@@ -15,17 +15,17 @@ const props = defineProps<Props>();
 
 const open = ref(false);
 
-console.log(props.user);
+console.log(props.role);
 
 // Lista de IDs seleccionados
 const form = useForm({
-    userId: props.user?.id,
-    permissions: props.user?.permissions.map((p) => p.id), // Marca los permisos existentes
+    role_id: props.role?.id,
+    permissions: props.role?.permissions.map((p) => p.id), // Marca los permisos existentes
 });
 
 // Enviar
 const submit = () => {
-    form.post(route('user.permissions.update', props.user.id), {
+   form.post(route('roles.permissions'), {
         onSuccess: () => {
             open.value = false;
         },

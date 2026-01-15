@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Business, Staff, Unit } from '@/types';
 import { Pencil } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
-import AlertErrors from '../users/AlertErrors.vue';
+import AlertErrors from '../headcount/AlertErrors.vue';
 import { useFileUpload } from './composables/useFileUpload';
 import { useImageUpload } from './composables/useImageUpload';
 import { useStaffForm } from './composables/useStaffForm';

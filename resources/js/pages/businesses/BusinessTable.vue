@@ -2,7 +2,7 @@
 import Button from '@/components/ui/button/Button.vue';
 import { Headquarter } from '@/types';
 import { Trash } from 'lucide-vue-next';
-import AreaModal from '../users/AreaModal.vue';
+import AreaModal from '../headcount/AreaModal.vue';
 import ServicePopover from './ServicePopover.vue';
 
 const props = defineProps({

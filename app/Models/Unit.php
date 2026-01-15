@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Unit extends Model
 {
-    protected $fillable = ['name', 'mine_id'];
+    protected $fillable = ['name', 'mine_id', 'user_id', 'unit_id'];
 
 
     public function mine(): BelongsTo
@@ -30,7 +30,7 @@ class Unit extends Model
     {
         return $this->belongsToMany(Subdealership::class, 'subdealership_unit');
     }
-   public function businesses(): MorphToMany
+    public function businesses(): MorphToMany
     {
         return $this->morphToMany(Business::class, 'businessable');
     }

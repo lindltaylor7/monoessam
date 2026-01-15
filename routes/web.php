@@ -65,13 +65,6 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('assigned/{id}', [UsersController::class, 'assignedUsers'])->name('assigned');
     });
 
-    Route::prefix('headcount')->name('headcount.')->group(function () {
-        Route::get('/', [HeadcountController::class, 'index'])->name('index');
-        Route::post('/', [HeadcountController::class, 'store'])->name('store');
-        Route::get('ban/{id}', [HeadcountController::class, 'banUser'])->name('ban');
-        Route::get('blacklist/{id}', [HeadcountController::class, 'blacklist'])->name('blacklist');
-        Route::get('assigned/{id}', [HeadcountController::class, 'assignedUsers'])->name('assigned');
-    });
 
     Route::prefix('roles')->name('roles.')->group(function () {
         Route::get('/', [RoleController::class, 'index'])->name('index');
@@ -112,6 +105,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/upload-file', [StaffController::class, 'uploadFile'])->name('upload-file');
         Route::post('/upload-filedate', [StaffController::class, 'uploadFileDate'])->name('update-filedate');
         Route::delete('/delete-file/{id}', [StaffController::class, 'deleteFile'])->name('delete-file');
+    });
+
+    Route::prefix('headcount')->name('headcount.')->group(function () {
+        Route::get('/', [HeadcountController::class, 'index'])->name('index');
+        Route::post('/', [HeadcountController::class, 'store'])->name('store');
+        Route::get('ban/{id}', [HeadcountController::class, 'banUser'])->name('ban');
+        Route::get('blacklist/{id}', [HeadcountController::class, 'blacklist'])->name('blacklist');
+        Route::get('assigned/{id}', [HeadcountController::class, 'assignedUsers'])->name('assigned');
     });
 
     // ========================================================================
@@ -182,6 +183,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('dinners')->name('dinners.')->group(function () {
         Route::get('/', [DinnerController::class, 'index'])->name('index');
         Route::post('/', [DinnerController::class, 'store'])->name('store');
+        Route::put('{id}', [DinnerController::class, 'update'])->name('update');
+        Route::delete('{id}', [DinnerController::class, 'destroy'])->name('destroy');
         Route::post('excel', [DinnerController::class, 'excel'])->name('excel');
         Route::get('search/{word}/{id}', [DinnerController::class, 'search'])->name('search');
     });
@@ -218,6 +221,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // VENTAS
     // ========================================================================
     Route::prefix('sales')->name('sales.')->group(function () {
+        Route::get('/', [SaleController::class, 'index'])->name('index');
         Route::post('/', [SaleController::class, 'store'])->name('store');
         Route::get('pagination/{offset}', [SaleController::class, 'pagination'])->name('pagination');
         Route::get('report/{dateInitial}/{datFinal}', [SaleController::class, 'report'])->name('report');

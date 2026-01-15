@@ -2,7 +2,7 @@
 import Button from '@/components/ui/button/Button.vue';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Link as InertiaLink } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import SaleDetailsPopover from './SaleDetailsPopover.vue';
 
 const sendToPrint = (ticketId, businnessId) => {
@@ -18,9 +18,22 @@ const props = defineProps({
         type: Object,
         required: true,
     },
+    cafeId: {
+        type: Number,
+        required: true,
+    },
 });
 
-const salesRef = ref([...props.sales]);
+const totalSales = ref([]);
+
+watch(() => props.cafeId, () => {
+    if(props.cafeId != 0){
+        totalSales.value = props.paginateData.data.filter((sale) => sale.cafe_id == props.cafeId);
+    }else{
+        totalSales.value = [];
+    }
+})
+
 
 // Función para traducir las etiquetas de paginación
 const translatePaginationLabel = (label) => {
@@ -63,14 +76,17 @@ const translatePaginationLabel = (label) => {
                 </TableRow>
             </TableHeader>
             <TableBody>
-                <TableRow v-for="sale in salesRef" :key="sale.id">
+           
+                <TableRow v-for="sale in totalSales" :key="sale.id">
                     <TableCell class="w-[100px]">{{ sale.date }}</TableCell>
-                    <TableCell class="w-[100px]">{{ sale.tickets[0]?.dinner.dni }}</TableCell>
-                    <TableCell class="w-[200px] font-medium" :title="sale.name">{{ sale.tickets[0]?.dinner.name }}</TableCell>
-                    <TableCell class="w-[200px] font-medium" :title="sale.total">S./{{ parseFloat(sale.total).toFixed(2) }}</TableCell>
+                    <TableCell class="w-[100px]">{{ sale?.tickets[0].dinner.dni }}</TableCell>
+                    <TableCell class="w-[200px] font-medium" :title="sale.name">{{ sale?.tickets[0].dinner.name }}</TableCell>
+                    <TableCell class="w-[200px] font-medium" :title="sale.total">
+                        S./{{ Number(sale.total).toFixed(2) }}
+                    </TableCell>
                     <TableCell class="space-x-2 text-right">
-                        <Button @click="sendToPrint(sale.tickets[0].id, 1)">Imprimir</Button>
-                        <SaleDetailsPopover :ticket="sale.tickets[0]" />
+                        <Button @click="sendToPrint(sale.id, 1)">Imprimir</Button>
+                        <SaleDetailsPopover :ticket="sale?.tickets[0]" />
                     </TableCell>
                 </TableRow>
             </TableBody>

@@ -3,7 +3,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Cafe, Dinner, Service, Unit } from '@/types';
 import { Head, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import SubdealershipsDialog from '../businesses/SubdealershipsDialog.vue';
 import Alert from './Alert.vue';
 import OtherUnitDialog from './OtherUnitDialog.vue';
@@ -20,10 +20,12 @@ interface Props {
     cafes: Cafe[];
     sale_types: any[];
     receipt_types: any[];
-    todaySales: any[];
+    todaySales: any;
     subdealerships: any[];
     dealerships: any[];
 }
+
+
 const page = usePage();
 
 const permissions = page.props.auth.permissions;
@@ -59,6 +61,7 @@ const showServicesFromCafeSelected = (services, sales) => {
 };
 
 const localSales = ref([...props.todaySales.data]);
+
 
 const servicesSelected = ref([]);
 const showAlert = ref(false);
@@ -164,6 +167,7 @@ const saveSale = (dni: String) => {
             <h2 class="text-center text-2xl font-semibold">Punto de Venta</h2>
             <SubdealershipsDialog :dealerships="dealerships" v-if="permissions.find((p) => p.id == 14)" />
             <SalesHeader
+            :units="units"
                 :cafes="cafes"
                 :subdealerships="subdealerships"
                 :services="services"
@@ -185,8 +189,7 @@ const saveSale = (dni: String) => {
                     @updateDni="handleDniUpdate"
                     ref="salesCardRef"
                 />
-                <!-- <DinnersTable :dinners="dinners" :services="servicesSelected" @addServiceSelected="addServiceSelected" /> -->
-                <SalesTable :sales="localSales" :paginateData="props.todaySales" />
+                <SalesTable :sales="localSales" :paginateData="props.todaySales" :cafeId="cafeSelected"/>
                 <OtherUnitDialog :showOtherUnitDialog="showOtherUnitDialog" @hideDialog="hideDialog" @handleDoublePriceSave="handleDoublePriceSave" />
             </div>
         </div>

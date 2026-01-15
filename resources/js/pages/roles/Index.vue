@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Area, Permission, Role, User } from '@/types';
-import RoleModal from '../users/RoleModal.vue';
+import RoleModal from '../headcount/RoleModal.vue';
 import RolePermissionsModal from './RolePermissionsModal.vue';
 
 interface Props {

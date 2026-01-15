@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Bus;
 use Mike42\Escpos\PrintConnectors\WindowsPrintConnector;
 use Mike42\Escpos\Printer;
 use Barryvdh\DomPDF\Facades\Pdf;
+use Inertia\Inertia;
 use phpDocumentor\Reflection\DocBlock\Tags\Return_;
 
 class SaleController extends Controller
@@ -25,7 +26,11 @@ class SaleController extends Controller
      */
     public function index()
     {
-        //
+        return Inertia::render('sales/Index', [
+            'dinners' => Dinner::with(['subdealership', 'cafe'])->paginate(20),
+            'cafes' => Cafe::all(),
+            'subdealerships' => Subdealership::all(),
+        ]);
     }
 
     /**
@@ -282,7 +287,7 @@ class SaleController extends Controller
         return response()->json($sales);
     }
 
-    public function pagination($offset)
+    public function pagination(Request $request, $offset)
     {
         $sales = Sale::with(['tickets', 'tickets.ticket_details', 'tickets.dinner', 'sale_details'])
             ->where('cafe_id', $request->cafe_id)

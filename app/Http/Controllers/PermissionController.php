@@ -81,7 +81,7 @@ class PermissionController extends Controller
             'icon_class' => $request->icon_class
         ]);
 
-        return to_route('users');
+        return to_route('permissions.index');
     }
 
     /**
@@ -122,21 +122,21 @@ class PermissionController extends Controller
 
     public function rolePermissions(Request $request)
     {
-        $role = Role::find($request->roleId);
+        $role = Role::findOrFail($request->role_id);
 
-        $selectedIds = array_map('intval', array_keys(array_filter($request->permissions)));
+        $permissions = $request->permissions ?? [];
+        $selectedIds = array_map('intval', array_filter($permissions));
 
         $role->syncPermissions($selectedIds);
 
-        return to_route('users');
+        return to_route('roles.index');
     }
 
     public function roleUser(Request $request)
     {
+        $role = Role::findOrFail($request->role_id);
 
-        $role = Role::find($request->roleId);
-
-        $user = User::find($request->userId);
+        $user = User::findOrFail($request->user_id);
 
         $user->syncRoles([$role->name]);
 
@@ -145,12 +145,13 @@ class PermissionController extends Controller
 
     public function userPermissions(Request $request)
     {
-        $user = User::find($request->userId);
+        $user = User::findOrFail($request->user_id);
 
-        $selectedIds = array_map('intval', array_filter($request->permissions));
+        $permissions = $request->permissions ?? [];
+        $selectedIds = array_map('intval', array_filter($permissions));
 
         $user->syncPermissions($selectedIds);
 
-        return to_route('permissions');
+        return to_route('permissions.index');
     }
 }

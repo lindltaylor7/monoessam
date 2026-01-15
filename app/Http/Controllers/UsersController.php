@@ -24,9 +24,10 @@ class UsersController extends Controller
     public function index()
     {
         return Inertia::render('users/Index', [
-            'users' => User::with(['roles', 'areas'])->paginate(20),
+            'users' => User::with(['roles', 'areas', 'units'])->paginate(20),
             'roles' => Role::all(),
             'areas' => Area::all(),
+            'units' => Unit::all(),
         ]);
     }
 
@@ -60,6 +61,10 @@ class UsersController extends Controller
         $user->roleAreas()->attach($request->role_id, [
             'area_id' => $request->area_id
         ]);
+
+        if ($request->has('unit_ids')) {
+            $user->units()->sync($request->unit_ids);
+        }
 
         return redirect()->back();
     }
@@ -112,6 +117,10 @@ class UsersController extends Controller
         $user->roleAreas()->attach($request->role_id, [
             'area_id' => $request->area_id
         ]);
+
+        if ($request->has('unit_ids')) {
+            $user->units()->sync($request->unit_ids);
+        }
 
         return redirect()->back();
     }
