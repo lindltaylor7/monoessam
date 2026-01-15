@@ -76,6 +76,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('permissions')->name('permissions.')->group(function () {
         Route::get('/', [PermissionController::class, 'index'])->name('index');
         Route::post('/', [PermissionController::class, 'store'])->name('store');
+        Route::put('{id}', [PermissionController::class, 'update'])->name('update');
         Route::delete('{id}', [PermissionController::class, 'destroy'])->name('destroy');
         Route::post('user/{id}', [PermissionController::class, 'userPermissions'])->name('user.update');
     });

@@ -105,7 +105,16 @@ class PermissionController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        //
+        $permission = Permission::findOrFail($id);
+        
+        $permission->update([
+            'name' => $request->name,
+            'sidebar_name' => $request->sidebar_name,
+            'route_name' => $request->route_name,
+            'icon_class' => $request->icon_class
+        ]);
+
+        return to_route('permissions.index');
     }
 
     /**
@@ -113,11 +122,11 @@ class PermissionController extends Controller
      */
     public function destroy(string $id)
     {
-        $permission = Permission::find($id);
+        $permission = Permission::findOrFail($id);
 
         $permission->delete();
 
-        return to_route('users');
+        return to_route('permissions.index');
     }
 
     public function rolePermissions(Request $request)

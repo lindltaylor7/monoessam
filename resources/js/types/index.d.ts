@@ -49,6 +49,9 @@ export interface Permission {
     id: number;
     name: string;
     guard_name: string;
+    sidebar_name?: string;
+    route_name?: string;
+    icon_class?: string;
     created_at: string;
     updated_at: string;
 }
