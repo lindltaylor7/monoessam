@@ -49,7 +49,6 @@ export function useImageUpload() {
         selectedFile,
         triggerFileInput,
         handleImageUpload,
-        removeImage,
-        selectedFile,
+        removeImage
     };
 }
