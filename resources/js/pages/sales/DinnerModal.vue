@@ -105,7 +105,7 @@ const submit = () => {
                     </DialogDescription>
                 </DialogHeader>
                 <div class="absolute -bottom-6 right-6 h-12 w-12 rounded-full bg-background flex items-center justify-center shadow-lg border">
-                     <Icon :name="dinner ? 'user-cog' : 'user-plus'" class="h-6 w-6 text-primary" />
+                     <Icon :name="dinner ? 'user' : 'user'" class="h-6 w-6 text-primary" />
                 </div>
             </div>
 

@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Bus;
 use Mike42\Escpos\PrintConnectors\WindowsPrintConnector;
 use Mike42\Escpos\Printer;
 use Barryvdh\DomPDF\Facades\Pdf;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use phpDocumentor\Reflection\DocBlock\Tags\Return_;
 
@@ -26,9 +27,16 @@ class SaleController extends Controller
      */
     public function index()
     {
+
+        $user = Auth::user();
+
+        $units = $user->units;
+
+        $cafes = Cafe::whereIn('unit_id', $units->pluck('id'))->get();
+
         return Inertia::render('sales/Index', [
             'dinners' => Dinner::with(['subdealership', 'cafe'])->paginate(20),
-            'cafes' => Cafe::all(),
+            'cafes' => $cafes,
             'subdealerships' => Subdealership::all(),
         ]);
     }

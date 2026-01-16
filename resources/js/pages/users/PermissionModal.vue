@@ -61,7 +61,6 @@ watch(() => props.open, (newVal) => {
         
         // Unir y eliminar duplicados usando un Set
         form.permissions = [...new Set([...directPermissionIds, ...rolePermissionIds])];
-        
     }
 });
 

@@ -1,1 +1,0 @@
-import{_ as r}from"./_plugin-vue_export-helper-DlAUqK2U.js";import{c as o,o as s,b as d}from"./app-D_30lCPY.js";const a={},n={class:"border-sidebar-border/70 dark:border-sidebar-border relative col-span-1 aspect-video overflow-hidden rounded-xl border"};function t(c,e){return s(),o("div",n,e[0]||(e[0]=[d("p",null,"Menus",-1)]))}const p=r(a,[["render",t]]);export{p as default};
