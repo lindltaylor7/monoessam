@@ -55,9 +55,10 @@ const addServiceSelected = (service: any) => {
     });
 };
 
-const showServicesFromCafeSelected = (services: any[], sales: any[]) => {
+const showServicesFromCafeSelected = (services: any[], cafeId: number) => {
     servicesSelected.value = services;
-    localSales.value = sales;
+    const salesByCafe = props.todaySales.data.filter((sale: any) => sale.cafe_id == cafeId);
+    localSales.value = salesByCafe;
 };
 
 const localSales = ref<any[]>([...(props.todaySales?.data || [])]);

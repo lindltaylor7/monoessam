@@ -51,7 +51,7 @@ watch(cafeSelected, (newVal) => {
     if (found) {
         servicesSelected.value = found.services || [];
         salesSelected.value = found.sales || [];
-        emits('showServicesFromCafeSelected', servicesSelected.value, salesSelected.value);
+        emits('showServicesFromCafeSelected', servicesSelected.value, newVal);
     } else {
         servicesSelected.value = [];
         emits('showServicesFromCafeSelected', servicesSelected.value);
@@ -158,7 +158,7 @@ const addServiceSelected = (service: Service) => {
 
                 <div class="pt-4 border-t border-slate-100 grid grid-cols-2 gap-3">
                     <DatePicker @updateDate="updateDate" class="w-full h-11" />
-                    <NewDinnerDialog :cafes="cafes" :subdealerships="subdealerships" />
+                    <!-- <NewDinnerDialog :cafes="cafes" :subdealerships="subdealerships" /> -->
                 </div>
             </CardContent>
         </Card>
@@ -179,7 +179,7 @@ const addServiceSelected = (service: Service) => {
 
         <!-- Quick Actions -->
         <div class="grid grid-cols-2 gap-4">
-            <ExcelDialog class="w-full" />
+            <!-- <ExcelDialog class="w-full" /> -->
             <ReportDialog class="w-full" />
         </div>
     </div>
