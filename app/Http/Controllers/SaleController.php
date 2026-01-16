@@ -25,19 +25,37 @@ class SaleController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-
         $user = Auth::user();
-
         $units = $user->units;
-
         $cafes = Cafe::whereIn('unit_id', $units->pluck('id'))->get();
 
+        $query = Dinner::with(['subdealership', 'cafe']);
+
+        // Aplicar filtros
+        if ($request->has('search')) {
+            $search = $request->get('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('dni', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%");
+            });
+        }
+
+        if ($request->has('cafe_id') && $request->cafe_id != 'all') {
+            $query->where('cafe_id', $request->cafe_id);
+        }
+
+        if ($request->has('subdealership_id') && $request->subdealership_id != 'all') {
+            $query->where('subdealership_id', $request->subdealership_id);
+        }
+
         return Inertia::render('sales/Index', [
-            'dinners' => Dinner::with(['subdealership', 'cafe'])->paginate(20),
+            'dinners' => $query->paginate(20)->withQueryString(),
             'cafes' => $cafes,
             'subdealerships' => Subdealership::all(),
+            'filters' => $request->only(['search', 'cafe_id', 'subdealership_id'])
         ]);
     }
 
