@@ -14,14 +14,17 @@ import {
 import { Badge } from '@/components/ui/badge';
 import Icon from '@/components/Icon.vue';
 import UserModal from './UserModal.vue';
+import PermissionModal from './PermissionModal.vue';
+import { Shield } from 'lucide-vue-next';
 
 interface User {
     id: number;
     name: string;
     email: string;
-    roles: { id: number; name: string }[];
+    roles: { id: number; name: string; permissions: Permission[] }[];
     areas: { id: number; name: string; pivot?: { role_id: number; area_id: number } }[];
     units: { id: number; name: string }[];
+    permissions: { id: number; name: string; sidebar_name?: string | null }[];
 }
 
 interface PaginationLinks {
@@ -56,11 +59,18 @@ interface Unit {
     name: string;
 }
 
+interface Permission {
+    id: number;
+    name: string;
+    sidebar_name?: string | null;
+}
+
 const props = defineProps<{
     users: PaginatedUsers;
     roles: Role[];
     areas: Area[];
     units: Unit[];
+    permissions: Permission[];
 }>();
 
 const breadcrumbs = [
@@ -68,6 +78,7 @@ const breadcrumbs = [
 ];
 
 const isModalOpen = ref(false);
+const isPermissionModalOpen = ref(false);
 const editingUser = ref<User | null>(null);
 
 const form = useForm({});
@@ -83,6 +94,11 @@ const openCreateModal = () => {
 const openEditModal = (user: User) => {
     editingUser.value = user;
     isModalOpen.value = true;
+};
+
+const openPermissionModal = (user: User) => {
+    editingUser.value = user;
+    isPermissionModalOpen.value = true;
 };
 
 const deleteUser = (id: number) => {
@@ -160,11 +176,14 @@ const deleteUser = (id: number) => {
                             </TableCell>
                             <TableCell class="text-right">
                                 <div class="flex justify-end gap-1">
-                                    <Button variant="ghost" size="icon" @click="openEditModal(user)" title="Editar" class="h-8 w-8">
-                                        <Icon name="pencil" class="h-4 w-4 text-muted-foreground" />
+                                    <Button variant="ghost" size="icon" @click="openEditModal(user)" title="Editar" class="h-8 w-8 text-primary hover:text-primary hover:bg-primary/10">
+                                        <Icon name="pencil" class="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="ghost" size="icon" @click="openPermissionModal(user)" title="Permisos" class="h-8 w-8 text-orange-600 hover:text-orange-600 hover:bg-orange-50">
+                                        <Shield class="h-4 w-4" />
                                     </Button>
                                     <Button variant="ghost" size="icon" class="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10" @click="deleteUser(user.id)" title="Eliminar">
-                                        <Icon name="trash-2" class="h-4 w-4" />
+                                        <Icon name="trash" class="h-4 w-4" />
                                     </Button>
                                 </div>
                             </TableCell>
@@ -201,6 +220,12 @@ const deleteUser = (id: number) => {
             :roles="roles"
             :areas="areas"
             :units="units"
+        />
+
+        <PermissionModal 
+            v-model:open="isPermissionModalOpen"
+            :user="editingUser"
+            :permissions="permissions"
         />
     </AppLayout>
 </template>

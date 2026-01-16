@@ -106,7 +106,7 @@ class PermissionController extends Controller
     public function update(Request $request, string $id)
     {
         $permission = Permission::findOrFail($id);
-        
+
         $permission->update([
             'name' => $request->name,
             'sidebar_name' => $request->sidebar_name,
@@ -152,15 +152,16 @@ class PermissionController extends Controller
         return to_route('users');
     }
 
-    public function userPermissions(Request $request)
+    public function userPermissions(Request $request, $id)
     {
-        $user = User::findOrFail($request->user_id);
+        $user = User::findOrFail($id);
 
         $permissions = $request->permissions ?? [];
+
         $selectedIds = array_map('intval', array_filter($permissions));
 
         $user->syncPermissions($selectedIds);
 
-        return to_route('permissions.index');
+        return redirect()->back();
     }
 }

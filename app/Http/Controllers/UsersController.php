@@ -24,10 +24,11 @@ class UsersController extends Controller
     public function index()
     {
         return Inertia::render('users/Index', [
-            'users' => User::with(['roles', 'areas', 'units'])->paginate(20),
+            'users' => User::with(['roles.permissions', 'areas', 'units', 'permissions'])->paginate(20),
             'roles' => Role::all(),
             'areas' => Area::all(),
             'units' => Unit::all(),
+            'permissions' => Permission::all(),
         ]);
     }
 
