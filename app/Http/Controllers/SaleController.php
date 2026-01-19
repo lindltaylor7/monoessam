@@ -235,7 +235,7 @@ class SaleController extends Controller
             'message' => 'Venta registrada correctamente.',
             'sales' => Sale::with(['tickets', 'tickets.ticket_details', 'tickets.dinner', 'sale_details'])
                 ->where('cafe_id', $request->cafe_id)
-                ->where('date', date('Y-m-d'))
+                ->where('date', $sale->date)
                 ->orderBy('id', 'desc')
                 ->get(),
         ], 200);
