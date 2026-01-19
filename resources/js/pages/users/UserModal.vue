@@ -192,6 +192,7 @@ const toggleUnit = (unitId: number) => {
                             <div v-for="unit in units" :key="unit.id" class="flex items-center space-x-2">
                                 <Checkbox 
                                     :id="'unit-' + unit.id" 
+                                    :checked="form.unit_ids.includes(unit.id)"
                                     @click="toggleUnit(unit.id)"
                                 />
                                 <label 
