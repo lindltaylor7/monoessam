@@ -18,6 +18,7 @@ use App\Http\Controllers\MineController;
 use App\Http\Controllers\PeriodController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\ProviderController;
+use App\Http\Controllers\ReportSalesController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\ServiceController;
@@ -228,6 +229,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('report/{dateInitial}/{datFinal}', [SaleController::class, 'report'])->name('report');
         Route::get('print-ticket/{ticketId}/{businessId}', [SaleController::class, 'printTest'])->name('print-ticket');
     });
+
+    Route::prefix('reportsales')->name('reportsales.')->group(function () {
+        Route::get('/', [ReportSalesController::class, 'index'])->name('index');
+        Route::delete('{id}', [ReportSalesController::class, 'destroy'])->name('destroy');
+        Route::get('export', [ReportSalesController::class, 'export'])->name('export');
+    });
+
 
     // ========================================================================
     // PERÍODOS

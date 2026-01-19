@@ -8,6 +8,8 @@ import type { DefineComponent } from 'vue';
 import { createApp, h } from 'vue';
 import { ZiggyVue } from 'ziggy-js';
 import { initializeTheme } from './composables/useAppearance';
+import VueSweetalert2 from 'vue-sweetalert2';
+import 'sweetalert2/dist/sweetalert2.min.css';
 
 configureEcho({
     broadcaster: 'pusher',
@@ -36,6 +38,7 @@ createInertiaApp({
             .use(plugin)
             .use(ZiggyVue)
             .use(VueDnDKitPlugin)
+            .use(VueSweetalert2)
             .mount(el);
     },
     progress: {

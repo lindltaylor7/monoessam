@@ -142,12 +142,12 @@ class SaleController extends Controller
                 }
             }
 
-            if ($this->verifySale($request->cafe_id, $dinner->id, $services)) {
+            /* if ($this->verifySale($request->cafe_id, $dinner->id, $services)) {
                 return response()->json([
                     'message' => 'Venta ya registrada a este usuario.',
                     'verification' => $this->verifySale($request->cafe_id, $dinner->id, $services)
                 ], 404);
-            }
+            } */
         }
 
         $cafe = Cafe::find($request->cafe_id);

@@ -12,6 +12,7 @@ import StaffMobileCard from './partials/StaffMobileCard.vue';
 import { useStaffFilter } from '@/composables/useStaffFilter';
 import { useStaffActions } from '@/composables/useStaffActions';
 
+
 interface Props {
     cafes: Cafe[];
     staff: Staff[];
@@ -71,6 +72,7 @@ const prevPage = () => {
 watch(filteredStaff, () => {
     currentPage.value = 1;
 });
+
 </script>
 
 <template>
