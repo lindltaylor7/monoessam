@@ -25,4 +25,8 @@ class Subdealership extends Model
     {
         return $this->belongsToMany(Unit::class, 'subdealership_unit');
     }
+    public function mines(): BelongsToMany
+    {
+        return $this->belongsToMany(Mine::class, 'mine_subdealerships', 'subdealership_id', 'mine_id');
+    }
 }
