@@ -152,7 +152,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     Route::prefix('subdealerships')->name('subdealerships.')->group(function () {
+        Route::get('/', [SubdealershipController::class, 'index'])->name('index');
         Route::post('/', [SubdealershipController::class, 'store'])->name('store');
+        Route::get('/{subdealership}', [SubdealershipController::class, 'show'])->name('show');
+        Route::put('/{subdealership}', [SubdealershipController::class, 'update'])->name('update');
+        Route::delete('/{id}', [SubdealershipController::class, 'destroy'])->name('destroy');
     });
 
     // ========================================================================
