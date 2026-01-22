@@ -15,7 +15,7 @@ const form = useForm({
     file: null,
 });
 
-const resultsReport = ref([]);
+const resultsReport = ref<any[]>([]);
 const dateInitial = ref('');
 const dateFinal = ref('');
 
@@ -27,7 +27,7 @@ const handleFileChange = async () => {
 
     isLoading.value = true;
     try {
-        const response = await axios.get(`/sales-report/${dateInitial.value}/${dateFinal.value}`);
+        const response = await axios.get(`/sales/report/${dateInitial.value}/${dateFinal.value}`);
         resultsReport.value = response.data;
     } catch (error) {
         console.error('Error al obtener el reporte:', error);
@@ -74,9 +74,9 @@ const exportToExcel = () => {
 
 <template>
     <Dialog v-model:open="open">
-        <DialogTrigger>
-            <Button title="Generar reporte" class="gap-2 bg-green-600 hover:bg-green-700">
-                <FileChartColumn class="h-4 w-4" />
+        <DialogTrigger as-child>
+            <Button title="Generar reporte" class="w-full h-11 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl shadow-md shadow-slate-200 transition-all flex items-center justify-center gap-2">
+                <FileChartColumn class="h-4 w-4 text-emerald-400" />
                 <span>Reporte de Ventas</span>
             </Button>
         </DialogTrigger>

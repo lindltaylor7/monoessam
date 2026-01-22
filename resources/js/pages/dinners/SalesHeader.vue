@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { Cafe, Service } from '@/types';
-import { Coffee, File, Tag } from 'lucide-vue-next';
+import { Cafe, Service, Unit } from '@/types';
 import { ref, watch } from 'vue';
 import DatePicker from './DatePicker.vue';
 import DinnersTable from './DinnersTable.vue';
@@ -9,6 +8,9 @@ import ExcelDialog from './ExcelDialog.vue';
 import NewDinnerDialog from './NewDinnerDialog.vue';
 import OtherUnitDialog from './OtherUnitDialog.vue';
 import ReportDialog from './ReportDialog.vue';
+import Icon from '@/components/Icon.vue';
+import { Card, CardContent } from '@/components/ui/card';
+import { Settings } from 'lucide-vue-next';
 
 interface Props {
     cafes: Cafe[];
@@ -16,35 +18,28 @@ interface Props {
     receipt_types: any[];
     sale_types: any[];
     subdealerships: any[];
-}
-
-interface SaleFormData {
-    receipt_type_id: number;
-    sale_type_id: number;
-    cafe_id: number;
-    date: string;
+    units: Unit[]
 }
 
 const emits = defineEmits(['showServicesFromCafeSelected', 'updateDate', 'updateFormData', 'addServiceSelected']);
 
-const emitFormData = () => {
-    const formData: SaleFormData = {
-        receipt_type_id: receiptType.value,
-        sale_type_id: saletypeSelected.value,
-        cafe_id: cafeSelected.value,
-    };
-    emits('updateFormData', formData);
-};
-
 const props = defineProps<Props>();
 const doublePrice = ref(false);
 
-const cafeSelected = ref(0);
-const saletypeSelected = ref(0);
-const servicesSelected = ref([]);
-const salesSelected = ref([]);
-const receiptType = ref(0);
+const cafeSelected = ref<number>(0);
+const saletypeSelected = ref<number>(0);
+const servicesSelected = ref<any[]>([]);
+const salesSelected = ref<any[]>([]);
+const receiptType = ref<number>(0);
 const showOtherUnitDialog = ref(false);
+
+const emitFormData = () => {
+    emits('updateFormData', {
+        receipt_type_id: receiptType.value,
+        sale_type_id: saletypeSelected.value,
+        cafe_id: cafeSelected.value,
+    });
+};
 
 const doublePriceSave = () => {
     doublePrice.value = true;
@@ -52,12 +47,11 @@ const doublePriceSave = () => {
 };
 
 watch(cafeSelected, (newVal) => {
-    const cafeSelected = props.cafes.find((cafe) => cafe.id === newVal);
-    console.log(cafeSelected);
-    if (cafeSelected) {
-        servicesSelected.value = cafeSelected.services;
-        salesSelected.value = cafeSelected.sales;
-        emits('showServicesFromCafeSelected', servicesSelected.value, salesSelected.value);
+    const found = props.cafes.find((cafe) => cafe.id === newVal) as any;
+    if (found) {
+        servicesSelected.value = found.services || [];
+        salesSelected.value = found.sales || [];
+        emits('showServicesFromCafeSelected', servicesSelected.value, newVal);
     } else {
         servicesSelected.value = [];
         emits('showServicesFromCafeSelected', servicesSelected.value);
@@ -68,7 +62,7 @@ watch([receiptType, saletypeSelected, cafeSelected], () => {
     emitFormData();
 });
 
-const updateDate = (date) => {
+const updateDate = (date: string) => {
     emits('updateDate', date);
 };
 
@@ -78,111 +72,128 @@ const addServiceSelected = (service: Service) => {
 </script>
 
 <template>
-    <header class="flex flex-col gap-3 rounded-xl bg-white p-4 shadow-md">
-        <!-- Fila superior: Tres columnas simétricas -->
-        <div class="flex flex-col gap-3 md:flex-row">
-            <!-- Columna izquierda: Selectores apilados -->
-            <div class="min-w-0 flex-1 space-y-3">
-                <!-- Selector de Tipo de Documento -->
-                <div class="space-y-1">
-                    <label class="flex items-center gap-2 text-sm font-medium text-gray-700">
-                        <File class="h-4 w-4 text-blue-500" />
-                        <span>Tipo de Documento</span>
-                    </label>
-                    <ToggleGroup v-model="receiptType" type="single" class="flex flex-wrap gap-1 rounded-lg bg-gray-50 p-1">
-                        <ToggleGroupItem
-                            v-for="receipt_type in receipt_types"
-                            :value="receipt_type.id"
-                            :key="receipt_type.id"
-                            class="min-w-[100px] flex-1 rounded-md px-3 py-2 text-center text-sm transition-all hover:bg-blue-50 hover:text-blue-600 data-[state=on]:bg-blue-500 data-[state=on]:text-white"
-                        >
-                            {{ receipt_type.name }}
-                        </ToggleGroupItem>
-                    </ToggleGroup>
-                </div>
+    <div class="space-y-6">
+        <!-- Configuration Card -->
+        <Card class="border-none shadow-sm bg-white overflow-hidden py-0">
+            <div class="bg-red-600 px-6 py-4 flex items-center gap-3">
+                <Settings class="text-white"/>
+                <h3 class="text-white font-bold tracking-tight text-sm uppercase">Configuración de Venta</h3>
+            </div>
+            
+            <CardContent class="p-6 space-y-6">
+                <!-- Selectores de Tipo -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Tipo de Documento -->
+                    <div class="space-y-2">
+                        <label class="flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                            <Icon name="file-text" size="12" class="text-blue-500" />
+                            Documento
+                        </label>
+                        <ToggleGroup v-model="receiptType" type="single" class="flex flex-wrap gap-1 bg-slate-50 p-1 rounded-xl">
+                            <ToggleGroupItem
+                                v-for="type in receipt_types"
+                                :value="type.id"
+                                :key="type.id"
+                                class="flex-1 h-9 rounded-lg text-xs font-bold transition-all data-[state=on]:bg-blue-600 data-[state=on]:text-white data-[state=on]:shadow-md"
+                            >
+                                {{ type.name }}
+                            </ToggleGroupItem>
+                        </ToggleGroup>
+                    </div>
 
-                <!-- Selector de Tipo de Venta -->
-                <div class="space-y-1">
-                    <label class="flex items-center gap-2 text-sm font-medium text-gray-700">
-                        <Tag class="h-4 w-4 text-purple-500" />
-                        <span>Tipo de Venta</span>
-                    </label>
-                    <ToggleGroup v-model="saletypeSelected" type="single" class="flex flex-wrap gap-1 rounded-lg bg-gray-50 p-1">
-                        <ToggleGroupItem
-                            v-for="sale_type in sale_types"
-                            :value="sale_type.id"
-                            :key="sale_type.id"
-                            class="min-w-[100px] flex-1 rounded-md px-3 py-2 text-center text-sm transition-all hover:bg-purple-50 hover:text-purple-600 data-[state=on]:bg-purple-500 data-[state=on]:text-white"
-                        >
-                            {{ sale_type.name }}
-                        </ToggleGroupItem>
-                    </ToggleGroup>
+                    <!-- Tipo de Venta -->
+                    <div class="space-y-2">
+                        <label class="flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                            <Icon name="tag" size="12" class="text-purple-500" />
+                            Categoría
+                        </label>
+                        <ToggleGroup v-model="saletypeSelected" type="single" class="flex flex-wrap gap-1 bg-slate-50 p-1 rounded-xl">
+                            <ToggleGroupItem
+                                v-for="type in sale_types"
+                                :value="type.id"
+                                :key="type.id"
+                                class="flex-1 h-9 rounded-lg text-xs font-bold transition-all data-[state=on]:bg-purple-600 data-[state=on]:text-white data-[state=on]:shadow-md"
+                            >
+                                {{ type.name }}
+                            </ToggleGroupItem>
+                        </ToggleGroup>
+                    </div>
                 </div>
 
                 <!-- Selector de Cafetería -->
-                <div class="space-y-1">
-                    <label class="flex items-center gap-2 text-sm font-medium text-gray-700">
-                        <Coffee class="h-4 w-4 text-amber-500" />
-                        <span>Cafetería</span>
+                <div class="space-y-3">
+                    <label class="flex items-center gap-2 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                        <Icon name="map-pin" size="12" class="text-amber-500" />
+                        Punto de Servicio (Unidad / Cafetería)
                     </label>
-                    <ToggleGroup v-model="cafeSelected" type="single" class="flex flex-wrap gap-1 rounded-lg bg-gray-50 p-1">
-                        <ToggleGroupItem
-                            v-for="cafe in cafes"
-                            :value="cafe.id"
-                            :key="cafe.id"
-                            class="min-w-[120px] flex-1 rounded-md px-2 py-2 text-center text-sm transition-all hover:bg-amber-50 hover:text-amber-600 data-[state=on]:bg-amber-500 data-[state=on]:text-white"
-                        >
-                            <span class="truncate">{{ cafe.name }}</span>
-                        </ToggleGroupItem>
-                    </ToggleGroup>
+                    
+                    <div class="space-y-4 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
+                        <div v-for="unit in units" :key="unit.id" class="space-y-2">
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] font-black uppercase text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
+                                    {{ unit.name }}
+                                </span>
+                                <div class="h-[1px] flex-1 bg-slate-100"></div>
+                            </div>
+                            
+                            <div class="grid grid-cols-2 gap-2">
+                                <button
+                                    v-for="cafe in unit.cafes"
+                                    :key="cafe.id"
+                                    @click="cafeSelected = cafe.id"
+                                    class="text-left px-3 py-2.5 rounded-xl text-xs font-bold border transition-all flex items-center justify-between group"
+                                    :class="cafeSelected === cafe.id 
+                                        ? 'bg-amber-500 border-amber-500 text-white shadow-lg shadow-amber-200' 
+                                        : 'bg-white border-slate-200 text-slate-600 hover:border-amber-300 hover:bg-amber-50'"
+                                >
+                                    <span class="truncate">{{ cafe.name }}</span>
+                                    <Icon v-if="cafeSelected === cafe.id" name="check-circle" size="14" />
+                                    <Icon v-else name="coffee" size="14" class="text-slate-300 group-hover:text-amber-500 transition-colors" />
+                                </button>
+                            </div>
+                            <p v-if="unit.cafes.length === 0" class="text-[10px] italic text-slate-400 pl-2">Sin cafeterías asignadas</p>
+                        </div>
+                    </div>
                 </div>
-                <DatePicker @updateDate="updateDate" class="w-full" />
-            </div>
 
-            <!-- Columna derecha: Tabla de comensales -->
-            <div class="flex min-w-0 flex-1 flex-col gap-3">
+                <div class="pt-4 border-t border-slate-100 grid grid-cols-2 gap-3">
+                    <DatePicker @updateDate="updateDate" class="w-full h-11" />
+                    <!-- <NewDinnerDialog :cafes="cafes" :subdealerships="subdealerships" /> -->
+                </div>
+            </CardContent>
+        </Card>
+
+        <!-- Services Selection Card -->
+        <Card class="border-none shadow-sm bg-white overflow-hidden py-0">
+            <div class="bg-emerald-600 px-6 py-4 flex items-center justify-between">
+                <div class="flex items-center gap-3 text-white">
+                    <Icon name="utensils" class="h-5 w-5" />
+                    <h3 class="font-bold tracking-tight text-sm uppercase">Servicios Disponibles</h3>
+                </div>
+                <Badge variant="outline" class="bg-white/20 text-white border-white/20 font-bold border-none rounded p-1">{{ servicesSelected.length }}</Badge>
+            </div>
+            <CardContent class="p-0">
                 <DinnersTable :services="servicesSelected" @addServiceSelected="addServiceSelected" />
-            </div>
-            <!-- Columna central: Fecha y acciones principales -->
-            <div class="flex min-w-0 flex-1 flex-col gap-3">
-                <!-- Fecha -->
-                <div class="flex w-full flex-col items-center space-y-1">
-                    <ExcelDialog class="w-full" />
+            </CardContent>
+        </Card>
 
-                    <ReportDialog class="w-full" />
-
-                    <NewDinnerDialog :cafes="cafes" :subdealerships="subdealerships" />
-
-                    <!-- <PricesDialog :services="servicesSelected" class="w-full" /> -->
-
-                    <OtherUnitDialog :showOtherUnitDialog="showOtherUnitDialog" @doublePriceSave="doublePriceSave" class="w-full" />
-                </div>
-
-                <!-- Botones en columna -->
-                <div class="flex w-full flex-col gap-2">
-                    <!-- <Button class="flex w-full items-center justify-center gap-1 bg-blue-600 hover:bg-blue-700">
-                        <UserRoundPlus class="h-4 w-4" />
-                        <span>Agregar</span>
-                    </Button> -->
-                </div>
-            </div>
+        <!-- Quick Actions -->
+        <div class="grid grid-cols-2 gap-4">
+            <!-- <ExcelDialog class="w-full" /> -->
+            <ReportDialog class="w-full" />
         </div>
-
-        <!-- Estado actual (selecciones) -->
-        <div class="flex flex-wrap items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 text-sm">
-            <span v-if="receiptType" class="flex items-center gap-1 rounded-full bg-blue-100 px-2 py-1 text-blue-800">
-                <File class="h-3 w-3" />
-                {{ receipt_types.find((t) => t.id === receiptType)?.name }}
-            </span>
-            <span v-if="saletypeSelected" class="flex items-center gap-1 rounded-full bg-purple-100 px-2 py-1 text-purple-800">
-                <Tag class="h-3 w-3" />
-                {{ sale_types.find((t) => t.id === saletypeSelected)?.name }}
-            </span>
-            <span v-if="cafeSelected" class="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-1 text-amber-800">
-                <Coffee class="h-3 w-3" />
-                {{ cafes.find((c) => c.id === cafeSelected)?.name }}
-            </span>
-            <span v-if="servicesSelected.length" class="ml-auto text-gray-500"> {{ servicesSelected.length }} servicios disponibles </span>
-        </div>
-    </header>
+    </div>
 </template>
+
+<style scoped>
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #e2e8f0;
+    border-radius: 10px;
+}
+</style>

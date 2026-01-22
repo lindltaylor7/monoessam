@@ -45,6 +45,7 @@ export function useStaffForm() {
         filesData: [],
         areaId: 0,
         workplace: '',
+        guard: '',
     });
 
     const errorsSend = ref([]);
@@ -162,6 +163,10 @@ export function useStaffForm() {
         form.areaId = areaId;
     };
 
+    const selectGuard = (guard: string) => {
+        form.guard = guard;
+    };
+
     return {
         form,
         errorsSend,
@@ -174,5 +179,6 @@ export function useStaffForm() {
         selectRole,
         selectUnit,
         selectArea,
+        selectGuard,
     };
 }

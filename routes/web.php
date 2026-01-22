@@ -9,6 +9,7 @@ use App\Http\Controllers\DishCategoryController;
 use App\Http\Controllers\DishController;
 use App\Http\Controllers\FoodController;
 use App\Http\Controllers\GuardController;
+use App\Http\Controllers\HeadcountController;
 use App\Http\Controllers\IngredientCategoryController;
 use App\Http\Controllers\IngredientController;
 use App\Http\Controllers\LogisticController;
@@ -17,6 +18,7 @@ use App\Http\Controllers\MineController;
 use App\Http\Controllers\PeriodController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\ProviderController;
+use App\Http\Controllers\ReportSalesController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\ServiceController;
@@ -54,13 +56,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // ========================================================================
     // GESTIÓN DE USUARIOS Y PERMISOS
     // ========================================================================
+
+
     Route::prefix('users')->name('users.')->group(function () {
         Route::get('/', [UsersController::class, 'index'])->name('index');
         Route::post('/', [UsersController::class, 'store'])->name('store');
+        Route::put('{id}', [UsersController::class, 'update'])->name('update');
+        Route::delete('{id}', [UsersController::class, 'destroy'])->name('destroy');
         Route::get('ban/{id}', [UsersController::class, 'banUser'])->name('ban');
         Route::get('blacklist/{id}', [UsersController::class, 'blacklist'])->name('blacklist');
         Route::get('assigned/{id}', [UsersController::class, 'assignedUsers'])->name('assigned');
     });
+
 
     Route::prefix('roles')->name('roles.')->group(function () {
         Route::get('/', [RoleController::class, 'index'])->name('index');
@@ -72,6 +79,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('permissions')->name('permissions.')->group(function () {
         Route::get('/', [PermissionController::class, 'index'])->name('index');
         Route::post('/', [PermissionController::class, 'store'])->name('store');
+        Route::put('{id}', [PermissionController::class, 'update'])->name('update');
         Route::delete('{id}', [PermissionController::class, 'destroy'])->name('destroy');
         Route::post('user/{id}', [PermissionController::class, 'userPermissions'])->name('user.update');
     });
@@ -101,6 +109,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/upload-file', [StaffController::class, 'uploadFile'])->name('upload-file');
         Route::post('/upload-filedate', [StaffController::class, 'uploadFileDate'])->name('update-filedate');
         Route::delete('/delete-file/{id}', [StaffController::class, 'deleteFile'])->name('delete-file');
+    });
+
+    Route::prefix('headcount')->name('headcount.')->group(function () {
+        Route::get('/', [HeadcountController::class, 'index'])->name('index');
+        Route::post('/', [HeadcountController::class, 'store'])->name('store');
+        Route::get('ban/{id}', [HeadcountController::class, 'banUser'])->name('ban');
+        Route::get('blacklist/{id}', [HeadcountController::class, 'blacklist'])->name('blacklist');
+        Route::get('assigned/{id}', [HeadcountController::class, 'assignedUsers'])->name('assigned');
     });
 
     // ========================================================================
@@ -136,7 +152,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     Route::prefix('subdealerships')->name('subdealerships.')->group(function () {
+        Route::get('/', [SubdealershipController::class, 'index'])->name('index');
         Route::post('/', [SubdealershipController::class, 'store'])->name('store');
+        Route::get('/{subdealership}', [SubdealershipController::class, 'show'])->name('show');
+        Route::put('/{subdealership}', [SubdealershipController::class, 'update'])->name('update');
+        Route::delete('/{id}', [SubdealershipController::class, 'destroy'])->name('destroy');
     });
 
     // ========================================================================
@@ -171,6 +191,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('dinners')->name('dinners.')->group(function () {
         Route::get('/', [DinnerController::class, 'index'])->name('index');
         Route::post('/', [DinnerController::class, 'store'])->name('store');
+        Route::put('{id}', [DinnerController::class, 'update'])->name('update');
+        Route::delete('{id}', [DinnerController::class, 'destroy'])->name('destroy');
         Route::post('excel', [DinnerController::class, 'excel'])->name('excel');
         Route::get('search/{word}/{id}', [DinnerController::class, 'search'])->name('search');
     });
@@ -207,11 +229,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // VENTAS
     // ========================================================================
     Route::prefix('sales')->name('sales.')->group(function () {
+        Route::get('/', [SaleController::class, 'index'])->name('index');
         Route::post('/', [SaleController::class, 'store'])->name('store');
         Route::get('pagination/{offset}', [SaleController::class, 'pagination'])->name('pagination');
         Route::get('report/{dateInitial}/{datFinal}', [SaleController::class, 'report'])->name('report');
         Route::get('print-ticket/{ticketId}/{businessId}', [SaleController::class, 'printTest'])->name('print-ticket');
     });
+
+    Route::prefix('reportsales')->name('reportsales.')->group(function () {
+        Route::get('/', [ReportSalesController::class, 'index'])->name('index');
+        Route::delete('{id}', [ReportSalesController::class, 'destroy'])->name('destroy');
+        Route::get('export', [ReportSalesController::class, 'export'])->name('export');
+    });
+
 
     // ========================================================================
     // PERÍODOS

@@ -24,8 +24,11 @@ class UsersController extends Controller
     public function index()
     {
         return Inertia::render('users/Index', [
-            'mines' => Mine::with(['units', 'services', 'units.cafes', 'units.cafes.users', 'units.cafes.guards', 'units.cafes.guards.roles', 'units.cafes.staffs', 'units.cafes.staffs.staff_files'])->get(),
-            'roles' => Role::with(['permissions', 'users'])->get(),
+            'users' => User::with(['roles.permissions', 'areas', 'units', 'permissions'])->paginate(20),
+            'roles' => Role::all(),
+            'areas' => Area::all(),
+            'units' => Unit::all(),
+            'permissions' => Permission::all(),
         ]);
     }
 
@@ -39,6 +42,14 @@ class UsersController extends Controller
      */
     public function store(Request $request)
     {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users',
+            'password' => 'required|string|min:8',
+            'role_id' => 'required|exists:roles,id',
+            'area_id' => 'required|exists:areas,id',
+        ]);
+
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
@@ -46,14 +57,17 @@ class UsersController extends Controller
         ]);
 
         $role = Role::find($request->role_id);
-
         $user->syncRoles([$role->name]);
 
         $user->roleAreas()->attach($request->role_id, [
             'area_id' => $request->area_id
         ]);
 
-        return to_route('users');
+        if ($request->has('unit_ids')) {
+            $user->units()->sync($request->unit_ids);
+        }
+
+        return redirect()->back();
     }
 
     /**
@@ -77,7 +91,39 @@ class UsersController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        //
+        $user = User::findOrFail($id);
+
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users,email,' . $user->id,
+            'password' => 'nullable|string|min:8',
+            'role_id' => 'required|exists:roles,id',
+            'area_id' => 'required|exists:areas,id',
+        ]);
+
+        $user->update([
+            'name' => $request->name,
+            'email' => $request->email,
+        ]);
+
+        if ($request->filled('password')) {
+            $user->update(['password' => Hash::make($request->password)]);
+        }
+
+        $role = Role::find($request->role_id);
+        $user->syncRoles([$role->name]);
+
+        // Update roleArea association - detach all and re-attach for simplicity or update specific
+        $user->roleAreas()->detach();
+        $user->roleAreas()->attach($request->role_id, [
+            'area_id' => $request->area_id
+        ]);
+
+        if ($request->has('unit_ids')) {
+            $user->units()->sync($request->unit_ids);
+        }
+
+        return redirect()->back();
     }
 
     /**
@@ -85,38 +131,9 @@ class UsersController extends Controller
      */
     public function destroy(string $id)
     {
-        //
-    }
+        $user = User::findOrFail($id);
+        $user->delete();
 
-    public function blacklist(string $id)
-    {
-        $user = User::find($id);
-
-        $user->update([
-            'type' => 2
-        ]);
-    }
-
-    public function banUser(string $id)
-    {
-        $user = User::find($id);
-
-        if ($user) {
-            $user->update([
-                'type' => 3,
-                'password' => Hash::make('lindltaylor7@gmail.com') // Reset password to a default value
-            ]);
-        }
-
-        event(new SessionEnded($id));
-
-        return to_route('users');
-    }
-
-    public function assignedUsers($cafeID)
-    {
-        $cafe = Cafe::with('guards', 'guards.roles', 'users')->find($cafeID);
-
-        return $cafe;
+        return redirect()->back();
     }
 }

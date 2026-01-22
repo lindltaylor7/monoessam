@@ -27,6 +27,7 @@ const totalTicket = computed(() => {
         </PopoverTrigger>
         <PopoverContent class="w-80 p-0" align="start">
             <div class="p-4">
+                
                 <h3 class="mb-3 flex items-center text-lg font-semibold">
                     <BetweenHorizonalStart class="mr-2 h-4 w-4" />
                     Detalles del Ticket

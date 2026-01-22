@@ -81,7 +81,7 @@ class PermissionController extends Controller
             'icon_class' => $request->icon_class
         ]);
 
-        return to_route('users');
+        return to_route('permissions.index');
     }
 
     /**
@@ -105,7 +105,16 @@ class PermissionController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        //
+        $permission = Permission::findOrFail($id);
+
+        $permission->update([
+            'name' => $request->name,
+            'sidebar_name' => $request->sidebar_name,
+            'route_name' => $request->route_name,
+            'icon_class' => $request->icon_class
+        ]);
+
+        return to_route('permissions.index');
     }
 
     /**
@@ -113,44 +122,46 @@ class PermissionController extends Controller
      */
     public function destroy(string $id)
     {
-        $permission = Permission::find($id);
+        $permission = Permission::findOrFail($id);
 
         $permission->delete();
 
-        return to_route('users');
+        return to_route('permissions.index');
     }
 
     public function rolePermissions(Request $request)
     {
-        $role = Role::find($request->roleId);
+        $role = Role::findOrFail($request->role_id);
 
-        $selectedIds = array_map('intval', array_keys(array_filter($request->permissions)));
+        $permissions = $request->permissions ?? [];
+        $selectedIds = array_map('intval', array_filter($permissions));
 
         $role->syncPermissions($selectedIds);
 
-        return to_route('users');
+        return to_route('roles.index');
     }
 
     public function roleUser(Request $request)
     {
+        $role = Role::findOrFail($request->role_id);
 
-        $role = Role::find($request->roleId);
-
-        $user = User::find($request->userId);
+        $user = User::findOrFail($request->user_id);
 
         $user->syncRoles([$role->name]);
 
         return to_route('users');
     }
 
-    public function userPermissions(Request $request)
+    public function userPermissions(Request $request, $id)
     {
-        $user = User::find($request->userId);
+        $user = User::findOrFail($id);
 
-        $selectedIds = array_map('intval', array_filter($request->permissions));
+        $permissions = $request->permissions ?? [];
+
+        $selectedIds = array_map('intval', array_filter($permissions));
 
         $user->syncPermissions($selectedIds);
 
-        return to_route('permissions');
+        return redirect()->back();
     }
 }

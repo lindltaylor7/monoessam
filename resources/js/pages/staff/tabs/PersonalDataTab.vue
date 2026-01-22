@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Area, Business, Role, Staff, Unit } from '@/types';
+import { Area, Business, Guard, Role, Staff, Unit } from '@/types';
 import { Cake, Calendar, Globe, Heart, IdCard, Mail, PersonStanding, Phone, User, UserRound } from 'lucide-vue-next';
 import EmergencyContactSection from '../sections/EmergencyContactSection.vue';
 import PhotoUploadSection from '../sections/PhotoUploadSection.vue';
@@ -23,10 +23,17 @@ interface Emits {
     (e: 'select-unit', unit: Unit): void;
     (e: 'select-role', role: Role): void;
     (e: 'select-area', area: Area): void;
+    (e: 'select-guard', guardId: number): void;
 }
 
 defineProps<Props>();
 const emit = defineEmits<Emits>();
+
+
+const guardSelected = (newValue: number) => {
+    emit('select-guard', newValue);
+}
+
 </script>
 
 <template>
@@ -46,12 +53,14 @@ const emit = defineEmits<Emits>();
                 :cafes="cafes"
                 :units="units"
                 :businneses="businneses"
+                :guard="form.guard"
                 @trigger-upload="emit('trigger-upload')"
                 @remove-image="emit('remove-image')"
                 @select-cafe="emit('select-cafe', $event)"
                 @select-unit="emit('select-unit', $event)"
                 @select-role="emit('select-role', $event)"
                 @select-area="emit('select-area', $event)"
+                @select-guard="guardSelected"
             />
             <div class="rounded-2xl border border-zinc-100 bg-white p-7 shadow-sm transition-all duration-300 hover:shadow-md md:col-span-4">
                 <div class="space-y-5">

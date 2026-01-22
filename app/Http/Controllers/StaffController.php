@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Area;
 use App\Models\Business;
 use App\Models\Cafe;
+use App\Models\Guard;
 use App\Models\Observation;
 use App\Models\Staff;
 use App\Models\Staff_clothes;
@@ -13,6 +14,7 @@ use App\Models\Staff_financial;
 use App\Models\Unit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Spatie\Permission\Models\Role;
@@ -40,7 +42,8 @@ class StaffController extends Controller
                         Cafe::class => ['unit'], // Solo cargará 'unit' si el modelo es Cafe
                         Area::class => ['headquarters', 'headquarters.business'],       // No carga nada extra si es Area
                     ]);
-                }
+                },
+                'guardRole.guardSelected'
             ])->get(),
             'roles' => Role::all(),
             'units' => Unit::with('cafes')->get(),
@@ -86,6 +89,17 @@ class StaffController extends Controller
                 'status' => 1,
                 'user_id' => Auth::id()
             ]);
+
+            $guard =  Guard::firstOrCreate([
+                'cafe_id' => $cafe->id,
+                'name' => $request->guard,
+            ]);
+
+            DB::table('guard_roles')->insert([
+                'guard_id' => $guard->id,
+                'role_id' => $request->roleId,
+                'staff_id' => $staff->id,
+            ]);
         } else if ($request->areaId  && !$request->cafeId) {
             $area = Area::find($request->areaId);
 
@@ -103,6 +117,12 @@ class StaffController extends Controller
                 'contactcell' => $request->contactcell,
                 'status' => 1,
                 'user_id' => Auth::id()
+            ]);
+
+            $guard =  Guard::findOrCreate([
+                'staff_id' => $staff->id,
+                'workplace' => $request->workplace,
+                'guard' => $request->guard,
             ]);
         } else {
             $staff = Staff::create([
@@ -256,6 +276,18 @@ class StaffController extends Controller
             $staff->staffable_id = $request->cafeId;
             $staff->staffable_type = Cafe::class;
             $staff->save();
+
+
+            $guard = Guard::firstOrCreate([
+                'cafe_id' => $request->cafeId,
+                'name' => $request->guard,
+            ]);
+
+            DB::table('guard_roles')->insert([
+                'guard_id' => $guard->id,
+                'role_id' => $request->roleId,
+                'staff_id' => $staff->id,
+            ]);
         } else if ($request->areaId && !$request->cafeId) {
             $staff->staffable_id = $request->areaId;
             $staff->staffable_type = Area::class;

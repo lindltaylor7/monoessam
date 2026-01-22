@@ -25,4 +25,8 @@ class Dealership extends Model
     {
         return $this->hasMany(Subdealership::class);
     }
+    public function mines(): HasMany
+    {
+        return $this->hasMany(Mine::class);
+    }
 }

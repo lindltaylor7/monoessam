@@ -72,4 +72,9 @@ class Staff extends Model
     {
         return $this->belongsToMany(Period::class, 'period_staffs')->withPivot('status');
     }
+
+    public function guardRole(): HasOne
+    {
+        return $this->hasOne(Guard_role::class, 'staff_id', 'id');
+    }
 }

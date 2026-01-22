@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import InputSearchRole from '@/pages/users/InputSearchRole.vue';
-import InputSearchSelectable from '@/pages/users/InputSearchSelectable.vue';
+import InputSearchRole from '@/pages/headcount/InputSearchRole.vue';
+import InputSearchSelectable from '@/pages/headcount/InputSearchSelectable.vue';
 import { Business, Role, Unit } from '@/types';
-import { BriefcaseBusiness, Building, LayoutList, MapPin, Store, Truck, User2, X } from 'lucide-vue-next';
+import { BriefcaseBusiness, Building, Eye, LayoutList, MapPin, Store, Truck, User2, X } from 'lucide-vue-next';
 import { ref, watch } from 'vue';
 import InputSelectableUnit from '../InputSelectableUnit.vue';
 
@@ -20,6 +20,7 @@ interface Props {
     roles: Role[];
     businneses: Business[];
     headquarter: any;
+    guard: string;
 }
 
 interface Emits {
@@ -30,6 +31,7 @@ interface Emits {
     (e: 'select-role', role: Role): void;
     (e: 'select-area', areaId: number): void;
     (e: 'update:workplace', workplace: number): void;
+    (e: 'select-guard', guard: number): void;
 }
 
 const props = defineProps<Props>();
@@ -41,6 +43,7 @@ const headquartersSelected = ref([]);
 const headquarterSelected = ref(0);
 const areasSelected = ref([]);
 const areaSelected = ref(0);
+const guardSelected = ref(0)
 
 if(props.workplace != 0){
     workplace.value = props.workplace
@@ -60,6 +63,10 @@ if(props.workplace != 0){
 
 }   
 
+if(props.guard != ''){
+    guardSelected.value = props.guard
+}
+
 watch(businnesSelected, (newValue) => {
     headquartersSelected.value = props.businneses.find((b) => b.id == newValue).headquarters;
 });
@@ -71,6 +78,11 @@ watch(headquarterSelected, (newValue) => {
 watch(areaSelected, (newValue) => {
     emit('select-area', newValue);
 });
+
+watch(guardSelected, (newValue) => {
+    emit('select-guard', newValue);
+});
+
 </script>
 
 <template>
@@ -311,9 +323,29 @@ watch(areaSelected, (newValue) => {
                                             <div class="flex h-5 w-5 items-center justify-center rounded-md bg-amber-100 text-amber-600">
                                                 <Store />
                                             </div>
-                                            Café asignado
+                                            Comedor asignado
                                         </label>
                                         <InputSearchSelectable :cafes="cafes" @selectCafe="emit('select-cafe', $event)" :cafeSelected="cafeId" />
+                                    </div>
+
+                                    <div class="space-y-2">
+                                        <label class="flex items-center gap-2 text-sm font-medium text-zinc-700">
+                                            <div class="flex h-5 w-5 items-center justify-center rounded-md bg-blue-100 text-blue-600">
+                                                <Eye />
+                                            </div>
+                                            Guardia asignada
+                                        </label>
+                                       <Select v-model="guardSelected">
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Seleccionar" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="Guardia A">Guardia A</SelectItem>
+                                                <SelectItem value="Guardia B">Guardia B</SelectItem>
+                                                <SelectItem value="Guardia C">Guardia C</SelectItem>
+                                                <SelectItem value="Guardia Admin">Guardia Admin</SelectItem>
+                                            </SelectContent>
+                                       </Select>
                                     </div>
                                 </div>
                             </div>

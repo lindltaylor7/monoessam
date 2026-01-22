@@ -26,7 +26,9 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
-        'type', // Added type field 
+        'type',
+        'unit_id',
+        'user_id'
     ];
 
     /**
@@ -74,5 +76,9 @@ class User extends Authenticatable
     public function dishes(): HasMany
     {
         return $this->hasMany(Dish::class);
+    }
+    public function units(): BelongsToMany
+    {
+        return $this->belongsToMany(Unit::class, 'user_units', 'user_id', 'unit_id');
     }
 }

@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Business, Staff, Unit } from '@/types';
 import { Pencil } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
-import AlertErrors from '../users/AlertErrors.vue';
+import AlertErrors from '../headcount/AlertErrors.vue';
 import { useFileUpload } from './composables/useFileUpload';
 import { useImageUpload } from './composables/useImageUpload';
 import { useStaffForm } from './composables/useStaffForm';
@@ -30,7 +30,7 @@ const isOpen = ref(false);
 const isEditMode = computed(() => !!props.staff);
 
 // Composables
-const { form, errorsSend, showErrors, prendasFijas, cafesUnitSelected, handleSubmit, updateStaff, selectCafe, selectRole, selectUnit, selectArea } =
+const { form, errorsSend, showErrors, prendasFijas, cafesUnitSelected, handleSubmit, updateStaff, selectCafe, selectRole, selectUnit, selectArea, selectGuard } =
     useStaffForm();
 
 const { fileInput, imagePreview, triggerFileInput, handleImageUpload, removeImage, selectedFile } = useImageUpload();
@@ -105,6 +105,7 @@ const onSubmit = () => {
                             @select-unit="selectUnit"
                             @select-role="selectRole"
                             @select-area="selectArea"
+                            @select-guard="selectGuard"
                         />
                     </TabsContent>
 

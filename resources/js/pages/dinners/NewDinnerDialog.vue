@@ -34,9 +34,12 @@ const submit = () => {
 
 <template>
     <Dialog v-model:open="open">
-        <DialogTrigger
-            ><Button title="Agregar Usuario" class="h-full w-auto bg-blue-400"><UserPlus /> Nuevo Comensal</Button></DialogTrigger
-        >
+        <DialogTrigger as-child>
+            <Button title="Agregar Usuario" class="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-200 transition-all flex items-center justify-center gap-2">
+                <UserPlus class="h-4 w-4" /> 
+                Nuevo Comensal
+            </Button>
+        </DialogTrigger>
         <DialogContent>
             <DialogHeader>
                 <DialogTitle>Nuevo Comensal</DialogTitle>

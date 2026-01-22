@@ -49,6 +49,9 @@ export interface Permission {
     id: number;
     name: string;
     guard_name: string;
+    sidebar_name?: string;
+    route_name?: string;
+    icon_class?: string;
     created_at: string;
     updated_at: string;
 }
@@ -103,6 +106,34 @@ export interface Headquarter {
     name: string;
     business_id?: number;
     areas: Area[];
+}
+
+export interface Dealership {
+    id: number;
+    name: string;
+    ruc?: string;
+    fiscal_address?: string;
+    legal_address?: string;
+    phone?: string;
+    email?: string;
+    subdealerships?: Subdealership[];
+}
+
+export interface Subdealership {
+    id: number;
+    name: string;
+    ruc?: string;
+    fiscal_address?: string;
+    legal_address?: string;
+    phone?: string;
+    email?: string;
+    dealership_id: number;
+    dealership?: Dealership;
+    dinners?: Dinner[];
+    units?: Unit[];
+    mines?: Mine[];
+    created_at: string;
+    updated_at: string;
 }
 
 export interface Ingredient {

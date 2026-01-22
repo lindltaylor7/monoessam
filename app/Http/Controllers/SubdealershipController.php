@@ -3,7 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Subdealership;
+use App\Http\Requests\StoreSubdealershipRequest;
+use App\Http\Requests\UpdateSubdealershipRequest;
+use App\Models\Dealership;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 
 class SubdealershipController extends Controller
 {
@@ -12,7 +16,10 @@ class SubdealershipController extends Controller
      */
     public function index()
     {
-        //
+        return Inertia::render('subdealerships/Index', [
+            'subdealerships' => Subdealership::with('dealership')->get(),
+            'dealerships' => Dealership::all(),
+        ]);
     }
 
     /**
@@ -20,48 +27,57 @@ class SubdealershipController extends Controller
      */
     public function create()
     {
-        //
+        return Inertia::render('subdealerships/Create', [
+            'dealerships' => \App\Models\Dealership::all(),
+        ]);
     }
 
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request)
+    public function store(StoreSubdealershipRequest $request)
     {
-        $subdealership = Subdealership::create($request->all());
+        $subdealership = Subdealership::create($request->validated());
 
-        return to_route('businesses');
+        return redirect()->back()->with('success', 'Subdealership created successfully.');
     }
 
     /**
      * Display the specified resource.
      */
-    public function show(string $id)
+    public function show(Subdealership $subdealership)
     {
-        //
+        return Inertia::render('subdealerships/Show', [
+            'subdealership' => $subdealership->load('dealership', 'dinners', 'units', 'mines'),
+        ]);
     }
 
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(string $id)
+    public function edit(Subdealership $subdealership)
     {
-        //
+        return Inertia::render('subdealerships/Edit', [
+            'subdealership' => $subdealership,
+            'dealerships' => \App\Models\Dealership::all(),
+        ]);
     }
 
     /**
      * Update the specified resource in storage.
      */
-    public function update(Request $request, string $id)
+    public function update(UpdateSubdealershipRequest $request, Subdealership $subdealership)
     {
-        //
+        $subdealership->update($request->validated());
+
+        return redirect()->route('subdealerships.index')->with('success', 'Subdealership updated successfully.');
     }
 
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(string $id)
+    public function destroy($id)
     {
-        //
+        Subdealership::destroy($id);
     }
 }

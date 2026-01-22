@@ -17,8 +17,13 @@ class Guard_role extends Pivot
         return $this->belongsTo(Staff::class, 'staff_id', 'id');
     }
 
+    public function guardSelected(): BelongsTo
+    {
+        return $this->belongsTo(Guard::class, 'guard_id', 'id');
+    }
+
     public function role(): BelongsTo
     {
-        return $this->BelongsTo(Role::class, 'role_id', 'id');
+        return $this->belongsTo(Role::class, 'role_id', 'id');
     }
 }

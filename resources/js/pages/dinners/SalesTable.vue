@@ -1,120 +1,118 @@
 <script setup lang="ts">
-import Button from '@/components/ui/button/Button.vue';
-import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Link as InertiaLink } from '@inertiajs/vue3';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import SaleDetailsPopover from './SaleDetailsPopover.vue';
-
-const sendToPrint = (ticketId, businnessId) => {
-    window.open('/print-ticket/' + ticketId + '/' + businnessId, '_blank');
-};
+import Icon from '@/components/Icon.vue';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 const props = defineProps({
     sales: {
-        type: Array,
+        type: Array as () => any[],
         required: true,
     },
     paginateData: {
         type: Object,
         required: true,
     },
+    cafeId: {
+        type: Number,
+        required: true,
+    },
 });
 
-const salesRef = ref([...props.sales]);
+const totalSales = ref<any[]>([]);
 
-// Función para traducir las etiquetas de paginación
-const translatePaginationLabel = (label) => {
+watch(() => props.sales, (newVal) => {
+    totalSales.value = [...newVal];
+}, { immediate: true });
+
+const sendToPrint = (ticketId: number, businessId: number) => {
+    window.open('/print-ticket/' + ticketId + '/' + businessId, '_blank');
+};
+
+const translatePaginationLabel = (label: string) => {
     if (label.includes('Previous')) return 'Anterior';
     if (label.includes('Next')) return 'Siguiente';
-    if (label.includes('&laquo;')) return 'Primera';
-    if (label.includes('&raquo;')) return 'Última';
     return label;
 };
 </script>
 
 <template>
-    <div class="border-sidebar-border/70 dark:border-sidebar-border relative aspect-video overflow-hidden overflow-y-visible rounded-xl border">
+    <div class="overflow-x-auto">
         <Table>
-            <TableCaption>
-                <div class="pagination mt-4 flex items-center justify-center gap-1">
-                    <template v-for="link in paginateData.links" :key="link.url">
-                        <InertiaLink
-                            v-if="link.url"
-                            :href="link.url"
-                            class="rounded-md border border-gray-300 px-3 py-1 transition-colors hover:bg-gray-100 dark:border-gray-600 dark:hover:bg-gray-700"
-                            :class="{
-                                'bg-primary border-primary dark:border-primary text-white': link.active,
-                                'text-gray-500 dark:text-gray-400': !link.active,
-                            }"
-                        >
-                            {{ translatePaginationLabel(link.label) }}
-                        </InertiaLink>
-                        <span v-else class="px-3 py-1 text-gray-400 dark:text-gray-500" v-html="translatePaginationLabel(link.label)"></span>
-                    </template>
-                </div>
-            </TableCaption>
             <TableHeader>
-                <TableRow>
-                    <TableHead class="w-[100px]">Fecha</TableHead>
-                    <TableHead class="w-[100px]">DNI</TableHead>
-                    <TableHead class="w-[200px]">Nombre</TableHead>
-                    <TableHead class="w-[200px]">Total</TableHead>
-                    <TableHead class="text-right">Opciones</TableHead>
+                <TableRow class="bg-slate-50/80 hover:bg-slate-50/80 border-b-slate-200">
+                    <TableHead class="py-4 text-slate-600 font-bold uppercase tracking-wider text-[11px]">Hora / Fecha</TableHead>
+                    <TableHead class="py-4 text-slate-600 font-bold uppercase tracking-wider text-[11px]">Identificación</TableHead>
+                    <TableHead class="py-4 text-slate-600 font-bold uppercase tracking-wider text-[11px]">Comensal</TableHead>
+                    <TableHead class="py-4 text-slate-600 font-bold uppercase tracking-wider text-[11px]">Importe</TableHead>
+                    <TableHead class="text-right py-4 text-slate-600 font-bold uppercase tracking-wider text-[11px]">Acciones</TableHead>
                 </TableRow>
             </TableHeader>
             <TableBody>
-                <TableRow v-for="sale in salesRef" :key="sale.id">
-                    <TableCell class="w-[100px]">{{ sale.date }}</TableCell>
-                    <TableCell class="w-[100px]">{{ sale.tickets[0]?.dinner.dni }}</TableCell>
-                    <TableCell class="w-[200px] font-medium" :title="sale.name">{{ sale.tickets[0]?.dinner.name }}</TableCell>
-                    <TableCell class="w-[200px] font-medium" :title="sale.total">S./{{ parseFloat(sale.total).toFixed(2) }}</TableCell>
-                    <TableCell class="space-x-2 text-right">
-                        <Button @click="sendToPrint(sale.tickets[0].id, 1)">Imprimir</Button>
-                        <SaleDetailsPopover :ticket="sale.tickets[0]" />
+                <TableRow v-for="sale in totalSales" :key="sale.id" class="hover:bg-slate-50/50 transition-all border-b-slate-100 last:border-0 group">
+                    <TableCell class="py-3">
+                        <div class="flex flex-col">
+                            <span class="text-[13px] font-bold text-slate-900">{{ sale.date }}</span>
+                            <span class="text-[10px] text-slate-400 font-medium uppercase tracking-tight">Registro #{{ sale.id }}</span>
+                        </div>
+                    </TableCell>
+                    <TableCell class="py-3">
+                        <Badge variant="secondary" class="font-bold text-[10px] bg-slate-100 text-slate-600 border-none">
+                            <Icon name="id-card" size="10" class="mr-1" />
+                            {{ sale?.tickets[0]?.dinner?.dni }}
+                        </Badge>
+                    </TableCell>
+                    <TableCell class="py-3">
+                        <div class="flex items-center gap-3">
+                            <div class="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
+                                {{ sale?.tickets[0]?.dinner?.name?.charAt(0) }}
+                            </div>
+                            <span class="text-[13px] font-bold text-slate-700 truncate max-w-[150px]" :title="sale?.tickets[0]?.dinner?.name">
+                                {{ sale?.tickets[0]?.dinner?.name }}
+                            </span>
+                        </div>
+                    </TableCell>
+                    <TableCell class="py-3 font-black text-slate-900 text-[13px]">
+                        S/{{ Number(sale.total).toFixed(2) }}
+                    </TableCell>
+                    <TableCell class="text-right py-3 space-x-1">
+                        <Button variant="ghost" size="icon" @click="sendToPrint(sale.id, 1)" title="Imprimir Ticket" class="h-8 w-8 rounded-lg hover:bg-primary/10 hover:text-primary transition-colors">
+                            <Icon name="printer" size="14" />
+                        </Button>
+                        <SaleDetailsPopover :ticket="sale?.tickets[0]" />
+                    </TableCell>
+                </TableRow>
+
+                <TableRow v-if="totalSales.length === 0">
+                    <TableCell colspan="5" class="h-32 text-center text-slate-400 text-sm italic font-medium">
+                        No hay ventas registradas en esta cafetería para el día de hoy.
                     </TableCell>
                 </TableRow>
             </TableBody>
         </Table>
+
+        <div v-if="paginateData.links && paginateData.links.length > 3" class="px-4 py-3 border-t border-slate-100 bg-slate-50/50 flex items-center justify-center gap-1.5">
+            <template v-for="link in paginateData.links" :key="link.label">
+                <InertiaLink
+                    v-if="link.url"
+                    :href="link.url"
+                    class="h-8 min-w-[32px] px-2.5 flex items-center justify-center text-[11px] font-bold rounded-lg transition-all border shadow-sm"
+                    :class="{
+                        'bg-primary text-primary-foreground border-primary': link.active,
+                        'bg-white hover:bg-slate-50 border-slate-200 text-slate-600': !link.active,
+                    }"
+                    v-html="translatePaginationLabel(link.label)"
+                    preserve-scroll
+                />
+                <span 
+                    v-else 
+                    class="h-8 min-w-[32px] px-2.5 flex items-center justify-center text-[11px] font-bold text-slate-300 rounded-lg pointer-events-none" 
+                    v-html="translatePaginationLabel(link.label)"
+                ></span>
+            </template>
+        </div>
     </div>
 </template>
-
-<style scoped>
-.pagination {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.25rem;
-    justify-content: center;
-    align-items: center;
-    margin-top: 1rem;
-}
-
-.pagination a,
-.pagination span {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 2rem;
-    height: 2rem;
-    padding: 0 0.5rem;
-    border-radius: 0.375rem;
-    font-size: 0.875rem;
-    line-height: 1.25rem;
-    transition: all 0.2s ease;
-}
-
-.pagination a:hover {
-    background-color: #f3f4f6;
-    color: #1f2937;
-}
-
-.pagination .active {
-    background-color: #3b82f6;
-    color: white;
-    border-color: #3b82f6;
-}
-
-.dark .pagination a:hover {
-    background-color: #374151;
-    color: #f3f4f6;
-}
-</style>

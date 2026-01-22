@@ -22,7 +22,7 @@ const form = useForm({
 
 // Enviar
 const submit = () => {
-    form.post(route('user.permissions.update', props.user.id), {
+    form.post(route('permissions.user.update', props.user.id), {
         onSuccess: () => {
             open.value = false;
         },
