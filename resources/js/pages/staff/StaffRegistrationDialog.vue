@@ -30,7 +30,7 @@ const isOpen = ref(false);
 const isEditMode = computed(() => !!props.staff);
 
 // Composables
-const { form, errorsSend, showErrors, prendasFijas, cafesUnitSelected, handleSubmit, updateStaff, selectCafe, selectRole, selectUnit, selectArea } =
+const { form, errorsSend, showErrors, prendasFijas, cafesUnitSelected, handleSubmit, updateStaff, selectCafe, selectRole, selectUnit, selectArea, selectGuard } =
     useStaffForm();
 
 const { fileInput, imagePreview, triggerFileInput, handleImageUpload, removeImage, selectedFile } = useImageUpload();
@@ -105,6 +105,7 @@ const onSubmit = () => {
                             @select-unit="selectUnit"
                             @select-role="selectRole"
                             @select-area="selectArea"
+                            @select-guard="selectGuard"
                         />
                     </TabsContent>
 

@@ -56,6 +56,9 @@ export function useStaffInitialization(
         // Lugar de trabajo
         initializeWorkplace(staff, units);
 
+        // Guardia
+        form.guard = staff.guard_role?.guard_selected?.name;
+
         // Foto
         imagePreview.value = staff.photo
             ? staff.photo.url.startsWith('http')
