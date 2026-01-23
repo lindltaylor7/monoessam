@@ -46,7 +46,7 @@ class StaffController extends Controller
                 'guardRole.guardSelected'
             ])->get(),
             'roles' => Role::all(),
-            'units' => Unit::with('cafes')->get(),
+            'units' => Unit::with(['cafes', 'mine'])->get(),
             'businneses' => Business::with(['headquarters', 'headquarters.areas'])->get(),
         ]);
     }

@@ -160,7 +160,7 @@ const handleKeydown = (event: Event, cafe?: Cafe) => {
                 tabindex="0"
             >
                 <Plus :size="16" class="flex-shrink-0 text-green-500" />
-                <span class="flex-1 text-sm">{{ unit.name }}</span>
+                <span class="flex-1 text-sm">{{ unit.name }} - {{ unit.mine?.name }}</span>
                 <kbd class="rounded bg-gray-100 px-2 py-1 text-xs text-gray-400">Enter</kbd>
             </div>
 

@@ -3,6 +3,7 @@
 use App\Http\Controllers\AreaController;
 use App\Http\Controllers\BusinessController;
 use App\Http\Controllers\CafeController;
+use App\Http\Controllers\ClothController;
 use App\Http\Controllers\DealershipController;
 use App\Http\Controllers\DinnerController;
 use App\Http\Controllers\DishCategoryController;
@@ -234,6 +235,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('pagination/{offset}', [SaleController::class, 'pagination'])->name('pagination');
         Route::get('report/{dateInitial}/{datFinal}', [SaleController::class, 'report'])->name('report');
         Route::get('print-ticket/{ticketId}/{businessId}', [SaleController::class, 'printTest'])->name('print-ticket');
+    });
+
+    // ========================================================================
+    // ROPA Y PERFILES
+    // ========================================================================
+    Route::prefix('clothes')->name('clothes.')->group(function () {
+        Route::get('/', [ClothController::class, 'index'])->name('index');
+        Route::get('/manage', [ClothController::class, 'manage'])->name('manage');
+        Route::post('/', [ClothController::class, 'store'])->name('store');
+        Route::delete('/{id}', [ClothController::class, 'destroy'])->name('destroy');
+        Route::post('/assign-role', [ClothController::class, 'assignRole'])->name('assign-role');
+        Route::post('/staff-size', [ClothController::class, 'updateStaffSize'])->name('staff-size');
     });
 
     Route::prefix('reportsales')->name('reportsales.')->group(function () {
