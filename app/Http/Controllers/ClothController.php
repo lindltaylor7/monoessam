@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Cafe;
 use Illuminate\Http\Request;
 
 use App\Models\Cloth;
@@ -9,6 +10,7 @@ use App\Models\Staff;
 use App\Models\Staff_clothes;
 use Inertia\Inertia;
 use Spatie\Permission\Models\Role;
+use App\Models\Unit;
 
 class ClothController extends Controller
 {
@@ -17,8 +19,10 @@ class ClothController extends Controller
      */
     public function index()
     {
-        $staff = Staff::with(['role', 'staff_clothes.cloth', 'photo'])
-            ->paginate(15);
+        $staff = Staff::with(['role', 'staff_clothes.cloth', 'photo', 'staffable.unit.mine'])
+            ->where('status', 2)
+            ->whereHasMorph('staffable', [Cafe::class])
+            ->get();
 
         // Get all clothes with roles to map which role needs which clothes
         $clothes = Cloth::with('roles')->get();
@@ -36,7 +40,8 @@ class ClothController extends Controller
 
         return Inertia::render('clothes/Index', [
             'staff' => $staff,
-            'roleClothes' => $roleClothes
+            'roleClothes' => $roleClothes,
+            'units' => Unit::with(['cafes', 'mine'])->get()
         ]);
     }
 
@@ -124,6 +129,23 @@ class ClothController extends Controller
                 'clothe_name' => $cloth->name,
             ]
         );
+
+        return back();
+    }
+
+    /**
+     * Update Staff Cloth Status.
+     */
+    public function updateStatus(Request $request)
+    {
+        $request->validate([
+            'id' => 'required|exists:staff_clothes,id',
+            'status' => 'required|string',
+        ]);
+
+        $entry = Staff_clothes::findOrFail($request->id);
+        $entry->status = $request->status;
+        $entry->save();
 
         return back();
     }

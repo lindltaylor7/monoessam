@@ -1,50 +1,95 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { Head, router, Link } from '@inertiajs/vue3';
 import AppLayout from '@/Layouts/AppLayout.vue';
-import { Button } from '@/Components/ui/button';
-import { Input } from '@/Components/ui/input';
-import { Avatar, AvatarImage, AvatarFallback } from '@/Components/ui/avatar';
-import Pagination from '@/Components/ui/pagination/Pagination.vue'; 
-import { Eye } from 'lucide-vue-next';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from '@/Components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Eye, ChevronLeft, ChevronRight } from 'lucide-vue-next';
+import { useStaffFilter } from '@/composables/useStaffFilter';
+import { Staff, Unit } from '@/types';
+import StaffClothesDialog from '@/pages/clothes/partials/StaffClothesDialog.vue';
 
-// Note: Assuming Pagination component exists or using a simple one. 
-// If generic table is preferred, I'll build a custom one.
-
-const props = defineProps<{
-    staff: {
-        data: Array<{
+interface ExtendedStaff extends Staff {
+    role?: { name: string };
+    staffable?: {
+        unit_id: number;
+        unit?: {
             id: number;
             name: string;
-            role_id: number;
-            role?: { name: string };
-            photo?: { date_path_photo: string };
-            staff_clothes: Array<{
-                id: number;
-                cloth_id: number;
-                clothing_size: string;
-                clothe_name?: string;
-                cloth?: { name: string };
-            }>;
-        }>;
-        links: any[];
+            mine: { name: string };
+        };
     };
+    photo?: {
+        id: number;
+        url: string;
+    };
+    staff_clothes: Array<{
+        id: number;
+        cloth_id: number;
+        clothing_size: string;
+        clothe_name?: string;
+        cloth?: { name: string };
+        status?: string;
+    }>;
+}
+
+const props = defineProps<{
+    staff: ExtendedStaff[]; 
     roleClothes: Record<number, Array<{ id: number; name: string }>>;
+    units: Unit[];
 }>();
 
-const isModalOpen = ref(false);
-const selectedStaff = ref<any>(null);
+const localStaff = ref(props.staff);
+const selectedStaff = ref<ExtendedStaff | null>(null);
 
-const openModal = (staff: any) => {
+watch(
+    () => props.staff,
+    (newVal) => {
+        localStaff.value = newVal;
+        if (selectedStaff.value) {
+            const updated = newVal.find(s => s.id === selectedStaff.value?.id);
+            if (updated) {
+                selectedStaff.value = updated;
+            }
+        }
+    }
+);
+
+const { filteredStaff, searchQuery, selectedUnitId } = useStaffFilter(localStaff as any);
+
+const currentPage = ref(1);
+const itemsPerPage = 10;
+
+const totalPages = computed(() => Math.ceil(filteredStaff.value.length / itemsPerPage));
+
+const paginatedStaff = computed(() => {
+    if (currentPage.value > totalPages.value && totalPages.value > 0) currentPage.value = 1;
+    const start = (currentPage.value - 1) * itemsPerPage;
+    const end = start + itemsPerPage;
+    return filteredStaff.value.slice(start, end);
+});
+
+const nextPage = () => {
+    if (currentPage.value < totalPages.value) {
+        currentPage.value++;
+    }
+};
+
+const prevPage = () => {
+    if (currentPage.value > 1) {
+        currentPage.value--;
+    }
+};
+
+watch(filteredStaff, () => {
+    currentPage.value = 1;
+});
+
+const isModalOpen = ref(false);
+
+const openModal = (staff: ExtendedStaff) => {
     selectedStaff.value = staff;
     isModalOpen.value = true;
 };
@@ -57,16 +102,15 @@ const updateSize = (staffId: number, clothId: number, size: string) => {
     }, {
         preserveScroll: true,
         preserveState: true,
-        only: ['staff'] // Optimistic update or just partial reload usually enough
+        only: ['staff']
     });
 };
 
-const getClothSize = (staff: any, clothId: number) => {
-    const entry = staff.staff_clothes.find((sc: any) => sc.cloth_id === clothId);
+const getClothSize = (staff: ExtendedStaff, clothId: number) => {
+    const entry = staff.staff_clothes.find((sc) => sc.cloth_id === clothId);
     return entry ? entry.clothing_size : '';
 };
 
-// Helper to get initials
 const getInitials = (name: string) => {
     return name
         .split(' ')
@@ -75,7 +119,6 @@ const getInitials = (name: string) => {
         .toUpperCase()
         .slice(0, 2);
 };
-
 </script>
 
 <template>
@@ -85,17 +128,36 @@ const getInitials = (name: string) => {
         { title: 'Personal', href: route('staff.index') },
         { title: 'Tallas', href: route('clothes.index') }
     ]">
-        <div class="p-6 space-y-8 max-w-7xl mx-auto">
-             <div class="flex justify-between items-center">
+        <div class="p-6">
+             <div class="flex justify-between items-center mb-6">
                  <div>
-                    <h1 class="text-3xl font-bold tracking-tight">Registro de Tallas</h1>
+                    <h1 class="text-3xl font-bold tracking-tight">Entrega de EEP's</h1>
                     <p class="text-muted-foreground mt-1">
-                        Gestiona las tallas del personal según las prendas asignadas a su cargo.
+                        Gestiona la entrega de EPP's al personal.
                     </p>
                  </div>
                  <Link :href="route('clothes.manage')">
                     <Button>Configurar Prendas y Roles</Button>
                  </Link>
+            </div>
+
+            <div class="flex items-center mb-6">
+                <Input 
+                    type="text" 
+                    placeholder="Buscar personal por dni o nombre" 
+                    v-model="searchQuery"
+                />
+                <Select v-model="selectedUnitId">
+                    <SelectTrigger class="h-10 border-zinc-200 bg-white hover:bg-zinc-50 ml-2 w-[200px]">
+                        <SelectValue placeholder="Seleccionar unidad" />
+                    </SelectTrigger>
+                    <SelectContent class="border-zinc-200 bg-white shadow-lg">
+                        <SelectItem value="0" class="hover:bg-zinc-50"> Ninguna </SelectItem>
+                        <SelectItem :value="String(unit.id)" class="hover:bg-zinc-50" v-for="unit in units" :key="unit.id">
+                           {{ unit.mine.name }} - {{ unit.name }} 
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
             </div>
 
             <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
@@ -105,18 +167,19 @@ const getInitials = (name: string) => {
                             <tr>
                                 <th class="p-4 font-medium">Personal</th>
                                 <th class="p-4 font-medium">Cargo</th>
-                                <th class="p-4 font-medium">Tallas</th>
-                                <th class="p-4 font-medium w-16"></th>
+                                <th class="p-4 font-medium">Unidad</th>
+                               <!-- <th class="p-4 font-medium">Tallas</th> -->
+                                <th class="p-4 font-medium w-16">Prendas</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100">
-                             <tr v-for="person in staff.data" :key="person.id" class="hover:bg-gray-50/50">
+                             <tr v-for="person in paginatedStaff" :key="person.id" class="hover:bg-gray-50/50">
                                 <td class="p-4">
                                     <div class="flex items-center gap-3">
                                         <Avatar class="h-9 w-9 border">
                                             <AvatarImage 
-                                                v-if="person.photo" 
-                                                :src="`/storage/${person.photo.date_path_photo}`" 
+                                                v-if="person.photo?.url" 
+                                                :src="`/storage/${person.photo?.url}`" 
                                                 class="object-cover"
                                             />
                                             <AvatarFallback>{{ getInitials(person.name) }}</AvatarFallback>
@@ -130,6 +193,13 @@ const getInitials = (name: string) => {
                                     </span>
                                     <span v-else class="text-gray-400 italic">Sin cargo</span>
                                 </td>
+                                <td class="p-4">
+                                    <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-700/10" v-if="person.staffable?.unit">
+                                        {{ person.staffable?.unit?.name }} - {{ person.staffable?.unit?.mine?.name }}
+                                    </span>
+                                    <span v-else class="text-gray-400 italic">Sin unidad</span>
+                                </td>
+                                <!--
                                 <td class="p-4">
                                     <div v-if="person.role_id && roleClothes[person.role_id] && roleClothes[person.role_id].length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                                         <div v-for="cloth in roleClothes[person.role_id]" :key="cloth.id" class="flex flex-col gap-1">
@@ -147,82 +217,57 @@ const getInitials = (name: string) => {
                                         No hay prendas configuradas para este cargo.
                                     </div>
                                 </td>
+                                -->
                                 <td class="p-4 text-right">
                                     <Button variant="ghost" size="icon" @click="openModal(person)">
                                         <Eye class="h-4 w-4 text-gray-500" />
                                     </Button>
                                 </td>
                              </tr>
-                             <tr v-if="staff.data.length === 0">
-                                 <td colspan="4" class="p-8 text-center text-gray-500">
+                             <tr v-if="paginatedStaff.length === 0">
+                                 <td colspan="5" class="p-8 text-center text-gray-500">
                                      No se encontró personal.
                                  </td>
                              </tr>
                         </tbody>
                     </table>
                 </div>
-                 <!-- Simple Pagination if needed -->
-                 <div v-if="staff.links && staff.links.length > 3" class="p-4 border-t border-gray-100 flex justify-center">
-                    <div class="flex gap-1">
-                        <Link 
-                            v-for="(link, k) in staff.links" 
-                            :key="k" 
-                            :href="link.url || '#'" 
-                            v-html="link.label"
-                            class="px-3 py-1 rounded text-sm transition-colors"
-                            :class="{ 
-                                'bg-black text-white': link.active, 
-                                'text-gray-500 hover:bg-gray-100': !link.active,
-                                'opacity-50 pointer-events-none': !link.url
-                            }"
-                        />
+
+                <div class="flex items-center justify-between border-t p-4" v-if="totalPages > 1">
+                    <div class="text-sm text-muted-foreground">
+                        Mostrando {{ (currentPage - 1) * itemsPerPage + 1 }} - {{ Math.min(currentPage * itemsPerPage, filteredStaff.length) }} de {{ filteredStaff.length }} registros
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            :disabled="currentPage === 1" 
+                            @click="prevPage"
+                        >
+                            <ChevronLeft class="h-4 w-4" />
+                            Anterior
+                        </Button>
+                        <div class="text-sm font-medium">
+                            Página {{ currentPage }} de {{ totalPages }}
+                        </div>
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            :disabled="currentPage === totalPages" 
+                            @click="nextPage"
+                        >
+                            Siguiente
+                            <ChevronRight class="h-4 w-4" />
+                        </Button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Modal -->
-        <Dialog :open="isModalOpen" @update:open="isModalOpen = $event">
-            <DialogContent class="sm:max-w-[425px]">
-                <DialogHeader>
-                    <DialogTitle>Tallas Asignadas</DialogTitle>
-                    <DialogDescription>
-                        Resumen de tallas para {{ selectedStaff?.name }}
-                    </DialogDescription>
-                </DialogHeader>
-                
-                <div class="grid gap-4 py-4" v-if="selectedStaff">
-                    <div v-if="selectedStaff.staff_clothes && selectedStaff.staff_clothes.length > 0" class="border rounded-lg overflow-hidden">
-                        <table class="w-full text-sm">
-                            <thead class="bg-gray-50 border-b">
-                                <tr>
-                                    <th class="px-4 py-2 text-left font-medium text-gray-500">Prenda</th>
-                                    <th class="px-4 py-2 text-right font-medium text-gray-500">Talla</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y">
-                                <tr v-for="item in selectedStaff.staff_clothes" :key="item.id">
-                                    <td class="px-4 py-2">
-                                        {{ item.cloth ? item.cloth.name : (item.clothe_name || 'Prenda Desconocida') }}
-                                    </td>
-                                    <td class="px-4 py-2 text-right font-medium">
-                                        {{ item.clothing_size || '-' }}
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div v-else class="text-center py-6 text-gray-500 bg-gray-50 rounded-lg border border-dashed">
-                        No hay tallas registradas.
-                    </div>
-                </div>
-
-                <DialogFooter>
-                    <Button variant="outline" @click="isModalOpen = false">
-                        Cerrar
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+        <StaffClothesDialog 
+            :open="isModalOpen" 
+            :staff="selectedStaff" 
+            @update:open="isModalOpen = $event" 
+        />
     </AppLayout>
 </template>

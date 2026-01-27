@@ -247,6 +247,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('/{id}', [ClothController::class, 'destroy'])->name('destroy');
         Route::post('/assign-role', [ClothController::class, 'assignRole'])->name('assign-role');
         Route::post('/staff-size', [ClothController::class, 'updateStaffSize'])->name('staff-size');
+        Route::post('/status', [ClothController::class, 'updateStatus'])->name('status');
     });
 
     Route::prefix('reportsales')->name('reportsales.')->group(function () {
