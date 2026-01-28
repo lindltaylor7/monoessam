@@ -12,6 +12,7 @@ use App\Http\Controllers\FoodController;
 use App\Http\Controllers\GuardController;
 use App\Http\Controllers\HeadcountController;
 use App\Http\Controllers\IngredientCategoryController;
+use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\IngredientController;
 use App\Http\Controllers\LogisticController;
 use App\Http\Controllers\ManagementController;
@@ -248,6 +249,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/assign-role', [ClothController::class, 'assignRole'])->name('assign-role');
         Route::post('/staff-size', [ClothController::class, 'updateStaffSize'])->name('staff-size');
         Route::post('/status', [ClothController::class, 'updateStatus'])->name('status');
+    });
+
+    Route::prefix('inventory')->name('inventory.')->group(function () {
+        Route::get('/', [InventoryController::class, 'index'])->name('index');
+        Route::post('/update', [InventoryController::class, 'update'])->name('update');
+        Route::post('/colors', [InventoryController::class, 'storeColor'])->name('colors.store');
     });
 
     Route::prefix('reportsales')->name('reportsales.')->group(function () {

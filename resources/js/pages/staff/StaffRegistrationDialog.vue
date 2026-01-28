@@ -22,6 +22,7 @@ interface Props {
     units: Unit[];
     businneses: Business[];
     staff?: Staff;
+    roleClothes: Record<number, Record<string, Array<{ id: number; name: string }>>>;
 }
 
 const props = defineProps<Props>();
@@ -41,11 +42,51 @@ const { initializeStaffData } = useStaffInitialization(form, prendasFijas, image
 
 const { activeTab, nextTab, prevTab, resetTab, shouldShowTab } = useTabNavigation(isEditMode);
 
-// Watchers
-watch(() => props.staff, (newStaff) => initializeStaffData(newStaff, props.units), { immediate: true });
-
 watch(selectedFile, (newFile) => {
     form.photo = newFile;
+});
+
+const updateAvailableClothes = (initialStaffClothes?: any[]) => {
+    if (!props.roleClothes || !form.roleId) {
+        if (!props.staff) prendasFijas.value = [];
+        return;
+    }
+
+    const roleId = Number(form.roleId);
+    const cafeId = form.cafeId ? String(form.cafeId) : 'all';
+
+    const assignedClothes = props.roleClothes[roleId]?.[cafeId] || [];
+    
+    prendasFijas.value = assignedClothes.map(cloth => {
+        let talla = '';
+        
+        // Prioridad 1: Valor que ya esté en el formulario (usuario escribiendo)
+        const existingInForm = prendasFijas.value.find(p => p.label === cloth.name);
+        if (existingInForm) talla = existingInForm.talla;
+
+        // Prioridad 2: Si estamos inicializando (edit mode), usar lo que viene del staff
+        if (!talla && initialStaffClothes) {
+            const match = initialStaffClothes.find(sc => sc.clothe_name === cloth.name || sc.cloth?.name === cloth.name);
+            if (match) talla = match.clothing_size;
+        }
+
+        return {
+            label: cloth.name,
+            talla: talla
+        };
+    });
+};
+
+watch(() => props.staff, (newStaff) => {
+    initializeStaffData(newStaff, props.units);
+    if (newStaff) {
+        // Forzar actualización de prendas con la data inicial del staff
+        updateAvailableClothes(newStaff.staff_clothes);
+    }
+}, { immediate: true });
+
+watch([() => form.roleId, () => form.cafeId], () => {
+    updateAvailableClothes();
 });
 
 // Handlers

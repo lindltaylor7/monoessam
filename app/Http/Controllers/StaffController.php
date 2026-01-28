@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Area;
 use App\Models\Business;
 use App\Models\Cafe;
+use App\Models\Cloth;
 use App\Models\Guard;
 use App\Models\Observation;
 use App\Models\Staff;
@@ -26,6 +27,28 @@ class StaffController extends Controller
      */
     public function index()
     {
+        // Get all clothes with roles to map which role needs which clothes
+        $clothes = Cloth::with('roles')->get();
+
+        // Organize clothes by role and cafe for easier frontend consumption
+        $roleClothes = [];
+        foreach ($clothes as $cloth) {
+            foreach ($cloth->roles as $role) {
+                $roleId = $role->id;
+                $cafeId = $role->pivot->cafe_id;
+
+                if (!isset($roleClothes[$roleId])) {
+                    $roleClothes[$roleId] = [];
+                }
+
+                $key = $cafeId ?: 'all';
+                if (!isset($roleClothes[$roleId][$key])) {
+                    $roleClothes[$roleId][$key] = [];
+                }
+                $roleClothes[$roleId][$key][] = $cloth;
+            }
+        }
+
         return Inertia::render('staff/Index', [
             'cafes' => Cafe::with('unit')->get(),
             'staff' => Staff::with([
@@ -48,6 +71,7 @@ class StaffController extends Controller
             'roles' => Role::all(),
             'units' => Unit::with(['cafes', 'mine'])->get(),
             'businneses' => Business::with(['headquarters', 'headquarters.areas'])->get(),
+            'roleClothes' => $roleClothes
         ]);
     }
 

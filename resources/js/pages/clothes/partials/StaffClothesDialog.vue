@@ -13,15 +13,17 @@ import { router } from '@inertiajs/vue3';
 
 const props = defineProps<{
     open: boolean;
-    staff: any; // Using any to accommodate the ExtendedStaff type flexibly
+    staff: any; 
+    colors: Array<{ id: number, name: string }>;
 }>();
 
 const emit = defineEmits(['update:open']);
 
-const updateStatus = (clothEntryId: number, status: string) => {
+const updateStatus = (clothEntryId: number, status: string, colorId?: number | null) => {
     router.post(route('clothes.status'), {
         id: clothEntryId,
-        status: status
+        status: status,
+        color_id: colorId
     }, {
         preserveScroll: true,
         preserveState: true,
@@ -54,6 +56,7 @@ const getStatusColor = (status: string) => {
                             <tr>
                                 <th class="px-4 py-2 text-left font-medium text-gray-500">Prenda</th>
                                 <th class="px-4 py-2 text-center font-medium text-gray-500">Talla</th>
+                                <th class="px-4 py-2 text-left font-medium text-gray-500">Color</th>
                                 <th class="px-4 py-2 text-left font-medium text-gray-500">Estado</th>
                             </tr>
                         </thead>
@@ -66,7 +69,19 @@ const getStatusColor = (status: string) => {
                                     {{ item.clothing_size || '-' }}
                                 </td>
                                 <td class="px-4 py-2">
-                                    <Select :model-value="item.status || 'Pendiente'" @update:model-value="(val) => updateStatus(item.id, val)">
+                                    <Select :model-value="item.color_id ? String(item.color_id) : ''" @update:model-value="(val) => updateStatus(item.id, item.status || 'Pendiente', parseInt(val))">
+                                        <SelectTrigger class="h-8 w-[140px]">
+                                            <SelectValue placeholder="Color" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem v-for="color in colors" :key="color.id" :value="String(color.id)">
+                                                {{ color.name }}
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </td>
+                                <td class="px-4 py-2">
+                                    <Select :model-value="item.status ? String(item.status) : 'Pendiente'" @update:model-value="(val) => updateStatus(item.id, val, item.color_id)">
                                         <SelectTrigger :class="['h-8 w-[140px]', getStatusColor(item.status || 'Pendiente')]">
                                             <SelectValue placeholder="Estado" />
                                         </SelectTrigger>

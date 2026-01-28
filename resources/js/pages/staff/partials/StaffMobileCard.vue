@@ -14,6 +14,7 @@ interface Props {
     roles: Role[];
     units: Unit[];
     businesses: Business[];
+    roleClothes: Record<number, Record<string, Array<{ id: number; name: string }>>>;
 }
 
 const props = defineProps<Props>();
@@ -95,6 +96,7 @@ const onChangeStatus = () => {
                 :roles="props.roles"
                 :units="props.units"
                 :businneses="props.businesses"
+                :role-clothes="props.roleClothes"
                 :staff="staff"
             />
         </div>

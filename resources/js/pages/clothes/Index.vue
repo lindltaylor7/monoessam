@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { Head, router, Link } from '@inertiajs/vue3';
-import AppLayout from '@/Layouts/AppLayout.vue';
+import AppLayout from '@/layouts/AppLayout.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
@@ -12,36 +12,36 @@ import { Staff, Unit } from '@/types';
 import StaffClothesDialog from '@/pages/clothes/partials/StaffClothesDialog.vue';
 
 interface ExtendedStaff extends Staff {
-    role?: { name: string };
-    staffable?: {
-        unit_id: number;
-        unit?: {
-            id: number;
-            name: string;
-            mine: { name: string };
-        };
-    };
-    photo?: {
-        id: number;
-        url: string;
-    };
     staff_clothes: Array<{
         id: number;
         cloth_id: number;
+        color_id: number | null;
         clothing_size: string;
         clothe_name?: string;
         cloth?: { name: string };
+        color?: { id: number; name: string };
         status?: string;
     }>;
 }
 
 const props = defineProps<{
     staff: ExtendedStaff[]; 
-    roleClothes: Record<number, Array<{ id: number; name: string }>>;
-    units: Unit[];
+    roleClothes: Record<number, Record<string, Array<{ id: number; name: string }>>>;
+    units: any[];
+    colors: Array<{ id: number, name: string }>;
 }>();
 
-const localStaff = ref(props.staff);
+const getClothesForStaff = (person: ExtendedStaff) => {
+    if (!person.role_id) return [];
+    const roleMap = props.roleClothes[person.role_id];
+    if (!roleMap) return [];
+    
+    const cafeId = person.cafe_id;
+    const clothes = roleMap[String(cafeId)] || roleMap['all'] || [];
+    return clothes;
+};
+
+const localStaff = ref(props.staff as any[]);
 const selectedStaff = ref<ExtendedStaff | null>(null);
 
 watch(
@@ -131,14 +131,25 @@ const getInitials = (name: string) => {
         <div class="p-6">
              <div class="flex justify-between items-center mb-6">
                  <div>
-                    <h1 class="text-3xl font-bold tracking-tight">Entrega de EEP's</h1>
-                    <p class="text-muted-foreground mt-1">
-                        Gestiona la entrega de EPP's al personal.
+                    <h1 class="text-3xl font-bold tracking-tight">Asignación de Prendas por Rol y Café</h1>
+                    <p class="text-muted-foreground text-xs sm:text-sm mt-1">
+                        Selecciona las prendas asignadas a cada rol/cargo en el café seleccionado
                     </p>
                  </div>
-                 <Link :href="route('clothes.manage')">
-                    <Button>Configurar Prendas y Roles</Button>
-                 </Link>
+                 <div class="flex flex-wrap gap-2">
+                    <Link :href="route('inventory.index')">
+                        <Button variant="outline" class="gap-2">
+                            <Package class="h-4 w-4" />
+                            Inventario
+                        </Button>
+                    </Link>
+                    <Link :href="route('clothes.manage')">
+                        <Button class="gap-2">
+                            <Plus class="h-4 w-4" />
+                            Configurar Prendas
+                        </Button>
+                    </Link>
+                 </div>
             </div>
 
             <div class="flex items-center mb-6">
@@ -219,7 +230,7 @@ const getInitials = (name: string) => {
                                 </td>
                                 -->
                                 <td class="p-4 text-right">
-                                    <Button variant="ghost" size="icon" @click="openModal(person)">
+                                    <Button variant="ghost" size="icon" @click="openModal(person as any)">
                                         <Eye class="h-4 w-4 text-gray-500" />
                                     </Button>
                                 </td>
@@ -267,6 +278,7 @@ const getInitials = (name: string) => {
         <StaffClothesDialog 
             :open="isModalOpen" 
             :staff="selectedStaff" 
+            :colors="colors"
             @update:open="isModalOpen = $event" 
         />
     </AppLayout>

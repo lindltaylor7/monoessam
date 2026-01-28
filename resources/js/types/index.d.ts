@@ -198,11 +198,16 @@ export interface Staff {
     status: number;
     cafe_id: number;
     role_id: number;
+    role?: Role;
+    staffable_id: number;
+    staffable_type: string;
+    staffable?: any;
     staff_files?: StaffFile[];
     photo?: {
         id: number;
         url: string;
     };
+    staff_clothes?: any[];
 }
 
 export interface StaffFile {

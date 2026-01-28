@@ -9,18 +9,18 @@ export function useStaffForm() {
         cell: '',
         birthdate: '',
         age: 0,
-        sex: 0,
+        sex: 0 as number | string,
         email: '',
         country: '',
-        civilstatus: 0,
+        civilstatus: 0 as number | string,
         contactname: '',
         contactcell: '',
-        cafeId: null,
-        photo: null,
+        cafeId: null as number | null,
+        photo: null as any,
         tipoContrato: '',
         regimenLaboral: '',
         children: 0,
-        prendas: [],
+        prendas: [] as any[],
         district: '',
         province: '',
         department: '',
@@ -33,41 +33,28 @@ export function useStaffForm() {
         unitId: 0,
         salary: 0.0,
         observations: '',
-        bankEntity: 0,
+        bankEntity: 0 as number | string,
         pensioncontribution: '',
         cc: '',
         cci: '',
         startDate: '',
         contractEndDate: '',
         fondo: 0,
-        roleId: null,
+        roleId: null as number | null,
         unitSelectedText: '',
-        filesData: [],
+        filesData: [] as any[],
+        files: [] as any[],
         areaId: 0,
-        workplace: '',
+        workplace: '' as string | number,
         guard: '',
     });
 
-    const errorsSend = ref([]);
+    const errorsSend = ref<any>([]);
     const showErrors = ref(false);
 
-    const prendasFijas = ref([
-        { label: 'Polo', talla: '' },
-        { label: 'Cafarena', talla: '' },
-        { label: 'Overall', talla: '' },
-        { label: 'Casaca', talla: '' },
-        { label: 'Chaleco', talla: '' },
-        { label: 'Chaqueta Blanca', talla: '' },
-        { label: 'Pantalón', talla: '' },
-        { label: 'Camisa/Blusa', talla: '' },
-        { label: 'Guardapolvo', talla: '' },
-        { label: 'Guantes', talla: '' },
-        { label: 'Botas Blancas', talla: '' },
-        { label: 'Zapatos', talla: '' },
-        { label: 'Lentes', talla: '' },
-    ]);
+    const prendasFijas = ref<Array<{ label: string; talla: string }>>([]);
 
-    const cafesUnitSelected = ref([]);
+    const cafesUnitSelected = ref<any[]>([]);
 
     const handleSubmit = (onSuccess: () => void, filesReq: any) => {
         // Convertir a array primero (maneja Proxy, Ref, y arrays normales)
@@ -82,7 +69,7 @@ export function useStaffForm() {
             filesArray = [];
         }
 
-        filesArray.forEach((newFile) => {
+        filesArray.forEach((newFile: any) => {
             if (newFile && newFile.expirationDate === null) {
                 form.filesData.push({ expirationDate: '-' });
             } else {
@@ -163,8 +150,8 @@ export function useStaffForm() {
         form.areaId = areaId;
     };
 
-    const selectGuard = (guard: string) => {
-        form.guard = guard;
+    const selectGuard = (guard: string | number) => {
+        form.guard = String(guard);
     };
 
     return {

@@ -1,21 +1,24 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import { Head, router, Link } from '@inertiajs/vue3';
-import AppLayout from '@/Layouts/AppLayout.vue';
-import { Button } from '@/Components/ui/button';
-import { Input } from '@/Components/ui/input';
-import { Badge } from '@/Components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/Components/ui/card';
-import { Trash2, Plus, ArrowLeft, Shirt, Briefcase, Check, X } from 'lucide-vue-next';
+import AppLayout from '@/layouts/AppLayout.vue';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Trash2, Plus, ArrowLeft, Shirt, Briefcase, Check, X, Coffee, Package } from 'lucide-vue-next';
 
 const props = defineProps<{
     roles: Array<{ id: number, name: string }>;
-    clothes: Array<{ id: number, name: string, roles: Array<{ id: number }> }>;
+    clothes: Array<{ id: number, name: string, roles: Array<{ id: number, pivot: { cafe_id: number } }> }>;
+    cafes: Array<{ id: number, name: string }>;
 }>();
 
 const newClothName = ref('');
 const isCreating = ref(false);
 const searchQuery = ref('');
+const selectedCafeId = ref(props.cafes.length > 0 ? String(props.cafes[0].id) : '');
 
 // Filtrar roles según búsqueda
 const filteredRoles = computed(() => {
@@ -25,16 +28,16 @@ const filteredRoles = computed(() => {
     );
 });
 
-// Obtener prendas asignadas a un rol específico
+// Obtener prendas asignadas a un rol específico y café seleccionado
 const getClothesForRole = (roleId: number) => {
     return props.clothes.filter(cloth => 
-        cloth.roles.some(role => role.id === roleId)
+        cloth.roles.some(role => role.id === roleId && String(role.pivot.cafe_id) === selectedCafeId.value)
     );
 };
 
-// Verificar si una prenda está asignada a un rol
+// Verificar si una prenda está asignada a un rol en el café seleccionado
 const hasRole = (cloth: any, roleId: number) => {
-    return cloth.roles.some((r: any) => r.id === roleId);
+    return cloth.roles.some((r: any) => r.id === roleId && String(r.pivot.cafe_id) === selectedCafeId.value);
 };
 
 const createCloth = () => {
@@ -57,9 +60,14 @@ const deleteCloth = (id: number) => {
 };
 
 const toggleRole = (clothId: number, roleId: number, currentStatus: boolean) => {
+    if (!selectedCafeId.value) {
+        alert('Por favor selecciona un café primero');
+        return;
+    }
     router.post(route('clothes.assign-role'), {
         cloth_id: clothId,
         role_id: roleId,
+        cafe_id: selectedCafeId.value,
         action: currentStatus ? 'detach' : 'attach'
     }, {
         preserveScroll: true,
@@ -106,13 +114,21 @@ const stats = computed(() => {
                         Selecciona las prendas asignadas a cada rol/cargo
                     </p>
                  </div>
-                 <Link :href="route('clothes.index')" class="flex-shrink-0 mt-2 sm:mt-0">
-                    <Button variant="outline" size="sm" class="gap-2 w-full sm:w-auto">
-                        <ArrowLeft class="h-4 w-4" />
-                        <span class="hidden sm:inline">Volver al listado</span>
-                        <span class="sm:hidden">Volver</span>
-                    </Button>
-                 </Link>
+                  <div class="flex items-center gap-2">
+                    <Link :href="route('inventory.index')">
+                        <Button variant="outline" size="sm" class="gap-2">
+                            <Package class="h-4 w-4" />
+                            <span class="hidden sm:inline">Inventario</span>
+                        </Button>
+                    </Link>
+                    <Link :href="route('clothes.index')" class="flex-shrink-0">
+                        <Button variant="outline" size="sm" class="gap-2">
+                            <ArrowLeft class="h-4 w-4" />
+                            <span class="hidden sm:inline">Volver al listado</span>
+                            <span class="sm:hidden">Volver</span>
+                        </Button>
+                    </Link>
+                  </div>
             </div>
 
             <!-- Stats Cards -->
@@ -157,6 +173,21 @@ const stats = computed(() => {
             <!-- Action Section -->
             <div class="bg-card text-card-foreground rounded-xl border shadow-sm p-4 bg-white flex flex-col sm:flex-row gap-4 items-center flex-none">
                 <div class="flex-1 w-full flex flex-col sm:flex-row gap-4">
+                    <div class="flex-1">
+                        <div class="relative max-w-md">
+                            <Coffee class="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                            <Select v-model="selectedCafeId">
+                                <SelectTrigger class="pl-9 w-full">
+                                    <SelectValue placeholder="Seleccionar Café" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem v-for="cafe in cafes" :key="cafe.id" :value="String(cafe.id)">
+                                        {{ cafe.name }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
                     <div class="flex-1">
                         <div class="relative max-w-md">
                             <Briefcase class="absolute left-3 top-3 h-4 w-4 text-gray-400" />

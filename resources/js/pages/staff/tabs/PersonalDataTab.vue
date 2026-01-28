@@ -23,14 +23,14 @@ interface Emits {
     (e: 'select-unit', unit: Unit): void;
     (e: 'select-role', role: Role): void;
     (e: 'select-area', area: Area): void;
-    (e: 'select-guard', guardId: number): void;
+    (e: 'select-guard', guardId: string | number): void;
 }
 
 defineProps<Props>();
 const emit = defineEmits<Emits>();
 
 
-const guardSelected = (newValue: number) => {
+const guardSelected = (newValue: string | number) => {
     emit('select-guard', newValue);
 }
 

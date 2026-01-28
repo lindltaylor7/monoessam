@@ -10,6 +10,13 @@ class Cloth extends Model
 
     public function roles()
     {
-        return $this->belongsToMany(\Spatie\Permission\Models\Role::class, 'cloth_role');
+        return $this->belongsToMany(\Spatie\Permission\Models\Role::class, 'cloth_role')
+            ->withPivot('cafe_id')
+            ->withTimestamps();
+    }
+
+    public function inventories()
+    {
+        return $this->hasMany(ClothInventory::class);
     }
 }
