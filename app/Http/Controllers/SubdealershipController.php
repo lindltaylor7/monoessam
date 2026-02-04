@@ -35,9 +35,9 @@ class SubdealershipController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(StoreSubdealershipRequest $request)
+    public function store(Request $request)
     {
-        $subdealership = Subdealership::create($request->validated());
+        $subdealership = Subdealership::create($request->all());
 
         return redirect()->back()->with('success', 'Subdealership created successfully.');
     }

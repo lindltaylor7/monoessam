@@ -38,7 +38,7 @@ class CafeController extends Controller
 
         $cafe->businesses()->sync([$request->business_id]);
 
-        return to_route('management');
+        return response()->json($cafe);
     }
 
     /**
@@ -197,5 +197,16 @@ class CafeController extends Controller
         header("Content-Disposition: attachment; filename=\"{$fileName}\"");
         $writer->save('php://output');
         exit;
+    }
+
+    public function search($unitId, $word = null)
+    {
+        $query = Cafe::where('unit_id', $unitId);
+        if ($word) {
+            $query->where('name', 'like', '%' . $word . '%');
+        }
+        $cafes = $query->get();
+
+        return response()->json($cafes);
     }
 }

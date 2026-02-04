@@ -131,19 +131,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::prefix('mines')->name('mines.')->group(function () {
         Route::post('/', [MineController::class, 'store'])->name('store');
-        Route::get('search/{word}', [MineController::class, 'search'])->name('search');
+        Route::get('search/{word?}', [MineController::class, 'search'])->name('search');
         Route::post('serviceables', [MineController::class, 'mineServiceables'])->name('serviceables');
     });
 
     Route::prefix('units')->name('units.')->group(function () {
         Route::post('/', [UnitController::class, 'store'])->name('store');
-        Route::get('search/{word}', [UnitController::class, 'search'])->name('search');
+        Route::get('search/{mineId}/{word?}', [UnitController::class, 'search'])->name('search');
         Route::post('serviceables', [UnitController::class, 'unitServiceables'])->name('serviceables');
     });
 
     Route::prefix('cafes')->name('cafes.')->group(function () {
         Route::post('/', [CafeController::class, 'store'])->name('store');
         Route::get('{id}', [CafeController::class, 'show'])->name('show');
+        Route::get('search/{unitId}/{word?}', [CafeController::class, 'search'])->name('search');
         Route::post('serviceables', [CafeController::class, 'cafeServiceables'])->name('serviceables');
         Route::get('{id}/export-headcount', [CafeController::class, 'exportHeadcount'])->name('export-headcount');
     });

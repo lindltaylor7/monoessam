@@ -92,13 +92,11 @@ const submit = () => {
 
 // Búsqueda de Mina (global)
 const searchMine = debounce(() => {
-    if (form.mine.trim().length < 2) {
-        mines.value = [];
-        return;
-    }
+    // Si queremos que se busquen todas al enfocar/borrar, ahora el backend lo soporta
     isLoading.value.mine = true;
+    const query = form.mine.trim();
     axios
-        .get('/search-mine/' + form.mine)
+        .get('/mines/search/' + query)
         .then((result) => {
             mines.value = result.data;
         })
@@ -107,14 +105,14 @@ const searchMine = debounce(() => {
 
 // Búsqueda de Unidad: Limitada a la Mina seleccionada (Mejora de UX)
 const searchUnitByMineId = debounce((mineId: number) => {
-    if (form.unit.trim().length < 2) {
+    if (mineId === 0) {
         units.value = [];
         return;
     }
     isLoading.value.unit = true;
+    const query = form.unit.trim();
     axios
-        // Asumiendo que esta ruta soporta la búsqueda por texto DENTRO de la mina.
-        .get(`/search-unit/${form.unit}`)
+        .get(`/units/search/${mineId}/${query}`)
         .then((result) => {
             units.value = result.data;
         })
@@ -123,13 +121,14 @@ const searchUnitByMineId = debounce((mineId: number) => {
 
 // Búsqueda de Café: Limitada a la Unidad seleccionada
 const searchCafeByUnitId = debounce((unitId: number) => {
-    if (form.cafe.trim().length < 2) {
+    if (unitId === 0) {
         cafes.value = [];
         return;
     }
     isLoading.value.cafe = true;
+    const query = form.cafe.trim();
     axios
-        .get(`/search-cafe/${unitId}/${form.cafe}`)
+        .get(`/cafes/search/${unitId}/${query}`)
         .then((result) => {
             cafes.value = result.data;
         })
@@ -340,20 +339,21 @@ function debounce(fn: Function, delay: number) {
                             <span v-if="isLoading.cafe">Guardar</span>
                             <span v-else>Crear</span>
                         </Button>
-                    </div>
-                    <ul
-                        v-if="cafes.length > 0"
-                        class="absolute top-full z-10 mt-1 max-h-40 w-[80%] overflow-auto rounded-md border bg-white shadow-lg"
-                    >
-                        <li
-                            v-for="cafe in cafes"
-                            :key="cafe.id"
-                            class="cursor-pointer p-2 hover:bg-gray-100 hover:text-black"
-                            @click="selectCafe(cafe)"
+
+                        <ul
+                            v-if="cafes.length > 0"
+                            class="absolute top-full z-10 mt-1 max-h-40 w-[80%] overflow-auto rounded-md border bg-white shadow-lg"
                         >
-                            {{ cafe.name }}
-                        </li>
-                    </ul>
+                            <li
+                                v-for="cafe in cafes"
+                                :key="cafe.id"
+                                class="cursor-pointer p-2 hover:bg-gray-100 hover:text-black"
+                                @click="selectCafe(cafe)"
+                            >
+                                {{ cafe.name }}
+                            </li>
+                        </ul>
+                    </div>
 
                     <div v-if="form.cafeId > 0" class="mt-1 text-sm font-semibold text-red-500">
                         ⚠️ Esta Cafetería ya existe (ID: {{ form.cafeId }}).
