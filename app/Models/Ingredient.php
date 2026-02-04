@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+
 
 class Ingredient extends Model
 {
@@ -38,5 +40,9 @@ class Ingredient extends Model
     public function cities(): BelongsToMany
     {
         return $this->belongsToMany(City::class, 'ingredient_city_providers', 'ingredient_id', 'city_id');
+    }
+    public function stocks(): MorphMany
+    {
+        return $this->morphMany(InventoryStock::class, 'stockable');
     }
 }

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Eye, ChevronLeft, ChevronRight } from 'lucide-vue-next';
+import { Eye, ChevronLeft, ChevronRight, Package, Plus } from 'lucide-vue-next';
 import { useStaffFilter } from '@/composables/useStaffFilter';
 import { Staff, Unit } from '@/types';
 import StaffClothesDialog from '@/pages/clothes/partials/StaffClothesDialog.vue';

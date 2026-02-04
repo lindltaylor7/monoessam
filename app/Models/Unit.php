@@ -10,7 +10,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Unit extends Model
 {
-    protected $fillable = ['name', 'mine_id', 'user_id', 'unit_id'];
+    /** @use HasFactory<\Database\Factories\UnitFactory> */
+    use \Illuminate\Database\Eloquent\Factories\HasFactory;
+
+    protected $fillable = ['name', 'mine_id'];
 
 
     public function mine(): BelongsTo
@@ -20,7 +23,7 @@ class Unit extends Model
 
     public function cafes(): HasMany
     {
-        return $this->HasMany(Cafe::class);
+        return $this->hasMany(Cafe::class);
     }
     public function services(): MorphToMany
     {

@@ -20,7 +20,6 @@ use Maatwebsite\Excel\Facades\Excel;
 use Mike42\Escpos\PrintConnectors\WindowsPrintConnector;
 use Mike42\Escpos\Printer;
 
-use function PHPUnit\Framework\isArray;
 
 class DinnerController extends Controller
 {

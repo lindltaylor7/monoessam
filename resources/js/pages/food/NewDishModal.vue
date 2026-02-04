@@ -54,8 +54,6 @@ const submit = () => {
 };
 
 const calcMassiveProperties = (id, calcArray) => {
-    console.log(calcArray);
-
     const operationTypes = [
         {
             property: 'gross_weight',
@@ -133,8 +131,6 @@ const updateValues = (ingredientID, e: Event) => {
                 calories: ingredientSelected.calories,
             };
         }
-
-        console.log(ingredientSelected);
 
         // Calcular los nuevos valores basados en los originales
         ingredientSelected.liquid_waste = ingredientSelected.originalValues.liquid_waste * multiplier;

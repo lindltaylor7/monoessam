@@ -111,7 +111,8 @@ class StaffController extends Controller
                 'contactname' => $request->contactname,
                 'contactcell' => $request->contactcell,
                 'status' => 1,
-                'user_id' => Auth::id()
+                'user_id' => Auth::id(),
+                'role_id' => $request->roleId
             ]);
 
             $guard =  Guard::firstOrCreate([
@@ -140,7 +141,8 @@ class StaffController extends Controller
                 'contactname' => $request->contactname,
                 'contactcell' => $request->contactcell,
                 'status' => 1,
-                'user_id' => Auth::id()
+                'user_id' => Auth::id(),
+                'role_id' => $request->roleId
             ]);
 
             $guard =  Guard::findOrCreate([

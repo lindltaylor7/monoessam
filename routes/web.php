@@ -191,7 +191,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // CENAS Y COMIDAS
     // ========================================================================
     Route::prefix('dinners')->name('dinners.')->group(function () {
+        // Route::get('/', [DinnerController::class, 'index'])->name('index');
         Route::get('/', [DinnerController::class, 'index'])->name('index');
+
         Route::post('/', [DinnerController::class, 'store'])->name('store');
         Route::put('{id}', [DinnerController::class, 'update'])->name('update');
         Route::delete('{id}', [DinnerController::class, 'destroy'])->name('destroy');
@@ -253,8 +255,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::prefix('inventory')->name('inventory.')->group(function () {
         Route::get('/', [InventoryController::class, 'index'])->name('index');
+        Route::get('/search-items', [InventoryController::class, 'searchItems'])->name('items.search');
         Route::post('/update', [InventoryController::class, 'update'])->name('update');
         Route::post('/colors', [InventoryController::class, 'storeColor'])->name('colors.store');
+        Route::post('/items', [InventoryController::class, 'storeItem'])->name('items.store');
     });
 
     Route::prefix('reportsales')->name('reportsales.')->group(function () {

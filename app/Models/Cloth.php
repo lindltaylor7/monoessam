@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+
 
 class Cloth extends Model
 {
@@ -18,5 +20,10 @@ class Cloth extends Model
     public function inventories()
     {
         return $this->hasMany(ClothInventory::class);
+    }
+
+    public function stocks(): MorphMany
+    {
+        return $this->morphMany(InventoryStock::class, 'stockable');
     }
 }

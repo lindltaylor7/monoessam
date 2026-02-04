@@ -3,6 +3,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 import { Head } from '@inertiajs/vue3';
 import Card from '../components/ui/card/Card.vue';
+import { ArrowUp, DollarSign, MessageCircle, ShoppingBag, ShoppingCart, User } from 'lucide-vue-next';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -32,7 +33,7 @@ const breadcrumbs: BreadcrumbItem[] = [
                             <span
                                 class="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800 dark:bg-blue-800/50 dark:text-blue-200"
                             >
-                                <ArrowTrendingUpIcon class="mr-1 h-4 w-4" />
+                                <ArrowUp class="mr-1 h-4 w-4" />
                                 12% avance
                             </span>
                         </div>
@@ -46,7 +47,7 @@ const breadcrumbs: BreadcrumbItem[] = [
                     <Card class="h-full p-6">
                         <div class="flex items-center justify-between">
                             <h3 class="text-lg font-medium text-gray-500 dark:text-gray-400">Ganancia Total</h3>
-                            <CurrencyDollarIcon class="h-6 w-6 text-green-500" />
+                            <DollarSign class="h-6 w-6 text-green-500" />
                         </div>
                         <p class="mt-2 text-3xl font-bold text-gray-900 dark:text-white">$24,780</p>
                         <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -62,7 +63,7 @@ const breadcrumbs: BreadcrumbItem[] = [
                     <Card class="h-full p-6">
                         <div class="flex items-center justify-between">
                             <h3 class="text-lg font-medium text-gray-500 dark:text-gray-400">Nuevas ordenes</h3>
-                            <ShoppingBagIcon class="h-6 w-6 text-blue-500" />
+                            <ShoppingBag class="h-6 w-6 text-blue-500" />
                         </div>
                         <p class="mt-2 text-3xl font-bold text-gray-900 dark:text-white">1,429</p>
                         <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">
@@ -92,7 +93,7 @@ const breadcrumbs: BreadcrumbItem[] = [
                             <div
                                 class="flex h-10 w-10 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-900/50 dark:text-green-400"
                             >
-                                <ShoppingCartIcon class="h-5 w-5" />
+                                <ShoppingCart class="h-5 w-5" />
                             </div>
                             <div class="ml-4 flex-1">
                                 <div class="flex items-center justify-between">
@@ -108,7 +109,7 @@ const breadcrumbs: BreadcrumbItem[] = [
                             <div
                                 class="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400"
                             >
-                                <UserIcon class="h-5 w-5" />
+                                <User class="h-5 w-5" />
                             </div>
                             <div class="ml-4 flex-1">
                                 <div class="flex items-center justify-between">
@@ -124,7 +125,7 @@ const breadcrumbs: BreadcrumbItem[] = [
                             <div
                                 class="flex h-10 w-10 items-center justify-center rounded-full bg-purple-100 text-purple-600 dark:bg-purple-900/50 dark:text-purple-400"
                             >
-                                <ChatBubbleLeftEllipsisIcon class="h-5 w-5" />
+                                <MessageCircle class="h-5 w-5" />
                             </div>
                             <div class="ml-4 flex-1">
                                 <div class="flex items-center justify-between">
