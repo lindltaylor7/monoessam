@@ -245,7 +245,7 @@ const clearFilters = () => {
                         </SelectContent>
                     </Select>
 
-                    <Select v-model="subdealershipSelect">
+                    <!-- <Select v-model="subdealershipSelect">
                         <SelectTrigger class="h-11 border-slate-200 rounded-xl">
                             <div class="flex items-center gap-2">
                                 <Icon name="building-2" class="h-4 w-4 text-slate-400" />
@@ -258,7 +258,7 @@ const clearFilters = () => {
                                 {{ sub.name }}
                             </SelectItem>
                         </SelectContent>
-                    </Select>
+                    </Select> -->
 
                     <Button variant="outline" @click="clearFilters" class="h-11 rounded-xl text-slate-500 hover:text-slate-900 border-slate-200">
                         <Icon name="x" class="mr-2 h-4 w-4" />

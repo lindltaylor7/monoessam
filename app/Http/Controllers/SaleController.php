@@ -31,7 +31,7 @@ class SaleController extends Controller
         $units = $user->units;
         $cafes = Cafe::whereIn('unit_id', $units->pluck('id'))->get();
 
-        $query = Dinner::with(['subdealership', 'cafe']);
+        $query = Dinner::whereIn('cafe_id', $cafes->pluck('id'))->with(['subdealership', 'cafe']);
 
         // Aplicar filtros
         if ($request->has('search')) {
@@ -47,9 +47,9 @@ class SaleController extends Controller
             $query->where('cafe_id', $request->cafe_id);
         }
 
-        if ($request->has('subdealership_id') && $request->subdealership_id != 'all') {
+        /*    if ($request->has('subdealership_id') && $request->subdealership_id != 'all') {
             $query->where('subdealership_id', $request->subdealership_id);
-        }
+        } */
 
         return Inertia::render('sales/Index', [
             'dinners' => $query->paginate(20)->withQueryString(),
