@@ -54,7 +54,9 @@ class InventoryController extends Controller
             $q->where(function ($q) use ($query) {
                 $q->where('name', 'like', "%{$query}%")
                     ->orWhere('brand', 'like', "%{$query}%")
-                    ->orWhere('model', 'like', "%{$query}%");
+                    ->orWhere('model', 'like', "%{$query}%")
+                    ->orWhere('series', 'like', "%{$query}%")
+                    ->orWhere('code', 'like', "%{$query}%");
             });
         } else {
             $q->where('name', 'like', "%{$query}%");
@@ -150,6 +152,12 @@ class InventoryController extends Controller
                 'model' => 'required|string',
                 'size' => 'required|string',
                 'description' => 'nullable|string',
+                'color' => 'nullable|string',
+                'current_type' => 'nullable|string',
+                'series' => 'nullable|string',
+                'manual' => 'nullable|string',
+                'code' => 'nullable|string',
+                'status' => 'nullable|string',
             ]);
             KitchenEquipment::create($validated);
         }

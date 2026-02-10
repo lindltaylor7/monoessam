@@ -5,6 +5,7 @@ import { ref } from 'vue';
 import AreasColumn from './AreasColumn.vue';
 import BusinessTable from './BusinessTable.vue';
 import InsertModal from './InsertBusinessModal.vue';
+import { Head } from '@inertiajs/vue3';
 
 interface Props {
     businesses: Business[];
@@ -24,7 +25,7 @@ defineProps<Props>();
 </script>
 
 <template>
-    <Head title="Usuarios" />
+    <Head title="Empresas" />
     <AppLayout>
         <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
             <div class="flex h-[40px] w-full items-center justify-start gap-1">

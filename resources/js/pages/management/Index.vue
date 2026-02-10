@@ -11,8 +11,8 @@ import UnitSelector from './UnitSelector.vue'; // Nuevo componente
 interface Props {
     // Es CRUCIAL que las relaciones estén precargadas (eager loaded)
     mines: (Mine & { units: Unit[] })[];
-    units: Unit[]; // Se pueden ignorar si las minas ya cargan las unidades
-    cafes: Cafe[]; // Se pueden ignorar si las unidades ya cargan los cafés
+    units: Unit[]; 
+    cafes: Cafe[]; 
     services: Service[];
     businesses: Business[];
 }

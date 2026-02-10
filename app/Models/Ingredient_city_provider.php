@@ -7,6 +7,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Ingredient_city_provider extends Model
 {
+
+    protected $fillable = [
+        'ingredient_id',
+        'provider_id',
+        'city_id',
+        'cost_price'
+    ];
+
     public function ingredient(): BelongsTo
     {
         return $this->belongsTo(Ingredient::class);

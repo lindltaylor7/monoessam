@@ -15,6 +15,12 @@ class KitchenEquipment extends Model
         'model',
         'size',
         'description',
+        'color',
+        'current_type',
+        'series',
+        'manual',
+        'code',
+        'status',
     ];
 
     public function stocks(): MorphMany

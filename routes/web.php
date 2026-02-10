@@ -181,6 +181,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::prefix('ingredients')->name('ingredients.')->group(function () {
         Route::get('/', [IngredientController::class, 'index'])->name('index');
+        Route::get('search/{word?}', [IngredientController::class, 'search'])->name('search');
     });
 
     Route::prefix('ingredient-categories')->name('ingredient-categories.')->group(function () {
@@ -194,12 +195,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('dinners')->name('dinners.')->group(function () {
         // Route::get('/', [DinnerController::class, 'index'])->name('index');
         Route::get('/', [DinnerController::class, 'index'])->name('index');
-
         Route::post('/', [DinnerController::class, 'store'])->name('store');
-        Route::put('{id}', [DinnerController::class, 'update'])->name('update');
-        Route::delete('{id}', [DinnerController::class, 'destroy'])->name('destroy');
-        Route::post('excel', [DinnerController::class, 'excel'])->name('excel');
-        Route::get('search/{word}/{id}', [DinnerController::class, 'search'])->name('search');
+        Route::get('pagination/{offset}', [DinnerController::class, 'pagination'])->name('pagination');
+        Route::get('report/{dateInitial}/{datFinal}', [DinnerController::class, 'report'])->name('report');
+        Route::get('print-ticket/{ticketId}/{businessId}', [DinnerController::class, 'printTest'])->name('print-ticket');
     });
 
     // ========================================================================
@@ -219,7 +218,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('providers')->name('providers.')->group(function () {
         Route::get('/', [ProviderController::class, 'index'])->name('index');
         Route::post('/', [ProviderController::class, 'store'])->name('store');
+        Route::put('{id}', [ProviderController::class, 'update'])->name('update');
+        Route::delete('{id}', [ProviderController::class, 'destroy'])->name('destroy');
         Route::post('assign', [ProviderController::class, 'assign'])->name('assign');
+        Route::put('assign/{id}', [ProviderController::class, 'updateAssignment'])->name('assign.update');
+        Route::delete('assign/{id}', [ProviderController::class, 'deleteAssignment'])->name('assign.destroy');
     });
 
     // ========================================================================
@@ -236,9 +239,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('sales')->name('sales.')->group(function () {
         Route::get('/', [SaleController::class, 'index'])->name('index');
         Route::post('/', [SaleController::class, 'store'])->name('store');
-        Route::get('pagination/{offset}', [SaleController::class, 'pagination'])->name('pagination');
-        Route::get('report/{dateInitial}/{datFinal}', [SaleController::class, 'report'])->name('report');
-        Route::get('print-ticket/{ticketId}/{businessId}', [SaleController::class, 'printTest'])->name('print-ticket');
+        Route::put('{id}', [SaleController::class, 'update'])->name('update');
+        Route::delete('{id}', [SaleController::class, 'destroy'])->name('destroy');
+        Route::post('excel', [SaleController::class, 'excel'])->name('excel');
+        Route::get('search/{word}/{id}', [SaleController::class, 'search'])->name('search');
     });
 
     // ========================================================================
@@ -268,6 +272,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('export', [ReportSalesController::class, 'export'])->name('export');
     });
 
+
+    // ========================================================================
+    // PLANIFICACIÓN Y QUEBRADOS (TIBURCIO)
+    // ========================================================================
+    Route::prefix('planning')->name('planning.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\PlanningController::class, 'index'])->name('index');
+        Route::post('/', [\App\Http\Controllers\PlanningController::class, 'store'])->name('store');
+        Route::post('{id}/generate-po', [\App\Http\Controllers\PlanningController::class, 'generatePurchaseOrder'])->name('generate-po');
+    });
+
+    Route::prefix('purchase-orders')->name('purchase_orders.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\PurchaseOrderController::class, 'index'])->name('index');
+        Route::get('{id}', [\App\Http\Controllers\PurchaseOrderController::class, 'show'])->name('show');
+    });
 
     // ========================================================================
     // PERÍODOS

@@ -42,8 +42,8 @@ import { Label } from '@/components/ui/label';
 
 const props = defineProps<{
     colors: Array<{ id: number, name: string, hex_code?: string }>;
-    cafes: Array<{ id: number, name: string }>;
-    headquarters: Array<{ id: number, name: string }>;
+    cafes: Array<{ id: number, name: string, unit: { name: string } }>;
+    headquarters: Array<{ id: number, name: string, business: { name: string } }>;
     stocks: Array<{
         id: number;
         stockable_id: number;
@@ -198,6 +198,11 @@ const itemForm = ref({
     presentation: '',
     color: '',
     size: '',
+    current_type: '',
+    series: '',
+    manual: '',
+    code: '',
+    status: '',
 });
 
 const colorForm = ref({
@@ -210,7 +215,7 @@ const handleCreateItem = () => {
         onSuccess: () => {
             isNewItemOpen.value = false;
             itemForm.value = {
-                type: 'computer',
+                type: itemForm.value.type,
                 name: '',
                 brand: '',
                 model: '',
@@ -218,6 +223,11 @@ const handleCreateItem = () => {
                 presentation: '',
                 color: '',
                 size: '',
+                current_type: '',
+                series: '',
+                manual: '',
+                code: '',
+                status: '',
             };
         }
     });
@@ -351,9 +361,50 @@ const getItemIcon = (type: string) => {
                                     </div>
                                 </div>
 
-                                <div v-if="itemForm.type === 'kitchen'" class="grid gap-2">
-                                    <Label>Tamaño / Capacidad</Label>
-                                    <Input v-model="itemForm.size" placeholder="Ej: 50 Litros / Grande" />
+                                <div v-if="itemForm.type === 'kitchen'" class="grid gap-4">
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div class="grid gap-2">
+                                            <Label>Tamaño / Capacidad</Label>
+                                            <Input v-model="itemForm.size" placeholder="Ej: 50 Litros / Grande" />
+                                        </div>
+                                        <div class="grid gap-2">
+                                            <Label>Color</Label>
+                                            <Input v-model="itemForm.color" placeholder="Ej: Acero Inox" />
+                                        </div>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div class="grid gap-2">
+                                            <Label>Tipo de Corriente</Label>
+                                            <Input v-model="itemForm.current_type" placeholder="Ej: 220V / Trifásico" />
+                                        </div>
+                                        <div class="grid gap-2">
+                                            <Label>Serie</Label>
+                                            <Input v-model="itemForm.series" placeholder="Ej: SN-123456" />
+                                        </div>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div class="grid gap-2">
+                                            <Label>Instructivo</Label>
+                                            <Input v-model="itemForm.manual" placeholder="Ej: Físico / Digital" />
+                                        </div>
+                                        <div class="grid gap-2">
+                                            <Label>Código</Label>
+                                            <Input v-model="itemForm.code" placeholder="Ej: COC-001" />
+                                        </div>
+                                    </div>
+                                    <div class="grid gap-2">
+                                        <Label>Estado</Label>
+                                        <Select v-model="itemForm.status">
+                                            <SelectTrigger><SelectValue placeholder="Seleccionar estado" /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="nuevo">Nuevo</SelectItem>
+                                                <SelectItem value="bueno">Bueno</SelectItem>
+                                                <SelectItem value="regular">Regular</SelectItem>
+                                                <SelectItem value="mantenimiento">En Mantenimiento</SelectItem>
+                                                <SelectItem value="baja">De Baja</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
 
                                 <div class="grid gap-2">
@@ -634,6 +685,7 @@ const getItemIcon = (type: string) => {
                                                 </template>
                                                 <template v-else-if="activeTab === 'kitchen'">
                                                     {{ item.stockable?.brand }} | {{ item.stockable?.size }}
+                                                    <span v-if="item.stockable?.code" class="ml-1 text-[10px] text-slate-400 font-mono">#{{ item.stockable?.code }}</span>
                                                 </template>
                                                 <template v-else>
                                                     Insumo / Ingrediente
@@ -674,6 +726,18 @@ const getItemIcon = (type: string) => {
                                     <div class="flex items-center justify-between text-[11px]">
                                         <span class="text-slate-400 font-medium flex items-center gap-1.5"><Coffee class="h-3 w-3" /> Punto de Venta</span>
                                         <span class="text-slate-700 font-bold truncate max-w-[120px]">{{ item.cafe?.name || 'N/A' }}</span>
+                                    </div>
+                                </div>
+                                <div v-if="activeTab === 'kitchen' && item.stockable" class="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-2 text-[10px]">
+                                    <div v-if="item.stockable.series" class="flex flex-col">
+                                        <span class="text-slate-400 uppercase tracking-tighter">Serie</span>
+                                        <span class="font-bold text-slate-700 truncate">{{ item.stockable.series }}</span>
+                                    </div>
+                                    <div v-if="item.stockable.status" class="flex flex-col">
+                                        <span class="text-slate-400 uppercase tracking-tighter">Estado</span>
+                                        <Badge variant="outline" class="h-4 text-[8px] px-1 w-fit font-bold uppercase bg-white border-slate-200">
+                                            {{ item.stockable.status }}
+                                        </Badge>
                                     </div>
                                 </div>
                             </CardContent>

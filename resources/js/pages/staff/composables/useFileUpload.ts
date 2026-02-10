@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 
-const MAX_FILE_SIZE = 9 * 1024 * 1024;
+const MAX_FILE_SIZE = 15 * 1024 * 1024;
 
 export function useFileUpload() {
     const showAlert = ref(false);

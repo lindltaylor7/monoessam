@@ -69,4 +69,13 @@ class IngredientController extends Controller
     {
         //
     }
+    public function search(Request $request)
+    {
+        $word = $request->word;
+        $ingredients = Ingredient::where('name', 'like', "%$word%")
+            ->limit(10)
+            ->get();
+
+        return response()->json($ingredients);
+    }
 }

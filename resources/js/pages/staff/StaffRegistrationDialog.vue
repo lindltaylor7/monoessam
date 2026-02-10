@@ -81,7 +81,7 @@ watch(() => props.staff, (newStaff) => {
     initializeStaffData(newStaff, props.units);
     if (newStaff) {
         // Forzar actualización de prendas con la data inicial del staff
-        updateAvailableClothes(newStaff.staff_clothes);
+        //updateAvailableClothes(newStaff.staff_clothes);
     }
 }, { immediate: true });
 
