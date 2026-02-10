@@ -33,7 +33,7 @@ const dateUpload = (selectedDate: string, index: number) => {
             <span class="sr-only">Info</span>
             <div>
                 <span class="font-medium">Atención!</span>
-                Asegúrese de que los archivos sean legibles (PDF o JPG) y que pesen menos de 10MB.
+                Asegúrese de que los archivos sean legibles (PDF o JPG) y que pesen menos de 15MB.
             </div>
         </div>
 
