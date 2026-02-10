@@ -376,7 +376,7 @@ const isExpired = (expirationDate: string | null) => {
                         <div>
                             <h4 class="text-sm font-medium text-amber-800">Atención</h4>
                             <p class="mt-1 text-sm text-amber-700">
-                                Asegúrese de que los archivos sean legibles (PDF, DOC, JPG, PNG) y que pesen menos de 10MB. Los documentos marcados
+                                Asegúrese de que los archivos sean legibles (PDF, DOC, JPG, PNG) y que pesen menos de 15MB. Los documentos marcados
                                 con 📅 requieren fecha de expiración.
                             </p>
                         </div>
