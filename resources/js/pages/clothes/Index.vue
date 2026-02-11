@@ -137,18 +137,18 @@ const getInitials = (name: string) => {
                     </p>
                  </div>
                  <div class="flex flex-wrap gap-2">
-                    <Link :href="route('inventory.index')">
+                    <!-- <Link :href="route('inventory.index')">
                         <Button variant="outline" class="gap-2">
                             <Package class="h-4 w-4" />
                             Inventario
                         </Button>
-                    </Link>
-                    <Link :href="route('clothes.manage')">
+                    </Link> -->
+                   <!--  <Link :href="route('clothes.manage')">
                         <Button class="gap-2">
                             <Plus class="h-4 w-4" />
                             Configurar Prendas
                         </Button>
-                    </Link>
+                    </Link> -->
                  </div>
             </div>
 

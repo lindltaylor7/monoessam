@@ -86,7 +86,7 @@ watch(() => props.staff, (newStaff) => {
 }, { immediate: true });
 
 watch([() => form.roleId, () => form.cafeId], () => {
-    updateAvailableClothes();
+    //updateAvailableClothes();
 });
 
 // Handlers
