@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Input } from '@/components/ui/input';
 import { AlertCircle, Calendar, CalendarCheck, Paperclip } from 'lucide-vue-next';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 
 interface Props {
     file: {
@@ -20,11 +20,14 @@ interface Emits {
 const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
 
-const nameFile = ref<string | null>(null);
+const nameFile = computed(() => {
+    const f = props.file.file;
+    if (f instanceof File) return f.name;
+    if (typeof f === 'string' && f.length > 0) return f.split('/').pop();
+    return null;
+});
 
 const manageFile = (event: Event) => {
-    const target = event.target as HTMLInputElement;
-    nameFile.value = target.files?.[0]?.name || '';
     emit('upload', event, props.file.label);
 };
 

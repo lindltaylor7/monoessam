@@ -60,6 +60,17 @@ defineProps<Props>();
                             </SelectContent>
                         </Select>
 
+                        
+
+                        <!-- Select para Lentes -->
+                        <Select v-else-if="prenda.label.toLowerCase().includes('lentes')" v-model="prenda.talla">
+                            <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"><SelectValue placeholder="Talla" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="Lentes">Lentes</SelectItem>
+                                <SelectItem value="Sobrelentes">Sobrelentes</SelectItem>
+                            </SelectContent>
+                        </Select>
+
                         <!-- Input de texto para el resto -->
                         <Input v-else placeholder="Talla" v-model="prenda.talla" class="h-9 transition-all focus:ring-2 focus:ring-blue-100" />
                     </div>
