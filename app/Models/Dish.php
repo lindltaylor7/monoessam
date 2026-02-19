@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Dish extends Model
@@ -21,6 +22,11 @@ class Dish extends Model
     {
         return $this->belongsToMany(Level::class, 'dish_ingredient_levels', 'dish_id', 'level_id');
     }
+    public function recipes(): HasMany
+    {
+        return $this->hasMany(DishRecipe::class);
+    }
+
     public function ingredients(): BelongsToMany
     {
         return $this->belongsToMany(Ingredient::class, 'dish_ingredient_levels', 'dish_id', 'ingredient_id')

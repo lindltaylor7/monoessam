@@ -15,7 +15,7 @@ class Ingredient extends Model
 {
     /** @use HasFactory<\Database\Factories\MineFactory> */
     use HasFactory;
-    protected $fillable = ['name', 'description', 'amount', 'measurement_unit', 'calories', 'liquid_waste', 'solid_waste', 'ingredient_category_id'];
+    protected $fillable = ['name', 'description', 'amount', 'waste', 'energy', 'ingredient_category_id'];
 
     public function ingredient_category(): BelongsTo
     {

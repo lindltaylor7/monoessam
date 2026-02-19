@@ -94,6 +94,20 @@ export interface Dish {
     description: string;
     dish_category_id: number;
     dish_categories?: DishCategory[];
+    ingredients?: Ingredient[];
+    mesearument_unit?: string;
+    recipes?: DishRecipe[];
+}
+
+export interface DishRecipe {
+    id: number;
+    dish_id: number;
+    name: string;
+    total_gross_weight: number;
+    total_waste_weight: number;
+    total_calories: number;
+    total_cost: number;
+    total_net_weight: number;
 }
 
 export interface Business {
@@ -137,9 +151,54 @@ export interface Subdealership {
     updated_at: string;
 }
 
+export interface Dosification {
+    id: number;
+    ingredient_id: number;
+    energy?: number;
+    water?: number;
+    protein?: number;
+    lipid?: number;
+    carbohydrate?: number;
+    fiber?: number;
+    ash?: number;
+    calcium?: number;
+    phosphorus?: number;
+    iron?: number;
+    retinol?: number;
+    thiamine?: number;
+    riboflavin?: number;
+    niacin?: number;
+    a_asc?: number;
+    sodium?: number;
+    potassium?: number;
+    magnesium?: number;
+    zinc?: number;
+    selenium?: number;
+    a_folic?: number;
+    v_b6?: number;
+    v_e?: number;
+    v_b12?: number;
+    v_b9?: number;
+    iodine?: number;
+    cholesterol?: number;
+}
+
 export interface Ingredient {
     id: number;
     name: string;
+    unit?: string;
+    waste?: number;
+    amount?: number;
+    energy?: number;
+    dosification?: Dosification;
+    pivot?: {
+        gross_weight?: { amount: number };
+        solid_waste?: { amount: number };
+        liquid_waste?: { amount: number };
+        calorie?: { amount: number };
+        ingredient_cost?: { base_cost: number };
+        net_weight?: { amount: number };
+    };
 }
 
 export interface Dinner {

@@ -172,6 +172,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::prefix('dishes')->name('dishes.')->group(function () {
         Route::get('search/{word}', [DishController::class, 'search'])->name('search');
+        Route::post('/', [DishController::class, 'store'])->name('store');
+        Route::put('{id}', [DishController::class, 'update'])->name('update');
+        Route::delete('{id}', [DishController::class, 'destroy'])->name('destroy');
     });
 
     Route::prefix('dish-categories')->name('dish-categories.')->group(function () {
@@ -181,7 +184,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::prefix('ingredients')->name('ingredients.')->group(function () {
         Route::get('/', [IngredientController::class, 'index'])->name('index');
+        Route::post('/', [IngredientController::class, 'store'])->name('store');
+        Route::put('{id}', [IngredientController::class, 'update'])->name('update');
+        Route::delete('{id}', [IngredientController::class, 'destroy'])->name('destroy');
+        Route::post('{id}/dosification', [IngredientController::class, 'updateDosification'])->name('dosification.update');
         Route::get('search/{word?}', [IngredientController::class, 'search'])->name('search');
+        Route::post('import', [IngredientController::class, 'import'])->name('import');
+        Route::post('import-energy', [IngredientController::class, 'importEnergy'])->name('import-energy');
     });
 
     Route::prefix('ingredient-categories')->name('ingredient-categories.')->group(function () {
