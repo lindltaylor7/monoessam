@@ -35,7 +35,7 @@ class DealershipController extends Controller
     {
         $dealership = Dealership::create($request->all());
 
-        return to_route('businesses');
+        return to_route('dealerships.index');
     }
 
     /**

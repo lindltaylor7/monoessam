@@ -8,12 +8,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+
 
 class Ingredient extends Model
 {
     /** @use HasFactory<\Database\Factories\MineFactory> */
     use HasFactory;
-    protected $fillable = ['name', 'description', 'amount', 'measurement_unit', 'calories', 'liquid_waste', 'solid_waste', 'ingredient_category_id'];
+    protected $fillable = ['name', 'description', 'amount', 'waste', 'energy', 'ingredient_category_id'];
 
     public function ingredient_category(): BelongsTo
     {
@@ -38,5 +40,9 @@ class Ingredient extends Model
     public function cities(): BelongsToMany
     {
         return $this->belongsToMany(City::class, 'ingredient_city_providers', 'ingredient_id', 'city_id');
+    }
+    public function stocks(): MorphMany
+    {
+        return $this->morphMany(InventoryStock::class, 'stockable');
     }
 }

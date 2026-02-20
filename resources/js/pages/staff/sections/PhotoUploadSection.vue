@@ -15,7 +15,7 @@ interface Props {
     units: Unit[];
     unitId: number;
     areaId: number;
-    workplace: string;
+    workplace: string | number;
     roleId: number;
     roles: Role[];
     businneses: Business[];
@@ -31,7 +31,7 @@ interface Emits {
     (e: 'select-role', role: Role): void;
     (e: 'select-area', areaId: number): void;
     (e: 'update:workplace', workplace: number): void;
-    (e: 'select-guard', guard: number): void;
+    (e: 'select-guard', guard: string | number): void;
 }
 
 const props = defineProps<Props>();
@@ -39,40 +39,63 @@ const emit = defineEmits<Emits>();
 
 const workplace = ref('');
 const businnesSelected = ref(0);
-const headquartersSelected = ref([]);
+const headquartersSelected = ref<any[]>([]);
 const headquarterSelected = ref(0);
-const areasSelected = ref([]);
+const areasSelected = ref<any[]>([]);
 const areaSelected = ref(0);
-const guardSelected = ref(0)
+const guardSelected = ref<string | number>(0)
 
-if(props.workplace != 0){
-    workplace.value = props.workplace
-    console.log(props)
-
-    if(props.areaId != 0){
-        businnesSelected.value = props.headquarter?.business?.id,
-        
-        headquartersSelected.value = props.businneses.find((b) => b.id == businnesSelected.value).headquarters
-
-        headquarterSelected.value = props.headquarter?.id,
-
-        areasSelected.value = headquartersSelected.value.find((h) => h.id == headquarterSelected.value).areas
-
-        areaSelected.value = props.areaId
+// Sincronizar valor inicial
+watch(() => props.workplace, (newVal) => {
+    if (newVal !== undefined && newVal !== null && newVal != 0) {
+        workplace.value = String(newVal);
     }
+}, { immediate: true });
 
-}   
+// Notificar cambios al padre para persistencia en el formulario
+watch(workplace, (newValue) => {
+    if (newValue) {
+        emit('update:workplace', Number(newValue));
+    }
+});
+
+if(props.workplace && props.workplace != 0){
+    workplace.value = String(props.workplace)
+    
+    if(props.areaId != 0){
+        businnesSelected.value = props.headquarter?.business?.id;
+        
+        const business = props.businneses.find((b) => b.id == businnesSelected.value);
+        if (business) {
+            headquartersSelected.value = business.headquarters;
+            headquarterSelected.value = props.headquarter?.id;
+
+            const hq = headquartersSelected.value.find((h) => h.id == headquarterSelected.value);
+            if (hq) {
+                areasSelected.value = hq.areas;
+                areaSelected.value = props.areaId;
+            }
+        }
+    }
+}
+   
 
 if(props.guard != ''){
     guardSelected.value = props.guard
 }
 
 watch(businnesSelected, (newValue) => {
-    headquartersSelected.value = props.businneses.find((b) => b.id == newValue).headquarters;
+    if (newValue) {
+        const business = props.businneses.find((b) => b.id == newValue);
+        if (business) headquartersSelected.value = business.headquarters;
+    }
 });
 
 watch(headquarterSelected, (newValue) => {
-    areasSelected.value = headquartersSelected.value.find((h) => h.id == newValue).areas;
+    if (newValue && headquartersSelected.value.length > 0) {
+        const hq = headquartersSelected.value.find((h) => h.id == newValue);
+        if (hq) areasSelected.value = hq.areas;
+    }
 });
 
 watch(areaSelected, (newValue) => {

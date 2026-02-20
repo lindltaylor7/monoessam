@@ -19,6 +19,7 @@ interface Props {
     roles: Role[];
     units: Unit[];
     businneses: Business[];
+    roleClothes: Record<number, Record<string, Array<{ id: number; name: string }>>>;
 }
 
 const props = defineProps<Props>();
@@ -86,6 +87,7 @@ watch(filteredStaff, () => {
                     :roles="props.roles" 
                     :units="props.units" 
                     :businneses="props.businneses" 
+                    :role-clothes="props.roleClothes"
                 />
             </div>
 
@@ -116,6 +118,7 @@ watch(filteredStaff, () => {
                     :roles="props.roles"
                     :units="props.units"
                     :businesses="props.businneses"
+                    :role-clothes="props.roleClothes"
                     @delete-staff="deleteStaff"
                 />
 
@@ -129,6 +132,7 @@ watch(filteredStaff, () => {
                         :roles="props.roles"
                         :units="props.units"
                         :businesses="props.businneses"
+                        :role-clothes="props.roleClothes"
                         @delete-staff="deleteStaff"
                     />
 

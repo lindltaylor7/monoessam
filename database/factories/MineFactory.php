@@ -17,7 +17,8 @@ class MineFactory extends Factory
     public function definition(): array
     {
         return [
-            //
+            'name' => $this->faker->unique()->word . ' Mine',
+            'dealership_id' => \App\Models\Dealership::factory(),
         ];
     }
 }

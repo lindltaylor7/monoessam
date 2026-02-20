@@ -33,7 +33,7 @@ class UnitController extends Controller
             'mine_id' => $request->mine_id
         ]);
 
-        return to_route('management');
+        return response()->json($unit);
     }
 
     /**
@@ -68,9 +68,13 @@ class UnitController extends Controller
         //
     }
 
-    public function search($word)
+    public function search($mineId, $word = null)
     {
-        $units = Unit::where('name', 'like', '%' . $word . '%')->with('cafes')->get();
+        $query = Unit::where('mine_id', $mineId)->with('cafes');
+        if ($word) {
+            $query->where('name', 'like', '%' . $word . '%');
+        }
+        $units = $query->get();
 
         return response()->json($units);
     }

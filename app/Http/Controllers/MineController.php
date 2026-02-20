@@ -34,7 +34,7 @@ class MineController extends Controller
             'name' => $request->name
         ]);
 
-        return to_route('management');
+        return response()->json($mine);
     }
 
     /**
@@ -69,9 +69,13 @@ class MineController extends Controller
         //
     }
 
-    public function search($word)
+    public function search($word = null)
     {
-        $mines = Mine::where('name', 'like', '%' . $word . '%')->with(['units', 'units.cafes'])->get();
+        $query = Mine::with(['units', 'units.cafes']);
+        if ($word) {
+            $query->where('name', 'like', '%' . $word . '%');
+        }
+        $mines = $query->get();
 
         return response()->json($mines);
     }

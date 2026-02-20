@@ -16,8 +16,34 @@ class FoodController extends Controller
      */
     public function index()
     {
+        $dishes = Dish::with(['dish_categories', 'recipes.ingredients', 'recipes.levels'])->take(50)->get();
+
+        foreach ($dishes as $dish) {
+            $recipe = $dish->recipes->first();
+            if ($recipe) {
+                // Set mesearument_unit to the first level ID for backward compatibility in some views
+                $dish->mesearument_unit = $recipe->levels->first()?->id;
+                $dish->levels = $recipe->levels; // Pass the whole collection
+
+                // Map ingredients with their pivot data
+                $dish->ingredients = $recipe->ingredients->map(function ($ingredient) {
+                    $ingredient->gross_weight = $ingredient->pivot->gross_weight;
+                    $ingredient->solid_waste = $ingredient->pivot->solid_waste;
+                    $ingredient->liquid_waste = $ingredient->pivot->liquid_waste;
+                    $ingredient->calories = $ingredient->pivot->calories;
+                    $ingredient->cost = $ingredient->pivot->cost;
+                    $ingredient->unit_price = $ingredient->pivot->unit_price;
+                    $ingredient->final_product = $ingredient->pivot->net_weight;
+                    return $ingredient;
+                });
+            } else {
+                $dish->ingredients = [];
+                $dish->levels = [];
+            }
+        }
+
         return Inertia::render('food/Index', [
-            'dishes' => Dish::with(['dish_categories', 'ingredients'])->take(6)->get(),
+            'dishes' => $dishes,
             'ingredient_categories' => Ingredient_category::all(),
             'dish_categories' => Dish_category::all(),
             'ingredients' => Ingredient::with(['providers', 'providers.cities'])->get()

@@ -79,6 +79,6 @@ class User extends Authenticatable
     }
     public function units(): BelongsToMany
     {
-        return $this->belongsToMany(Unit::class, 'user_units', 'user_id', 'unit_id');
+        return $this->belongsToMany(Unit::class, 'user_units', 'user_id', 'unit_id')->withTimestamps();
     }
 }

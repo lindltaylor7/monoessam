@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import Button from '@/components/ui/button/Button.vue';
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import Input from '@/components/ui/input/Input.vue';
 import { useForm } from '@inertiajs/vue3';
 import { Building2 } from 'lucide-vue-next';
@@ -34,6 +34,7 @@ const submit = () => {
         <DialogContent>
             <DialogHeader>
                 <DialogTitle>Insertar Empresa </DialogTitle>
+                <DialogDescription>Por favor, complete los campos siguientes</DialogDescription>
                 <Input type="text" v-model="form.name" placeholder="Nombre de la Empresa" class="mb-1" />
                 <Input type="text" v-model="form.ruc" placeholder="RUC" class="mb-1" />
                 <Input type="text" v-model="form.fiscal_address" placeholder="Dirección Fiscal" class="mb-1" />

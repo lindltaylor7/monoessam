@@ -1,6 +1,6 @@
 import { ref } from 'vue';
 
-const MAX_FILE_SIZE = 9 * 1024 * 1024;
+const MAX_FILE_SIZE = 15 * 1024 * 1024;
 
 export function useFileUpload() {
     const showAlert = ref(false);
@@ -25,7 +25,7 @@ export function useFileUpload() {
         if (files.length > 0) {
             const newFile = files[0];
             if (newFile.size > MAX_FILE_SIZE) {
-                alertMessage.value = 'El archivo es demasiado grande. El máximo es 9MB.';
+                alertMessage.value = 'El archivo es demasiado grande. El máximo es 15MB.';
                 showAlert.value = true;
             } else {
                 const registerFileFound = filesRequired.value.find((file) => file.label == fileLabel);

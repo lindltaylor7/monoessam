@@ -3,6 +3,7 @@
 use App\Http\Controllers\AreaController;
 use App\Http\Controllers\BusinessController;
 use App\Http\Controllers\CafeController;
+use App\Http\Controllers\ClothController;
 use App\Http\Controllers\DealershipController;
 use App\Http\Controllers\DinnerController;
 use App\Http\Controllers\DishCategoryController;
@@ -11,6 +12,7 @@ use App\Http\Controllers\FoodController;
 use App\Http\Controllers\GuardController;
 use App\Http\Controllers\HeadcountController;
 use App\Http\Controllers\IngredientCategoryController;
+use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\IngredientController;
 use App\Http\Controllers\LogisticController;
 use App\Http\Controllers\ManagementController;
@@ -129,19 +131,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::prefix('mines')->name('mines.')->group(function () {
         Route::post('/', [MineController::class, 'store'])->name('store');
-        Route::get('search/{word}', [MineController::class, 'search'])->name('search');
+        Route::get('search/{word?}', [MineController::class, 'search'])->name('search');
         Route::post('serviceables', [MineController::class, 'mineServiceables'])->name('serviceables');
     });
 
     Route::prefix('units')->name('units.')->group(function () {
         Route::post('/', [UnitController::class, 'store'])->name('store');
-        Route::get('search/{word}', [UnitController::class, 'search'])->name('search');
+        Route::get('search/{mineId}/{word?}', [UnitController::class, 'search'])->name('search');
         Route::post('serviceables', [UnitController::class, 'unitServiceables'])->name('serviceables');
     });
 
     Route::prefix('cafes')->name('cafes.')->group(function () {
         Route::post('/', [CafeController::class, 'store'])->name('store');
         Route::get('{id}', [CafeController::class, 'show'])->name('show');
+        Route::get('search/{unitId}/{word?}', [CafeController::class, 'search'])->name('search');
         Route::post('serviceables', [CafeController::class, 'cafeServiceables'])->name('serviceables');
         Route::get('{id}/export-headcount', [CafeController::class, 'exportHeadcount'])->name('export-headcount');
     });
@@ -169,6 +172,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::prefix('dishes')->name('dishes.')->group(function () {
         Route::get('search/{word}', [DishController::class, 'search'])->name('search');
+        Route::post('/', [DishController::class, 'store'])->name('store');
+        Route::put('{id}', [DishController::class, 'update'])->name('update');
+        Route::delete('{id}', [DishController::class, 'destroy'])->name('destroy');
     });
 
     Route::prefix('dish-categories')->name('dish-categories.')->group(function () {
@@ -178,6 +184,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     Route::prefix('ingredients')->name('ingredients.')->group(function () {
         Route::get('/', [IngredientController::class, 'index'])->name('index');
+        Route::post('/', [IngredientController::class, 'store'])->name('store');
+        Route::put('{id}', [IngredientController::class, 'update'])->name('update');
+        Route::delete('{id}', [IngredientController::class, 'destroy'])->name('destroy');
+        Route::post('{id}/dosification', [IngredientController::class, 'updateDosification'])->name('dosification.update');
+        Route::get('search/{word?}', [IngredientController::class, 'search'])->name('search');
+        Route::post('import', [IngredientController::class, 'import'])->name('import');
+        Route::post('import-energy', [IngredientController::class, 'importEnergy'])->name('import-energy');
     });
 
     Route::prefix('ingredient-categories')->name('ingredient-categories.')->group(function () {
@@ -189,12 +202,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // CENAS Y COMIDAS
     // ========================================================================
     Route::prefix('dinners')->name('dinners.')->group(function () {
+        // Route::get('/', [DinnerController::class, 'index'])->name('index');
         Route::get('/', [DinnerController::class, 'index'])->name('index');
         Route::post('/', [DinnerController::class, 'store'])->name('store');
-        Route::put('{id}', [DinnerController::class, 'update'])->name('update');
-        Route::delete('{id}', [DinnerController::class, 'destroy'])->name('destroy');
-        Route::post('excel', [DinnerController::class, 'excel'])->name('excel');
-        Route::get('search/{word}/{id}', [DinnerController::class, 'search'])->name('search');
+        Route::get('pagination/{offset}', [DinnerController::class, 'pagination'])->name('pagination');
+        Route::get('report/{dateInitial}/{datFinal}', [DinnerController::class, 'report'])->name('report');
+        Route::get('print-ticket/{ticketId}/{businessId}', [DinnerController::class, 'printTest'])->name('print-ticket');
     });
 
     // ========================================================================
@@ -214,7 +227,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('providers')->name('providers.')->group(function () {
         Route::get('/', [ProviderController::class, 'index'])->name('index');
         Route::post('/', [ProviderController::class, 'store'])->name('store');
+        Route::put('{id}', [ProviderController::class, 'update'])->name('update');
+        Route::delete('{id}', [ProviderController::class, 'destroy'])->name('destroy');
         Route::post('assign', [ProviderController::class, 'assign'])->name('assign');
+        Route::put('assign/{id}', [ProviderController::class, 'updateAssignment'])->name('assign.update');
+        Route::delete('assign/{id}', [ProviderController::class, 'deleteAssignment'])->name('assign.destroy');
     });
 
     // ========================================================================
@@ -231,9 +248,31 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('sales')->name('sales.')->group(function () {
         Route::get('/', [SaleController::class, 'index'])->name('index');
         Route::post('/', [SaleController::class, 'store'])->name('store');
-        Route::get('pagination/{offset}', [SaleController::class, 'pagination'])->name('pagination');
-        Route::get('report/{dateInitial}/{datFinal}', [SaleController::class, 'report'])->name('report');
-        Route::get('print-ticket/{ticketId}/{businessId}', [SaleController::class, 'printTest'])->name('print-ticket');
+        Route::put('{id}', [SaleController::class, 'update'])->name('update');
+        Route::delete('{id}', [SaleController::class, 'destroy'])->name('destroy');
+        Route::post('excel', [SaleController::class, 'excel'])->name('excel');
+        Route::get('search/{word}/{id}', [SaleController::class, 'search'])->name('search');
+    });
+
+    // ========================================================================
+    // ROPA Y PERFILES
+    // ========================================================================
+    Route::prefix('clothes')->name('clothes.')->group(function () {
+        Route::get('/', [ClothController::class, 'index'])->name('index');
+        Route::get('/manage', [ClothController::class, 'manage'])->name('manage');
+        Route::post('/', [ClothController::class, 'store'])->name('store');
+        Route::delete('/{id}', [ClothController::class, 'destroy'])->name('destroy');
+        Route::post('/assign-role', [ClothController::class, 'assignRole'])->name('assign-role');
+        Route::post('/staff-size', [ClothController::class, 'updateStaffSize'])->name('staff-size');
+        Route::post('/status', [ClothController::class, 'updateStatus'])->name('status');
+    });
+
+    Route::prefix('inventory')->name('inventory.')->group(function () {
+        Route::get('/', [InventoryController::class, 'index'])->name('index');
+        Route::get('/search-items', [InventoryController::class, 'searchItems'])->name('items.search');
+        Route::post('/update', [InventoryController::class, 'update'])->name('update');
+        Route::post('/colors', [InventoryController::class, 'storeColor'])->name('colors.store');
+        Route::post('/items', [InventoryController::class, 'storeItem'])->name('items.store');
     });
 
     Route::prefix('reportsales')->name('reportsales.')->group(function () {
@@ -242,6 +281,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('export', [ReportSalesController::class, 'export'])->name('export');
     });
 
+
+    // ========================================================================
+    // PLANIFICACIÓN Y QUEBRADOS (TIBURCIO)
+    // ========================================================================
+    Route::prefix('planning')->name('planning.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\PlanningController::class, 'index'])->name('index');
+        Route::post('/', [\App\Http\Controllers\PlanningController::class, 'store'])->name('store');
+        Route::post('{id}/generate-po', [\App\Http\Controllers\PlanningController::class, 'generatePurchaseOrder'])->name('generate-po');
+    });
+
+    Route::prefix('purchase-orders')->name('purchase_orders.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\PurchaseOrderController::class, 'index'])->name('index');
+        Route::get('{id}', [\App\Http\Controllers\PurchaseOrderController::class, 'show'])->name('show');
+    });
 
     // ========================================================================
     // PERÍODOS

@@ -6,12 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import AuthBase from '@/layouts/AuthLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
-import { LoaderCircle, Lock, Mail } from 'lucide-vue-next';
+import { ArrowRight, LoaderCircle, Lock, Mail } from 'lucide-vue-next';
 import { ref } from 'vue';
 
 defineProps<{
     status?: string;
-    canResetPassword: boolean;
 }>();
 
 const form = useForm({
@@ -89,7 +88,7 @@ const submit = () => {
                         >
                             Contraseña
                         </Label>
-                        <TextLink
+                       <!--  <TextLink
                             v-if="canResetPassword"
                             :href="route('password.request')"
                             class="group/link relative text-sm font-medium text-gray-600 transition-colors duration-200 hover:text-red-600"
@@ -101,7 +100,7 @@ const submit = () => {
                                     class="absolute -bottom-0.5 left-0 h-0.5 w-0 bg-red-600 transition-all duration-300 group-hover/link:w-full"
                                 ></span>
                             </span>
-                        </TextLink>
+                        </TextLink> -->
                     </div>
                     <div class="relative">
                         <div

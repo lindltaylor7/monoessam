@@ -24,13 +24,13 @@ defineProps<Props>();
                     class="flex items-start space-x-3 rounded border border-transparent p-2 hover:border-zinc-100 hover:bg-zinc-50"
                 >
                     <div class="w-full space-y-1">
-                        <Label :for="'prenda-' + index" class="cursor-pointer text-sm font-normal">
+                        <Label :for="'prenda-' + index" class="cursor-pointer text-sm font-normal text-zinc-600">
                             {{ prenda.label }}
                         </Label>
 
-                        <!-- Selects para tallas S, M, L, XL, XXL (primeros 9) -->
-                        <Select v-if="index < 9" v-model="prenda.talla">
-                            <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                        <!-- Selects para tallas estándar (Ropa) -->
+                        <Select v-if="['Polo', 'Cafarena', 'Overall', 'Casaca', 'Chaleco', 'Chaqueta', 'Camisa', 'Blusa', 'Guardapolvo'].some(s => prenda.label.includes(s))" v-model="prenda.talla">
+                            <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"><SelectValue placeholder="Talla" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="s">S</SelectItem>
                                 <SelectItem value="m">M</SelectItem>
@@ -40,17 +40,39 @@ defineProps<Props>();
                             </SelectContent>
                         </Select>
 
-                        <!-- Select especial para Guantes (index 9) -->
-                        <Select v-else-if="index === 9" v-model="prenda.talla">
-                            <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                        <!-- Select especial para Guantes -->
+                        <Select v-else-if="prenda.label.toLowerCase().includes('guante')" v-model="prenda.talla">
+                            <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"><SelectValue placeholder="Talla" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="8">8</SelectItem>
                                 <SelectItem value="9">9</SelectItem>
+                                <SelectItem value="10">10</SelectItem>
+                            </SelectContent>
+                        </Select>
+
+                         <!-- Select para Calzado -->
+                         <Select v-else-if="prenda.label.toLowerCase().includes('zapatos') || prenda.label.toLowerCase().includes('botas')" v-model="prenda.talla">
+                            <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"><SelectValue placeholder="Talla" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem v-for="size in [35,36,37,38,39,40,41,42,43,44,45]" :key="size" :value="String(size)">
+                                    {{ size }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+
+                        
+
+                        <!-- Select para Lentes -->
+                        <Select v-else-if="prenda.label.toLowerCase().includes('lentes')" v-model="prenda.talla">
+                            <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"><SelectValue placeholder="Talla" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="Lentes">Lentes</SelectItem>
+                                <SelectItem value="Sobrelentes">Sobrelentes</SelectItem>
                             </SelectContent>
                         </Select>
 
                         <!-- Input de texto para el resto -->
-                        <Input v-else placeholder="Talla" v-model="prenda.talla" />
+                        <Input v-else placeholder="Talla" v-model="prenda.talla" class="h-9 transition-all focus:ring-2 focus:ring-blue-100" />
                     </div>
                 </div>
             </div>

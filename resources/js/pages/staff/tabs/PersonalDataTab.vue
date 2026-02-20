@@ -23,14 +23,14 @@ interface Emits {
     (e: 'select-unit', unit: Unit): void;
     (e: 'select-role', role: Role): void;
     (e: 'select-area', area: Area): void;
-    (e: 'select-guard', guardId: number): void;
+    (e: 'select-guard', guardId: string | number): void;
 }
 
 defineProps<Props>();
 const emit = defineEmits<Emits>();
 
 
-const guardSelected = (newValue: number) => {
+const guardSelected = (newValue: string | number) => {
     emit('select-guard', newValue);
 }
 
@@ -48,12 +48,12 @@ const guardSelected = (newValue: number) => {
                 :area-id="form.areaId"
                 :workplace="form.workplace"
                 :role-id="form.roleId"
-                @update:workplace="form.workplace = $event"
                 :roles="roles"
                 :cafes="cafes"
                 :units="units"
                 :businneses="businneses"
                 :guard="form.guard"
+                @update:workplace="form.workplace = $event"
                 @trigger-upload="emit('trigger-upload')"
                 @remove-image="emit('remove-image')"
                 @select-cafe="emit('select-cafe', $event)"

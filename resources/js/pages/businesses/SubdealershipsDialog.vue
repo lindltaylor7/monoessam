@@ -27,7 +27,7 @@ const form = useForm({
 });
 
 const submit = () => {
-    form.post(route('subdealerships'), {
+    form.post(route('subdealerships.store'), {
         onSuccess: () => {
             open.value = false;
             form.reset();
