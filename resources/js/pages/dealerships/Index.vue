@@ -4,6 +4,7 @@ import { Business, Headquarter } from '@/types';
 import DealershipsDialog from '../businesses/DealershipsDialog.vue';
 import SubdealershipsDialog from '../businesses/SubdealershipsDialog.vue';
 import SubdealershipsTable from '../businesses/SubdealershipsTable.vue';
+import { Head } from '@inertiajs/vue3';
 
 interface Props {
     businesses: Business[];
@@ -17,7 +18,7 @@ defineProps<Props>();
 </script>
 
 <template>
-    <Head title="Usuarios" />
+    <Head title="Concesionarias" />
     <AppLayout>
         <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
             <div class="flex h-[40px] w-full items-center justify-start gap-1">

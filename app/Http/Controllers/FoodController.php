@@ -6,6 +6,7 @@ use App\Models\Dish;
 use App\Models\Dish_category;
 use App\Models\Ingredient;
 use App\Models\Ingredient_category;
+use App\Models\Ingredient_city_provider;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -16,7 +17,12 @@ class FoodController extends Controller
      */
     public function index()
     {
-        $dishes = Dish::with(['dish_categories', 'recipes.ingredients', 'recipes.levels'])->take(50)->get();
+        $dishes = Dish::with([
+            'dish_categories',
+            'recipes.ingredients.assignments.provider',
+            'recipes.ingredients.assignments.city',
+            'recipes.levels'
+        ])->take(50)->get();
 
         foreach ($dishes as $dish) {
             $recipe = $dish->recipes->first();
@@ -46,13 +52,21 @@ class FoodController extends Controller
             'dishes' => $dishes,
             'ingredient_categories' => Ingredient_category::all(),
             'dish_categories' => Dish_category::all(),
-            'ingredients' => Ingredient::with(['providers', 'providers.cities'])->get()
+            'ingredients' => Ingredient::with(['assignments.provider', 'assignments.city'])
+                ->orderBy('name')
+                ->take(300)
+                ->get()
         ]);
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
+    public function searchIngredients($query)
+    {
+        return Ingredient::where('name', 'like', "%$query%")
+            ->with(['assignments.provider', 'assignments.city', 'dosification'])
+            ->take(20)
+            ->get();
+    }
+
     public function create()
     {
         //

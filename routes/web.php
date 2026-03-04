@@ -171,10 +171,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     Route::prefix('dishes')->name('dishes.')->group(function () {
-        Route::get('search/{word}', [DishController::class, 'search'])->name('search');
+        Route::get('search/{query}', [DishController::class, 'search'])->name('search');
+        Route::get('search-ingredients/{query}', [FoodController::class, 'searchIngredients'])->name('search-ingredients');
         Route::post('/', [DishController::class, 'store'])->name('store');
         Route::put('{id}', [DishController::class, 'update'])->name('update');
         Route::delete('{id}', [DishController::class, 'destroy'])->name('destroy');
+        Route::post('import', [DishController::class, 'import'])->name('import');
     });
 
     Route::prefix('dish-categories')->name('dish-categories.')->group(function () {
@@ -232,6 +234,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('assign', [ProviderController::class, 'assign'])->name('assign');
         Route::put('assign/{id}', [ProviderController::class, 'updateAssignment'])->name('assign.update');
         Route::delete('assign/{id}', [ProviderController::class, 'deleteAssignment'])->name('assign.destroy');
+        Route::post('import', [ProviderController::class, 'importAssignment'])->name('import');
+        Route::post('import-ids', [ProviderController::class, 'importWithIds'])->name('import-ids');
     });
 
     // ========================================================================

@@ -220,7 +220,12 @@ class DishController extends Controller
     public function search(string $word)
     {
         $dishes = Dish::where('name', 'like', '%' . $word . '%')
-            ->with(['dish_categories', 'recipes.ingredients', 'recipes.levels'])
+            ->with([
+                'dish_categories',
+                'recipes.ingredients.assignments.provider',
+                'recipes.ingredients.assignments.city',
+                'recipes.levels'
+            ])
             ->take(8)
             ->get();
 
@@ -248,5 +253,19 @@ class DishController extends Controller
         }
 
         return $dishes;
+    }
+
+    public function import(Request $request)
+    {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv'
+        ]);
+
+        ini_set('max_execution_time', 0); // Disable time limit for this request
+
+        $file = $request->file('excel_file');
+        \Maatwebsite\Excel\Facades\Excel::import(new \App\Imports\DishRecipesImport, $file);
+
+        return redirect()->back()->with('success', 'Platos importados correctamente');
     }
 }

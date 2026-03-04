@@ -94,7 +94,7 @@ const stats = computed(() => {
 </script>
 
 <template>
-    <Head title="Gestión de Ropa por Rol" />
+    <Head title="Asignación de Prendas" />
 
     <AppLayout :breadcrumbs="[
         { title: 'Personal', href: route('staff.index') },

@@ -18,8 +18,10 @@ class IngredientsImport implements ToModel, WithHeadingRow
         return new Ingredient([
             'name'        => $row['cnomprod'],
             'description' => $row['cabrund'] ?? null,
-            'amount'      => $row['nvaluniequi'] ?? 0,
-            'waste'       => $row['nmerma'] ?? 0
+            'amount'      => $row['nvaluniequi'] ? $row['nvaluniequi'] + 1 : null,
+            'waste'       => $row['nmerma'] ?? 0,
+            'ingredient_category_id' => $row['categoryid'] ? $row['categoryid'] : null,
+            'measurement_unit_id' => $row['ntipund'] ? $row['ntipund'] : null,
         ]);
     }
 
