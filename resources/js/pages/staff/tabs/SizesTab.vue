@@ -16,8 +16,11 @@ defineProps<Props>();
             <div class="mb-4 flex flex-col justify-between border-b pb-2 sm:flex-row sm:items-center">
                 <h3 class="text-lg font-semibold text-zinc-800">Implementos</h3>
             </div>
+            <div v-if="prendas.length === 0" class="text-center py-8 text-zinc-500">
+                Seleccione un Café y Rol para ver las prendas asignadas.
+            </div>
 
-            <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div v-else class="grid grid-cols-2 gap-4 md:grid-cols-4">
                 <div
                     v-for="(prenda, index) in prendas"
                     :key="index"

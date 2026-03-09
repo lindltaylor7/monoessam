@@ -142,6 +142,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     Route::prefix('cafes')->name('cafes.')->group(function () {
+        Route::get('/roles', [CafeController::class, 'rolesIndex'])->name('roles.index');
+        Route::post('/roles/{id}', [CafeController::class, 'syncRoles'])->name('roles.sync');
         Route::post('/', [CafeController::class, 'store'])->name('store');
         Route::get('{id}', [CafeController::class, 'show'])->name('show');
         Route::get('search/{unitId}/{word?}', [CafeController::class, 'search'])->name('search');
@@ -267,16 +269,32 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/', [ClothController::class, 'store'])->name('store');
         Route::delete('/{id}', [ClothController::class, 'destroy'])->name('destroy');
         Route::post('/assign-role', [ClothController::class, 'assignRole'])->name('assign-role');
+        Route::put('/quantity/{id}', [ClothController::class, 'updateQuantity'])->name('update-quantity');
         Route::post('/staff-size', [ClothController::class, 'updateStaffSize'])->name('staff-size');
         Route::post('/status', [ClothController::class, 'updateStatus'])->name('status');
     });
 
     Route::prefix('inventory')->name('inventory.')->group(function () {
         Route::get('/', [InventoryController::class, 'index'])->name('index');
+        Route::get('/invoices', [InventoryController::class, 'invoicesIndex'])->name('invoices.index'); // New
         Route::get('/search-items', [InventoryController::class, 'searchItems'])->name('items.search');
         Route::post('/update', [InventoryController::class, 'update'])->name('update');
         Route::post('/colors', [InventoryController::class, 'storeColor'])->name('colors.store');
         Route::post('/items', [InventoryController::class, 'storeItem'])->name('items.store');
+        Route::post('/invoice', [InventoryController::class, 'storeClothInvoice'])->name('invoice.store');
+
+        // Provider CRUD specialized for clothes
+        Route::post('/providers', [InventoryController::class, 'storeProvider'])->name('providers.store');
+        Route::put('/providers/{id}', [InventoryController::class, 'updateProvider'])->name('providers.update');
+        Route::delete('/providers/{id}', [InventoryController::class, 'destroyProvider'])->name('providers.destroy');
+
+        // EPPs
+        Route::post('/epps', [InventoryController::class, 'storeEpp'])->name('epps.store');
+        Route::post('/providers/{id}/epps', [InventoryController::class, 'syncProviderEpps'])->name('providers.epps.sync');
+
+        // EPP Sizes
+        Route::post('/epp-sizes', [InventoryController::class, 'storeEppSize'])->name('epp-sizes.store');
+        Route::delete('/epp-sizes/{id}', [InventoryController::class, 'destroyEppSize'])->name('epp-sizes.destroy');
     });
 
     Route::prefix('reportsales')->name('reportsales.')->group(function () {

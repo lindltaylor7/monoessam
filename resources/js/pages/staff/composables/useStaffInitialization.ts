@@ -46,12 +46,7 @@ export function useStaffInitialization(
             form.children = staff.staff_financial.children;
         }
 
-        // Tallas
-        prendasFijas.value.forEach((prenda) => (prenda.talla = ''));
-        staff.staff_clothes.forEach((clothe) => {
-            const prenda = prendasFijas.value.find((p) => p.label === clothe.clothe_name);
-            if (prenda) prenda.talla = clothe.clothing_size;
-        });
+
 
         // Lugar de trabajo
         initializeWorkplace(staff, units);

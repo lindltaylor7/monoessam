@@ -27,7 +27,12 @@ import {
     Building2,
     Settings2,
     Loader2,
-    Check
+    Check,
+    Trash2,
+    Calendar,
+    FileText,
+    Truck,
+    Building
 } from 'lucide-vue-next';
 import { 
     Dialog, 
@@ -43,7 +48,7 @@ import { Label } from '@/components/ui/label';
 const props = defineProps<{
     colors: Array<{ id: number, name: string, hex_code?: string }>;
     cafes: Array<{ id: number, name: string, unit: { name: string } }>;
-    headquarters: Array<{ id: number, name: string, business: { name: string } }>;
+    headquarters: Array<{ id: number, name: string, business_id: number, business: { id: number, name: string } }>;
     stocks: Array<{
         id: number;
         stockable_id: number;
@@ -55,6 +60,9 @@ const props = defineProps<{
         cafe?: { name: string };
         headquarter?: { name: string };
     }>;
+    businesses: Array<{ id: number, name: string }>;
+    providers: Array<{ id: number, name: string }>;
+    clothes: Array<{ id: number, name: string }>;
 }>();
 
 const activeTab = ref('clothes');
@@ -65,15 +73,13 @@ const selectedHeadquarterId = ref('all');
 // Filtrado de inventario (Polymorphic)
 const filteredStocks = computed(() => {
     return props.stocks.filter(stock => {
-        // Filter by tab
-        const typeMap: Record<string, string> = {
-            'clothes': 'App\\Models\\Cloth',
-            'computer': 'App\\Models\\ComputerEquipment',
-            'kitchen': 'App\\Models\\KitchenEquipment',
-            'ingredients': 'App\\Models\\Ingredient'
-        };
+        const itemType = stock.stockable_type;
         
-        if (stock.stockable_type !== typeMap[activeTab.value]) return false;
+        if (activeTab.value === 'clothes' && itemType !== 'App\\Models\\Cloth') return false;
+        if (activeTab.value === 'epps' && itemType !== 'App\\Models\\Epp') return false;
+        if (activeTab.value === 'computer' && itemType !== 'App\\Models\\ComputerEquipment') return false;
+        if (activeTab.value === 'kitchen' && itemType !== 'App\\Models\\KitchenEquipment') return false;
+        if (activeTab.value === 'ingredients' && itemType !== 'App\\Models\\Ingredient') return false;
 
         // Search query
         const itemName = stock.stockable?.name?.toLowerCase() || '';
@@ -252,12 +258,15 @@ const getStockStatus = (quantity: number) => {
 const getItemIcon = (type: string) => {
     switch (type) {
         case 'clothes': return Shirt;
+        case 'epps': return Box;
         case 'computer': return Monitor;
         case 'kitchen': return Utensils;
-        case 'ingredients': return Box;
+        case 'ingredients': return Package;
         default: return Package;
     }
 };
+
+// --- New Invoice Logic moved to Invoices/Index.vue ---
 
 </script>
 
@@ -314,6 +323,16 @@ const getItemIcon = (type: string) => {
                             </DialogFooter>
                         </DialogContent>
                     </Dialog>
+
+                    <Button 
+                        @click="router.visit(route('inventory.invoices.index'))" 
+                        size="sm" 
+                        variant="outline" 
+                        class="gap-2 bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100 shadow-sm font-bold"
+                    >
+                        <FileText class="h-4 w-4" />
+                        Gestión de Facturas y Proveedores
+                    </Button>
 
                     <Dialog v-model:open="isNewItemOpen">
                         <DialogTrigger as-child>
@@ -421,6 +440,7 @@ const getItemIcon = (type: string) => {
                             </DialogFooter>
                         </DialogContent>
                     </Dialog>
+
 
                     <Dialog v-model:open="isAddStockOpen">
                         <DialogTrigger as-child>
@@ -594,6 +614,10 @@ const getItemIcon = (type: string) => {
                                 <Shirt class="h-4 w-4" />
                                 <span class="hidden sm:inline">Ropa</span>
                             </TabsTrigger>
+                            <TabsTrigger value="epps" class="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                                <Box class="h-4 w-4" />
+                                <span class="hidden sm:inline">EPPs</span>
+                            </TabsTrigger>
                             <TabsTrigger value="computer" class="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
                                 <Monitor class="h-4 w-4" />
                                 <span class="hidden sm:inline">IT</span>
@@ -668,6 +692,7 @@ const getItemIcon = (type: string) => {
                                         <div :class="[
                                             'p-2.5 rounded-xl shadow-sm transition-transform group-hover:scale-110',
                                             activeTab === 'clothes' ? 'bg-indigo-50 text-indigo-600' :
+                                            activeTab === 'epps' ? 'bg-amber-50 text-amber-600' :
                                             activeTab === 'computer' ? 'bg-blue-50 text-blue-600' :
                                             activeTab === 'kitchen' ? 'bg-orange-50 text-orange-600' :
                                             'bg-emerald-50 text-emerald-600'
@@ -679,6 +704,9 @@ const getItemIcon = (type: string) => {
                                             <CardDescription class="text-xs mt-0.5 flex items-center gap-1.5 truncate text-slate-500">
                                                 <template v-if="activeTab === 'clothes'">
                                                     <Palette class="h-3 w-3" /> Prendas de Personal
+                                                </template>
+                                                <template v-else-if="activeTab === 'epps'">
+                                                    <Box class="h-3 w-3" /> Elemento de Protección
                                                 </template>
                                                 <template v-else-if="activeTab === 'computer'">
                                                     {{ item.stockable?.brand }} | {{ item.stockable?.model || 'S/M' }}

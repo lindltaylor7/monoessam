@@ -53,18 +53,30 @@ const updateAvailableClothes = (initialStaffClothes?: any[]) => {
     }
 
     const roleId = Number(form.roleId);
+    const cafes = props.roleClothes[roleId] || {};
     const cafeId = form.cafeId ? String(form.cafeId) : 'all';
-
-    const assignedClothes = props.roleClothes[roleId]?.[cafeId] || [];
+    
+    let assignedClothes: any[] = [];
+    if (cafeId === 'all') {
+        assignedClothes = cafes['all'] || [];
+    } else {
+        const allClothes = cafes['all'] || [];
+        const specificClothes = cafes[cafeId] || [];
+        
+        assignedClothes = [...allClothes];
+        specificClothes.forEach(sc => {
+            if (!assignedClothes.find(c => c.id === sc.id)) {
+                assignedClothes.push(sc);
+            }
+        });
+    }
     
     prendasFijas.value = assignedClothes.map(cloth => {
         let talla = '';
         
-        // Prioridad 1: Valor que ya esté en el formulario (usuario escribiendo)
         const existingInForm = prendasFijas.value.find(p => p.label === cloth.name);
         if (existingInForm) talla = existingInForm.talla;
 
-        // Prioridad 2: Si estamos inicializando (edit mode), usar lo que viene del staff
         if (!talla && initialStaffClothes) {
             const match = initialStaffClothes.find(sc => sc.clothe_name === cloth.name || sc.cloth?.name === cloth.name);
             if (match) talla = match.clothing_size;
@@ -80,13 +92,12 @@ const updateAvailableClothes = (initialStaffClothes?: any[]) => {
 watch(() => props.staff, (newStaff) => {
     initializeStaffData(newStaff, props.units);
     if (newStaff) {
-        // Forzar actualización de prendas con la data inicial del staff
-        //updateAvailableClothes(newStaff.staff_clothes);
+        updateAvailableClothes(newStaff.staff_clothes);
     }
 }, { immediate: true });
 
 watch([() => form.roleId, () => form.cafeId], () => {
-    //updateAvailableClothes();
+    updateAvailableClothes();
 });
 
 // Handlers

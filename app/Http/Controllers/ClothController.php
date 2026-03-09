@@ -63,7 +63,7 @@ class ClothController extends Controller
     {
         $roles = Role::all();
         $clothes = Cloth::with('roles')->get();
-        $cafes = Cafe::all();
+        $cafes = Cafe::with('roles')->get();
 
         return Inertia::render('clothes/Manage', [
             'roles' => $roles,
@@ -77,13 +77,29 @@ class ClothController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'name' => 'required|string|unique:cloths,name',
+            'quantity' => 'nullable|integer|min:0',
         ]);
 
-        Cloth::create($request->only('name'));
+        Cloth::create($validated);
 
         return back()->with('success', 'Prenda creada exitosamente');
+    }
+
+    /**
+     * Update Cloth quantity.
+     */
+    public function updateQuantity(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'quantity' => 'required|integer|min:0',
+        ]);
+
+        $cloth = Cloth::findOrFail($id);
+        $cloth->update(['quantity' => $validated['quantity']]);
+
+        return back();
     }
 
     /**

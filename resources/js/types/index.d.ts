@@ -62,6 +62,11 @@ export interface Area {
     headquarter_id?: number;
 }
 
+export interface Guard {
+    id: number;
+    name: string;
+}
+
 export interface Mine {
     id: number;
     name: string;
@@ -268,6 +273,8 @@ export interface Staff {
         url: string;
     };
     staff_clothes?: any[];
+    staff_financial?: any;
+    guard_role?: any;
 }
 
 export interface StaffFile {

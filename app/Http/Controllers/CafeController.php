@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Cafe;
-use Illuminate\Container\Attributes\DB;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 use Mike42\Escpos\PrintConnectors\WindowsPrintConnector;
 use Mike42\Escpos\Printer;
 
@@ -208,5 +208,26 @@ class CafeController extends Controller
         $cafes = $query->get();
 
         return response()->json($cafes);
+    }
+
+    public function rolesIndex()
+    {
+        return Inertia::render('cafes/Roles', [
+            'cafes' => Cafe::with('roles')->get(),
+            'roles' => \Spatie\Permission\Models\Role::all()
+        ]);
+    }
+
+    public function syncRoles(Request $request, $id)
+    {
+        $request->validate([
+            'role_ids' => 'array',
+            'role_ids.*' => 'exists:roles,id'
+        ]);
+
+        $cafe = Cafe::findOrFail($id);
+        $cafe->roles()->sync($request->role_ids);
+
+        return back()->with('success', 'Roles actualizados correctamente');
     }
 }
