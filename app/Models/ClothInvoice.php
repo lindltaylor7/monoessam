@@ -14,6 +14,7 @@ class ClothInvoice extends Model
         'date',
         'total_amount',
         'notes',
+        'invoice_image',
     ];
 
     public function headquarter()

@@ -196,9 +196,16 @@ class InventoryController extends Controller
             'items.*.size' => 'nullable|string',
             'items.*.quantity' => 'required|numeric|min:1',
             'items.*.unit_price' => 'required|numeric|min:0',
+            'invoice_image' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:10240',
         ]);
 
-        DB::transaction(function () use ($validated) {
+        $invoiceImagePath = null;
+        if ($request->hasFile('invoice_image')) {
+            $path = $request->file('invoice_image')->store('invoice_images', 'public');
+            $invoiceImagePath = '/storage/' . $path;
+        }
+
+        DB::transaction(function () use ($validated, $invoiceImagePath) {
             $totalAmount = collect($validated['items'])->sum(function ($item) {
                 return $item['quantity'] * $item['unit_price'];
             });
@@ -211,6 +218,7 @@ class InventoryController extends Controller
                 'date' => $validated['date'],
                 'notes' => $validated['notes'],
                 'total_amount' => $totalAmount,
+                'invoice_image' => $invoiceImagePath,
             ]);
 
             foreach ($validated['items'] as $itemData) {
@@ -260,6 +268,22 @@ class InventoryController extends Controller
         });
 
         return back()->with('success', 'Factura de stock ingresada correctamente');
+    }
+
+    public function updateInvoiceImage(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'invoice_image' => 'required|file|mimes:jpeg,png,jpg,pdf|max:10240',
+        ]);
+
+        $invoice = ClothInvoice::findOrFail($id);
+
+        if ($request->hasFile('invoice_image')) {
+            $path = $request->file('invoice_image')->store('invoice_images', 'public');
+            $invoice->update(['invoice_image' => '/storage/' . $path]);
+        }
+
+        return back()->with('success', 'Imagen de factura actualizada correctamente');
     }
 
     public function invoicesIndex()

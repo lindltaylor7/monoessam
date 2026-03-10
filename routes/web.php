@@ -282,6 +282,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/colors', [InventoryController::class, 'storeColor'])->name('colors.store');
         Route::post('/items', [InventoryController::class, 'storeItem'])->name('items.store');
         Route::post('/invoice', [InventoryController::class, 'storeClothInvoice'])->name('invoice.store');
+        Route::post('/invoice/{id}/image', [InventoryController::class, 'updateInvoiceImage'])->name('invoice.image.update');
 
         // Provider CRUD specialized for clothes
         Route::post('/providers', [InventoryController::class, 'storeProvider'])->name('providers.store');

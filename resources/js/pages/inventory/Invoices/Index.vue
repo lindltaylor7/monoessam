@@ -13,7 +13,7 @@ import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from '@/components/ui/select';
 import { 
-    Plus, Trash2, Calendar, FileText, Truck, Building, Box, Shirt, ArrowUpRight, History, MoreHorizontal, Edit2
+    Plus, Trash2, Calendar, FileText, Truck, Building, Box, Shirt, ArrowUpRight, History, MoreHorizontal, Edit2, UploadCloud, Loader2
 } from 'lucide-vue-next';
 import { 
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
@@ -45,6 +45,7 @@ const invoiceForm = ref({
     date: new Date().toISOString().split('T')[0],
     cafe_id: '',
     notes: '',
+    invoice_image: null as File | null,
     items: [
         { cloth_id: '', epp_id: '', color_id: '', size: '', quantity: 1, unit_price: 0 }
     ]
@@ -124,6 +125,11 @@ const removeInvoiceItem = (index: number) => {
     }
 };
 
+const handleInvoiceImageUpload = (e: Event) => {
+    const target = e.target as HTMLInputElement;
+    invoiceForm.value.invoice_image = target.files?.[0] || null;
+};
+
 const isInvoiceSubmitDisabled = computed(() => {
     return !invoiceForm.value.business_id || 
            !invoiceForm.value.cloth_provider_id || 
@@ -146,6 +152,7 @@ const handleInvoiceSubmit = () => {
     };
 
     router.post(route('inventory.invoice.store'), submitData, {
+        forceFormData: true,
         onSuccess: () => {
             isInvoiceModalOpen.value = false;
             resetInvoiceForm();
@@ -167,6 +174,7 @@ const resetInvoiceForm = () => {
         date: new Date().toISOString().split('T')[0],
         cafe_id: '',
         notes: '',
+        invoice_image: null as File | null,
         items: [{ cloth_id: '', epp_id: '', color_id: '', size: '', quantity: 1, unit_price: 0 }]
     };
 };
@@ -252,10 +260,34 @@ const handleAssignmentSubmit = () => {
 // --- View Invoice Details ---
 const isViewInvoiceModalOpen = ref(false);
 const selectedInvoice = ref<any>(null);
+const isUploadingInvoiceImage = ref(false);
 
 const viewInvoiceDetails = (invoice: any) => {
     selectedInvoice.value = invoice;
     isViewInvoiceModalOpen.value = true;
+};
+
+const handleInvoiceImageUpdate = (e: Event) => {
+    const target = e.target as HTMLInputElement;
+    const file = target.files?.[0];
+    if (!file || !selectedInvoice.value) return;
+
+    isUploadingInvoiceImage.value = true;
+    router.post(route('inventory.invoice.image.update', selectedInvoice.value.id), {
+        invoice_image: file
+    }, {
+        forceFormData: true,
+        preserveScroll: true,
+        onSuccess: (page) => {
+            const updatedInvoice = (page.props as any).invoices.find((i: any) => i.id === selectedInvoice.value.id);
+            if (updatedInvoice) {
+                selectedInvoice.value = updatedInvoice;
+            }
+        },
+        onFinish: () => {
+            isUploadingInvoiceImage.value = false;
+        }
+    });
 };
 
 // --- EPP Size Logic ---
@@ -327,7 +359,7 @@ const deleteSize = (id: number) => {
                                 <Plus class="h-4 w-4" /> Ingresar Factura
                             </Button>
                         </DialogTrigger>
-                        <DialogContent class="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
+                        <DialogContent class="sm:max-w-[900px] max-h-[100vh] overflow-y-auto">
                             <DialogHeader>
                                 <DialogTitle class="flex items-center gap-2">
                                     <FileText class="h-5 w-5 text-indigo-600" />
@@ -385,6 +417,10 @@ const deleteSize = (id: number) => {
                                     <div class="space-y-2">
                                         <Label class="text-xs font-bold uppercase text-slate-500">Notas Adicionales</Label>
                                         <Input v-model="invoiceForm.notes" placeholder="..." class="bg-white" />
+                                    </div>
+                                    <div class="space-y-2">
+                                        <Label class="text-xs font-bold uppercase text-slate-500">Evidencia (Opcional)</Label>
+                                        <Input type="file" @change="handleInvoiceImageUpload" accept="image/*,.pdf" class="bg-white text-xs file:bg-slate-100 file:border-0 file:mr-4 file:py-2 file:px-4 file:rounded-full file:text-xs file:font-semibold hover:file:bg-slate-200" />
                                     </div>
                                 </div>
 
@@ -902,8 +938,31 @@ const deleteSize = (id: number) => {
                                 </Table>
                             </div>
                         </div>
-                    </div>
 
+                        <div v-if="selectedInvoice?.invoice_image" class="p-4 rounded-2xl bg-indigo-50/30 border border-indigo-100 mt-4 flex items-center justify-between">
+                            <p class="text-[10px] font-black uppercase text-indigo-400 tracking-widest">Evidencia Adjunta</p>
+                            <a :href="selectedInvoice.invoice_image" target="_blank" class="inline-flex items-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors">
+                                <FileText class="h-4 w-4" /> Ver Documento / Imagen
+                            </a>
+                        </div>
+                        <div v-else class="p-4 rounded-2xl bg-slate-50/30 border border-slate-100 mt-4 space-y-3">
+                            <p class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Adjuntar Evidencia</p>
+                            <p class="text-xs text-slate-500">Esta factura aún no cuenta con un documento o imagen de evidencia.</p>
+                            <div class="relative w-full">
+                                <Input 
+                                    type="file" 
+                                    @change="handleInvoiceImageUpdate" 
+                                    accept="image/*,.pdf" 
+                                    :disabled="isUploadingInvoiceImage"
+                                    class="bg-white text-xs file:bg-indigo-50 file:border-0 file:mr-4 file:py-2 file:px-4 file:rounded-full file:text-xs file:font-bold file:text-indigo-600 hover:file:bg-indigo-100 w-full cursor-pointer h-12" 
+                                />
+                                <div v-if="isUploadingInvoiceImage" class="absolute inset-0 bg-white/50 backdrop-blur-sm flex items-center justify-center rounded-md font-bold text-indigo-600 gap-2 text-sm z-10">
+                                    <Loader2 class="h-4 w-4 animate-spin" /> Subiendo archivo...
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <DialogFooter class="p-4 border-t bg-slate-50/50">
                         <Button variant="outline" @click="isViewInvoiceModalOpen = false" class="rounded-xl border-slate-200 font-bold uppercase text-[10px] tracking-widest h-10">
                             Cerrar Detalle
