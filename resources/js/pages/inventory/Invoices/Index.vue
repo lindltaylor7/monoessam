@@ -450,14 +450,17 @@ const deleteSize = (id: number) => {
                                             </thead>
                                             <tbody class="divide-y">
                                                 <tr v-for="(item, index) in invoiceForm.items" :key="index" class="group hover:bg-slate-50/50 transition-colors">
-                                                    <td class="p-3">
+                                                   <td class="p-3">
                                                         <Select :model-value="getItemUniqueId(item)" @update:model-value="onItemSelect($event as string, index)">
-                                                            <SelectTrigger class="h-9 border-none shadow-none focus:ring-1"><SelectValue placeholder="Elegir..." /></SelectTrigger>
+                                                            <SelectTrigger class="h-9 w-[200px] border-none shadow-none focus:ring-1 justify-start">
+                                                                <SelectValue placeholder="Elegir..." class="truncate" />
+                                                            </SelectTrigger>
+                                                            
                                                             <SelectContent>
                                                                 <SelectItem v-for="c in getAvailableClothes(invoiceForm.cloth_provider_id)" :key="c.unique_id" :value="c.unique_id">
                                                                     <div class="flex items-center gap-2">
                                                                         <component :is="c.type === 'cloth' ? Shirt : Box" class="h-3.5 w-3.5 text-slate-400" />
-                                                                        {{ c.name }}
+                                                                        <span class="truncate">{{ c.name }}</span>
                                                                     </div>
                                                                 </SelectItem>
                                                             </SelectContent>
