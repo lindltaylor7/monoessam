@@ -3,7 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Service } from '@/types';
-import { Pencil } from 'lucide-vue-next';
+import { Pencil, ShieldCheck } from 'lucide-vue-next';
+import { Link } from '@inertiajs/vue3';
 
 // Definición de las props
 const props = defineProps<{
@@ -45,6 +46,11 @@ const PLACE_TYPE_CAFE = 3;
                         <TableRow v-for="cafe in cafes" :key="cafe.id">
                             <TableCell class="font-medium">{{ cafe.name }}</TableCell>
                             <TableCell class="flex flex-row justify-end gap-2 text-right">
+                                <Button size="icon" variant="outline" as-child>
+                                    <Link :href="route('cafes.roles.index')">
+                                        <ShieldCheck class="h-4 w-4" />
+                                    </Link>
+                                </Button>
                                 <Button size="icon" variant="outline">
                                     <Pencil class="h-4 w-4" />
                                 </Button>

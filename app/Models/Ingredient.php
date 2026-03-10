@@ -15,7 +15,7 @@ class Ingredient extends Model
 {
     /** @use HasFactory<\Database\Factories\MineFactory> */
     use HasFactory;
-    protected $fillable = ['name', 'description', 'amount', 'waste', 'energy', 'ingredient_category_id'];
+    protected $fillable = ['name', 'description', 'amount', 'waste', 'energy', 'ingredient_category_id', 'measurement_unit_id'];
 
     public function ingredient_category(): BelongsTo
     {
@@ -44,5 +44,9 @@ class Ingredient extends Model
     public function stocks(): MorphMany
     {
         return $this->morphMany(InventoryStock::class, 'stockable');
+    }
+    public function assignments(): HasMany
+    {
+        return $this->hasMany(Ingredient_city_provider::class, 'ingredient_id');
     }
 }

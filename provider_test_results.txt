@@ -1,0 +1,58 @@
+Testing 'Carlos Peña Otarola - Verduras': Found: Carlos Peña Otarola - Verduras
+Testing Base 'Carlos Peña Otarola': Found: Carlos Peña Otarola - Verduras
+Testing 'MACRE PERU SRI - FRUTAS': Not Found
+Testing Base 'MACRE PERU SRI': Not Found
+Testing 'Marisol Torres Yauri - Frutas': Found: Marisol Torres Yauri - Frutas
+Testing Base 'Marisol Torres Yauri': Found: Marisol Torres Yauri - Frutas
+
+All Providers:
+- Carlos Peña Otarola - Verduras
+- Makro Supermayorista S.A. - Abarrotes
+- Edwin Franklin Chavez Rojas - Pescado y mariscos
+- Alicia Camarena Ballon
+- GREY RUIZ
+- Jose Limaylla Velita - Carne de Res
+- Rolly Cotera Quiñones - Carne de Pollo
+- Metro Star Serfrissa EIRL
+- Contado - Varios
+- Valentina Gabriel Carhuamaca
+- Maria Isabel Gaspar Tovar - Carne de Cordero
+- Ana Porras Palomino - Carne de Cerdo
+- Agui Laura Jean Carlos - Abarrotes Varios
+- Luz Peña Otarola
+- Granor SRL
+- VILLAZANA GOMEZ, CRISTIAM
+- Carlos Felix Calderon Rodriguez
+- Nature EIRL
+- Contado - Limpieza
+- Llamazul EIRL
+- Contado-útiles
+- Inversiones Espinoza E.I.R.L.
+- Distribuidora Camargo S.A.
+- Contado - Club
+- Bajopontina SA
+- MACRE PERU SRL - FRUTAS
+- William Castro Gamarra - Carne de Res
+- Avicola la Chacra  - Carne de Pollo
+- Edith Marquez Camarena - Cuy y Conejo (2)
+- Multiproductos Lup & Bak - Embutidos 
+- LIMPIEZA Y BIENESTAR
+- RICHI PLAST
+- AGPA
+- R&G
+- EFECTIVOS MAKRO
+- INV. MONTES
+- LARCRIL (FRUTAS) 09
+- MARPIER (FRUTAS) 09
+- DIPEMAR
+- ZEDINA
+- CARNICON
+- LA CALERA
+- FOOD MARQUET
+- CENTRO CARNES
+- HALEMA
+- SAN FERNANDO
+- ALESMAR
+- Marisol Torres Yauri - Frutas
+- Ercilia Camarena Ballon - Truchas
+- RAQUEL M. ÑAHUI ESTACIO - FRUTAS

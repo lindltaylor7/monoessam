@@ -19,7 +19,11 @@ class ProviderController extends Controller
     public function index()
     {
         return Inertia::render('providers/Index', [
-            'ingredient_city_providers' => Ingredient_city_provider::with(['ingredient', 'provider', 'city', 'measurement_unit'])->get(),
+            'ingredient_city_providers' => Ingredient_city_provider::has('ingredient')
+                ->has('provider')
+                ->has('city')
+                ->with(['ingredient', 'provider', 'city', 'measurement_unit'])
+                ->get(),
             'providers' => Provider::all(),
             'cities' => City::all(),
             'measurement_units' => Measurement_unit::all(),
@@ -131,5 +135,30 @@ class ProviderController extends Controller
         $assignment->delete();
 
         return to_route('providers.index');
+    }
+
+    public function importAssignment(Request $request)
+    {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv',
+            'city_id' => 'required|exists:cities,id',
+        ]);
+
+        $file = $request->file('excel_file');
+        \Maatwebsite\Excel\Facades\Excel::import(new \App\Imports\IngredientCityProviderImport($request->city_id), $file);
+
+        return redirect()->back()->with('success', 'Datos importados correctamente.');
+    }
+
+    public function importWithIds(Request $request)
+    {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv',
+        ]);
+
+        $file = $request->file('excel_file');
+        \Maatwebsite\Excel\Facades\Excel::import(new \App\Imports\IngredientCityProviderIdsImport(), $file);
+
+        return redirect()->back()->with('success', 'Datos importados correctamente por ID.');
     }
 }

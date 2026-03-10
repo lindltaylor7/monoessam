@@ -13,7 +13,16 @@ use App\Models\KitchenEquipment;
 use App\Models\Ingredient;
 use App\Models\InventoryStock;
 use App\Models\Headquarter;
+use App\Models\Business;
+use App\Models\Provider;
+use App\Models\ClothInvoice;
+use App\Models\ClothInvoiceItem;
+use App\Models\ClothProvider;
+use App\Models\Epp;
+use App\Models\EppSize;
+use App\Models\City;
 use Inertia\Inertia;
+use Illuminate\Support\Facades\DB;
 
 class InventoryController extends Controller
 {
@@ -22,6 +31,9 @@ class InventoryController extends Controller
         $colors = Color::all();
         $cafes = Cafe::with('unit')->get();
         $headquarters = Headquarter::with('business')->get();
+        $businesses = Business::all();
+        $providers = Provider::all();
+        $clothes = Cloth::all();
 
         // New polymorphic stocks - we might want to paginate this too if it grows large
         $stocks = InventoryStock::with(['stockable', 'cafe', 'headquarter'])->get();
@@ -30,7 +42,10 @@ class InventoryController extends Controller
             'colors' => $colors,
             'cafes' => $cafes,
             'headquarters' => $headquarters,
-            'stocks' => $stocks
+            'stocks' => $stocks,
+            'businesses' => $businesses,
+            'providers' => $providers,
+            'clothes' => $clothes
         ]);
     }
 
@@ -163,5 +178,215 @@ class InventoryController extends Controller
         }
 
         return back()->with('success', 'Equipo registrado correctamente');
+    }
+    public function storeClothInvoice(Request $request)
+    {
+        $validated = $request->validate([
+            'business_id' => 'required|exists:businesses,id',
+            'headquarter_id' => 'nullable|exists:headquarters,id',
+            'cloth_provider_id' => 'required|exists:cloth_providers,id',
+            'invoice_number' => 'nullable|string',
+            'date' => 'required|date',
+            'notes' => 'nullable|string',
+            'cafe_id' => 'required|exists:cafes,id',
+            'items' => 'required|array|min:1',
+            'items.*.cloth_id' => 'nullable|exists:cloths,id',
+            'items.*.epp_id' => 'nullable|exists:epps,id',
+            'items.*.color_id' => 'nullable|exists:colors,id',
+            'items.*.size' => 'nullable|string',
+            'items.*.quantity' => 'required|numeric|min:1',
+            'items.*.unit_price' => 'required|numeric|min:0',
+            'invoice_image' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:10240',
+        ]);
+
+        $invoiceImagePath = null;
+        if ($request->hasFile('invoice_image')) {
+            $path = $request->file('invoice_image')->store('invoice_images', 'public');
+            $invoiceImagePath = '/storage/' . $path;
+        }
+
+        DB::transaction(function () use ($validated, $invoiceImagePath) {
+            $totalAmount = collect($validated['items'])->sum(function ($item) {
+                return $item['quantity'] * $item['unit_price'];
+            });
+
+            $invoice = ClothInvoice::create([
+                'business_id' => $validated['business_id'],
+                'headquarter_id' => $validated['headquarter_id'] ?? null,
+                'cloth_provider_id' => $validated['cloth_provider_id'],
+                'invoice_number' => $validated['invoice_number'],
+                'date' => $validated['date'],
+                'notes' => $validated['notes'],
+                'total_amount' => $totalAmount,
+                'invoice_image' => $invoiceImagePath,
+            ]);
+
+            foreach ($validated['items'] as $itemData) {
+                $total_price = $itemData['quantity'] * $itemData['unit_price'];
+
+                $invoice->items()->create([
+                    'cloth_id' => $itemData['cloth_id'] ?? null,
+                    'epp_id' => $itemData['epp_id'] ?? null,
+                    'color_id' => $itemData['color_id'],
+                    'size' => $itemData['size'] ?? null,
+                    'quantity' => $itemData['quantity'],
+                    'unit_price' => $itemData['unit_price'],
+                    'total_price' => $total_price,
+                ]);
+
+                if ($itemData['cloth_id']) {
+                    // Update ClothInventory
+                    $inventory = ClothInventory::firstOrCreate([
+                        'cloth_id' => $itemData['cloth_id'],
+                        'color_id' => $itemData['color_id'],
+                        'cafe_id' => $validated['cafe_id']
+                    ]);
+                    $inventory->quantity += $itemData['quantity'];
+                    $inventory->save();
+
+                    // Update polymorphic InventoryStock
+                    $stock = InventoryStock::firstOrNew([
+                        'stockable_id' => $itemData['cloth_id'],
+                        'stockable_type' => Cloth::class,
+                        'cafe_id' => $validated['cafe_id'],
+                        'headquarter_id' => $validated['headquarter_id'],
+                    ]);
+                    $stock->quantity += $itemData['quantity'];
+                    $stock->save();
+                } elseif ($itemData['epp_id']) {
+                    // Update polymorphic InventoryStock for EPP
+                    $stock = InventoryStock::firstOrNew([
+                        'stockable_id' => $itemData['epp_id'],
+                        'stockable_type' => Epp::class,
+                        'cafe_id' => $validated['cafe_id'],
+                        'headquarter_id' => $validated['headquarter_id'],
+                    ]);
+                    $stock->quantity += $itemData['quantity'];
+                    $stock->save();
+                }
+            }
+        });
+
+        return back()->with('success', 'Factura de stock ingresada correctamente');
+    }
+
+    public function updateInvoiceImage(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'invoice_image' => 'required|file|mimes:jpeg,png,jpg,pdf|max:10240',
+        ]);
+
+        $invoice = ClothInvoice::findOrFail($id);
+
+        if ($request->hasFile('invoice_image')) {
+            $path = $request->file('invoice_image')->store('invoice_images', 'public');
+            $invoice->update(['invoice_image' => '/storage/' . $path]);
+        }
+
+        return back()->with('success', 'Imagen de factura actualizada correctamente');
+    }
+
+    public function invoicesIndex()
+    {
+        $invoices = ClothInvoice::with(['business', 'headquarter', 'provider', 'items.cloth', 'items.epp', 'items.color'])->latest()->get();
+        $clothProviders = ClothProvider::with(['epps', 'clothes'])->get();
+
+        return Inertia::render('inventory/Invoices/Index', [
+            'invoices' => $invoices,
+            'clothProviders' => $clothProviders,
+            'businesses' => Business::all(),
+            'headquarters' => Headquarter::with('business')->get(),
+            'cafes' => Cafe::with('unit')->get(),
+            'clothes' => Cloth::all(),
+            'colors' => Color::all(),
+            'epps' => Epp::with('sizes.city')->get(),
+            'cities' => City::all(),
+        ]);
+    }
+
+    public function storeProvider(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'nullable|email|max:255',
+            'phone' => 'nullable|string|max:255',
+        ]);
+
+        ClothProvider::create($validated);
+
+        return back()->with('success', 'Proveedor registrado correctamente');
+    }
+
+    public function updateProvider(Request $request, $id)
+    {
+        $provider = ClothProvider::findOrFail($id);
+
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'nullable|email|max:255',
+            'phone' => 'nullable|string|max:255',
+        ]);
+
+        $provider->update($validated);
+
+        return back()->with('success', 'Proveedor actualizado correctamente');
+    }
+
+    public function destroyProvider($id)
+    {
+        $provider = ClothProvider::findOrFail($id);
+        $provider->delete();
+
+        return back()->with('success', 'Proveedor eliminado correctamente');
+    }
+
+    public function storeEpp(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'cost_price' => 'nullable|numeric|min:0',
+        ]);
+
+        Epp::create($validated);
+
+        return back()->with('success', 'EPP registrado correctamente');
+    }
+
+    public function syncProviderEpps(Request $request, $id)
+    {
+        $provider = ClothProvider::findOrFail($id);
+
+        $validated = $request->validate([
+            'epp_ids' => 'nullable|array',
+            'epp_ids.*' => 'exists:epps,id',
+            'cloth_ids' => 'nullable|array',
+            'cloth_ids.*' => 'exists:cloths,id'
+        ]);
+
+        $provider->epps()->sync($validated['epp_ids'] ?? []);
+        $provider->clothes()->sync($validated['cloth_ids'] ?? []);
+
+        return back()->with('success', 'Elementos asignados correctamente');
+    }
+
+    public function storeEppSize(Request $request)
+    {
+        $validated = $request->validate([
+            'epp_id' => 'required|exists:epps,id',
+            'city_id' => 'required|exists:cities,id',
+            'size' => 'required|string|max:255',
+        ]);
+
+        EppSize::create($validated);
+
+        return back()->with('success', 'Talla registrada correctamente');
+    }
+
+    public function destroyEppSize($id)
+    {
+        $size = EppSize::findOrFail($id);
+        $size->delete();
+
+        return back()->with('success', 'Talla eliminada correctamente');
     }
 }

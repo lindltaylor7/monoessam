@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 class Provider extends Model
 {
     use HasFactory;
-    protected $fillable = ['name', 'email', 'phone'];
+    protected $fillable = ['name', 'type', 'email', 'phone'];
 
     public function cities(): BelongsToMany
     {

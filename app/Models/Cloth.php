@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class Cloth extends Model
 {
-    protected $fillable = ['name'];
+    protected $fillable = ['name', 'quantity'];
 
     public function roles()
     {
@@ -25,5 +25,10 @@ class Cloth extends Model
     public function stocks(): MorphMany
     {
         return $this->morphMany(InventoryStock::class, 'stockable');
+    }
+
+    public function clothProviders()
+    {
+        return $this->belongsToMany(ClothProvider::class, 'cloth_cloth_provider');
     }
 }

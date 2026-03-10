@@ -122,7 +122,7 @@ const getInitials = (name: string) => {
 </script>
 
 <template>
-    <Head title="Registro de Tallas" />
+    <Head title="EPPs" />
 
     <AppLayout :breadcrumbs="[
         { title: 'Personal', href: route('staff.index') },

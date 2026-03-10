@@ -56,4 +56,9 @@ class Cafe extends Model
     {
         return $this->morphMany(Staff::class, 'staffable');
     }
+
+    public function roles(): BelongsToMany
+    {
+        return $this->belongsToMany(\Spatie\Permission\Models\Role::class, 'cafe_roles');
+    }
 }

@@ -4,6 +4,7 @@ import { useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import { onMounted, ref } from 'vue';
 import ServiceModal from './ServiceModal.vue';
+import { Head } from '@inertiajs/vue3';
 
 // Definición de tipos
 interface Service {
@@ -104,6 +105,7 @@ const confirmDelete = (id: number) => {
 </script>
 
 <template>
+    <Head title="Servicios" />
     <AppLayout>
         <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
             <div class="grid auto-rows-min gap-4 md:grid-cols-3">

@@ -20,7 +20,8 @@ import {
     Info,
     TrendingUp,
     ChevronRight,
-    Calculator
+    Calculator,
+    MapPin
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -43,25 +44,24 @@ const baseCostPercentage = ref(0.0);
 const finalProduct = ref(0.0);
 const finalProductPercentage = ref(0.0);
 
-const updateCalcValues = (e: any) => {
-    const val = parseFloat(e.target.value) || 0;
-    baseCost.value = priceSelected.value * val;
-
-    ingredientSelected.value.gross_weight = val * 1000;
+const recalculateAndEmit = () => {
+    const val = parseFloat(ingredientSelected.value.input_quantity) || 0;
     
-    const amount = parseFloat(ingredientSelected.value.amount) || 1;
+    // Weight conversion logic consistent with Quebrados.vue
+    const weightInGrams = ingredientSelected.value.selected_unit === 'Kg' ? val * 1000 : val;
+    ingredientSelected.value.gross_weight = weightInGrams;
+    
     const origWaste = parseFloat(ingredientSelected.value.originalValues?.waste) || 0;
     const origCalories = parseFloat(ingredientSelected.value.originalValues?.calories) || 0;
 
-    ingredientSelected.value.solid_waste = (
-        (ingredientSelected.value.gross_weight * origWaste) / 100
-    );
-    
+    ingredientSelected.value.solid_waste = (ingredientSelected.value.gross_weight * origWaste) / 100;
     finalProduct.value = ingredientSelected.value.gross_weight - ingredientSelected.value.solid_waste;
+    ingredientSelected.value.final_product = finalProduct.value;
 
-    ingredientSelected.value.calories = (
-        (finalProduct.value * origCalories) / 100
-    );
+    ingredientSelected.value.calories = (finalProduct.value * origCalories) / 100;
+    
+    // Base cost calculation
+    baseCost.value = priceUeGr.value * weightInGrams;
 
     emits('calcMassiveProperties', ingredientSelected.value.id, [
         ingredientSelected.value.gross_weight,
@@ -73,17 +73,24 @@ const updateCalcValues = (e: any) => {
     ]);
 };
 
-const selectPrice = (provider: Provider) => {
-    priceSelected.value = parseFloat((provider as any).pivot?.cost_price) || 0;
-    priceUeGr.value = priceSelected.value / 1000;
+const updateCalcValues = (e: any) => {
+    ingredientSelected.value.input_quantity = parseFloat(e.target.value) || 0;
+    recalculateAndEmit();
 };
 
-// Handle provider selection change
+// Handle assignment selection change
 watch(providerSelected, (newId) => {
-    const provider = ingredientSelected.value.providers?.find((p: any) => p.id === Number(newId));
-    if (provider) {
-        selectPrice(provider);
+    if (!newId || newId === 'none' || newId === '0') {
+        priceSelected.value = 0;
+        priceUeGr.value = 0;
+    } else {
+        const assignment = ingredientSelected.value.assignments?.find((a: any) => a.id === Number(newId));
+        if (assignment) {
+            priceSelected.value = parseFloat(assignment.cost_price) || 0;
+            priceUeGr.value = priceSelected.value / 1000;
+        }
     }
+    recalculateAndEmit();
 });
 
 watch(props, (newValue) => {
@@ -125,20 +132,32 @@ watch(props, (newValue) => {
                     </div>
                     
                     <Select :model-value="String(providerSelected)" @update:model-value="val => providerSelected = val as string">
-                        <SelectTrigger class="h-11 border-zinc-200 bg-zinc-50/30">
+                        <SelectTrigger class="h-11 border-zinc-200 bg-zinc-50/30 " >
                             <SelectValue placeholder="Seleccionar un proveedor" />
                         </SelectTrigger>
                         <SelectContent class="bg-white border-zinc-200">
                             <SelectGroup>
+                                <SelectItem value="none" class="py-2.5 text-zinc-400 italic">
+                                    Ninguno / Precio Manual
+                                </SelectItem>
+                                <Separator v-if="ingredientSelected.assignments?.length" class="my-1" />
                                 <SelectItem
-                                    v-for="provider in ingredientSelected.providers"
-                                    :key="provider.id"
-                                    :value="String(provider.id)"
+                                    v-for="assignment in ingredientSelected.assignments"
+                                    :key="assignment.id"
+                                    :value="String(assignment.id)"
                                     class="py-2.5"
                                 >
-                                    <div class="flex flex-col gap-0.5">
-                                        <span class="font-medium">{{ provider.name }}</span>
-                                        <span class="text-[10px] text-zinc-400">{{ provider.cities?.[0]?.name || 'N/A' }}</span>
+                                    <div class="flex flex-col gap-0.5" v-if="assignment.provider">
+                                        <div class="flex items-center gap-1.5">
+                                            <span class="font-medium">{{ assignment.provider.name }}</span>
+                                            <Badge v-if="assignment.cost_price" variant="outline" class="text-[9px] py-0 px-1 bg-green-50 text-green-700 border-green-100">
+                                                S/. {{ assignment.cost_price }}
+                                            </Badge>
+                                        </div>
+                                        <div class="flex items-center gap-1 text-[10px] text-zinc-400" v-if="assignment.city">
+                                            <MapPin class="h-3 w-3" />
+                                            <span>{{ assignment.city.name }}</span>
+                                        </div>
                                     </div>
                                 </SelectItem>
                             </SelectGroup>
@@ -178,7 +197,7 @@ watch(props, (newValue) => {
                         <div class="space-y-1.5">
                             <Label class="text-[11px] font-bold text-zinc-500 uppercase">Cantidad</Label>
                             <Input 
-                                v-model="ingredientSelected.quantity" 
+                                v-model="ingredientSelected.input_quantity" 
                                 @input="updateCalcValues" 
                                 type="number" 
                                 step="0.01" 

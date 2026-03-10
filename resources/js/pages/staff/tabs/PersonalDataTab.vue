@@ -22,7 +22,7 @@ interface Emits {
     (e: 'select-cafe', cafe: any): void;
     (e: 'select-unit', unit: Unit): void;
     (e: 'select-role', role: Role): void;
-    (e: 'select-area', area: Area): void;
+    (e: 'select-area', areaId: number): void;
     (e: 'select-guard', guardId: string | number): void;
 }
 

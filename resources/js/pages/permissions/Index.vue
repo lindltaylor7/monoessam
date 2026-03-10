@@ -7,6 +7,7 @@ import PermissionModal from './PermissionModal.vue';
 import { Trash2 } from 'lucide-vue-next';
 import Button from '@/components/ui/button/Button.vue';
 import { router } from '@inertiajs/vue3';
+import { Head } from '@inertiajs/vue3';
 
 interface Props {
     users: User[];
@@ -24,6 +25,7 @@ const deletePermission = (id: number) => {
 </script>
 
 <template>
+    <Head title="Permisos" />
     <AppLayout title="Permisos">
         <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
             <div

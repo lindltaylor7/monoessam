@@ -9,21 +9,46 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Trash2, Plus, ArrowLeft, Shirt, Briefcase, Check, X, Coffee, Package } from 'lucide-vue-next';
 
+import { 
+    Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
+} from '@/components/ui/table';
+import { Label } from '@/components/ui/label';
+import { 
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
+
 const props = defineProps<{
     roles: Array<{ id: number, name: string }>;
-    clothes: Array<{ id: number, name: string, roles: Array<{ id: number, pivot: { cafe_id: number } }> }>;
-    cafes: Array<{ id: number, name: string }>;
+    clothes: Array<{ id: number, name: string, quantity: number, roles: Array<{ id: number, pivot: { cafe_id: number } }> }>;
+    cafes: Array<{ id: number, name: string, roles: Array<{ id: number }> }>;
 }>();
 
 const newClothName = ref('');
 const isCreating = ref(false);
 const searchQuery = ref('');
 const selectedCafeId = ref(props.cafes.length > 0 ? String(props.cafes[0].id) : '');
+const clothSearchQuery = ref('');
 
-// Filtrar roles según búsqueda
+// Filtrar prendas según búsqueda
+const filteredClothes = computed(() => {
+    if (!clothSearchQuery.value) return props.clothes;
+    return props.clothes.filter(cloth => 
+        cloth.name.toLowerCase().includes(clothSearchQuery.value.toLowerCase())
+    );
+});
+
+// Filtrar roles según el café seleccionado y la búsqueda
 const filteredRoles = computed(() => {
-    if (!searchQuery.value) return props.roles;
-    return props.roles.filter(role => 
+    const currentCafe = props.cafes.find(c => String(c.id) === selectedCafeId.value);
+    const cafeRoleIds = currentCafe?.roles?.map(r => r.id) || [];
+    
+    const roles = props.roles.filter(role => cafeRoleIds.includes(role.id));
+
+    if (!searchQuery.value) return roles;
+    return roles.filter(role => 
         role.name.toLowerCase().includes(searchQuery.value.toLowerCase())
     );
 });
@@ -48,6 +73,15 @@ const createCloth = () => {
     }, {
         onSuccess: () => newClothName.value = '',
         onFinish: () => isCreating.value = false
+    });
+};
+
+const updateQuantity = (clothId: number, qty: number) => {
+    if (qty < 0) return;
+    router.put(route('clothes.update-quantity', clothId), {
+        quantity: qty
+    }, {
+        preserveScroll: true
     });
 };
 
@@ -94,7 +128,7 @@ const stats = computed(() => {
 </script>
 
 <template>
-    <Head title="Gestión de Ropa por Rol" />
+    <Head title="Asignación de Prendas" />
 
     <AppLayout :breadcrumbs="[
         { title: 'Personal', href: route('staff.index') },
@@ -106,12 +140,14 @@ const stats = computed(() => {
             <!-- Header Section -->
             <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 flex-none">
                  <div class="min-w-0 flex-1">
-                    <h1 class="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2">
-                        <Briefcase class="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
-                        <span>Asignación de Prendas por Rol</span>
+                    <h1 class="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2 text-slate-900">
+                        <div class="p-2 bg-indigo-100 rounded-xl">
+                            <Briefcase class="h-6 w-6 text-indigo-600" />
+                        </div>
+                        <span>Matriz de Equipamiento por Cargo</span>
                     </h1>
                     <p class="text-muted-foreground text-xs sm:text-sm mt-1">
-                        Selecciona las prendas asignadas a cada rol/cargo
+                        Define qué EPPs y prendas corresponden a cada cargo según el café seleccionado
                     </p>
                  </div>
                   <div class="flex items-center gap-2">
@@ -171,182 +207,173 @@ const stats = computed(() => {
             </div>
 
             <!-- Action Section -->
-            <div class="bg-card text-card-foreground rounded-xl border shadow-sm p-4 bg-white flex flex-col sm:flex-row gap-4 items-center flex-none">
-                <div class="flex-1 w-full flex flex-col sm:flex-row gap-4">
-                    <div class="flex-1">
-                        <div class="relative max-w-md">
-                            <Coffee class="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                            <Select v-model="selectedCafeId">
-                                <SelectTrigger class="pl-9 w-full">
-                                    <SelectValue placeholder="Seleccionar Café" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem v-for="cafe in cafes" :key="cafe.id" :value="String(cafe.id)">
-                                        {{ cafe.name }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
+            <div class="bg-white rounded-2xl border shadow-sm p-4 flex flex-col md:flex-row gap-4 items-center flex-none">
+                <div class="flex-1 w-full flex flex-col md:flex-row gap-4 items-center">
+                    <div class="w-full md:w-64">
+                        <Label class="text-[10px] font-black uppercase text-slate-400 mb-1.5 block">Unidad / Café</Label>
+                        <Select v-model="selectedCafeId">
+                            <SelectTrigger class="h-10 bg-slate-50 border-none shadow-none focus:ring-1">
+                                <SelectValue placeholder="Seleccionar" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem v-for="cafe in cafes" :key="cafe.id" :value="String(cafe.id)">
+                                    {{ cafe.name }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
-                    <div class="flex-1">
-                        <div class="relative max-w-md">
-                            <Briefcase class="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+
+                    <div class="w-full md:w-64">
+                        <Label class="text-[10px] font-black uppercase text-slate-400 mb-1.5 block">Buscar Cargo</Label>
+                        <div class="relative">
+                            <Briefcase class="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                             <Input 
                                 v-model="searchQuery"
-                                placeholder="Buscar rol..." 
-                                class="pl-9 w-full"
+                                placeholder="Filtrar columnas..." 
+                                class="pl-9 h-10 bg-slate-50 border-none shadow-none focus:ring-1"
                             />
                         </div>
                     </div>
-                    <div class="flex-1 flex gap-4">
-                        <div class="relative flex-1 max-w-md">
-                            <Shirt class="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+
+                    <div class="w-full md:w-64">
+                        <Label class="text-[10px] font-black uppercase text-slate-400 mb-1.5 block">Buscar Prenda</Label>
+                        <div class="relative">
+                            <Shirt class="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                             <Input 
-                                v-model="newClothName" 
-                                placeholder="Nueva prenda..." 
-                                class="pl-9 w-full"
-                                @keyup.enter="createCloth" 
+                                v-model="clothSearchQuery"
+                                placeholder="Filtrar filas..." 
+                                class="pl-9 h-10 bg-slate-50 border-none shadow-none focus:ring-1"
                             />
                         </div>
-                        <Button @click="createCloth" :disabled="isCreating || !newClothName" class="sm:w-auto">
-                            <Plus v-if="!isCreating" class="h-4 w-4 mr-2" />
-                            {{ isCreating ? 'Guardando...' : 'Agregar' }}
-                        </Button>
+                    </div>
+
+                    <div class="flex-1 w-full pt-5">
+                        <div class="flex gap-2">
+                            <div class="relative flex-1">
+                                <Plus class="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                                <Input 
+                                    v-model="newClothName" 
+                                    placeholder="Nueva prenda..." 
+                                    class="pl-9 h-10 bg-slate-50 border-none shadow-none focus:ring-1"
+                                    @keyup.enter="createCloth" 
+                                />
+                            </div>
+                            <Button @click="createCloth" :disabled="isCreating || !newClothName" class="h-10 bg-indigo-600 hover:bg-indigo-700 shadow-md">
+                                {{ isCreating ? '...' : 'Agregar' }}
+                            </Button>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- All Clothes Tags Section -->
-            <Card class="flex-none">
-                <CardHeader class="pb-3">
-                    <CardTitle class="text-base flex items-center gap-2">
-                        <Shirt class="h-4 w-4" />
-                        Todas las Prendas Disponibles
-                    </CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <div class="flex flex-wrap gap-2">
-                        <Badge 
-                            v-for="cloth in clothes" 
-                            :key="cloth.id"
-                            variant="outline"
-                            class="cursor-pointer group relative px-3 py-1.5"
-                            @click="deleteCloth(cloth.id)"
-                        >
-                            <span>{{ cloth.name }}</span>
-                            <X class="h-3 w-3 ml-1 opacity-0 group-hover:opacity-100 transition-opacity text-red-500" />
-                            <span class="text-xs text-muted-foreground ml-1">
-                                ({{ cloth.roles.length }})
-                            </span>
-                        </Badge>
-                        <div v-if="clothes.length === 0" class="text-center py-4 text-muted-foreground">
-                            No hay prendas registradas. ¡Agrega la primera!
-                        </div>
+            <!-- Matrix Table Section -->
+            <Card class="flex-1 overflow-hidden flex flex-col rounded-2xl border-none shadow-xl bg-white">
+                <CardContent class="p-0 flex-1 overflow-hidden flex flex-col">
+                    <div class="flex-1 overflow-auto custom-scrollbar">
+                        <Table class="relative w-full border-collapse">
+                            <TableHeader class="sticky top-0 z-20 bg-slate-50/95 backdrop-blur-sm border-b shadow-sm">
+                                <TableRow class="hover:bg-transparent">
+                                    <TableHead class="w-[250px] bg-indigo-50/50 p-4 border-r sticky left-0 z-30">
+                                        <div class="flex flex-col gap-1">
+                                            <span class="text-[10px] font-black uppercase text-indigo-400 tracking-widest">Dimensión A</span>
+                                            <span class="text-sm font-black text-indigo-900 uppercase italic">Descripción del Item</span>
+                                        </div>
+                                    </TableHead>
+                                    <TableHead class="w-20 p-4 text-center border-r bg-indigo-50/30">
+                                        <span class="text-[10px] font-black uppercase text-indigo-400 tracking-widest block mb-1">Cant.</span>
+                                        <span class="text-xs font-bold text-indigo-800">Std.</span>
+                                    </TableHead>
+                                    
+                                    <!-- Rotated Headers for Roles -->
+                                    <TableHead 
+                                        v-for="role in filteredRoles" 
+                                        :key="role.id" 
+                                        class="p-0 border-r min-w-[50px] h-[160px] relative font-medium group transition-colors hover:bg-slate-100/50"
+                                    >
+                                        <div class="absolute inset-0 flex items-center justify-center">
+                                            <div class="transform -rotate-90 whitespace-nowrap text-[10px] font-black uppercase tracking-tighter text-slate-500 group-hover:text-indigo-600 transition-colors px-2 w-[140px] text-left">
+                                                {{ role.name }}
+                                            </div>
+                                        </div>
+                                    </TableHead>
+
+                                    <TableHead class="w-16 p-4 text-center"></TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                <TableRow v-for="cloth in filteredClothes" :key="cloth.id" class="group hover:bg-slate-50/50 transition-colors border-b">
+                                    <TableCell class="p-4 font-bold text-slate-700 sticky left-0 z-10 bg-white group-hover:bg-slate-50 border-r shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
+                                        <div class="flex items-center gap-3">
+                                            <div class="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-500 transition-colors">
+                                                <Shirt class="h-4 w-4" />
+                                            </div>
+                                            <span class="text-sm uppercase tracking-tight">{{ cloth.name }}</span>
+                                        </div>
+                                    </TableCell>
+                                    
+                                    <TableCell class="p-0 border-r">
+                                        <input 
+                                            type="number" 
+                                            v-model="cloth.quantity" 
+                                            @change="updateQuantity(cloth.id, Number(cloth.quantity))"
+                                            class="w-full h-full bg-transparent text-center text-xs font-bold text-slate-600 focus:outline-none focus:bg-indigo-50 focus:text-indigo-600 transition-colors"
+                                        />
+                                    </TableCell>
+
+                                    <!-- Matrix Intersection Points -->
+                                    <TableCell 
+                                        v-for="role in filteredRoles" 
+                                        :key="role.id" 
+                                        class="p-0 border-r text-center group/cell cursor-pointer relative"
+                                        @click="toggleRole(cloth.id, role.id, hasRole(cloth, role.id))"
+                                    >
+                                        <div 
+                                            class="absolute inset-0 transition-colors"
+                                            :class="hasRole(cloth, role.id) ? 'bg-indigo-500/5' : 'group-hover/cell:bg-slate-100/50'"
+                                        ></div>
+                                        <div class="relative py-3">
+                                            <div 
+                                                v-if="hasRole(cloth, role.id)"
+                                                class="mx-auto h-6 w-6 rounded-md bg-indigo-600 flex items-center justify-center transform scale-110 shadow-sm transition-transform group-hover/cell:scale-125"
+                                            >
+                                                <span class="text-[10px] font-black text-white">X</span>
+                                            </div>
+                                            <div 
+                                                v-else
+                                                class="mx-auto h-5 w-5 rounded-md border-2 border-slate-100 opacity-0 group-hover/cell:opacity-100 transition-opacity"
+                                            ></div>
+                                        </div>
+                                    </TableCell>
+
+                                    <TableCell class="p-4 text-center">
+                                        <TooltipProvider>
+                                            <Tooltip>
+                                                <TooltipTrigger as-child>
+                                                    <Button variant="ghost" size="sm" @click="deleteCloth(cloth.id)" class="text-slate-300 hover:text-rose-500 transition-colors h-8 w-8 p-0">
+                                                        <Trash2 class="h-4 w-4" />
+                                                    </Button>
+                                                </TooltipTrigger>
+                                                <TooltipContent><p>Eliminar prenda del catálogo</p></TooltipContent>
+                                            </Tooltip>
+                                        </TooltipProvider>
+                                    </TableCell>
+                                </TableRow>
+
+                                <TableRow v-if="filteredClothes.length === 0">
+                                    <TableCell :colspan="filteredRoles.length + 3" class="h-64 text-center">
+                                        <div class="flex flex-col items-center gap-3">
+                                            <div class="h-12 w-12 bg-slate-50 rounded-full flex items-center justify-center">
+                                                <Shirt class="h-6 w-6 text-slate-200" />
+                                            </div>
+                                            <p class="text-slate-400 font-medium italic">No se encontraron prendas con los filtros actuales.</p>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            </TableBody>
+                        </Table>
                     </div>
                 </CardContent>
             </Card>
-
-            <!-- Roles Cards Grid -->
-            <div class="flex-1 overflow-auto custom-scrollbar">
-                <div v-if="filteredRoles.length === 0" class="text-center py-12">
-                    <Briefcase class="h-12 w-12 mx-auto text-gray-300 mb-4" />
-                    <h3 class="text-lg font-medium text-gray-900 mb-2">No se encontraron roles</h3>
-                    <p class="text-gray-500">Intenta con otros términos de búsqueda</p>
-                </div>
-
-                <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
-                    <Card 
-                        v-for="role in filteredRoles" 
-                        :key="role.id"
-                        class="group hover:shadow-md transition-shadow"
-                        :class="{
-                            'border-blue-200 bg-blue-50/50': getClothesForRole(role.id).length > 0,
-                            'border-gray-200': getClothesForRole(role.id).length === 0
-                        }"
-                    >
-                        <CardHeader class="pb-3">
-                            <div class="flex justify-between items-start">
-                                <CardTitle class="text-base flex items-center gap-2">
-                                    <Briefcase class="h-4 w-4 text-primary" />
-                                    <span class="truncate" :title="role.name">{{ role.name }}</span>
-                                </CardTitle>
-                                <Badge 
-                                    variant="secondary"
-                                    class="flex-shrink-0 ml-2"
-                                    :class="{
-                                        'bg-blue-100 text-blue-800': getClothesForRole(role.id).length > 0,
-                                        'bg-gray-100 text-gray-600': getClothesForRole(role.id).length === 0
-                                    }"
-                                >
-                                    {{ getClothesForRole(role.id).length }}
-                                </Badge>
-                            </div>
-                        </CardHeader>
-                        
-                        <CardContent>
-                            <!-- Prendas asignadas a este rol -->
-                            <div class="mb-4">
-                                <p class="text-xs font-medium text-gray-500 mb-2">PRENDAS ASIGNADAS:</p>
-                                <div class="flex flex-wrap gap-2 min-h-[32px]">
-                                    <Badge 
-                                        v-for="cloth in getClothesForRole(role.id)" 
-                                        :key="cloth.id"
-                                        variant="default"
-                                        class="cursor-pointer group"
-                                        @click="toggleRole(cloth.id, role.id, true)"
-                                    >
-                                        <span>{{ cloth.name }}</span>
-                                        <X class="h-3 w-3 ml-1 group-hover:scale-110 transition-transform" />
-                                    </Badge>
-                                    <div 
-                                        v-if="getClothesForRole(role.id).length === 0"
-                                        class="text-xs text-gray-400 italic py-1"
-                                    >
-                                        Sin prendas asignadas
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Separador -->
-                            <div class="relative my-4">
-                                <div class="absolute inset-0 flex items-center">
-                                    <div class="w-full border-t border-gray-200"></div>
-                                </div>
-                                <div class="relative flex justify-center text-xs">
-                                    <span class="px-2 bg-white text-gray-500">ASIGNAR NUEVAS PRENDAS</span>
-                                </div>
-                            </div>
-
-                            <!-- Prendas no asignadas -->
-                            <div class="space-y-2">
-                                <div 
-                                    v-for="cloth in clothes.filter(c => !hasRole(c, role.id))" 
-                                    :key="cloth.id"
-                                    class="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer group/item"
-                                    @click="toggleRole(cloth.id, role.id, false)"
-                                >
-                                    <div class="flex items-center gap-2">
-                                        <div class="h-6 w-6 rounded-full border border-gray-200 flex items-center justify-center group-hover/item:border-blue-300">
-                                            <Plus class="h-3 w-3 text-gray-400 group-hover/item:text-blue-500" />
-                                        </div>
-                                        <span class="text-sm">{{ cloth.name }}</span>
-                                    </div>
-                                    <Badge variant="outline" class="text-xs">
-                                        {{ cloth.roles.length }} roles
-                                    </Badge>
-                                </div>
-                                
-                                <div 
-                                    v-if="clothes.filter(c => !hasRole(c, role.id)).length === 0"
-                                    class="text-center py-4 text-gray-400 text-sm"
-                                >
-                                    Todas las prendas están asignadas a este rol
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-                </div>
-            </div>
 
             <!-- Footer Info -->
             <div class="p-4 border-t bg-gray-50 text-sm text-muted-foreground flex flex-col sm:flex-row justify-between items-center gap-2 flex-none">

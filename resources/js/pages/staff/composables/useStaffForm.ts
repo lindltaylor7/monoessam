@@ -52,23 +52,7 @@ export function useStaffForm() {
     const errorsSend = ref<any>([]);
     const showErrors = ref(false);
 
-    //const prendasFijas = ref<Array<{ label: string; talla: string }>>([]);
-
-    const prendasFijas = ref([
-        { label: 'Polo', talla: '' },
-        { label: 'Cafarena', talla: '' },
-        { label: 'Overall', talla: '' },
-        { label: 'Casaca', talla: '' },
-        { label: 'Chaleco', talla: '' },
-        { label: 'Chaqueta Blanca', talla: '' },
-        { label: 'Pantalón', talla: '' },
-        { label: 'Camisa/Blusa', talla: '' },
-        { label: 'Guardapolvo', talla: '' },
-        { label: 'Guantes', talla: '' },
-        { label: 'Botas Blancas', talla: '' },
-        { label: 'Zapatos', talla: '' },
-        { label: 'Lentes', talla: '' },
-    ]);
+    const prendasFijas = ref<Array<{ label: string; talla: string }>>([]);
 
     const cafesUnitSelected = ref<any[]>([]);
 

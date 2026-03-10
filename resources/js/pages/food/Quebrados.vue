@@ -6,7 +6,7 @@ import Button from '@/components/ui/button/Button.vue';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Trash, Search, Copy } from 'lucide-vue-next';
+import { Plus, Trash, Search, Copy, FileUp } from 'lucide-vue-next';
 import CalcPopover from './CalcPopover.vue';
 import Swal from 'sweetalert2';
 import axios from 'axios';
@@ -28,6 +28,36 @@ const totalWasteWeight = ref(0.0);
 const totalCalories = ref(0.0);
 const totalCost = ref(0.0);
 const totalfinalProduct = ref(0.0);
+const fileInput = ref<HTMLInputElement | null>(null);
+
+const handleFileUpload = (event: Event) => {
+    const target = event.target as HTMLInputElement;
+    const file = target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('excel_file', file);
+
+    router.post(route('dishes.import'), formData as any, {
+        onSuccess: () => {
+            Swal.fire({
+                title: '¡Importación Exitosa!',
+                text: 'Los platos se han importado correctamente.',
+                icon: 'success',
+                confirmButtonColor: '#3085d6',
+            });
+            if (fileInput.value) fileInput.value.value = '';
+        },
+        onError: () => {
+            Swal.fire({
+                title: 'Error',
+                text: 'Hubo un problema al importar el archivo.',
+                icon: 'error',
+                confirmButtonColor: '#d33',
+            });
+        }
+    });
+};
 
 const form = useForm({
     id: null as number | null,
@@ -240,8 +270,18 @@ const recalculateTotals = () => {
 
 const searchIngredients = (e: Event) => {
     const value = (e.target as HTMLInputElement).value;
-    if (value == '') ingredientsFounded.value = [];
-    else ingredientsFounded.value = props.ingredients?.filter((ingredient) => ingredient.name.toLowerCase().includes(value.toLowerCase())).slice(0, 10);
+    if (!value) {
+        ingredientsFounded.value = [];
+        return;
+    }
+
+    axios.get(route('dishes.search-ingredients', value))
+        .then((result) => {
+            ingredientsFounded.value = result.data;
+        })
+        .catch((err) => {
+            console.error(err);
+        });
 };
 
 const selectIngredient = (ingredient: Ingredient) => {
@@ -344,7 +384,18 @@ const submit = () => {
                         class="pl-9 w-full" 
                     />
                 </div>
-                <Button @click="createDish" size="icon" class="shrink-0 bg-primary hover:bg-primary/90">
+                <input 
+                    type="file" 
+                    ref="fileInput" 
+                    class="hidden" 
+                    accept=".xlsx,.xls,.csv"
+                    @change="handleFileUpload"
+                />
+                <Button @click="fileInput?.click()" variant="outline" class="flex items-center gap-2 border-zinc-200" title="Importar platos e ingredientes">
+                    <FileUp class="h-4 w-4 text-zinc-500" />
+                    <span class="hidden lg:inline text-xs">Importar</span>
+                </Button>
+                <Button @click="createDish" size="icon" class="shrink-0 bg-primary hover:bg-primary/90" title="Nuevo plato">
                     <Plus class="h-4 w-4" />
                 </Button>
             </div>

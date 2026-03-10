@@ -8,7 +8,7 @@ import FamilyLoadSection from '../sections/FamilyLoadSection.vue';
 interface Props {
     form: any;
     roles: any[];
-    staff: Staff;
+    staff?: Staff;
 }
 
 interface Emits {
@@ -125,6 +125,6 @@ const emit = defineEmits<Emits>();
         </div>
 
         <!-- Carga familiar -->
-        <FamilyLoadSection :form="form" @upload-file="emit('upload-file', $event, $event[1], $event[2])" />
+        <FamilyLoadSection :form="form" @upload-file="(e: any, label: any, files: any) => emit('upload-file', e, label, files)" />
     </div>
 </template>
