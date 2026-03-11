@@ -185,46 +185,70 @@ class ClothController extends Controller
         $staff = $entry->staff;
         $cafeId = $staff->cafe_id;
 
-        // If color changed or status changed to Entregado
-        if ($newStatus === 'Entregado' && ($oldStatus !== 'Entregado' || $newColorId != $oldColorId)) {
-            // Subtract from new color inventory
-            if ($newColorId) {
-                $inventory = ClothInventory::firstOrCreate([
+        if ($entry->cloth_id) {
+            // Determine headquarter_id from staffable if it's an Area
+            $headquarterId = null;
+            if ($staff->staffable && get_class($staff->staffable) === \App\Models\Area::class) {
+                $headquarterId = $staff->staffable->headquarter_id;
+            }
+
+            // If color changed or status changed to Entregado
+            if ($newStatus === 'Entregado' && ($oldStatus !== 'Entregado' || $newColorId != $oldColorId)) {
+                // Subtract from new color inventory
+                $inventory = \App\Models\ClothInventory::firstOrCreate([
                     'cloth_id' => $entry->cloth_id,
                     'color_id' => $newColorId,
                     'cafe_id' => $cafeId
                 ]);
                 $inventory->quantity -= 1;
                 $inventory->save();
-            }
 
-            // Add back to old color inventory if it was already Entregado
-            if ($oldStatus === 'Entregado' && $oldColorId) {
-                $oldInventory = ClothInventory::firstOrCreate([
-                    'cloth_id' => $entry->cloth_id,
-                    'color_id' => $oldColorId,
-                    'cafe_id' => $cafeId
-                ]);
-                $oldInventory->quantity += 1;
-                $oldInventory->save();
-            }
-        } elseif ($oldStatus === 'Entregado' && $newStatus !== 'Entregado') {
-            // If it was delivered and now it's not, return to inventory
-            if ($oldColorId) {
-                $inventory = ClothInventory::firstOrCreate([
+                // Subtract from global polymorphic stock ONLY if status just changed to Entregado
+                if ($oldStatus !== 'Entregado') {
+                    $stock = \App\Models\InventoryStock::firstOrCreate([
+                        'stockable_id' => $entry->cloth_id,
+                        'stockable_type' => \App\Models\Cloth::class,
+                        'cafe_id' => $cafeId,
+                        'headquarter_id' => $headquarterId,
+                    ]);
+                    $stock->quantity -= 1;
+                    $stock->save();
+                }
+
+                // Add back to old color inventory if it was already Entregado and color changed
+                if ($oldStatus === 'Entregado' && $oldColorId != $newColorId) {
+                    $oldInventory = \App\Models\ClothInventory::firstOrCreate([
+                        'cloth_id' => $entry->cloth_id,
+                        'color_id' => $oldColorId,
+                        'cafe_id' => $cafeId
+                    ]);
+                    $oldInventory->quantity += 1;
+                    $oldInventory->save();
+                }
+            } elseif ($oldStatus === 'Entregado' && $newStatus !== 'Entregado') {
+                // If it was delivered and now it's not (e.g. "Devuelto"), return to inventory
+                $inventory = \App\Models\ClothInventory::firstOrCreate([
                     'cloth_id' => $entry->cloth_id,
                     'color_id' => $oldColorId,
                     'cafe_id' => $cafeId
                 ]);
                 $inventory->quantity += 1;
                 $inventory->save();
+
+                // Add back to global polymorphic stock
+                $stock = \App\Models\InventoryStock::firstOrCreate([
+                    'stockable_id' => $entry->cloth_id,
+                    'stockable_type' => \App\Models\Cloth::class,
+                    'cafe_id' => $cafeId,
+                    'headquarter_id' => $headquarterId,
+                ]);
+                $stock->quantity += 1;
+                $stock->save();
             }
         }
 
         $entry->status = $newStatus;
-        if ($newColorId) {
-            $entry->color_id = $newColorId;
-        }
+        $entry->color_id = $newColorId;
         $entry->save();
 
         return back();

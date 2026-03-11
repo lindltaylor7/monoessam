@@ -88,15 +88,53 @@ const onItemSelect = (uniqueId: string, index: number) => {
         if (selected.type === 'cloth') {
             item.cloth_id = String(selected.id);
             item.epp_id = '';
-            item.unit_price = 0; // Clothes don't have cost_price in this model yet
+            item.unit_price = 0; 
         } else {
             item.epp_id = String(selected.id);
             item.cloth_id = '';
-            item.unit_price = Number(selected.cost_price || 0);
+            
+            // Try to find price for this provider
+            const providerId = invoiceForm.value.cloth_provider_id;
+            // Note: We don't have city context here directly in the form header yet, 
+            // but we can try to match if multiple prices exist or use a default.
+            // For now, if we have the city in the item, we use it.
+            const cityId = item.size ? getCityIdFromSize(selected, item.size) : null;
+            
+            const priceEntry = selected.city_providers?.find((cp: any) => 
+                String(cp.cloth_provider_id) === String(providerId) && 
+                (!cityId || String(cp.city_id) === String(cityId))
+            );
+            
+            item.unit_price = Number(priceEntry?.cost_price || 0);
         }
         item.size = ''; // Reset size on item change
     }
 };
+
+const getCityIdFromSize = (epp: any, sizeName: string) => {
+    const size = epp.sizes?.find((s: any) => s.size === sizeName);
+    return size?.city_id;
+};
+
+// Re-calculate price when size (and thus city) changes for EPP
+watch(() => invoiceForm.value.items, (newItems) => {
+    newItems.forEach((item, index) => {
+        if (item.epp_id && item.size) {
+            const epp = props.epps.find(e => String(e.id) === String(item.epp_id));
+            if (epp) {
+                const cityId = getCityIdFromSize(epp, item.size);
+                const providerId = invoiceForm.value.cloth_provider_id;
+                const priceEntry = epp.city_providers?.find((cp: any) => 
+                    String(cp.cloth_provider_id) === String(providerId) && 
+                    String(cp.city_id) === String(cityId)
+                );
+                if (priceEntry) {
+                    item.unit_price = Number(priceEntry.cost_price);
+                }
+            }
+        }
+    });
+}, { deep: true });
 
 const getItemUniqueId = (item: any) => {
     if (item.cloth_id) return `cloth_${item.cloth_id}`;
@@ -223,14 +261,44 @@ const deleteProvider = (id: number) => {
 
 // --- EPP Logic ---
 const isEppModalOpen = ref(false);
-const eppForm = ref({ name: '', cost_price: '' });
+const eppForm = ref({ name: '' });
 
 const handleEppSubmit = () => {
     router.post(route('inventory.epps.store'), eppForm.value, {
         onSuccess: () => {
             isEppModalOpen.value = false;
             eppForm.value.name = '';
-            eppForm.value.cost_price = '';
+        }
+    });
+};
+
+// --- EPP Price Logic ---
+const isPriceModalOpen = ref(false);
+const selectedEppForPrice = ref<any>(null);
+const priceForm = ref({
+    epp_id: '',
+    cloth_provider_id: '',
+    city_id: '',
+    cost_price: ''
+});
+
+const openPriceModal = (epp: any) => {
+    selectedEppForPrice.value = epp;
+    priceForm.value = {
+        epp_id: String(epp.id),
+        cloth_provider_id: '',
+        city_id: '',
+        cost_price: ''
+    };
+    isPriceModalOpen.value = true;
+};
+
+const handlePriceSubmit = () => {
+    router.post(route('inventory.epps.assign-price'), priceForm.value, {
+        onSuccess: () => {
+            priceForm.value.cloth_provider_id = '';
+            priceForm.value.city_id = '';
+            priceForm.value.cost_price = '';
         }
     });
 };
@@ -243,7 +311,14 @@ const selectedClothIds = ref<number[]>([]);
 
 const openAssignModal = (provider: any) => {
     assigningProvider.value = provider;
-    selectedEppIds.value = provider.epps.map((e: any) => e.id);
+    
+    // Get unique IDs from both the pivot relationship and the city_providers price table
+    const pivotIds = provider.epps.map((e: any) => e.id);
+    const ternaryIds = props.epps
+        .filter(epp => epp.city_providers?.some((cp: any) => String(cp.cloth_provider_id) === String(provider.id)))
+        .map(epp => epp.id);
+
+    selectedEppIds.value = [...new Set([...pivotIds, ...ternaryIds])];
     selectedClothIds.value = provider.clothes?.map((c: any) => c.id) || [];
     isAssignEppModalOpen.value = true;
 };
@@ -323,6 +398,46 @@ const deleteSize = (id: number) => {
     if (confirm('¿Eliminar esta talla?')) {
         router.delete(route('inventory.epp-sizes.destroy', id));
     }
+};
+
+// --- EPP Inline Editing ---
+const editingPriceId = ref<number | null>(null);
+const tempPriceValue = ref('');
+
+const startEditingPrice = (cp: any) => {
+    editingPriceId.value = cp.id;
+    tempPriceValue.value = String(cp.cost_price);
+};
+
+const saveInlinePrice = (cp: any) => {
+    if (editingPriceId.value === null) return;
+    
+    const newPrice = parseFloat(tempPriceValue.value);
+    if (isNaN(newPrice) || newPrice < 0) {
+        editingPriceId.value = null;
+        return;
+    }
+
+    // Only update if value changed
+    if (newPrice !== parseFloat(cp.cost_price)) {
+        router.post(route('inventory.epps.assign-price'), {
+            epp_id: cp.epp_id,
+            cloth_provider_id: cp.cloth_provider_id,
+            city_id: cp.city_id,
+            cost_price: newPrice
+        }, {
+            preserveScroll: true,
+            onSuccess: () => {
+                editingPriceId.value = null;
+            }
+        });
+    } else {
+        editingPriceId.value = null;
+    }
+};
+
+const vFocus = {
+  mounted: (el: HTMLElement) => el.focus()
 };
 
 </script>
@@ -662,9 +777,20 @@ const deleteSize = (id: number) => {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    <TableRow v-for="epp in epps" :key="epp.id" class="group transition-colors">
+                                    <TableRow v-for="epp in epps" :key="epp.id" :class="'group transition-colors ' + (epp.id % 2 === 0 ? '' : 'bg-slate-50/30')">
                                         <TableCell class="font-bold text-slate-900">{{ epp.name }}</TableCell>
-                                        <TableCell class="font-medium text-slate-600">S/.{{ Number(epp.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</TableCell>
+                                        <TableCell>
+                                            <div class="flex flex-col gap-1.5 max-w-[300px]">
+                                                <div v-for="cp in epp.city_providers" :key="cp.id" class="flex items-center justify-between p-1.5 rounded-lg border border-indigo-100 bg-indigo-50/20 text-[10px]">
+                                                    <span class="font-bold text-slate-700 truncate mr-2" :title="cp.provider?.name">{{ cp.provider?.name }}</span>
+                                                    <div class="flex items-center gap-2 shrink-0">
+                                                        <Badge variant="outline" class="h-4 border-slate-200 text-slate-500 whitespace-nowrap">{{ cp.city?.name }}</Badge>
+                                                        <span class="font-black text-indigo-600 font-mono">S/.{{ Number(cp.cost_price).toFixed(2) }}</span>
+                                                    </div>
+                                                </div>
+                                                <span v-if="!epp.city_providers || epp.city_providers.length === 0" class="text-xs text-slate-400 italic">Precios no asignados</span>
+                                            </div>
+                                        </TableCell>
                                         <TableCell>
                                             <div class="flex flex-wrap gap-2">
                                                 <Badge v-for="sz in epp.sizes" :key="sz.id" variant="outline" class="gap-1 pr-1 border-slate-200 bg-slate-50">
@@ -678,9 +804,14 @@ const deleteSize = (id: number) => {
                                             </div>
                                         </TableCell>
                                         <TableCell class="text-right">
-                                            <Button @click="openSizeModal(epp)" variant="ghost" size="sm" class="h-8 gap-2 text-indigo-600 hover:bg-indigo-50">
-                                                <Plus class="h-4 w-4" /> <span class="text-xs font-bold uppercase">Talla</span>
-                                            </Button>
+                                            <div class="flex justify-end gap-1">
+                                                <Button @click="openPriceModal(epp)" variant="ghost" size="sm" class="h-8 gap-2 text-indigo-600 hover:bg-indigo-50">
+                                                    <Truck class="h-4 w-4" /> <span class="text-xs font-bold uppercase">Precio</span>
+                                                </Button>
+                                                <Button @click="openSizeModal(epp)" variant="ghost" size="sm" class="h-8 gap-2 text-indigo-600 hover:bg-indigo-50">
+                                                    <Plus class="h-4 w-4" /> <span class="text-xs font-bold uppercase">Talla</span>
+                                                </Button>
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                     <TableRow v-if="epps.length === 0">
@@ -737,13 +868,6 @@ const deleteSize = (id: number) => {
                             <Label>Nombre del EPP</Label>
                             <Input v-model="eppForm.name" placeholder="Ej: Guantes de Nitrilo" />
                         </div>
-                        <div class="grid gap-2">
-                            <Label>Precio de Costo (Opcional)</Label>
-                            <div class="relative">
-                                <span class="absolute left-3 top-2.5 text-slate-400 text-sm">S/.</span>
-                                <Input v-model="eppForm.cost_price" type="number" step="0.01" placeholder="0.00" class="pl-10" />
-                            </div>
-                        </div>
                     </div>
                     <DialogFooter>
                         <Button variant="ghost" @click="isEppModalOpen = false">Cancelar</Button>
@@ -787,6 +911,30 @@ const deleteSize = (id: number) => {
                                         class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
                                     />
                                     <span class="text-sm font-semibold text-slate-700">{{ epp.name }}</span>
+                                    
+                                    <!-- Prices for this specific provider -->
+                                    <div v-if="assigningProvider && epp.city_providers?.some(cp => String(cp.cloth_provider_id) === String(assigningProvider.id))" 
+                                         class="ml-auto flex flex-col items-end gap-1">
+                                        <div v-for="cp in epp.city_providers.filter((cp: any) => String(cp.cloth_provider_id) === String(assigningProvider.id))" 
+                                             :key="cp.id"
+                                             class="text-[10px] font-black text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-200 flex items-center gap-1.5"
+                                             @dblclick.stop="startEditingPrice(cp)"
+                                        >
+                                            <span class="text-[8px] text-slate-400 uppercase tracking-tighter">{{ cp.city?.name }}</span>
+                                            
+                                            <template v-if="editingPriceId === cp.id">
+                                                <input 
+                                                    v-model="tempPriceValue"
+                                                    class="w-16 h-4 px-1 text-[10px] border border-indigo-500 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                                                    @blur="saveInlinePrice(cp)"
+                                                    @keyup.enter="saveInlinePrice(cp)"
+                                                    @click.stop
+                                                    v-focus
+                                                />
+                                            </template>
+                                            <span v-else>S/.{{ Number(cp.cost_price).toFixed(2) }}</span>
+                                        </div>
+                                    </div>
                                 </label>
                             </div>
                         </div>
@@ -969,6 +1117,49 @@ const deleteSize = (id: number) => {
                     <DialogFooter class="p-4 border-t bg-slate-50/50">
                         <Button variant="outline" @click="isViewInvoiceModalOpen = false" class="rounded-xl border-slate-200 font-bold uppercase text-[10px] tracking-widest h-10">
                             Cerrar Detalle
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <!-- EPP Price Assignment Modal -->
+            <Dialog v-model:open="isPriceModalOpen">
+                <DialogContent class="sm:max-w-[400px]">
+                    <DialogHeader>
+                        <DialogTitle>Asignar Precio - {{ selectedEppForPrice?.name }}</DialogTitle>
+                        <DialogDescription>Defina el costo de este EPP para un proveedor y ciudad específicos.</DialogDescription>
+                    </DialogHeader>
+                    <div class="grid gap-4 py-4">
+                        <div class="grid gap-2">
+                            <Label>Proveedor</Label>
+                            <Select v-model="priceForm.cloth_provider_id">
+                                <SelectTrigger><SelectValue placeholder="Seleccionar proveedor" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem v-for="prov in clothProviders" :key="prov.id" :value="String(prov.id)">{{ prov.name }}</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div class="grid gap-2">
+                            <Label>Ciudad</Label>
+                            <Select v-model="priceForm.city_id">
+                                <SelectTrigger><SelectValue placeholder="Seleccionar ciudad" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem v-for="city in cities" :key="city.id" :value="String(city.id)">{{ city.name }}</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div class="grid gap-2">
+                            <Label>Precio de Costo</Label>
+                            <div class="relative">
+                                <span class="absolute left-3 top-2.5 text-slate-400 text-sm">S/.</span>
+                                <Input v-model="priceForm.cost_price" type="number" step="0.01" placeholder="0.00" class="pl-10" />
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" @click="isPriceModalOpen = false">Cerrar</Button>
+                        <Button @click="handlePriceSubmit" :disabled="!priceForm.cloth_provider_id || !priceForm.city_id || !priceForm.cost_price" class="bg-indigo-600 text-white font-bold">
+                            Asignar Precio
                         </Button>
                     </DialogFooter>
                 </DialogContent>

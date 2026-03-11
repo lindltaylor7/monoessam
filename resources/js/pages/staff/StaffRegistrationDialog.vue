@@ -83,6 +83,7 @@ const updateAvailableClothes = (initialStaffClothes?: any[]) => {
         }
 
         return {
+            id: cloth.id,
             label: cloth.name,
             talla: talla
         };

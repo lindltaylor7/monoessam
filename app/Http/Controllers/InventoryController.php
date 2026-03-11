@@ -29,7 +29,7 @@ class InventoryController extends Controller
     public function index()
     {
         $colors = Color::all();
-        $cafes = Cafe::with('unit')->get();
+        $cafes = Cafe::with(['unit', 'unit.mine'])->get();
         $headquarters = Headquarter::with('business')->get();
         $businesses = Business::all();
         $providers = Provider::all();
@@ -299,7 +299,7 @@ class InventoryController extends Controller
             'cafes' => Cafe::with('unit')->get(),
             'clothes' => Cloth::all(),
             'colors' => Color::all(),
-            'epps' => Epp::with('sizes.city')->get(),
+            'epps' => Epp::with(['sizes.city', 'cityProviders.city', 'cityProviders.provider'])->get(),
             'cities' => City::all(),
         ]);
     }
@@ -344,12 +344,34 @@ class InventoryController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'cost_price' => 'nullable|numeric|min:0',
         ]);
 
         Epp::create($validated);
 
         return back()->with('success', 'EPP registrado correctamente');
+    }
+
+    public function assignEppPrice(Request $request)
+    {
+        $validated = $request->validate([
+            'epp_id' => 'required|exists:epps,id',
+            'cloth_provider_id' => 'required|exists:cloth_providers,id',
+            'city_id' => 'required|exists:cities,id',
+            'cost_price' => 'required|numeric|min:0',
+        ]);
+
+        \App\Models\Epp_city_provider::updateOrCreate(
+            [
+                'epp_id' => $validated['epp_id'],
+                'cloth_provider_id' => $validated['cloth_provider_id'],
+                'city_id' => $validated['city_id'],
+            ],
+            [
+                'cost_price' => $validated['cost_price'],
+            ]
+        );
+
+        return back()->with('success', 'Precio de EPP asignado correctamente');
     }
 
     public function syncProviderEpps(Request $request, $id)

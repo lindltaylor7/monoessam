@@ -47,7 +47,7 @@ import { Label } from '@/components/ui/label';
 
 const props = defineProps<{
     colors: Array<{ id: number, name: string, hex_code?: string }>;
-    cafes: Array<{ id: number, name: string, unit: { name: string } }>;
+    cafes: Array<{ id: number, name: string, unit: { name: string, mine:{ name:string } } }>;
     headquarters: Array<{ id: number, name: string, business_id: number, business: { id: number, name: string } }>;
     stocks: Array<{
         id: number;
@@ -646,7 +646,7 @@ const getItemIcon = (type: string) => {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">Todas las Sedes</SelectItem>
-                                    <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">{{ hq.name }}</SelectItem>
+                                    <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">{{ hq.name }} - {{ hq.business.name }}</SelectItem>
                                 </SelectContent>
                             </Select>
 
@@ -656,7 +656,7 @@ const getItemIcon = (type: string) => {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">Todos los Cafés</SelectItem>
-                                    <SelectItem v-for="cafe in cafes" :key="cafe.id" :value="String(cafe.id)">{{ cafe.name }}</SelectItem>
+                                    <SelectItem v-for="cafe in cafes" :key="cafe.id" :value="String(cafe.id)">{{ cafe.name }} - {{ cafe.unit.name }} - {{ cafe.unit.mine.name }}</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>

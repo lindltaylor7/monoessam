@@ -291,6 +291,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // EPPs
         Route::post('/epps', [InventoryController::class, 'storeEpp'])->name('epps.store');
+        Route::post('/epps/assign-price', [InventoryController::class, 'assignEppPrice'])->name('epps.assign-price');
         Route::post('/providers/{id}/epps', [InventoryController::class, 'syncProviderEpps'])->name('providers.epps.sync');
 
         // EPP Sizes

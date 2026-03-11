@@ -223,7 +223,8 @@ class StaffController extends Controller
                 $staff_clothes = Staff_clothes::create([
                     'staff_id' => $staff->id,
                     'clothe_name' => $clothe['label'],
-                    'clothing_size' => $clothe['talla']
+                    'clothing_size' => $clothe['talla'],
+                    'cloth_id' => isset($clothe['id']) ? $clothe['id'] : null,
                 ]);
             }
         }
@@ -356,7 +357,8 @@ class StaffController extends Controller
                 $staff_clothes = Staff_clothes::create([
                     'staff_id' => $staff->id,
                     'clothe_name' => $clothe['label'],
-                    'clothing_size' => $clothe['talla']
+                    'clothing_size' => $clothe['talla'],
+                    'cloth_id' => isset($clothe['id']) ? $clothe['id'] : null,
                 ]);
             }
         }
