@@ -168,6 +168,18 @@ const removeInvoiceItem = (index: number) => {
     }
 };
 
+const subtotal = computed(() => {
+    return invoiceForm.value.items.reduce((acc, item) => acc + (item.quantity * item.unit_price), 0);
+});
+
+const igv = computed(() => {
+    return subtotal.value * 0.18;
+});
+
+const totalAmount = computed(() => {
+    return subtotal.value + igv.value;
+});
+
 const handleInvoiceImageUpload = (e: Event) => {
     const target = e.target as HTMLInputElement;
     invoiceForm.value.invoice_image = target.files?.[0] || null;
@@ -635,11 +647,34 @@ const vFocus = {
                                                     </td>
                                                 </tr>
                                             </tbody>
-                                            <tfoot class="bg-indigo-50/30 border-t">
+                                            <tfoot class="bg-slate-50 border-t border-slate-200">
                                                 <tr>
-                                                    <td colspan="4" class="px-4 py-3 text-right font-black uppercase text-slate-500 text-[10px]">Importe Total</td>
-                                                    <td class="px-4 py-3 text-lg font-black text-indigo-700">
-                                                        S/.{{ invoiceForm.items.reduce((acc, item) => acc + (item.quantity * item.unit_price), 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                    <td colspan="4" rowspan="3" class="px-4 py-3 align-top">
+                                                        <div class="p-3 bg-white rounded-xl border border-dashed border-slate-200 text-[10px] text-slate-400">
+                                                            <p class="font-bold uppercase tracking-widest mb-1">Notas de Cálculo:</p>
+                                                            <p>• Los precios unitarios no incluyen IGV.</p>
+                                                            <p>• El sistema calcula automáticamente el 18% de ley.</p>
+                                                        </div>
+                                                    </td>
+                                                    <td class="px-4 py-2 text-right font-bold text-slate-500 text-[11px] uppercase tracking-wider">Subtotal</td>
+                                                    <td class="px-4 py-2 text-right font-mono font-bold text-slate-700">
+                                                        S/.{{ subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                    </td>
+                                                    <td></td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="px-4 py-2 text-right font-bold text-slate-500 text-[11px] uppercase tracking-wider">IGV (18%)</td>
+                                                    <td class="px-4 py-2 text-right font-mono font-bold text-slate-600">
+                                                        S/.{{ igv.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                    </td>
+                                                    <td></td>
+                                                </tr>
+                                                <tr class="bg-indigo-50/50">
+                                                    <td class="px-4 py-3 text-right font-black text-indigo-900 text-[12px] uppercase tracking-widest">Total Factura</td>
+                                                    <td class="px-4 py-3 text-right">
+                                                        <span class="text-xl font-black text-indigo-700 font-mono">
+                                                            S/.{{ totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                        </span>
                                                     </td>
                                                     <td></td>
                                                 </tr>

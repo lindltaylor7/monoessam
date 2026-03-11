@@ -206,9 +206,10 @@ class InventoryController extends Controller
         }
 
         DB::transaction(function () use ($validated, $invoiceImagePath) {
-            $totalAmount = collect($validated['items'])->sum(function ($item) {
+            $subtotal = collect($validated['items'])->sum(function ($item) {
                 return $item['quantity'] * $item['unit_price'];
             });
+            $totalAmount = $subtotal * 1.18;
 
             $invoice = ClothInvoice::create([
                 'business_id' => $validated['business_id'],
