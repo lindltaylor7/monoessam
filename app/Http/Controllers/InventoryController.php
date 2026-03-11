@@ -188,7 +188,7 @@ class InventoryController extends Controller
             'invoice_number' => 'nullable|string',
             'date' => 'required|date',
             'notes' => 'nullable|string',
-            'cafe_id' => 'required|exists:cafes,id',
+            'cafe_id' => 'nullable|exists:cafes,id',
             'items' => 'required|array|min:1',
             'items.*.cloth_id' => 'nullable|exists:cloths,id',
             'items.*.epp_id' => 'nullable|exists:epps,id',
@@ -236,20 +236,22 @@ class InventoryController extends Controller
 
                 if ($itemData['cloth_id']) {
                     // Update ClothInventory
-                    $inventory = ClothInventory::firstOrCreate([
-                        'cloth_id' => $itemData['cloth_id'],
-                        'color_id' => $itemData['color_id'],
-                        'cafe_id' => $validated['cafe_id']
-                    ]);
-                    $inventory->quantity += $itemData['quantity'];
-                    $inventory->save();
+                    if ($validated['cafe_id']) {
+                        $inventory = ClothInventory::firstOrCreate([
+                            'cloth_id' => $itemData['cloth_id'],
+                            'color_id' => $itemData['color_id'],
+                            'cafe_id' => $validated['cafe_id']
+                        ]);
+                        $inventory->quantity += $itemData['quantity'];
+                        $inventory->save();
+                    }
 
                     // Update polymorphic InventoryStock
                     $stock = InventoryStock::firstOrNew([
                         'stockable_id' => $itemData['cloth_id'],
                         'stockable_type' => Cloth::class,
-                        'cafe_id' => $validated['cafe_id'],
-                        'headquarter_id' => $validated['headquarter_id'],
+                        'cafe_id' => $validated['cafe_id'] ?? null,
+                        'headquarter_id' => $validated['headquarter_id'] ?? null,
                     ]);
                     $stock->quantity += $itemData['quantity'];
                     $stock->save();
@@ -258,8 +260,8 @@ class InventoryController extends Controller
                     $stock = InventoryStock::firstOrNew([
                         'stockable_id' => $itemData['epp_id'],
                         'stockable_type' => Epp::class,
-                        'cafe_id' => $validated['cafe_id'],
-                        'headquarter_id' => $validated['headquarter_id'],
+                        'cafe_id' => $validated['cafe_id'] ?? null,
+                        'headquarter_id' => $validated['headquarter_id'] ?? null,
                     ]);
                     $stock->quantity += $itemData['quantity'];
                     $stock->save();

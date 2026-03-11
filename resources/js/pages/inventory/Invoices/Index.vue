@@ -43,7 +43,6 @@ const invoiceForm = ref({
     cloth_provider_id: '',
     invoice_number: '',
     date: new Date().toISOString().split('T')[0],
-    cafe_id: '',
     notes: '',
     invoice_image: null as File | null,
     items: [
@@ -152,6 +151,12 @@ const getSizesForItem = (uniqueId: string) => {
     return []; // Cloth models don't have sizes relation in migration yet
 };
 
+const getAvailablePrices = (eppId: string | number, providerId: string | number) => {
+    const epp = props.epps.find(e => String(e.id) === String(eppId));
+    if (!epp || !epp.city_providers) return [];
+    return epp.city_providers.filter((cp: any) => String(cp.cloth_provider_id) === String(providerId));
+};
+
 
 const addInvoiceItem = () => {
     invoiceForm.value.items.push({ cloth_id: '', epp_id: '', color_id: '', size: '', quantity: 1, unit_price: 0 });
@@ -171,7 +176,6 @@ const handleInvoiceImageUpload = (e: Event) => {
 const isInvoiceSubmitDisabled = computed(() => {
     return !invoiceForm.value.business_id || 
            !invoiceForm.value.cloth_provider_id || 
-           !invoiceForm.value.cafe_id || 
            (filteredHeadquarters.value.length > 0 && !invoiceForm.value.headquarter_id) ||
            invoiceForm.value.items.length === 0 || 
            invoiceForm.value.items.some(i => (!i.cloth_id && !i.epp_id) || i.quantity <= 0);
@@ -210,7 +214,6 @@ const resetInvoiceForm = () => {
         cloth_provider_id: '',
         invoice_number: '',
         date: new Date().toISOString().split('T')[0],
-        cafe_id: '',
         notes: '',
         invoice_image: null as File | null,
         items: [{ cloth_id: '', epp_id: '', color_id: '', size: '', quantity: 1, unit_price: 0 }]
@@ -299,6 +302,7 @@ const handlePriceSubmit = () => {
             priceForm.value.cloth_provider_id = '';
             priceForm.value.city_id = '';
             priceForm.value.cost_price = '';
+             isPriceModalOpen.value = false;
         }
     });
 };
@@ -474,7 +478,7 @@ const vFocus = {
                                 <Plus class="h-4 w-4" /> Ingresar Factura
                             </Button>
                         </DialogTrigger>
-                        <DialogContent class="sm:max-w-[900px] max-h-[100vh] overflow-y-auto">
+                        <DialogContent class="sm:max-w-[1000px] max-h-[100vh] overflow-y-auto">
                             <DialogHeader>
                                 <DialogTitle class="flex items-center gap-2">
                                     <FileText class="h-5 w-5 text-indigo-600" />
@@ -512,15 +516,7 @@ const vFocus = {
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                    <div class="space-y-2">
-                                        <Label class="text-xs font-bold uppercase text-slate-500">Punto de Acopio (Café)</Label>
-                                        <Select v-model="invoiceForm.cafe_id">
-                                            <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem v-for="cafe in cafes" :key="cafe.id" :value="String(cafe.id)">{{ cafe.name }} - {{ cafe.unit.name }}</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
+
                                     <div class="space-y-2">
                                         <Label class="text-xs font-bold uppercase text-slate-500">Nº Factura</Label>
                                         <Input v-model="invoiceForm.invoice_number" placeholder="Ej: F-001-123" class="bg-white" />
@@ -612,7 +608,19 @@ const vFocus = {
                                                         <Input type="number" v-model="item.quantity" min="1" class="h-9 border-none shadow-none focus:ring-1 text-center font-bold" />
                                                     </td>
                                                     <td class="p-3">
-                                                        <div class="relative">
+                                                        <div v-if="item.epp_id && getAvailablePrices(item.epp_id, invoiceForm.cloth_provider_id).length > 0" class="flex flex-col gap-1">
+                                                            <Select v-model="item.unit_price">
+                                                                <SelectTrigger class="h-9 border-none shadow-none focus:ring-1 text-xs font-bold text-indigo-600">
+                                                                    <SelectValue placeholder="Elegir Precio" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem v-for="cp in getAvailablePrices(item.epp_id, invoiceForm.cloth_provider_id)" :key="cp.id" :value="Number(cp.cost_price)">
+                                                                        S/.{{ Number(cp.cost_price).toFixed(2) }} ({{ cp.city?.name }})
+                                                                    </SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div v-else class="relative">
                                                             <span class="absolute left-2 top-2 text-slate-400 text-xs">S/.</span>
                                                             <Input type="number" v-model="item.unit_price" step="0.01" class="h-9 pl-6 border-none shadow-none focus:ring-1 font-bold text-indigo-600" />
                                                         </div>
