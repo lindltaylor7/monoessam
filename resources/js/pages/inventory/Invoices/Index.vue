@@ -282,11 +282,11 @@ const priceForm = ref({
     cost_price: ''
 });
 
-const openPriceModal = (epp: any) => {
+const openPriceModal = (epp: any, providerId: string | number | null = null) => {
     selectedEppForPrice.value = epp;
     priceForm.value = {
         epp_id: String(epp.id),
-        cloth_provider_id: '',
+        cloth_provider_id: providerId ? String(providerId) : '',
         city_id: '',
         cost_price: ''
     };
@@ -913,27 +913,39 @@ const vFocus = {
                                     <span class="text-sm font-semibold text-slate-700">{{ epp.name }}</span>
                                     
                                     <!-- Prices for this specific provider -->
-                                    <div v-if="assigningProvider && epp.city_providers?.some(cp => String(cp.cloth_provider_id) === String(assigningProvider.id))" 
-                                         class="ml-auto flex flex-col items-end gap-1">
-                                        <div v-for="cp in epp.city_providers.filter((cp: any) => String(cp.cloth_provider_id) === String(assigningProvider.id))" 
-                                             :key="cp.id"
-                                             class="text-[10px] font-black text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-200 flex items-center gap-1.5"
-                                             @dblclick.stop="startEditingPrice(cp)"
-                                        >
-                                            <span class="text-[8px] text-slate-400 uppercase tracking-tighter">{{ cp.city?.name }}</span>
-                                            
-                                            <template v-if="editingPriceId === cp.id">
-                                                <input 
-                                                    v-model="tempPriceValue"
-                                                    class="w-16 h-4 px-1 text-[10px] border border-indigo-500 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400"
-                                                    @blur="saveInlinePrice(cp)"
-                                                    @keyup.enter="saveInlinePrice(cp)"
-                                                    @click.stop
-                                                    v-focus
-                                                />
-                                            </template>
-                                            <span v-else>S/.{{ Number(cp.cost_price).toFixed(2) }}</span>
+                                    <div class="ml-auto flex flex-col items-end gap-1">
+                                        <div v-if="assigningProvider && epp.city_providers?.some((cp: any) => String(cp.cloth_provider_id) === String(assigningProvider.id))" 
+                                             class="flex flex-col items-end gap-1">
+                                            <div v-for="cp in epp.city_providers.filter((cp: any) => String(cp.cloth_provider_id) === String(assigningProvider.id))" 
+                                                 :key="cp.id"
+                                                 class="text-[10px] font-black text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-200 flex items-center gap-1.5"
+                                                 @dblclick.stop="startEditingPrice(cp)"
+                                            >
+                                                <span class="text-[8px] text-slate-400 uppercase tracking-tighter">{{ cp.city?.name }}</span>
+                                                
+                                                <template v-if="editingPriceId === cp.id">
+                                                    <input 
+                                                        v-model="tempPriceValue"
+                                                        class="w-16 h-4 px-1 text-[10px] border border-indigo-500 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                                                        @blur="saveInlinePrice(cp)"
+                                                        @keyup.enter="saveInlinePrice(cp)"
+                                                        @click.stop
+                                                        v-focus
+                                                    />
+                                                </template>
+                                                <span v-else>S/.{{ Number(cp.cost_price).toFixed(2) }}</span>
+                                            </div>
                                         </div>
+                                        
+                                        <Button 
+                                            v-if="assigningProvider"
+                                            variant="ghost" 
+                                            size="sm" 
+                                            class="h-5 px-1.5 text-[8px] font-bold uppercase text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50"
+                                            @click.stop.prevent="openPriceModal(epp, assigningProvider.id)"
+                                        >
+                                            <Plus class="h-2.5 w-2.5 mr-1" /> Precio
+                                        </Button>
                                     </div>
                                 </label>
                             </div>
