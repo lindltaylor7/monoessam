@@ -98,6 +98,40 @@ const isAddStockOpen = ref(false);
 const isNewItemOpen = ref(false);
 const isNewColorOpen = ref(false);
 
+// --- Sizes Modal Logic ---
+const isSizesModalOpen = ref(false);
+const isLoadingSizes = ref(false);
+const selectedStockForSizes = ref<any>(null);
+const stockSizes = ref<any[]>([]);
+const sizeSearch = ref('');
+
+const openSizesModal = (stock: any) => {
+    selectedStockForSizes.value = stock;
+    isSizesModalOpen.value = true;
+    isLoadingSizes.value = true;
+    stockSizes.value = [];
+    sizeSearch.value = '';
+    
+    axios.get(route('inventory.stock.sizes', { id: stock.id }))
+        .then(res => {
+            stockSizes.value = res.data;
+        })
+        .catch(err => console.error(err))
+        .finally(() => {
+            isLoadingSizes.value = false;
+        });
+};
+
+const filteredStockSizes = computed(() => {
+    if (!sizeSearch.value) return stockSizes.value;
+    const s = sizeSearch.value.toLowerCase();
+    return stockSizes.value.filter((item: any) => 
+        (item.size && item.size.toLowerCase().includes(s)) || 
+        (item.color?.name && item.color.name.toLowerCase().includes(s))
+    );
+});
+
+
 const stockForm = ref({
     stockable_type: 'cloth',
     stockable_id: '',
@@ -736,7 +770,7 @@ const getItemIcon = (type: string) => {
                                             <span class="text-xs font-bold text-slate-400 uppercase">Unidades</span>
                                         </div>
                                     </div>
-                                    <div class="flex flex-col items-end gap-1">
+                                    <div @click="openSizesModal(item)" class="flex flex-col items-end gap-1 cursor-pointer hover:opacity-80 transition-opacity">
                                         <div v-if="item.quantity > 0" class="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
                                             <ArrowUpRight class="h-3 w-3" /> ACTIVO
                                         </div>
@@ -806,6 +840,66 @@ const getItemIcon = (type: string) => {
                     </Button>
                 </div>
             </div>
+
+            <!-- Sizes Details Modal -->
+            <Dialog v-model:open="isSizesModalOpen">
+                <DialogContent class="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle class="flex items-center gap-2">
+                            <Box class="h-5 w-5 text-indigo-600" />
+                            Detalle de Tallas
+                        </DialogTitle>
+                        <DialogDescription v-if="selectedStockForSizes">
+                            Stock histórico recibido para: {{ selectedStockForSizes.stockable?.name }}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div class="mt-4 space-y-4">
+                        <div class="relative">
+                            <Search class="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                            <Input 
+                                v-model="sizeSearch"
+                                placeholder="Buscar talla..." 
+                                class="pl-10 h-10 border-slate-200 focus:ring-indigo-500 rounded-xl"
+                            />
+                        </div>
+
+                        <div class="border rounded-2xl overflow-hidden shadow-sm">
+                            <div class="bg-slate-50 border-b px-4 py-2 flex justify-between text-[10px] font-black uppercase text-slate-400">
+                                <span>Talla</span>
+                                <span>Cant. Recibida</span>
+                            </div>
+                            <div v-if="isLoadingSizes" class="p-8 flex flex-col items-center justify-center gap-3">
+                                <Loader2 class="h-8 w-8 text-indigo-500 animate-spin" />
+                                <p class="text-xs text-slate-400 font-bold uppercase tracking-widest">Cargando datos...</p>
+                            </div>
+                            <div v-else-if="filteredStockSizes.length === 0" class="p-8 text-center">
+                                <p class="text-xs text-slate-400 font-bold uppercase tracking-widest">No se encontraron registros</p>
+                            </div>
+                            <div v-else class="max-h-[300px] overflow-y-auto custom-scrollbar divide-y divide-slate-100">
+                                <div v-for="(sz, idx) in filteredStockSizes" :key="idx" class="px-4 py-3 flex justify-between items-center hover:bg-slate-50/50 transition-colors">
+                                    <div class="flex items-center gap-3">
+                                        <div class="h-8 w-8 rounded-lg bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-700 border border-indigo-100 uppercase">
+                                            {{ sz.size?.toUpperCase() }}
+                                        </div>
+                                        <div v-if="sz.color" class="flex items-center gap-1.5">
+                                            <div class="w-2.5 h-2.5 rounded-full border border-slate-200 shadow-sm" :style="{ backgroundColor: sz.color.hex_code }"></div>
+                                            <span class="text-[10px] font-bold text-slate-500 uppercase">{{ sz.color.name }}</span>
+                                        </div>
+                                    </div>
+                                    <Badge variant="secondary" class="font-mono font-black text-xs px-2.5 py-0.5 rounded-lg bg-white border border-slate-200">
+                                        {{ sz.total_received }}
+                                    </Badge>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <DialogFooter class="p-0 mt-2">
+                        <Button @click="isSizesModalOpen = false" variant="ghost" class="w-full font-bold uppercase tracking-widest text-[10px]">Cerrar</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     </AppLayout>
 </template>

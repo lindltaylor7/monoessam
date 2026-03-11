@@ -297,6 +297,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // EPP Sizes
         Route::post('/epp-sizes', [InventoryController::class, 'storeEppSize'])->name('epp-sizes.store');
         Route::delete('/epp-sizes/{id}', [InventoryController::class, 'destroyEppSize'])->name('epp-sizes.destroy');
+        
+        // Stock details
+        Route::get('/stock/{id}/sizes', [InventoryController::class, 'getStockSizes'])->name('stock.sizes');
     });
 
     Route::prefix('reportsales')->name('reportsales.')->group(function () {
