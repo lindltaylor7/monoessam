@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { AlertCircle } from 'lucide-vue-next';
 import Button from '@/components/ui/button/Button.vue';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useForm, usePage } from '@inertiajs/vue3';
-import { CalendarIcon, Eye, File, Upload, X, Award, FileText } from 'lucide-vue-next';
+import { CalendarIcon, Eye, File, Upload, X, Award, FileText, GraduationCap, Briefcase, CreditCard, ShieldAlert, Stethoscope, Syringe, ClipboardCheck, Activity, FileSignature, ShieldCheck } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
+import { SharedData } from '@/types';
 
 interface StaffFile {
     id: number;
@@ -30,7 +32,7 @@ const props = defineProps({
     },
 });
 
-const page = usePage();
+const page = usePage<SharedData>();
 const open = ref(false);
 const showAlert = ref(false);
 const alertMessage = ref('');
@@ -119,13 +121,31 @@ const filesRequired = ref([
         icon: 'ClipboardCheck'
     },
     {
-        label: 'SCTR',
-        key: 'sctr',
+        label: 'SCTR Vida Ley',
+        key: 'sctr_vida_ley',
+        accept: '.pdf',
+        maxSize: 10,
+        hasExpiration: true,
+        expirationDate: null,
+        icon: 'CreditCard'
+    },
+    {
+        label: 'SCTR Pensión y Salud',
+        key: 'sctr_pension_salud',
         accept: '.pdf',
         maxSize: 10,
         hasExpiration: true,
         expirationDate: null,
         icon: 'Activity'
+    },
+    {
+        label: 'SCTR Socavón',
+        key: 'sctr_socavon',
+        accept: '.pdf',
+        maxSize: 10,
+        hasExpiration: true,
+        expirationDate: null,
+        icon: 'ShieldCheck'
     },
     {
         label: 'Contrato',
@@ -141,7 +161,7 @@ const filesRequired = ref([
 const form = useForm({
     staff_id: props.staff.id,
     files: [] as File[],
-    user_id: page.props.auth.user?.id,
+    user_id: page.props.auth?.user?.id,
 });
 
 // Función para manejar subida de archivos

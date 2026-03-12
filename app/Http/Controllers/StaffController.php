@@ -528,12 +528,16 @@ class StaffController extends Controller
                 $filePath = $data['file']->storeAs('files', $fileName, 'public');
 
                 foreach ($request->staffIds as $staffId) {
-                    Staff_file::create([
-                        'staff_id' => $staffId,
-                        'file_type' => $type,
-                        'file_path' => $filePath,
-                        'expiration_date' => $data['exp']
-                    ]);
+                    Staff_file::updateOrCreate(
+                        [
+                            'staff_id' => $staffId,
+                            'file_type' => $type,
+                        ],
+                        [
+                            'file_path' => $filePath,
+                            'expiration_date' => $data['exp']
+                        ]
+                    );
                 }
             }
         }
