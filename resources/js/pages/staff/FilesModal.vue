@@ -11,6 +11,7 @@ interface StaffFile {
     name: string;
     path: string;
     file_type: string;
+    file_path: string;
     expiration_date: string | null;
     created_at: string;
     user_name?: string;
@@ -224,7 +225,8 @@ const deleteFile = (fileId: number) => {
 
 // Función para ver archivo
 const viewFile = (file: StaffFile) => {
-    window.open('/storage/' + file.path, '_blank');
+    console.log(file);
+    window.open('/storage/' + file.file_path, '_blank');
 };
 
 // Función para actualizar fecha de expiración
