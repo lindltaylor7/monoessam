@@ -67,7 +67,7 @@ class StaffController extends Controller
                     ]);
                 },
                 'guardRole.guardSelected'
-            ])->get(),
+            ])->orderBy('id', 'desc')->get(),
             'roles' => Role::all(),
             'units' => Unit::with(['cafes', 'mine'])->get(),
             'businneses' => Business::with(['headquarters', 'headquarters.areas'])->get(),
@@ -145,10 +145,14 @@ class StaffController extends Controller
                 'role_id' => $request->roleId
             ]);
 
-            $guard =  Guard::findOrCreate([
+            $guard = Guard::firstOrCreate([
+                'name' => $request->guard,
+            ]);
+
+            DB::table('guard_roles')->insert([
+                'guard_id' => $guard->id,
+                'role_id' => $request->roleId,
                 'staff_id' => $staff->id,
-                'workplace' => $request->workplace,
-                'guard' => $request->guard,
             ]);
         } else {
             $staff = Staff::create([

@@ -16,11 +16,8 @@ defineProps<Props>();
             <div class="mb-4 flex flex-col justify-between border-b pb-2 sm:flex-row sm:items-center">
                 <h3 class="text-lg font-semibold text-zinc-800">Implementos</h3>
             </div>
-            <div v-if="prendas.length === 0" class="text-center py-8 text-zinc-500">
-                Seleccione un Café y Rol para ver las prendas asignadas.
-            </div>
 
-            <div v-else class="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
                 <div
                     v-for="(prenda, index) in prendas"
                     :key="index"
@@ -32,7 +29,7 @@ defineProps<Props>();
                         </Label>
 
                         <!-- Selects para tallas estándar (Ropa) -->
-                        <Select v-if="['Polo', 'Cafarena', 'Overall', 'Casaca', 'Chaleco', 'Chaqueta', 'Camisa', 'Blusa', 'Guardapolvo'].some(s => prenda.label.includes(s))" v-model="prenda.talla">
+                        <Select v-if="['Polo', 'Cafarena', 'Overall', 'Casaca', 'Chaleco', 'Chaqueta', 'Camisa', 'Blusa', 'Guardapolvo', 'Pantalón'].some(s => prenda.label.includes(s))" v-model="prenda.talla">
                             <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"><SelectValue placeholder="Talla" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="s">S</SelectItem>
@@ -63,16 +60,8 @@ defineProps<Props>();
                             </SelectContent>
                         </Select>
 
-                        
-
-                        <!-- Select para Lentes -->
-                        <Select v-else-if="prenda.label.toLowerCase().includes('lentes')" v-model="prenda.talla">
-                            <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"><SelectValue placeholder="Talla" /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="Lentes">Lentes</SelectItem>
-                                <SelectItem value="Sobrelentes">Sobrelentes</SelectItem>
-                            </SelectContent>
-                        </Select>
+                        <!-- Select para Lentes (según imagen parece numérico o texto libre) -->
+                        <Input v-else-if="prenda.label.toLowerCase().includes('lentes')" placeholder="Talla" v-model="prenda.talla" class="h-9 transition-all focus:ring-2 focus:ring-blue-100" />
 
                         <!-- Input de texto para el resto -->
                         <Input v-else placeholder="Talla" v-model="prenda.talla" class="h-9 transition-all focus:ring-2 focus:ring-blue-100" />

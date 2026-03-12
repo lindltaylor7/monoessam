@@ -47,59 +47,20 @@ watch(selectedFile, (newFile) => {
 });
 
 const updateAvailableClothes = (initialStaffClothes?: any[]) => {
-    if (!props.roleClothes || !form.roleId) {
-        if (!props.staff) prendasFijas.value = [];
-        return;
-    }
-
-    const roleId = Number(form.roleId);
-    const cafes = props.roleClothes[roleId] || {};
-    const cafeId = form.cafeId ? String(form.cafeId) : 'all';
-    
-    let assignedClothes: any[] = [];
-    if (cafeId === 'all') {
-        assignedClothes = cafes['all'] || [];
-    } else {
-        const allClothes = cafes['all'] || [];
-        const specificClothes = cafes[cafeId] || [];
-        
-        assignedClothes = [...allClothes];
-        specificClothes.forEach(sc => {
-            if (!assignedClothes.find(c => c.id === sc.id)) {
-                assignedClothes.push(sc);
-            }
-        });
-    }
-    
-    prendasFijas.value = assignedClothes.map(cloth => {
+    prendasFijas.value.forEach(p => {
         let talla = '';
-        
-        const existingInForm = prendasFijas.value.find(p => p.label === cloth.name);
-        if (existingInForm) talla = existingInForm.talla;
-
-        if (!talla && initialStaffClothes) {
-            const match = initialStaffClothes.find(sc => sc.clothe_name === cloth.name || sc.cloth?.name === cloth.name);
+        if (initialStaffClothes) {
+            const match = initialStaffClothes.find(sc => sc.clothe_name === p.label);
             if (match) talla = match.clothing_size;
         }
-
-        return {
-            id: cloth.id,
-            label: cloth.name,
-            talla: talla
-        };
+        p.talla = talla;
     });
 };
 
 watch(() => props.staff, (newStaff) => {
     initializeStaffData(newStaff, props.units);
-    if (newStaff) {
-        updateAvailableClothes(newStaff.staff_clothes);
-    }
+    updateAvailableClothes(newStaff?.staff_clothes);
 }, { immediate: true });
-
-watch([() => form.roleId, () => form.cafeId], () => {
-    updateAvailableClothes();
-});
 
 // Handlers
 const onSubmit = () => {
