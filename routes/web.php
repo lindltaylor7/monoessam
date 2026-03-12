@@ -111,6 +111,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/upload-file', [StaffController::class, 'uploadFile'])->name('upload-file');
         Route::post('/upload-filedate', [StaffController::class, 'uploadFileDate'])->name('update-filedate');
         Route::delete('/delete-file/{id}', [StaffController::class, 'deleteFile'])->name('delete-file');
+        Route::post('/mass-upload-sctr', [StaffController::class, 'massUploadSctr'])->name('mass-upload-sctr');
     });
 
     Route::prefix('headcount')->name('headcount.')->group(function () {
