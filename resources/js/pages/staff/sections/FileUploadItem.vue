@@ -111,15 +111,7 @@ const manageFileDate = (event: Event) => {
 <style scoped>
 /* Estética para el input date en navegadores que lo soportan */
 input[type='date']::-webkit-calendar-picker-indicator {
-    background: transparent;
-    bottom: 0;
-    color: transparent;
     cursor: pointer;
-    height: auto;
-    left: 0;
-    position: absolute;
-    right: 0;
-    top: 0;
-    width: auto;
+    opacity: 0;
 }
 </style>

@@ -725,6 +725,7 @@ const vFocus = {
                                         <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Empresa / Sede</TableHead>
                                         <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Proveedor</TableHead>
                                         <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Fecha</TableHead>
+                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Registrado por</TableHead>
                                         <TableHead class="font-bold text-slate-500 uppercase text-[10px] text-right">Total</TableHead>
                                         <TableHead class="w-[50px]"></TableHead>
                                     </TableRow>
@@ -740,6 +741,14 @@ const vFocus = {
                                         </TableCell>
                                         <TableCell class="font-medium text-slate-700">{{ inv.provider?.name }}</TableCell>
                                         <TableCell class="text-slate-500">{{ inv.date  }}</TableCell>
+                                        <TableCell>
+                                            <div class="flex items-center gap-2">
+                                                <div class="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">
+                                                    {{ inv.user?.name?.charAt(0) || '?' }}
+                                                </div>
+                                                <span class="text-xs text-slate-600">{{ inv.user?.name || 'Sistema' }}</span>
+                                            </div>
+                                        </TableCell>
                                         <TableCell class="text-right font-black text-slate-900">
                                             S/.{{ Number(inv.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
                                         </TableCell>
@@ -1070,7 +1079,7 @@ const vFocus = {
                                     Factura #{{ selectedInvoice?.invoice_number }}
                                 </DialogTitle>
                                 <DialogDescription class="mt-1">
-                                    {{ selectedInvoice?.provider?.name }} • {{ selectedInvoice?.date }}
+                                    {{ selectedInvoice?.provider?.name }} • {{ selectedInvoice?.date }} • Reg. por: {{ selectedInvoice?.user?.name || 'Sistema' }}
                                 </DialogDescription>
                             </div>
                             <Badge class="bg-indigo-600 text-white border-none shadow-md">

@@ -220,6 +220,7 @@ class InventoryController extends Controller
                 'notes' => $validated['notes'],
                 'total_amount' => $totalAmount,
                 'invoice_image' => $invoiceImagePath,
+                'user_id' => auth()->id(),
             ]);
 
             foreach ($validated['items'] as $itemData) {
@@ -291,7 +292,7 @@ class InventoryController extends Controller
 
     public function invoicesIndex()
     {
-        $invoices = ClothInvoice::with(['business', 'headquarter', 'provider', 'items.cloth', 'items.epp', 'items.color'])->latest()->get();
+        $invoices = ClothInvoice::with(['business', 'headquarter', 'provider', 'items.cloth', 'items.epp', 'items.color', 'user'])->latest()->get();
         $clothProviders = ClothProvider::with(['epps', 'clothes'])->get();
 
         return Inertia::render('inventory/Invoices/Index', [
