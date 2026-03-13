@@ -66,14 +66,19 @@ const props = defineProps<{
         stockable_type: string;
         headquarter_id: number | null;
         cafe_id: number | null;
+        unit_id: number | null;
         quantity: number;
         stockable: any;
         cafe?: { name: string };
         headquarter?: { name: string };
+        unit?: { name: string, mine: { name: string } };
     }>;
     businesses: Array<{ id: number, name: string }>;
     providers: Array<{ id: number, name: string }>;
     clothes: Array<{ id: number, name: string }>;
+    epps: Array<{ id: number, name: string }>;
+    units: Array<{ id: number, name: string, mine: { name: string } }>;
+    transfers: Array<any>;
 }>();
 
 const activeTab = ref('clothes');
@@ -142,6 +147,35 @@ const filteredStockSizes = computed(() => {
         (item.color?.name && item.color.name.toLowerCase().includes(s))
     );
 });
+
+const isReturnModalOpen = ref(false);
+const returnForm = ref({
+    unit_id: '',
+    items: [] as any[]
+});
+
+const openReturnModal = (transfer: any) => {
+    returnForm.value = {
+        unit_id: String(transfer.unit_id),
+        items: transfer.items.map((i: any) => ({
+            stockable_id: i.stockable_id,
+            stockable_type: i.stockable_type,
+            name: i.stockable?.name,
+            quantity: i.quantity,
+            size: i.size
+        }))
+    };
+    isReturnModalOpen.value = true;
+};
+
+const handleReturn = () => {
+    router.post(route('inventory.transfer.return'), returnForm.value, {
+        onSuccess: () => {
+            isReturnModalOpen.value = false;
+        },
+        preserveScroll: true
+    });
+};
 
 
 const stockForm = ref({
@@ -676,6 +710,10 @@ const getItemIcon = (type: string) => {
                                 <Box class="h-4 w-4" />
                                 <span class="hidden sm:inline">Insumos</span>
                             </TabsTrigger>
+                            <TabsTrigger value="units_transfers" class="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm bg-indigo-50/50">
+                                <Truck class="h-4 w-4 text-indigo-600" />
+                                <span class="hidden sm:inline text-indigo-700 font-bold">Envíos a Unidades</span>
+                            </TabsTrigger>
                         </TabsList>
                     </Tabs>
 
@@ -843,7 +881,7 @@ const getItemIcon = (type: string) => {
                         </div>
 
                         <!-- Table View -->
-                        <div v-else class="bg-white rounded-2xl border shadow-sm overflow-hidden mb-6">
+                        <div v-else-if="viewMode === 'table' && activeTab !== 'units_transfers'" class="bg-white rounded-2xl border shadow-sm overflow-hidden mb-6">
                             <Table>
                                 <TableHeader>
                                     <TableRow class="bg-slate-50/50 hover:bg-slate-50/50">
@@ -908,9 +946,29 @@ const getItemIcon = (type: string) => {
                                             {{ item.quantity }}
                                         </TableCell>
                                         <TableCell class="text-center">
-                                            <Badge :variant="getStockStatus(item.quantity).variant" class="rounded-full px-2 shadow-none border-none text-[9px] uppercase font-black tracking-tighter">
-                                                {{ getStockStatus(item.quantity).label }}
-                                            </Badge>
+                                            <div class="flex flex-col items-center gap-1">
+                                                <Badge :variant="getStockStatus(item.quantity).variant" class="rounded-full px-2 shadow-none border-none text-[9px] uppercase font-black tracking-tighter">
+                                                    {{ getStockStatus(item.quantity).label }}
+                                                </Badge>
+                                                <Button 
+                                                    v-if="item.unit_id && item.quantity > 0"
+                                                    @click="openReturnModal({ 
+                                                        unit_id: item.unit_id, 
+                                                        items: [{ 
+                                                            stockable_id: item.stockable_id, 
+                                                            stockable_type: item.stockable_type, 
+                                                            stockable: item.stockable,
+                                                            quantity: item.quantity, 
+                                                            size: '' 
+                                                        }] 
+                                                    })"
+                                                    variant="link" 
+                                                    size="sm" 
+                                                    class="h-6 text-[9px] text-rose-500 font-bold p-0"
+                                                >
+                                                    Devolver a Principal
+                                                </Button>
+                                            </div>
                                         </TableCell>
                                         <TableCell>
                                             <Button @click="openSizesModal(item)" variant="ghost" size="sm" class="h-8 w-8 p-0 text-slate-400 hover:text-primary transition-colors">
@@ -920,6 +978,75 @@ const getItemIcon = (type: string) => {
                                     </TableRow>
                                 </TableBody>
                             </Table>
+                        </div>
+
+                        <!-- Transfers Tab Content -->
+                        <div v-else-if="activeTab === 'units_transfers'" class="space-y-6">
+                            <div class="bg-white rounded-2xl border shadow-sm overflow-hidden mb-6">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow class="bg-indigo-50/30">
+                                            <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Fecha Envío</TableHead>
+                                            <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Destino (Unidad)</TableHead>
+                                            <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Personal Asignado</TableHead>
+                                            <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Items</TableHead>
+                                            <TableHead class="font-bold text-slate-500 uppercase text-[10px] text-center">Estado</TableHead>
+                                            <TableHead class="w-[120px]"></TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        <TableRow v-for="transfer in transfers" :key="transfer.id" class="group transition-colors hover:bg-slate-50/50">
+                                            <TableCell class="text-xs font-medium text-slate-600">
+                                                {{ new Date(transfer.created_at).toLocaleDateString() }}
+                                                <span class="block text-[10px] text-slate-400 font-mono">{{ new Date(transfer.created_at).toLocaleTimeString() }}</span>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div class="flex items-center gap-2">
+                                                    <div class="p-1.5 bg-indigo-100 rounded-lg text-indigo-600">
+                                                        <Building2 class="h-3.5 w-3.5" />
+                                                    </div>
+                                                    <div class="flex flex-col">
+                                                        <span class="font-bold text-slate-900 leading-tight">{{ transfer.unit?.name }}</span>
+                                                        <span class="text-[10px] text-slate-400 uppercase font-black tracking-tighter">{{ transfer.unit?.mine?.name }}</span>
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div class="flex items-center gap-2">
+                                                    <User class="h-3.5 w-3.5 text-slate-300" />
+                                                    <span class="text-sm text-slate-600">{{ transfer.staff?.name || 'Stock de Unidad' }}</span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div class="flex flex-wrap gap-1">
+                                                    <Badge v-for="item in transfer.items" :key="item.id" variant="outline" class="text-[10px] px-1.5 py-0 bg-white border-slate-200 text-slate-500 lowercase">
+                                                        {{ item.quantity }}x {{ item.stockable?.name }} ({{ item.size || 'U' }})
+                                                    </Badge>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell class="text-center">
+                                                <Badge :class="[
+                                                    'rounded-full px-2 shadow-none border-none text-[9px] uppercase font-black tracking-tighter',
+                                                    transfer.status === 'sent' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                                                ]">
+                                                    {{ transfer.status === 'sent' ? 'En Tránsito / Uso' : 'Devuelto' }}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Button 
+                                                    v-if="transfer.status === 'sent'"
+                                                    @click="openReturnModal(transfer)" 
+                                                    variant="outline" 
+                                                    size="sm" 
+                                                    class="h-8 text-[10px] font-black tracking-tighter uppercase gap-1 bg-white hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 border-slate-200 transition-all rounded-lg"
+                                                >
+                                                    <History class="h-3.5 w-3.5" /> DEVOLVER
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    </TableBody>
+                                </Table>
+                            </div>
                         </div>
                     </template>
                 </div>
@@ -1005,6 +1132,46 @@ const getItemIcon = (type: string) => {
                     
                     <DialogFooter class="p-0 mt-2">
                         <Button @click="isSizesModalOpen = false" variant="ghost" class="w-full font-bold uppercase tracking-widest text-[10px]">Cerrar</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <!-- Return Modal -->
+            <Dialog v-model:open="isReturnModalOpen">
+                <DialogContent class="sm:max-w-[500px] rounded-2xl p-0 overflow-hidden border-none shadow-2xl">
+                    <DialogHeader class="p-6 bg-rose-600 text-white">
+                        <DialogTitle class="text-xl font-black flex items-center gap-3">
+                            <History class="h-6 w-6 text-rose-200" />
+                            Confirmar Devolución
+                        </DialogTitle>
+                        <DialogDescription class="text-rose-100">
+                            Estos items retornarán al stock general (Principal).
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div class="p-6 space-y-4 bg-white">
+                        <div class="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-3">
+                            <div v-for="(item, idx) in returnForm.items" :key="idx" class="flex justify-between items-center text-sm">
+                                <div class="flex items-center gap-2">
+                                    <Package class="h-4 w-4 text-slate-400" />
+                                    <span class="font-bold text-slate-700">{{ item.name }} ({{ item.size || 'U' }})</span>
+                                </div>
+                                <span class="font-black text-rose-600 bg-white px-2 py-0.5 rounded-lg border border-slate-100">{{ item.quantity }}</span>
+                            </div>
+                        </div>
+                        
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">
+                            ¿Estás seguro de que este stock regresó al almacén?
+                        </p>
+                    </div>
+
+                    <DialogFooter class="p-6 bg-slate-50 border-t flex gap-3 sm:justify-center">
+                        <Button variant="ghost" @click="isReturnModalOpen = false" class="font-bold uppercase text-[10px] text-slate-500">
+                            Cancelar
+                        </Button>
+                        <Button @click="handleReturn" class="bg-rose-600 hover:bg-rose-700 text-white px-8 font-black uppercase text-[10px] tracking-widest shadow-lg">
+                            Sí, Devolver a Principal
+                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

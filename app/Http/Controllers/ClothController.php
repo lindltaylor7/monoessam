@@ -21,7 +21,7 @@ class ClothController extends Controller
      */
     public function index()
     {
-        $staff = Staff::with(['role', 'staff_clothes.cloth', 'staff_clothes.color', 'photo', 'staffable.unit.mine'])
+        $staff = Staff::with(['role', 'staff_clothes.cloth', 'staff_clothes.epp', 'staff_clothes.color', 'photo', 'staffable.unit.mine'])
             ->where('status', 2)
             ->whereHasMorph('staffable', [Cafe::class])
             ->get();

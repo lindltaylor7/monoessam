@@ -31,6 +31,7 @@ interface Props {
     colors: any[];
     epps: any[];
     cities: any[];
+    all_sizes: any[];
 }
 
 const props = defineProps<Props>();
@@ -281,13 +282,17 @@ const deleteProvider = (id: number) => {
 
 // --- EPP Logic ---
 const isEppModalOpen = ref(false);
-const eppForm = ref({ name: '' });
+const eppForm = ref({ 
+    name: '',
+    size_ids: [] as number[]
+});
 
 const handleEppSubmit = () => {
     router.post(route('inventory.epps.store'), eppForm.value, {
         onSuccess: () => {
             isEppModalOpen.value = false;
             eppForm.value.name = '';
+            eppForm.value.size_ids = [];
         }
     });
 };
@@ -860,7 +865,7 @@ const vFocus = {
                                     <TableRow class="bg-slate-50/50 hover:bg-slate-50/50">
                                         <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Nombre</TableHead>
                                         <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Precio Costo</TableHead>
-                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Tallas por Ciudad</TableHead>
+                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Tallas Estándar</TableHead>
                                         <TableHead class="w-[100px]"></TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -880,15 +885,11 @@ const vFocus = {
                                             </div>
                                         </TableCell>
                                         <TableCell>
-                                            <div class="flex flex-wrap gap-2">
-                                                <Badge v-for="sz in epp.sizes" :key="sz.id" variant="outline" class="gap-1 pr-1 border-slate-200 bg-slate-50">
-                                                    <span class="font-bold text-indigo-600">{{ sz.size }}</span> 
-                                                    <span class="text-[10px] text-slate-400">({{ sz.city?.name }})</span>
-                                                    <Button @click="deleteSize(sz.id)" variant="ghost" size="sm" class="h-4 w-4 p-0 text-slate-300 hover:text-rose-600">
-                                                        <Trash2 class="h-2.5 w-2.5" />
-                                                    </Button>
+                                            <div class="flex flex-wrap gap-1.5 max-w-[200px]">
+                                                <Badge v-for="sz in epp.available_sizes" :key="sz.id" class="bg-indigo-600 text-[9px] font-black uppercase tracking-tighter">
+                                                    {{ sz.name }}
                                                 </Badge>
-                                                <span v-if="epp.sizes.length === 0" class="text-xs text-slate-400 italic">Sin tallas registradas</span>
+                                                <span v-if="!epp.available_sizes?.length" class="text-xs text-slate-400 italic">Sin tallas base</span>
                                             </div>
                                         </TableCell>
                                         <TableCell class="text-right">
@@ -946,21 +947,36 @@ const vFocus = {
 
             <!-- Epp Insertion Modal -->
             <Dialog v-model:open="isEppModalOpen">
-                <DialogContent class="sm:max-w-[400px]">
+                <DialogContent class="sm:max-w-[450px]">
                     <DialogHeader>
                         <DialogTitle>Nuevo Elemento de Protección (EPP)</DialogTitle>
-                        <DialogDescription>Ingrese el nombre del nuevo elemento para el inventario.</DialogDescription>
+                        <DialogDescription>Ingrese el nombre del nuevo elemento y seleccione las tallas base disponibles.</DialogDescription>
                     </DialogHeader>
-                    <div class="space-y-4 py-4">
+                    <div class="space-y-6 py-4">
                         <div class="grid gap-2">
-                            <Label>Nombre del EPP</Label>
-                            <Input v-model="eppForm.name" placeholder="Ej: Guantes de Nitrilo" />
+                            <Label class="text-xs font-bold uppercase text-slate-500 tracking-widest">Nombre del EPP</Label>
+                            <Input v-model="eppForm.name" placeholder="Ej: Guantes de Nitrilo" class="border-slate-200" />
+                        </div>
+
+                        <div class="space-y-3">
+                            <Label class="text-xs font-bold uppercase text-slate-500 tracking-widest flex items-center gap-2">
+                                <Plus class="h-3 w-3" /> Tallas Estándar (Selección Múltiple)
+                            </Label>
+                            <div class="grid grid-cols-4 gap-2 border rounded-2xl p-4 bg-slate-50/50 max-h-[200px] overflow-y-auto">
+                                <label v-for="size in all_sizes" :key="size.id" 
+                                    class="flex items-center gap-2 p-2 rounded-xl border bg-white transition-all cursor-pointer hover:border-indigo-400"
+                                    :class="eppForm.size_ids.includes(size.id) ? 'border-indigo-600 ring-1 ring-indigo-600' : 'border-slate-100'"
+                                >
+                                    <input type="checkbox" :value="size.id" v-model="eppForm.size_ids" class="h-3 w-3 rounded text-indigo-600" />
+                                    <span class="text-xs font-bold text-slate-700">{{ size.name }}</span>
+                                </label>
+                            </div>
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="ghost" @click="isEppModalOpen = false">Cancelar</Button>
-                        <Button @click="handleEppSubmit" :disabled="!eppForm.name" class="bg-slate-900 text-white hover:bg-slate-800">
-                            Guardar EPP
+                        <Button variant="ghost" @click="isEppModalOpen = false" class="font-bold">Cancelar</Button>
+                        <Button @click="handleEppSubmit" :disabled="!eppForm.name" class="bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100 font-bold">
+                            Registrar EPP con Tallas
                         </Button>
                     </DialogFooter>
                 </DialogContent>

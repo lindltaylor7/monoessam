@@ -22,4 +22,9 @@ class Epp extends Model
     {
         return $this->hasMany(EppSize::class);
     }
+
+    public function availableSizes()
+    {
+        return $this->belongsToMany(Size::class, 'epp_size_pivot');
+    }
 }

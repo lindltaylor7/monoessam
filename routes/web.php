@@ -299,8 +299,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/epp-sizes', [InventoryController::class, 'storeEppSize'])->name('epp-sizes.store');
         Route::delete('/epp-sizes/{id}', [InventoryController::class, 'destroyEppSize'])->name('epp-sizes.destroy');
         
+        
         // Stock details
         Route::get('/stock/{id}/sizes', [InventoryController::class, 'getStockSizes'])->name('stock.sizes');
+
+        // Transfers
+        Route::post('/transfer', [InventoryController::class, 'storeTransfer'])->name('transfer.store');
+        Route::post('/transfer/return', [InventoryController::class, 'returnToPrincipal'])->name('transfer.return');
+        Route::post('/assign-clothes', [InventoryController::class, 'assignStaffClothes'])->name('assign-clothes');
     });
 
     Route::prefix('reportsales')->name('reportsales.')->group(function () {

@@ -10,6 +10,8 @@ import { Eye, ChevronLeft, ChevronRight, Package, Plus } from 'lucide-vue-next';
 import { useStaffFilter } from '@/composables/useStaffFilter';
 import { Staff, Unit } from '@/types';
 import StaffClothesDialog from '@/pages/clothes/partials/StaffClothesDialog.vue';
+import InventoryTransferDialog from '@/pages/inventory/partials/InventoryTransferDialog.vue';
+import { Truck } from 'lucide-vue-next';
 
 interface ExtendedStaff extends Staff {
     staff_clothes: Array<{
@@ -88,6 +90,7 @@ watch(filteredStaff, () => {
 });
 
 const isModalOpen = ref(false);
+const isTransferModalOpen = ref(false);
 
 const openModal = (staff: ExtendedStaff) => {
     selectedStaff.value = staff;
@@ -143,12 +146,10 @@ const getInitials = (name: string) => {
                             Inventario
                         </Button>
                     </Link> -->
-                   <!--  <Link :href="route('clothes.manage')">
-                        <Button class="gap-2">
-                            <Plus class="h-4 w-4" />
-                            Configurar Prendas
-                        </Button>
-                    </Link> -->
+                    <Button @click="isTransferModalOpen = true" size="sm" class="gap-2 bg-slate-900 hover:bg-black text-white shadow-lg">
+                        <Truck class="h-4 w-4" />
+                        Generar Envío a Unidad
+                    </Button>
                  </div>
             </div>
 
@@ -280,6 +281,16 @@ const getInitials = (name: string) => {
             :staff="selectedStaff" 
             :colors="colors"
             @update:open="isModalOpen = $event" 
+        />
+
+        <InventoryTransferDialog
+            v-if="isTransferModalOpen"
+            :open="isTransferModalOpen"
+            :units="units"
+            :staff="staff"
+            :clothes="[]"
+            :epps="[]"
+            @update:open="isTransferModalOpen = $event"
         />
     </AppLayout>
 </template>
