@@ -164,10 +164,13 @@ const handleSave = () => {
                                 <Coffee class="h-6 w-6" />
                             </div>
                             <div>
-                                <CardTitle class="text-lg font-black text-slate-900 tabular-nums uppercase tracking-tight">
-                                    {{ cafe.name }}
+                                <CardTitle class="text-lg font-black text-slate-900 tabular-nums uppercase tracking-tight flex flex-col">
+                                    <span>{{ cafe.name }}</span>
+                                    <span class="text-[10px] text-slate-400 font-bold tracking-tighter">
+                                        {{ cafe.unit?.mine?.name }} — {{ cafe.unit?.name }}
+                                    </span>
                                 </CardTitle>
-                                <CardDescription class="text-xs font-bold text-slate-400 flex items-center gap-1">
+                                <CardDescription class="text-xs font-bold text-slate-400 flex items-center gap-1 mt-1">
                                     <Badge variant="outline" class="text-[10px] py-0 px-1.5 border-slate-200 text-slate-400">ID: {{ cafe.id }}</Badge>
                                 </CardDescription>
                             </div>
@@ -213,7 +216,10 @@ const handleSave = () => {
                             Gestionar Roles
                         </DialogTitle>
                         <DialogDescription class="text-slate-400 font-medium">
-                            Configura qué roles están habilitados para el café: <span class="text-white font-black underline decoration-amber-500 underline-offset-4">{{ selectedCafe?.name }}</span>
+                            Configura qué roles están habilitados para: 
+                            <span class="text-white font-black underline decoration-amber-500 underline-offset-4">
+                                {{ selectedCafe?.name }} ({{ selectedCafe?.unit?.mine?.name }})
+                            </span>
                         </DialogDescription>
                     </DialogHeader>
 

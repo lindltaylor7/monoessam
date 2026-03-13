@@ -63,7 +63,7 @@ class ClothController extends Controller
     {
         $roles = Role::all();
         $clothes = Cloth::with('roles')->get();
-        $cafes = Cafe::with('roles')->get();
+        $cafes = Cafe::with(['roles', 'unit.mine'])->get();
 
         return Inertia::render('clothes/Manage', [
             'roles' => $roles,

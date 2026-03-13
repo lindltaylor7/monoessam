@@ -23,7 +23,12 @@ import {
 const props = defineProps<{
     roles: Array<{ id: number, name: string }>;
     clothes: Array<{ id: number, name: string, quantity: number, roles: Array<{ id: number, pivot: { cafe_id: number } }> }>;
-    cafes: Array<{ id: number, name: string, roles: Array<{ id: number }> }>;
+    cafes: Array<{ 
+        id: number, 
+        name: string, 
+        roles: Array<{ id: number }>,
+        unit: { name: string, mine: { name: string } } 
+    }>;
 }>();
 
 const newClothName = ref('');
@@ -125,6 +130,12 @@ const stats = computed(() => {
         rolesWithAssignments: props.roles.filter(role => getClothesForRole(role.id).length > 0).length
     };
 });
+
+const selectedCafeLabel = computed(() => {
+    const cafe = props.cafes.find(c => String(c.id) === selectedCafeId.value);
+    if (!cafe) return 'Seleccionar';
+    return `${cafe.name} - ${cafe.unit?.name} - ${cafe.unit?.mine?.name}`;
+});
 </script>
 
 <template>
@@ -209,15 +220,22 @@ const stats = computed(() => {
             <!-- Action Section -->
             <div class="bg-white rounded-2xl border shadow-sm p-4 flex flex-col md:flex-row gap-4 items-center flex-none">
                 <div class="flex-1 w-full flex flex-col md:flex-row gap-4 items-center">
-                    <div class="w-full md:w-64">
+                    <div class="w-full md:w-[320px] shrink-0">
                         <Label class="text-[10px] font-black uppercase text-slate-400 mb-1.5 block">Unidad / Café</Label>
                         <Select v-model="selectedCafeId">
-                            <SelectTrigger class="h-10 bg-slate-50 border-none shadow-none focus:ring-1">
-                                <SelectValue placeholder="Seleccionar" />
+                            <SelectTrigger class="h-10 bg-slate-50 border-none shadow-none focus:ring-1 w-full overflow-hidden">
+                                <div class="truncate text-xs font-bold text-slate-700">
+                                    {{ selectedCafeLabel }}
+                                </div>
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent class="max-w-[400px]">
                                 <SelectItem v-for="cafe in cafes" :key="cafe.id" :value="String(cafe.id)">
-                                    {{ cafe.name }}
+                                    <div class="flex flex-col py-1">
+                                        <span class="font-bold text-slate-900">{{ cafe.name }}</span>
+                                        <span class="text-[10px] text-slate-400 uppercase tracking-tighter">
+                                            {{ cafe.unit?.mine?.name }} — {{ cafe.unit?.name }}
+                                        </span>
+                                    </div>
                                 </SelectItem>
                             </SelectContent>
                         </Select>
