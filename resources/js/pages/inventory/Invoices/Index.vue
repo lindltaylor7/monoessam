@@ -41,6 +41,7 @@ const invoiceForm = ref({
     business_id: '',
     headquarter_id: '',
     cloth_provider_id: '',
+    document_type: 'factura',
     invoice_number: '',
     date: new Date().toISOString().split('T')[0],
     notes: '',
@@ -168,16 +169,19 @@ const removeInvoiceItem = (index: number) => {
     }
 };
 
-const subtotal = computed(() => {
+const totalAmount = computed(() => {
     return invoiceForm.value.items.reduce((acc, item) => acc + (item.quantity * item.unit_price), 0);
 });
 
-const igv = computed(() => {
-    return subtotal.value * 0.18;
+const subtotal = computed(() => {
+    if (invoiceForm.value.document_type === 'factura') {
+        return totalAmount.value / 1.18;
+    }
+    return totalAmount.value;
 });
 
-const totalAmount = computed(() => {
-    return subtotal.value + igv.value;
+const igv = computed(() => {
+    return totalAmount.value - subtotal.value;
 });
 
 const handleInvoiceImageUpload = (e: Event) => {
@@ -224,6 +228,7 @@ const resetInvoiceForm = () => {
         business_id: '',
         headquarter_id: '',
         cloth_provider_id: '',
+        document_type: 'factura',
         invoice_number: '',
         date: new Date().toISOString().split('T')[0],
         notes: '',
@@ -490,7 +495,7 @@ const vFocus = {
                                 <Plus class="h-4 w-4" /> Ingresar Factura
                             </Button>
                         </DialogTrigger>
-                        <DialogContent class="sm:max-w-[1000px] max-h-[100vh] overflow-y-auto">
+                        <DialogContent class="sm:max-w-[1400px] max-h-[100vh] overflow-y-auto">
                             <DialogHeader>
                                 <DialogTitle class="flex items-center gap-2">
                                     <FileText class="h-5 w-5 text-indigo-600" />
@@ -530,7 +535,18 @@ const vFocus = {
                                     </div>
 
                                     <div class="space-y-2">
-                                        <Label class="text-xs font-bold uppercase text-slate-500">Nº Factura</Label>
+                                        <Label class="text-xs font-bold uppercase text-slate-500">Tipo de Documento</Label>
+                                        <Select v-model="invoiceForm.document_type">
+                                            <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="factura">Factura (Con IGV)</SelectItem>
+                                                <SelectItem value="boleta">Boleta (Sin IGV)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div class="space-y-2">
+                                        <Label class="text-xs font-bold uppercase text-slate-500">Nº Documento</Label>
                                         <Input v-model="invoiceForm.invoice_number" placeholder="Ej: F-001-123" class="bg-white" />
                                     </div>
                                     <div class="space-y-2">
@@ -565,10 +581,12 @@ const vFocus = {
                                                     <th class="px-4 py-3">Item (Prenda/EPP)</th>
                                                     <th class="px-4 py-3">Talla</th>
                                                     <th class="px-4 py-3">Color</th>
-                                                    <th class="px-4 py-3 w-20">Cant.</th>
-                                                    <th class="px-4 py-3 w-32">P. Unitario</th>
-                                                    <th class="px-4 py-3 w-32">Total</th>
-                                                    <th class="px-4 py-3 w-12 text-center"></th>
+                                                    <th class="px-4 py-3 w-24">Cant.</th>
+                                                    <th class="px-4 py-3 w-24">P. Unitario</th>
+                                                    <th class="px-4 py-3 w-24 text-right">Subtotal</th>
+                                                    <th v-if="invoiceForm.document_type === 'factura'" class="px-4 py-3 w-24 text-right">IGV (18%)</th>
+                                                    <th class="px-4 py-3 w-28 text-right">Total</th>
+                                                    <th class="px-4 py-3 w-10 text-center"></th>
                                                 </tr>
                                             </thead>
                                             <tbody class="divide-y">
@@ -637,7 +655,16 @@ const vFocus = {
                                                             <Input type="number" v-model="item.unit_price" step="0.01" class="h-9 pl-6 border-none shadow-none focus:ring-1 font-bold text-indigo-600" />
                                                         </div>
                                                     </td>
-                                                    <td class="p-3 font-bold text-slate-900">
+                                                                                                      <!-- Subtotal Item (Base Imponible si es factura) -->
+                                                    <td class="p-3 text-right text-xs font-medium text-slate-600">
+                                                        S/.{{ (invoiceForm.document_type === 'factura' ? (item.quantity * item.unit_price) / 1.18 : (item.quantity * item.unit_price)).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                    </td>
+                                                    <!-- IGV Item (Desglosado si es factura) -->
+                                                    <td v-if="invoiceForm.document_type === 'factura'" class="p-3 text-right text-xs font-medium text-indigo-500">
+                                                        S/.{{ ((item.quantity * item.unit_price) - ((item.quantity * item.unit_price) / 1.18)).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                    </td>
+                                                    <!-- Total Item (Precio real ingresado) -->
+                                                    <td class="p-3 text-right font-bold text-slate-900 text-xs">
                                                         S/.{{ (item.quantity * item.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
                                                     </td>
                                                     <td class="p-3 text-center">
@@ -649,14 +676,15 @@ const vFocus = {
                                             </tbody>
                                             <tfoot class="bg-slate-50 border-t border-slate-200">
                                                 <tr>
-                                                    <td colspan="4" rowspan="3" class="px-4 py-3 align-top">
+                                                    <td :colspan="invoiceForm.document_type === 'factura' ? 6 : 5" rowspan="3" class="px-4 py-3 align-top">
                                                         <div class="p-3 bg-white rounded-xl border border-dashed border-slate-200 text-[10px] text-slate-400">
                                                             <p class="font-bold uppercase tracking-widest mb-1">Notas de Cálculo:</p>
-                                                            <p>• Los precios unitarios no incluyen IGV.</p>
-                                                            <p>• El sistema calcula automáticamente el 18% de ley.</p>
+                                                            <p v-if="invoiceForm.document_type === 'factura'">• Los precios ingresados ya **incluyen** IGV.</p>
+                                                            <p v-if="invoiceForm.document_type === 'factura'">• Se extrae el 18% para mostrar la base imponible.</p>
+                                                            <p v-else>• Las boletas no desglosan impuestos; el total es el monto bruto.</p>
                                                         </div>
                                                     </td>
-                                                    <td class="px-4 py-2 text-right font-bold text-slate-500 text-[11px] uppercase tracking-wider">Subtotal</td>
+                                                    <td class="px-4 py-2 text-right font-bold text-slate-500 text-[11px] uppercase tracking-wider">Subtotal Gravado</td>
                                                     <td class="px-4 py-2 text-right font-mono font-bold text-slate-700">
                                                         S/.{{ subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
                                                     </td>
