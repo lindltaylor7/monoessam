@@ -420,9 +420,7 @@ class InventoryController extends Controller
     {
         $stock = InventoryStock::findOrFail($id);
         
-        $query = ClothInvoiceItem::with(['color'])
-            ->whereNotNull('size')
-            ->where('size', '!=', '');
+        $query = ClothInvoiceItem::with(['color']);
             
         if ($stock->stockable_type === Cloth::class) {
             $query->where('cloth_id', $stock->stockable_id);

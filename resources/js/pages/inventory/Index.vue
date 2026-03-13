@@ -32,8 +32,19 @@ import {
     Calendar,
     FileText,
     Truck,
-    Building
+    Building,
+    LayoutGrid,
+    List,
+    MoreHorizontal
 } from 'lucide-vue-next';
+import { 
+    Table, 
+    TableBody, 
+    TableCell, 
+    TableHead, 
+    TableHeader, 
+    TableRow 
+} from '@/components/ui/table';
 import { 
     Dialog, 
     DialogContent, 
@@ -66,6 +77,7 @@ const props = defineProps<{
 }>();
 
 const activeTab = ref('clothes');
+const viewMode = ref<'cards' | 'table'>('cards');
 const searchQuery = ref('');
 const selectedCafeId = ref('all');
 const selectedHeadquarterId = ref('all');
@@ -668,6 +680,30 @@ const getItemIcon = (type: string) => {
                     </Tabs>
 
                     <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                        <!-- View Toggle -->
+                        <div class="flex items-center bg-slate-100 p-1 rounded-xl mr-2">
+                            <button 
+                                @click="viewMode = 'cards'"
+                                :class="[
+                                    'p-1.5 rounded-lg transition-all',
+                                    viewMode === 'cards' ? 'bg-white shadow-sm text-primary' : 'text-slate-400 hover:text-slate-600'
+                                ]"
+                                title="Vista Cuadrícula"
+                            >
+                                <LayoutGrid class="h-4 w-4" />
+                            </button>
+                            <button 
+                                @click="viewMode = 'table'"
+                                :class="[
+                                    'p-1.5 rounded-lg transition-all',
+                                    viewMode === 'table' ? 'bg-white shadow-sm text-primary' : 'text-slate-400 hover:text-slate-600'
+                                ]"
+                                title="Vista Tabla"
+                            >
+                                <List class="h-4 w-4" />
+                            </button>
+                        </div>
+
                         <div class="relative flex-1 sm:w-64">
                             <Search class="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input v-model="searchQuery" placeholder="Buscar item..." class="pl-9 h-10 rounded-xl bg-slate-50 border-none focus-visible:ring-1" />
@@ -697,7 +733,7 @@ const getItemIcon = (type: string) => {
                     </div>
                 </div>
 
-                <!-- Content Grid -->
+                <!-- Content Grid / Table -->
                 <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar">
                     <div v-if="filteredStocks.length === 0" class="flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-3xl bg-white/50 border-slate-200">
                         <div class="h-16 w-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
@@ -707,115 +743,187 @@ const getItemIcon = (type: string) => {
                         <p class="text-slate-400 text-sm mt-1">No hay existencias registradas para esta categoría</p>
                     </div>
 
-                    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 pb-6">
-                        <Card 
-                            v-for="item in filteredStocks" 
-                            :key="item.id"
-                            class="group hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500 overflow-hidden border-slate-200 rounded-2xl bg-white flex flex-col"
-                        >
-                            <div class="h-1.5 w-full bg-slate-100">
-                                <div v-if="item.stockable_type.includes('Cloth')" class="h-full bg-primary/40"></div>
-                                <div v-else-if="item.stockable_type.includes('Computer')" class="h-full bg-blue-400"></div>
-                                <div v-else-if="item.stockable_type.includes('Kitchen')" class="h-full bg-orange-400"></div>
-                                <div v-else class="h-full bg-emerald-400"></div>
-                            </div>
+                    <template v-else>
+                        <!-- Cards View -->
+                        <div v-if="viewMode === 'cards'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 pb-6">
+                            <Card 
+                                v-for="item in filteredStocks" 
+                                :key="item.id"
+                                class="group hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500 overflow-hidden border-slate-200 rounded-2xl bg-white flex flex-col"
+                            >
+                                <div class="h-1.5 w-full bg-slate-100">
+                                    <div v-if="item.stockable_type.includes('Cloth')" class="h-full bg-primary/40"></div>
+                                    <div v-else-if="item.stockable_type.includes('Computer')" class="h-full bg-blue-400"></div>
+                                    <div v-else-if="item.stockable_type.includes('Kitchen')" class="h-full bg-orange-400"></div>
+                                    <div v-else class="h-full bg-emerald-400"></div>
+                                </div>
 
-                            <CardHeader class="p-5 pb-3">
-                                <div class="flex justify-between items-start gap-4">
-                                    <div class="flex gap-3">
-                                        <div :class="[
-                                            'p-2.5 rounded-xl shadow-sm transition-transform group-hover:scale-110',
-                                            activeTab === 'clothes' ? 'bg-indigo-50 text-indigo-600' :
-                                            activeTab === 'epps' ? 'bg-amber-50 text-amber-600' :
-                                            activeTab === 'computer' ? 'bg-blue-50 text-blue-600' :
-                                            activeTab === 'kitchen' ? 'bg-orange-50 text-orange-600' :
-                                            'bg-emerald-50 text-emerald-600'
-                                        ]">
-                                            <component :is="getItemIcon(activeTab)" class="h-5 w-5" />
+                                <CardHeader class="p-5 pb-3">
+                                    <div class="flex justify-between items-start gap-4">
+                                        <div class="flex gap-3">
+                                            <div :class="[
+                                                'p-2.5 rounded-xl shadow-sm transition-transform group-hover:scale-110',
+                                                activeTab === 'clothes' ? 'bg-indigo-50 text-indigo-600' :
+                                                activeTab === 'epps' ? 'bg-amber-50 text-amber-600' :
+                                                activeTab === 'computer' ? 'bg-blue-50 text-blue-600' :
+                                                activeTab === 'kitchen' ? 'bg-orange-50 text-orange-600' :
+                                                'bg-emerald-50 text-emerald-600'
+                                            ]">
+                                                <component :is="getItemIcon(activeTab)" class="h-5 w-5" />
+                                            </div>
+                                            <div class="min-w-0">
+                                                <CardTitle class="text-base font-bold text-slate-900 truncate">{{ item.stockable?.name }}</CardTitle>
+                                                <CardDescription class="text-xs mt-0.5 flex items-center gap-1.5 truncate text-slate-500">
+                                                    <template v-if="activeTab === 'clothes'">
+                                                        <Palette class="h-3 w-3" /> Prendas de Personal
+                                                    </template>
+                                                    <template v-else-if="activeTab === 'epps'">
+                                                        <Box class="h-3 w-3" /> Elemento de Protección
+                                                    </template>
+                                                    <template v-else-if="activeTab === 'computer'">
+                                                        {{ item.stockable?.brand }} | {{ item.stockable?.model || 'S/M' }}
+                                                    </template>
+                                                    <template v-else-if="activeTab === 'kitchen'">
+                                                        {{ item.stockable?.brand }} | {{ item.stockable?.size }}
+                                                        <span v-if="item.stockable?.code" class="ml-1 text-[10px] text-slate-400 font-mono">#{{ item.stockable?.code }}</span>
+                                                    </template>
+                                                    <template v-else>
+                                                        Insumo / Ingrediente
+                                                    </template>
+                                                </CardDescription>
+                                            </div>
                                         </div>
-                                        <div class="min-w-0">
-                                            <CardTitle class="text-base font-bold text-slate-900 truncate">{{ item.stockable?.name }}</CardTitle>
-                                            <CardDescription class="text-xs mt-0.5 flex items-center gap-1.5 truncate text-slate-500">
-                                                <template v-if="activeTab === 'clothes'">
-                                                    <Palette class="h-3 w-3" /> Prendas de Personal
-                                                </template>
-                                                <template v-else-if="activeTab === 'epps'">
-                                                    <Box class="h-3 w-3" /> Elemento de Protección
-                                                </template>
-                                                <template v-else-if="activeTab === 'computer'">
-                                                    {{ item.stockable?.brand }} | {{ item.stockable?.model || 'S/M' }}
-                                                </template>
-                                                <template v-else-if="activeTab === 'kitchen'">
-                                                    {{ item.stockable?.brand }} | {{ item.stockable?.size }}
-                                                    <span v-if="item.stockable?.code" class="ml-1 text-[10px] text-slate-400 font-mono">#{{ item.stockable?.code }}</span>
-                                                </template>
-                                                <template v-else>
-                                                    Insumo / Ingrediente
-                                                </template>
-                                            </CardDescription>
-                                        </div>
-                                    </div>
-                                    <Badge :variant="getStockStatus(item.quantity).variant" class="rounded-full px-2.5 shadow-none border-none text-[10px] uppercase font-bold">
-                                        {{ getStockStatus(item.quantity).label }}
-                                    </Badge>
-                                </div>
-                            </CardHeader>
-
-                            <CardContent class="p-5 pt-0 flex-1">
-                                <div class="mt-4 p-4 rounded-2xl bg-slate-50 flex items-center justify-between group-hover:bg-slate-100/50 transition-colors border border-transparent group-hover:border-slate-200">
-                                    <div>
-                                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Stock Disponible</p>
-                                        <div class="flex items-baseline gap-1.5 text-slate-900">
-                                            <span class="text-3xl font-black leading-none">{{ item.quantity }}</span>
-                                            <span class="text-xs font-bold text-slate-400 uppercase">Unidades</span>
-                                        </div>
-                                    </div>
-                                    <div @click="openSizesModal(item)" class="flex flex-col items-end gap-1 cursor-pointer hover:opacity-80 transition-opacity">
-                                        <div v-if="item.quantity > 0" class="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                                            <ArrowUpRight class="h-3 w-3" /> ACTIVO
-                                        </div>
-                                        <div v-else class="flex items-center gap-1 text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100">
-                                            <ArrowDownRight class="h-3 w-3" /> AGOTADO
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div class="mt-5 space-y-2.5">
-                                    <div class="flex items-center justify-between text-[11px]">
-                                        <span class="text-slate-400 font-medium flex items-center gap-1.5"><Building2 class="h-3 w-3" /> Gestión HQ</span>
-                                        <span class="text-slate-700 font-bold truncate max-w-[120px]">{{ item.headquarter?.name || 'Distribución Global' }}</span>
-                                    </div>
-                                    <div class="flex items-center justify-between text-[11px]">
-                                        <span class="text-slate-400 font-medium flex items-center gap-1.5"><Coffee class="h-3 w-3" /> Punto de Venta</span>
-                                        <span class="text-slate-700 font-bold truncate max-w-[120px]">{{ item.cafe?.name || 'N/A' }}</span>
-                                    </div>
-                                </div>
-                                <div v-if="activeTab === 'kitchen' && item.stockable" class="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-2 text-[10px]">
-                                    <div v-if="item.stockable.series" class="flex flex-col">
-                                        <span class="text-slate-400 uppercase tracking-tighter">Serie</span>
-                                        <span class="font-bold text-slate-700 truncate">{{ item.stockable.series }}</span>
-                                    </div>
-                                    <div v-if="item.stockable.status" class="flex flex-col">
-                                        <span class="text-slate-400 uppercase tracking-tighter">Estado</span>
-                                        <Badge variant="outline" class="h-4 text-[8px] px-1 w-fit font-bold uppercase bg-white border-slate-200">
-                                            {{ item.stockable.status }}
+                                        <Badge :variant="getStockStatus(item.quantity).variant" class="rounded-full px-2.5 shadow-none border-none text-[10px] uppercase font-bold">
+                                            {{ getStockStatus(item.quantity).label }}
                                         </Badge>
                                     </div>
-                                </div>
-                            </CardContent>
+                                </CardHeader>
 
-                            <div class="px-5 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/10 group-hover:bg-slate-50/50 transition-colors">
-                                <div class="flex -space-x-1.5 overflow-hidden">
-                                   <div class="h-6 w-6 rounded-full border-2 border-white bg-indigo-100 flex items-center justify-center text-[8px] font-bold text-indigo-600">HQ</div>
-                                   <div class="h-6 w-6 rounded-full border-2 border-white bg-amber-100 flex items-center justify-center text-[8px] font-bold text-amber-600">CF</div>
+                                <CardContent class="p-5 pt-0 flex-1">
+                                    <div class="mt-4 p-4 rounded-2xl bg-slate-50 flex items-center justify-between group-hover:bg-slate-100/50 transition-colors border border-transparent group-hover:border-slate-200">
+                                        <div>
+                                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Stock Disponible</p>
+                                            <div class="flex items-baseline gap-1.5 text-slate-900">
+                                                <span class="text-3xl font-black leading-none">{{ item.quantity }}</span>
+                                                <span class="text-xs font-bold text-slate-400 uppercase">Unidades</span>
+                                            </div>
+                                        </div>
+                                        <div @click="openSizesModal(item)" class="flex flex-col items-end gap-1 cursor-pointer hover:opacity-80 transition-opacity">
+                                            <div v-if="item.quantity > 0" class="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                                                <ArrowUpRight class="h-3 w-3" /> ACTIVO
+                                            </div>
+                                            <div v-else class="flex items-center gap-1 text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100">
+                                                <ArrowDownRight class="h-3 w-3" /> AGOTADO
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mt-5 space-y-2.5">
+                                        <div class="flex items-center justify-between text-[11px]">
+                                            <span class="text-slate-400 font-medium flex items-center gap-1.5"><Building2 class="h-3 w-3" /> Gestión HQ</span>
+                                            <span class="text-slate-700 font-bold truncate max-w-[120px]">{{ item.headquarter?.name || 'Distribución Global' }}</span>
+                                        </div>
+                                        <div class="flex items-center justify-between text-[11px]">
+                                            <span class="text-slate-400 font-medium flex items-center gap-1.5"><Coffee class="h-3 w-3" /> Punto de Venta</span>
+                                            <span class="text-slate-700 font-bold truncate max-w-[120px]">{{ item.cafe?.name || 'N/A' }}</span>
+                                        </div>
+                                    </div>
+                                </CardContent>
+
+                                <div class="px-5 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/10 group-hover:bg-slate-50/50 transition-colors">
+                                    <div class="flex -space-x-1.5 overflow-hidden">
+                                       <div class="h-6 w-6 rounded-full border-2 border-white bg-indigo-100 flex items-center justify-center text-[8px] font-bold text-indigo-600">HQ</div>
+                                       <div class="h-6 w-6 rounded-full border-2 border-white bg-amber-100 flex items-center justify-center text-[8px] font-bold text-amber-600">CF</div>
+                                    </div>
+                                    <button @click="openSizesModal(item)" class="text-[10px] font-black text-primary flex items-center gap-1 hover:gap-2 transition-all tracking-tighter uppercase">
+                                        AUDITAR STOCK <ArrowUpRight class="h-3.5 w-3.5" />
+                                    </button>
                                 </div>
-                                <button class="text-[10px] font-black text-primary flex items-center gap-1 hover:gap-2 transition-all tracking-tighter uppercase">
-                                    AUDITAR STOCK <ArrowUpRight class="h-3.5 w-3.5" />
-                                </button>
-                            </div>
-                        </Card>
-                    </div>
+                            </Card>
+                        </div>
+
+                        <!-- Table View -->
+                        <div v-else class="bg-white rounded-2xl border shadow-sm overflow-hidden mb-6">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow class="bg-slate-50/50 hover:bg-slate-50/50">
+                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px] w-[300px]">Item / Catálogo</TableHead>
+                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Atributos</TableHead>
+                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Gestión / Ubicación</TableHead>
+                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px] text-center">Disponible</TableHead>
+                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px] text-center">Estado</TableHead>
+                                        <TableHead class="w-[80px]"></TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    <TableRow v-for="item in filteredStocks" :key="item.id" class="group transition-colors hover:bg-slate-50/50">
+                                        <TableCell>
+                                            <div class="flex items-center gap-3">
+                                                <div :class="[
+                                                    'p-2 rounded-lg',
+                                                    activeTab === 'clothes' ? 'bg-indigo-50 text-indigo-600' :
+                                                    activeTab === 'epps' ? 'bg-amber-50 text-amber-600' :
+                                                    activeTab === 'computer' ? 'bg-blue-50 text-blue-600' :
+                                                    activeTab === 'kitchen' ? 'bg-orange-50 text-orange-600' :
+                                                    'bg-emerald-50 text-emerald-600'
+                                                ]">
+                                                    <component :is="getItemIcon(activeTab)" class="h-4 w-4" />
+                                                </div>
+                                                <div class="flex flex-col">
+                                                    <span class="font-bold text-slate-900">{{ item.stockable?.name }}</span>
+                                                    <span class="text-[10px] font-bold text-slate-400 tracking-wider uppercase">
+                                                        {{ activeTab }}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div class="flex flex-col gap-1">
+                                                <template v-if="activeTab === 'computer'">
+                                                    <span class="text-xs font-semibold text-slate-700">{{ item.stockable?.brand }}</span>
+                                                    <span class="text-[10px] text-slate-500">{{ item.stockable?.model || 'Sin Modelo' }}</span>
+                                                </template>
+                                                <template v-else-if="activeTab === 'kitchen'">
+                                                    <span class="text-xs font-semibold text-slate-700">{{ item.stockable?.brand }}</span>
+                                                    <span class="text-[10px] text-slate-500">{{ item.stockable?.size }}</span>
+                                                </template>
+                                                <template v-else>
+                                                    <span class="text-xs text-slate-500 italic">Datos en detalle</span>
+                                                </template>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div class="flex flex-col">
+                                                <div class="flex items-center gap-1.5 text-xs">
+                                                    <Building2 class="h-3 w-3 text-slate-400" />
+                                                    <span class="font-medium text-slate-700">{{ item.headquarter?.name || 'General' }}</span>
+                                                </div>
+                                                <div class="flex items-center gap-1.5 text-[10px] text-slate-500 mt-1">
+                                                    <Coffee class="h-2.5 w-2.5" />
+                                                    <span>{{ item.cafe?.name || 'Sin Asignar' }}</span>
+                                                </div>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell class="text-center font-black text-slate-900 text-lg">
+                                            {{ item.quantity }}
+                                        </TableCell>
+                                        <TableCell class="text-center">
+                                            <Badge :variant="getStockStatus(item.quantity).variant" class="rounded-full px-2 shadow-none border-none text-[9px] uppercase font-black tracking-tighter">
+                                                {{ getStockStatus(item.quantity).label }}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            <Button @click="openSizesModal(item)" variant="ghost" size="sm" class="h-8 w-8 p-0 text-slate-400 hover:text-primary transition-colors">
+                                                <MoreHorizontal class="h-4 w-4" />
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </template>
                 </div>
+            </div>
             </div>
 
             <!-- Footer Metrics -->
@@ -880,7 +988,7 @@ const getItemIcon = (type: string) => {
                                 <div v-for="(sz, idx) in filteredStockSizes" :key="idx" class="px-4 py-3 flex justify-between items-center hover:bg-slate-50/50 transition-colors">
                                     <div class="flex items-center gap-3">
                                         <div class="h-8 w-8 rounded-lg bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-700 border border-indigo-100 uppercase">
-                                            {{ sz.size?.toUpperCase() }}
+                                            {{ sz.size ? sz.size.toUpperCase() : 'U' }}
                                         </div>
                                         <div v-if="sz.color" class="flex items-center gap-1.5">
                                             <div class="w-2.5 h-2.5 rounded-full border border-slate-200 shadow-sm" :style="{ backgroundColor: sz.color.hex_code }"></div>
@@ -900,7 +1008,6 @@ const getItemIcon = (type: string) => {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </div>
     </AppLayout>
 </template>
 

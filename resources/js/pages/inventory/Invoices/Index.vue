@@ -329,9 +329,17 @@ const isAssignEppModalOpen = ref(false);
 const assigningProvider = ref<any>(null);
 const selectedEppIds = ref<number[]>([]);
 const selectedClothIds = ref<number[]>([]);
+const eppAssignmentSearch = ref('');
+
+const filteredEppsForAssignment = computed(() => {
+    if (!eppAssignmentSearch.value) return props.epps;
+    const s = eppAssignmentSearch.value.toLowerCase();
+    return props.epps.filter(e => e.name.toLowerCase().includes(s));
+});
 
 const openAssignModal = (provider: any) => {
     assigningProvider.value = provider;
+    eppAssignmentSearch.value = ''; // Reset search
     
     // Get unique IDs from both the pivot relationship and the city_providers price table
     const pivotIds = provider.epps.map((e: any) => e.id);
@@ -971,15 +979,25 @@ const vFocus = {
                     <div class="py-4 max-h-[500px] overflow-y-auto pr-2 space-y-6">
                         <!-- EPPs Section -->
                         <div class="space-y-3">
-                            <h3 class="text-sm font-bold text-slate-500 uppercase flex items-center gap-2 px-1">
-                                <Box class="h-4 w-4" /> Catálogo de EPPs
-                            </h3>
-                            <div v-if="epps.length === 0" class="text-center py-4 text-slate-400 italic text-xs">
-                                No hay EPPs registrados.
+                            <div class="flex items-center justify-between px-1">
+                                <h3 class="text-sm font-bold text-slate-500 uppercase flex items-center gap-2">
+                                    <Box class="h-4 w-4" /> Catálogo de EPPs
+                                </h3>
+                                <div class="relative w-48">
+                                    <Search class="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                                    <Input 
+                                        v-model="eppAssignmentSearch" 
+                                        placeholder="Buscar EPP..." 
+                                        class="h-8 pl-8 text-[10px] rounded-xl border-slate-200 focus:ring-indigo-500" 
+                                    />
+                                </div>
+                            </div>
+                            <div v-if="filteredEppsForAssignment.length === 0" class="text-center py-4 text-slate-400 italic text-xs">
+                                No se encontraron EPPs.
                             </div>
                             <div class="grid grid-cols-1 gap-2">
                                 <label 
-                                    v-for="epp in epps" 
+                                    v-for="epp in filteredEppsForAssignment" 
                                     :key="epp.id" 
                                     class="flex items-center gap-3 p-2.5 rounded-xl border transition-all cursor-pointer hover:bg-slate-50"
                                     :class="selectedEppIds.includes(epp.id) ? 'border-indigo-600 bg-indigo-50/50' : 'border-slate-100'"
