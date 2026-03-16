@@ -16,11 +16,13 @@ import { Truck } from 'lucide-vue-next';
 interface ExtendedStaff extends Staff {
     staff_clothes: Array<{
         id: number;
-        cloth_id: number;
+        cloth_id: number | null;
+        epp_id: number | null;
         color_id: number | null;
         clothing_size: string;
         clothe_name?: string;
         cloth?: { name: string };
+        epp?: { name: string, sizes: Array<{ id: number, size: string }> };
         color?: { id: number; name: string };
         status?: string;
     }>;
@@ -29,8 +31,10 @@ interface ExtendedStaff extends Staff {
 const props = defineProps<{
     staff: ExtendedStaff[]; 
     roleClothes: Record<number, Record<string, Array<{ id: number; name: string }>>>;
+    roleEpps: Record<number, Record<string, Array<{ id: number; name: string; sizes: Array<{ id: number, size: string }> }>>>;
     units: any[];
     colors: Array<{ id: number, name: string }>;
+    headquarters?: Array<{ id: number, name: string, business?: { name: string } }>;
 }>();
 
 const getClothesForStaff = (person: ExtendedStaff) => {
@@ -38,9 +42,16 @@ const getClothesForStaff = (person: ExtendedStaff) => {
     const roleMap = props.roleClothes[person.role_id];
     if (!roleMap) return [];
     
-    const cafeId = person.cafe_id;
-    const clothes = roleMap[String(cafeId)] || roleMap['all'] || [];
-    return clothes;
+    const cafeId = person.cafe_id || (person.staffable_type === 'App\\Models\\Cafe' ? person.staffable_id : null);
+    const specific = cafeId ? (roleMap[String(cafeId)] || []) : [];
+    const common = roleMap['all'] || [];
+    
+    // Merge without duplicates
+    const merged = [...specific];
+    common.forEach(c => {
+        if (!merged.find(m => m.id === c.id)) merged.push(c);
+    });
+    return merged;
 };
 
 const localStaff = ref(props.staff as any[]);
@@ -179,6 +190,7 @@ const getInitials = (name: string) => {
                             <tr>
                                 <th class="p-4 font-medium">Personal</th>
                                 <th class="p-4 font-medium">Cargo</th>
+                                <th class="p-4 font-medium">Café</th>
                                 <th class="p-4 font-medium">Unidad</th>
                                <!-- <th class="p-4 font-medium">Tallas</th> -->
                                 <th class="p-4 font-medium w-16">Prendas</th>
@@ -204,6 +216,12 @@ const getInitials = (name: string) => {
                                         {{ person.role.name }}
                                     </span>
                                     <span v-else class="text-gray-400 italic">Sin cargo</span>
+                                </td>
+                                <td class="p-4">
+                                    <span class="inline-flex items-center rounded-md bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700 ring-1 ring-inset ring-orange-700/10" v-if="person.staffable">
+                                        {{ person.staffable.name }}
+                                    </span>
+                                    <span v-else class="text-gray-400 italic">Sin café</span>
                                 </td>
                                 <td class="p-4">
                                     <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-700/10" v-if="person.staffable?.unit">
@@ -280,6 +298,9 @@ const getInitials = (name: string) => {
             :open="isModalOpen" 
             :staff="selectedStaff" 
             :colors="colors"
+            :role-clothes="roleClothes"
+            :role-epps="roleEpps"
+            :headquarters="headquarters"
             @update:open="isModalOpen = $event" 
         />
 

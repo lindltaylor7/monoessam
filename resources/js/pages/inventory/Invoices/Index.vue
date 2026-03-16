@@ -13,7 +13,7 @@ import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from '@/components/ui/select';
 import { 
-    Plus, Trash2, Calendar, FileText, Truck, Building, Box, Shirt, ArrowUpRight, History, MoreHorizontal, Edit2, UploadCloud, Loader2
+    Plus, Trash2, Calendar, FileText, Truck, Building, Box, Shirt, ArrowUpRight, History, MoreHorizontal, Edit2, UploadCloud, Loader2, Tags, Search
 } from 'lucide-vue-next';
 import { 
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
@@ -32,6 +32,7 @@ interface Props {
     epps: any[];
     cities: any[];
     all_sizes: any[];
+    epp_categories: any[];
 }
 
 const props = defineProps<Props>();
@@ -93,49 +94,11 @@ const onItemSelect = (uniqueId: string, index: number) => {
         } else {
             item.epp_id = String(selected.id);
             item.cloth_id = '';
-            
-            // Try to find price for this provider
-            const providerId = invoiceForm.value.cloth_provider_id;
-            // Note: We don't have city context here directly in the form header yet, 
-            // but we can try to match if multiple prices exist or use a default.
-            // For now, if we have the city in the item, we use it.
-            const cityId = item.size ? getCityIdFromSize(selected, item.size) : null;
-            
-            const priceEntry = selected.city_providers?.find((cp: any) => 
-                String(cp.cloth_provider_id) === String(providerId) && 
-                (!cityId || String(cp.city_id) === String(cityId))
-            );
-            
-            item.unit_price = Number(priceEntry?.cost_price || 0);
+            item.unit_price = 0; 
         }
         item.size = ''; // Reset size on item change
     }
 };
-
-const getCityIdFromSize = (epp: any, sizeName: string) => {
-    const size = epp.sizes?.find((s: any) => s.size === sizeName);
-    return size?.city_id;
-};
-
-// Re-calculate price when size (and thus city) changes for EPP
-watch(() => invoiceForm.value.items, (newItems) => {
-    newItems.forEach((item, index) => {
-        if (item.epp_id && item.size) {
-            const epp = props.epps.find(e => String(e.id) === String(item.epp_id));
-            if (epp) {
-                const cityId = getCityIdFromSize(epp, item.size);
-                const providerId = invoiceForm.value.cloth_provider_id;
-                const priceEntry = epp.city_providers?.find((cp: any) => 
-                    String(cp.cloth_provider_id) === String(providerId) && 
-                    String(cp.city_id) === String(cityId)
-                );
-                if (priceEntry) {
-                    item.unit_price = Number(priceEntry.cost_price);
-                }
-            }
-        }
-    });
-}, { deep: true });
 
 const getItemUniqueId = (item: any) => {
     if (item.cloth_id) return `cloth_${item.cloth_id}`;
@@ -280,19 +243,38 @@ const deleteProvider = (id: number) => {
     }
 };
 
-// --- EPP Logic ---
 const isEppModalOpen = ref(false);
 const eppForm = ref({ 
     name: '',
+    category_epp_id: 'none',
     size_ids: [] as number[]
 });
 
 const handleEppSubmit = () => {
-    router.post(route('inventory.epps.store'), eppForm.value, {
+    const submitData = {
+        ...eppForm.value,
+        category_epp_id: eppForm.value.category_epp_id === 'none' ? null : eppForm.value.category_epp_id
+    };
+
+    router.post(route('inventory.epps.store'), submitData, {
         onSuccess: () => {
             isEppModalOpen.value = false;
             eppForm.value.name = '';
+            eppForm.value.category_epp_id = 'none';
             eppForm.value.size_ids = [];
+        }
+    });
+};
+
+// --- EPP Category Logic ---
+const isCategoryModalOpen = ref(false);
+const categoryForm = ref({ name: '' });
+
+const handleCategorySubmit = () => {
+    router.post(route('inventory.epp-categories.store'), categoryForm.value, {
+        onSuccess: () => {
+            isCategoryModalOpen.value = false;
+            categoryForm.value.name = '';
         }
     });
 };
@@ -404,7 +386,6 @@ const isSizeModalOpen = ref(false);
 const selectedEppForSizes = ref<any>(null);
 const sizeForm = ref({
     epp_id: '',
-    city_id: '',
     size: ''
 });
 
@@ -412,7 +393,6 @@ const openSizeModal = (epp: any) => {
     selectedEppForSizes.value = epp;
     sizeForm.value = {
         epp_id: epp.id,
-        city_id: '',
         size: ''
     };
     isSizeModalOpen.value = true;
@@ -421,7 +401,6 @@ const openSizeModal = (epp: any) => {
 const handleSizeSubmit = () => {
     router.post(route('inventory.epp-sizes.store'), sizeForm.value, {
         onSuccess: () => {
-            sizeForm.value.city_id = '';
             sizeForm.value.size = '';
             // Update the local list if needed or let Inertia reload
         }
@@ -470,9 +449,6 @@ const saveInlinePrice = (cp: any) => {
     }
 };
 
-const vFocus = {
-  mounted: (el: HTMLElement) => el.focus()
-};
 
 </script>
 
@@ -626,7 +602,7 @@ const vFocus = {
                                                                 <SelectTrigger class="h-9 border-none shadow-none focus:ring-1"><SelectValue placeholder="Talla" /></SelectTrigger>
                                                                 <SelectContent>
                                                                     <SelectItem v-for="s in getSizesForItem(getItemUniqueId(item))" :key="s.id" :value="s.size">
-                                                                        {{ s.size }} <span class="text-[10px] text-slate-400 text-right">({{ s.city?.name }})</span>
+                                                                        {{ s.size }}
                                                                     </SelectItem>
                                                                 </SelectContent>
                                                             </Select>
@@ -864,6 +840,7 @@ const vFocus = {
                                 <TableHeader>
                                     <TableRow class="bg-slate-50/50 hover:bg-slate-50/50">
                                         <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Nombre</TableHead>
+                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Categoría</TableHead>
                                         <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Precio Costo</TableHead>
                                         <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Tallas Estándar</TableHead>
                                         <TableHead class="w-[100px]"></TableHead>
@@ -872,6 +849,12 @@ const vFocus = {
                                 <TableBody>
                                     <TableRow v-for="epp in epps" :key="epp.id" :class="'group transition-colors ' + (epp.id % 2 === 0 ? '' : 'bg-slate-50/30')">
                                         <TableCell class="font-bold text-slate-900">{{ epp.name }}</TableCell>
+                                        <TableCell>
+                                            <Badge v-if="epp.category" variant="outline" class="bg-indigo-50 text-indigo-700 border-indigo-100 flex items-center gap-1 w-fit">
+                                                <Tags class="h-3 w-3" /> {{ epp.category.name }}
+                                            </Badge>
+                                            <span v-else class="text-xs text-slate-400 italic">Sin Categoría</span>
+                                        </TableCell>
                                         <TableCell>
                                             <div class="flex flex-col gap-1.5 max-w-[300px]">
                                                 <div v-for="cp in epp.city_providers" :key="cp.id" class="flex items-center justify-between p-1.5 rounded-lg border border-indigo-100 bg-indigo-50/20 text-[10px]">
@@ -886,10 +869,10 @@ const vFocus = {
                                         </TableCell>
                                         <TableCell>
                                             <div class="flex flex-wrap gap-1.5 max-w-[200px]">
-                                                <Badge v-for="sz in epp.available_sizes" :key="sz.id" class="bg-indigo-600 text-[9px] font-black uppercase tracking-tighter">
-                                                    {{ sz.name }}
+                                                <Badge v-for="sz in epp.sizes" :key="sz.id" class="bg-indigo-600 text-[9px] font-black uppercase tracking-tighter">
+                                                    {{ sz.size }}
                                                 </Badge>
-                                                <span v-if="!epp.available_sizes?.length" class="text-xs text-slate-400 italic">Sin tallas base</span>
+                                                <span v-if="!epp.sizes?.length" class="text-xs text-slate-400 italic">Sin tallas base</span>
                                             </div>
                                         </TableCell>
                                         <TableCell class="text-right">
@@ -956,6 +939,22 @@ const vFocus = {
                         <div class="grid gap-2">
                             <Label class="text-xs font-bold uppercase text-slate-500 tracking-widest">Nombre del EPP</Label>
                             <Input v-model="eppForm.name" placeholder="Ej: Guantes de Nitrilo" class="border-slate-200" />
+                        </div>
+
+                        <div class="grid gap-2">
+                            <div class="flex items-center justify-between">
+                                <Label class="text-xs font-bold uppercase text-slate-500 tracking-widest">Categoría</Label>
+                                <Button @click="isCategoryModalOpen = true" variant="ghost" class="h-6 text-[10px] gap-1 text-indigo-600 hover:text-indigo-700 p-0">
+                                    <Plus class="h-3 w-3" /> Nueva Categoría
+                                </Button>
+                            </div>
+                            <Select v-model="eppForm.category_epp_id">
+                                <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar categoría (Opcional)" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">Ninguna</SelectItem>
+                                    <SelectItem v-for="cat in epp_categories || []" :key="cat.id" :value="String(cat.id)">{{ cat.name }}</SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
 
                         <div class="space-y-3">
@@ -1044,7 +1043,6 @@ const vFocus = {
                                                         @blur="saveInlinePrice(cp)"
                                                         @keyup.enter="saveInlinePrice(cp)"
                                                         @click.stop
-                                                        v-focus
                                                     />
                                                 </template>
                                                 <span v-else>S/.{{ Number(cp.cost_price).toFixed(2) }}</span>
@@ -1105,18 +1103,9 @@ const vFocus = {
                 <DialogContent class="sm:max-w-[400px]">
                     <DialogHeader>
                         <DialogTitle>Gestionar Tallas - {{ selectedEppForSizes?.name }}</DialogTitle>
-                        <DialogDescription>Asigne una nueva talla y su ciudad correspondiente.</DialogDescription>
+                        <DialogDescription>Asigne una nueva talla al elemento seleccionado.</DialogDescription>
                     </DialogHeader>
                     <div class="grid gap-4 py-4">
-                        <div class="grid gap-2">
-                            <Label>Ciudad</Label>
-                            <Select v-model="sizeForm.city_id">
-                                <SelectTrigger><SelectValue placeholder="Seleccionar ciudad" /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem v-for="city in cities" :key="city.id" :value="String(city.id)">{{ city.name }}</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
                         <div class="grid gap-2">
                             <Label>Talla / Medida</Label>
                             <Input v-model="sizeForm.size" placeholder="Ej: XL, 42, Grande" />
@@ -1124,7 +1113,7 @@ const vFocus = {
                     </div>
                     <DialogFooter>
                         <Button variant="ghost" @click="isSizeModalOpen = false">Cerrar</Button>
-                        <Button @click="handleSizeSubmit" :disabled="!sizeForm.city_id || !sizeForm.size" class="bg-indigo-600 text-white">
+                        <Button @click="handleSizeSubmit" :disabled="!sizeForm.size" class="bg-indigo-600 text-white">
                             Agregar Talla
                         </Button>
                     </DialogFooter>
@@ -1286,6 +1275,28 @@ const vFocus = {
                         <Button variant="ghost" @click="isPriceModalOpen = false">Cerrar</Button>
                         <Button @click="handlePriceSubmit" :disabled="!priceForm.cloth_provider_id || !priceForm.city_id || !priceForm.cost_price" class="bg-indigo-600 text-white font-bold">
                             Asignar Precio
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <!-- Epp Category Modal -->
+            <Dialog v-model:open="isCategoryModalOpen">
+                <DialogContent class="sm:max-w-[400px]">
+                    <DialogHeader>
+                        <DialogTitle>Nueva Categoría de EPP</DialogTitle>
+                        <DialogDescription>Agrupe sus EPPs por tipos (ej: Protección Visual, Calzado, etc.)</DialogDescription>
+                    </DialogHeader>
+                    <div class="grid gap-4 py-4">
+                        <div class="grid gap-2">
+                            <Label>Nombre de la Categoría</Label>
+                            <Input v-model="categoryForm.name" placeholder="Ej: Protección Facial" />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" @click="isCategoryModalOpen = false">Cancelar</Button>
+                        <Button @click="handleCategorySubmit" :disabled="!categoryForm.name" class="bg-indigo-600 text-white font-bold">
+                            Guardar Categoría
                         </Button>
                     </DialogFooter>
                 </DialogContent>

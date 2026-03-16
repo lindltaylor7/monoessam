@@ -27,6 +27,7 @@ use App\Models\InventoryTransferItem;
 use App\Models\Unit;
 use App\Models\Staff;
 use App\Models\Staff_clothes;
+use App\Models\CategoryEpp;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
@@ -92,6 +93,10 @@ class InventoryController extends Controller
             });
         } else {
             $q->where('name', 'like', "%{$query}%");
+        }
+
+        if ($type === 'epp') {
+            $q->with('sizes');
         }
 
         $items = $q->limit(10)->get();
@@ -272,6 +277,7 @@ class InventoryController extends Controller
                         'stockable_type' => Cloth::class,
                         'cafe_id' => $validated['cafe_id'] ?? null,
                         'headquarter_id' => $validated['headquarter_id'] ?? null,
+                        'size' => $itemData['size'] ?? null,
                     ]);
                     $stock->quantity += $itemData['quantity'];
                     $stock->save();
@@ -282,6 +288,7 @@ class InventoryController extends Controller
                         'stockable_type' => Epp::class,
                         'cafe_id' => $validated['cafe_id'] ?? null,
                         'headquarter_id' => $validated['headquarter_id'] ?? null,
+                        'size' => $itemData['size'] ?? null,
                     ]);
                     $stock->quantity += $itemData['quantity'];
                     $stock->save();
@@ -321,9 +328,10 @@ class InventoryController extends Controller
             'cafes' => Cafe::with('unit')->get(),
             'clothes' => Cloth::all(),
             'colors' => Color::all(),
-            'epps' => Epp::with(['sizes.city', 'cityProviders.city', 'cityProviders.provider', 'availableSizes'])->get(),
+            'epps' => Epp::with(['sizes', 'cityProviders.city', 'cityProviders.provider', 'availableSizes', 'category'])->get(),
             'cities' => City::all(),
             'all_sizes' => Size::all(),
+            'epp_categories' => CategoryEpp::all(),
         ]);
     }
 
@@ -367,11 +375,15 @@ class InventoryController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'category_epp_id' => 'nullable|exists:category_epps,id',
             'size_ids' => 'nullable|array',
             'size_ids.*' => 'exists:sizes,id',
         ]);
 
-        $epp = Epp::create(['name' => $validated['name']]);
+        $epp = Epp::create([
+            'name' => $validated['name'],
+            'category_epp_id' => $validated['category_epp_id'] ?? null,
+        ]);
         
         if (!empty($validated['size_ids'])) {
             $epp->availableSizes()->sync($validated['size_ids']);
@@ -424,7 +436,6 @@ class InventoryController extends Controller
     {
         $validated = $request->validate([
             'epp_id' => 'required|exists:epps,id',
-            'city_id' => 'required|exists:cities,id',
             'size' => 'required|string|max:255',
         ]);
 
@@ -439,6 +450,16 @@ class InventoryController extends Controller
         $size->delete();
 
         return back()->with('success', 'Talla eliminada correctamente');
+    }
+    public function storeCategoryEpp(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255|unique:category_epps,name',
+        ]);
+
+        CategoryEpp::create($validated);
+
+        return back()->with('success', 'Categoría de EPP registrada correctamente');
     }
 
     public function getStockSizes($id)
@@ -501,10 +522,12 @@ class InventoryController extends Controller
                     'unit_id' => null,
                     'cafe_id' => null,
                     'headquarter_id' => null,
+                    'size' => $itemData['size'] ?? null,
                 ])->first();
 
                 if (!$principalStock || $principalStock->quantity < $itemData['quantity']) {
-                    throw new \Exception("Stock insuficiente en Principal para: " . $itemData['stockable_id']);
+                    $itemName = $type === Epp::class ? Epp::find($itemData['stockable_id'])->name : Cloth::find($itemData['stockable_id'])->name;
+                    throw new \Exception("Stock insuficiente en Principal para: {$itemName} (Talla: " . ($itemData['size'] ?? 'N/A') . ")");
                 }
 
                 $principalStock->decrement('quantity', $itemData['quantity']);
@@ -514,6 +537,7 @@ class InventoryController extends Controller
                     'stockable_id' => $itemData['stockable_id'],
                     'stockable_type' => $type,
                     'unit_id' => $validated['unit_id'],
+                    'size' => $itemData['size'] ?? null,
                 ], ['quantity' => 0]);
 
                 $unitStock->increment('quantity', $itemData['quantity']);
@@ -542,6 +566,7 @@ class InventoryController extends Controller
             'items.*.stockable_id' => 'required|integer',
             'items.*.stockable_type' => 'required|string',
             'items.*.quantity' => 'required|integer|min:1',
+            'items.*.size' => 'nullable|string',
         ]);
 
         DB::transaction(function () use ($validated) {
@@ -555,6 +580,7 @@ class InventoryController extends Controller
                     'stockable_id' => $itemData['stockable_id'],
                     'stockable_type' => $type,
                     'unit_id' => $validated['unit_id'],
+                    'size' => $itemData['size'] ?? null,
                 ])->first();
 
                 if (!$unitStock || $unitStock->quantity < $itemData['quantity']) {
@@ -570,6 +596,7 @@ class InventoryController extends Controller
                     'unit_id' => null,
                     'cafe_id' => null,
                     'headquarter_id' => null,
+                    'size' => $itemData['size'] ?? null,
                 ], ['quantity' => 0]);
 
                 $principalStock->increment('quantity', $itemData['quantity']);
@@ -587,37 +614,76 @@ class InventoryController extends Controller
             'items.*.color_id' => 'required|exists:colors,id',
             'items.*.size' => 'required|string',
             'items.*.quantity' => 'required|integer|min:1',
+            'items.*.headquarter_id' => 'nullable|exists:headquarters,id',
         ]);
 
         $staff = Staff::findOrFail($validated['staff_id']);
 
-        DB::transaction(function () use ($validated, $staff) {
-            foreach ($validated['items'] as $itemData) {
-                // Now targeting EPP class
-                $stock = InventoryStock::where([
-                    'stockable_id' => $itemData['epp_id'],
-                    'stockable_type' => Epp::class,
-                    'cafe_id' => $staff->cafe_id,
-                ])->first();
-
-                if (!$stock || $stock->quantity < $itemData['quantity']) {
-                    throw new \Exception("Stock insuficiente de EPP en el punto de venta.");
-                }
-
-                $stock->decrement('quantity', $itemData['quantity']);
-
-                for ($i = 0; $i < $itemData['quantity']; $i++) {
-                    Staff_clothes::create([
-                        'staff_id' => $staff->id,
-                        'epp_id' => $itemData['epp_id'],
-                        'color_id' => $itemData['color_id'],
-                        'clothing_size' => $itemData['size'],
-                        'status' => 'Entregado',
+        try {
+            DB::transaction(function () use ($validated, $staff) {
+                foreach ($validated['items'] as $itemData) {
+                    // Now targeting EPP class
+                    $stockQuery = InventoryStock::where([
+                        'stockable_id' => $itemData['epp_id'],
+                        'stockable_type' => Epp::class,
+                        'size' => $itemData['size'],
                     ]);
+
+                    if (!empty($itemData['headquarter_id'])) {
+                        $stockQuery->where('headquarter_id', $itemData['headquarter_id']);
+                    } else {
+                        $stockQuery->where('cafe_id', $staff->cafe_id);
+                    }
+
+                    $stock = $stockQuery->first();
+
+                    if (!$stock || $stock->quantity < $itemData['quantity']) {
+                        $epp = Epp::find($itemData['epp_id']);
+                        $locationName = !empty($itemData['headquarter_id']) 
+                            ? (Headquarter::find($itemData['headquarter_id'])?->name ?: 'la sede seleccionada')
+                            : ($staff->cafe?->name ?: 'el punto de venta');
+                        throw new \Exception("Stock insuficiente de '{$epp->name}' (Talla: {$itemData['size']}) en {$locationName}. Disponible: " . ($stock?->quantity ?: 0));
+                    }
+
+                    $stock->decrement('quantity', $itemData['quantity']);
+
+                    for ($i = 0; $i < $itemData['quantity']; $i++) {
+                        Staff_clothes::create([
+                            'staff_id' => $staff->id,
+                            'epp_id' => $itemData['epp_id'],
+                            'color_id' => $itemData['color_id'],
+                            'clothing_size' => $itemData['size'],
+                            'status' => 'Entregado',
+                        ]);
+
+                        // SUBTRACT FROM CLOTH_INVOICE_ITEMS (FIFO)
+                        $invoiceItem = \App\Models\ClothInvoiceItem::where('epp_id', $itemData['epp_id'])
+                            ->where('color_id', $itemData['color_id'])
+                            ->where('size', $itemData['size'])
+                            ->where('quantity', '>', 0)
+                            ->orderBy('created_at', 'asc')
+                            ->first();
+                        if ($invoiceItem) $invoiceItem->decrement('quantity');
+                    }
                 }
-            }
-        });
+            });
+        } catch (\Exception $e) {
+            return back()->with('error', $e->getMessage());
+        }
 
         return back()->with('success', 'EPPs asignados correctamente');
+    }
+
+    public function getItemStock(Request $request, $id)
+    {
+        $type = $request->input('type', 'epp');
+        $modelType = $type === 'cloth' ? \App\Models\Cloth::class : \App\Models\Epp::class;
+
+        $stocks = InventoryStock::where([
+            'stockable_id' => $id,
+            'stockable_type' => $modelType
+        ])->get(['headquarter_id', 'cafe_id', 'quantity', 'size']);
+        
+        return response()->json($stocks);
     }
 }

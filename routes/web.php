@@ -273,6 +273,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('/quantity/{id}', [ClothController::class, 'updateQuantity'])->name('update-quantity');
         Route::post('/staff-size', [ClothController::class, 'updateStaffSize'])->name('staff-size');
         Route::post('/status', [ClothController::class, 'updateStatus'])->name('status');
+        
+        // EPP Manage Routes
+        Route::post('/assign-epp-role', [ClothController::class, 'assignEppRole'])->name('assign-epp-role');
+        Route::delete('/epps/{id}', [ClothController::class, 'destroyEpp'])->name('epps.destroy');
     });
 
     Route::prefix('inventory')->name('inventory.')->group(function () {
@@ -292,8 +296,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // EPPs
         Route::post('/epps', [InventoryController::class, 'storeEpp'])->name('epps.store');
+        Route::post('/epps/categories', [InventoryController::class, 'storeCategoryEpp'])->name('epp-categories.store');
         Route::post('/epps/assign-price', [InventoryController::class, 'assignEppPrice'])->name('epps.assign-price');
         Route::post('/providers/{id}/epps', [InventoryController::class, 'syncProviderEpps'])->name('providers.epps.sync');
+        Route::get('/items/{id}/stock', [InventoryController::class, 'getItemStock'])->name('items.stock');
 
         // EPP Sizes
         Route::post('/epp-sizes', [InventoryController::class, 'storeEppSize'])->name('epp-sizes.store');

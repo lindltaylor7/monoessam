@@ -15,6 +15,7 @@ class InventoryStock extends Model
         'cafe_id',
         'unit_id',
         'quantity',
+        'size',
     ];
 
     public function unit(): BelongsTo

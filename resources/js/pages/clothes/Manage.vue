@@ -22,7 +22,7 @@ import {
 
 const props = defineProps<{
     roles: Array<{ id: number, name: string }>;
-    clothes: Array<{ id: number, name: string, quantity: number, roles: Array<{ id: number, pivot: { cafe_id: number } }> }>;
+    epps: Array<{ id: number, name: string, quantity: number, roles: Array<{ id: number, pivot: { cafe_id: number } }> }>;
     cafes: Array<{ 
         id: number, 
         name: string, 
@@ -31,17 +31,17 @@ const props = defineProps<{
     }>;
 }>();
 
-const newClothName = ref('');
+const newEppName = ref('');
 const isCreating = ref(false);
 const searchQuery = ref('');
 const selectedCafeId = ref(props.cafes.length > 0 ? String(props.cafes[0].id) : '');
-const clothSearchQuery = ref('');
+const eppSearchQuery = ref('');
 
-// Filtrar prendas según búsqueda
-const filteredClothes = computed(() => {
-    if (!clothSearchQuery.value) return props.clothes;
-    return props.clothes.filter(cloth => 
-        cloth.name.toLowerCase().includes(clothSearchQuery.value.toLowerCase())
+// Filtrar EPPs según búsqueda
+const filteredEpps = computed(() => {
+    if (!eppSearchQuery.value) return props.epps;
+    return props.epps.filter(epp => 
+        epp.name.toLowerCase().includes(eppSearchQuery.value.toLowerCase())
     );
 });
 
@@ -58,53 +58,46 @@ const filteredRoles = computed(() => {
     );
 });
 
-// Obtener prendas asignadas a un rol específico y café seleccionado
-const getClothesForRole = (roleId: number) => {
-    return props.clothes.filter(cloth => 
-        cloth.roles.some(role => role.id === roleId && String(role.pivot.cafe_id) === selectedCafeId.value)
+// Obtener EPPs asignados a un rol específico y café seleccionado
+const getEppsForRole = (roleId: number) => {
+    return props.epps.filter(epp => 
+        epp.roles.some(role => role.id === roleId && String(role.pivot.cafe_id) === selectedCafeId.value)
     );
 };
 
-// Verificar si una prenda está asignada a un rol en el café seleccionado
-const hasRole = (cloth: any, roleId: number) => {
-    return cloth.roles.some((r: any) => r.id === roleId && String(r.pivot.cafe_id) === selectedCafeId.value);
+// Verificar si un EPP está asignado a un rol en el café seleccionado
+const hasRole = (epp: any, roleId: number) => {
+    return epp.roles.some((r: any) => r.id === roleId && String(r.pivot.cafe_id) === selectedCafeId.value);
 };
 
-const createCloth = () => {
-    if(!newClothName.value) return;
+const createEpp = () => {
+    if(!newEppName.value) return;
     isCreating.value = true;
-    router.post(route('clothes.store'), {
-        name: newClothName.value
+    router.post(route('inventory.epps.store'), {
+        name: newEppName.value,
+        category_epp_id: 'none', // Seteamos por defecto
+        size_ids: []
     }, {
-        onSuccess: () => newClothName.value = '',
+        onSuccess: () => newEppName.value = '',
         onFinish: () => isCreating.value = false
     });
 };
 
-const updateQuantity = (clothId: number, qty: number) => {
-    if (qty < 0) return;
-    router.put(route('clothes.update-quantity', clothId), {
-        quantity: qty
-    }, {
-        preserveScroll: true
-    });
-};
-
-const deleteCloth = (id: number) => {
-    if(confirm('¿Seguro que deseas eliminar esta prenda y todas sus asignaciones?')) {
-        router.delete(route('clothes.destroy', id), {
+const deleteEpp = (id: number) => {
+    if(confirm('¿Seguro que deseas eliminar este EPP y todas sus asignaciones?')) {
+        router.delete(route('clothes.epps.destroy', id), {
              preserveScroll: true
         });
     }
 };
 
-const toggleRole = (clothId: number, roleId: number, currentStatus: boolean) => {
+const toggleRole = (eppId: number, roleId: number, currentStatus: boolean) => {
     if (!selectedCafeId.value) {
         alert('Por favor selecciona un café primero');
         return;
     }
-    router.post(route('clothes.assign-role'), {
-        cloth_id: clothId,
+    router.post(route('clothes.assign-epp-role'), {
+        epp_id: eppId,
         role_id: roleId,
         cafe_id: selectedCafeId.value,
         action: currentStatus ? 'detach' : 'attach'
@@ -117,7 +110,7 @@ const toggleRole = (clothId: number, roleId: number, currentStatus: boolean) => 
 // Calcular estadísticas
 const stats = computed(() => {
     const totalAssignments = props.roles.reduce((acc, role) => {
-        return acc + getClothesForRole(role.id).length;
+        return acc + getEppsForRole(role.id).length;
     }, 0);
     
     const averagePerRole = props.roles.length > 0 
@@ -127,7 +120,7 @@ const stats = computed(() => {
     return {
         totalAssignments,
         averagePerRole,
-        rolesWithAssignments: props.roles.filter(role => getClothesForRole(role.id).length > 0).length
+        rolesWithAssignments: props.roles.filter(role => getEppsForRole(role.id).length > 0).length
     };
 });
 
@@ -139,12 +132,12 @@ const selectedCafeLabel = computed(() => {
 </script>
 
 <template>
-    <Head title="Asignación de Prendas" />
+    <Head title="Asignación de EPPs" />
 
     <AppLayout :breadcrumbs="[
         { title: 'Personal', href: route('staff.index') },
-        { title: 'Ropa', href: route('clothes.index') },
-        { title: 'Matriz de Asignación', href: route('clothes.manage') }
+        { title: 'EPPs', href: route('inventory.invoices.index') },
+        { title: 'Matriz de Asignación de EPPs', href: route('clothes.manage') }
     ]">
         <div class="flex flex-col h-full w-full overflow-hidden p-4 sm:p-6 gap-6">
             
@@ -158,7 +151,7 @@ const selectedCafeLabel = computed(() => {
                         <span>Matriz de Equipamiento por Cargo</span>
                     </h1>
                     <p class="text-muted-foreground text-xs sm:text-sm mt-1">
-                        Define qué EPPs y prendas corresponden a cada cargo según el café seleccionado
+                        Define qué EPPs corresponden a cada cargo según el café seleccionado
                     </p>
                  </div>
                   <div class="flex items-center gap-2">
@@ -168,10 +161,10 @@ const selectedCafeLabel = computed(() => {
                             <span class="hidden sm:inline">Inventario</span>
                         </Button>
                     </Link>
-                    <Link :href="route('clothes.index')" class="flex-shrink-0">
+                    <Link :href="route('inventory.invoices.index')" class="flex-shrink-0">
                         <Button variant="outline" size="sm" class="gap-2">
                             <ArrowLeft class="h-4 w-4" />
-                            <span class="hidden sm:inline">Volver al listado</span>
+                            <span class="hidden sm:inline">Volver al Inventario</span>
                             <span class="sm:hidden">Volver</span>
                         </Button>
                     </Link>
@@ -187,7 +180,7 @@ const selectedCafeLabel = computed(() => {
                             <p class="text-2xl font-bold text-blue-900 mt-1">{{ stats.totalAssignments }}</p>
                         </div>
                         <div class="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                            <Shirt class="h-5 w-5 text-blue-600" />
+                            <Box class="h-5 w-5 text-blue-600" />
                         </div>
                     </CardContent>
                 </Card>
@@ -207,7 +200,7 @@ const selectedCafeLabel = computed(() => {
                 <Card class="bg-gradient-to-br from-purple-50 to-white border-purple-100">
                     <CardContent class="p-4 flex items-center justify-between">
                         <div>
-                            <p class="text-sm font-medium text-purple-700">Roles con Prendas</p>
+                            <p class="text-sm font-medium text-purple-700">Roles con EPPs</p>
                             <p class="text-2xl font-bold text-purple-900 mt-1">{{ stats.rolesWithAssignments }}/{{ roles.length }}</p>
                         </div>
                         <div class="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
@@ -254,11 +247,11 @@ const selectedCafeLabel = computed(() => {
                     </div>
 
                     <div class="w-full md:w-64">
-                        <Label class="text-[10px] font-black uppercase text-slate-400 mb-1.5 block">Buscar Prenda</Label>
+                        <Label class="text-[10px] font-black uppercase text-slate-400 mb-1.5 block">Buscar EPP</Label>
                         <div class="relative">
-                            <Shirt class="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                            <Box class="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                             <Input 
-                                v-model="clothSearchQuery"
+                                v-model="eppSearchQuery"
                                 placeholder="Filtrar filas..." 
                                 class="pl-9 h-10 bg-slate-50 border-none shadow-none focus:ring-1"
                             />
@@ -270,13 +263,13 @@ const selectedCafeLabel = computed(() => {
                             <div class="relative flex-1">
                                 <Plus class="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                                 <Input 
-                                    v-model="newClothName" 
-                                    placeholder="Nueva prenda..." 
+                                    v-model="newEppName" 
+                                    placeholder="Nuevo EPP..." 
                                     class="pl-9 h-10 bg-slate-50 border-none shadow-none focus:ring-1"
-                                    @keyup.enter="createCloth" 
+                                    @keyup.enter="createEpp" 
                                 />
                             </div>
-                            <Button @click="createCloth" :disabled="isCreating || !newClothName" class="h-10 bg-indigo-600 hover:bg-indigo-700 shadow-md">
+                            <Button @click="createEpp" :disabled="isCreating || !newEppName" class="h-10 bg-indigo-600 hover:bg-indigo-700 shadow-md">
                                 {{ isCreating ? '...' : 'Agregar' }}
                             </Button>
                         </div>
@@ -294,12 +287,8 @@ const selectedCafeLabel = computed(() => {
                                     <TableHead class="w-[250px] bg-indigo-50/50 p-4 border-r sticky left-0 z-30">
                                         <div class="flex flex-col gap-1">
                                             <span class="text-[10px] font-black uppercase text-indigo-400 tracking-widest">Dimensión A</span>
-                                            <span class="text-sm font-black text-indigo-900 uppercase italic">Descripción del Item</span>
+                                            <span class="text-sm font-black text-indigo-900 uppercase italic">EPP / Elemento</span>
                                         </div>
-                                    </TableHead>
-                                    <TableHead class="w-20 p-4 text-center border-r bg-indigo-50/30">
-                                        <span class="text-[10px] font-black uppercase text-indigo-400 tracking-widest block mb-1">Cant.</span>
-                                        <span class="text-xs font-bold text-indigo-800">Std.</span>
                                     </TableHead>
                                     
                                     <!-- Rotated Headers for Roles -->
@@ -319,39 +308,30 @@ const selectedCafeLabel = computed(() => {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                <TableRow v-for="cloth in filteredClothes" :key="cloth.id" class="group hover:bg-slate-50/50 transition-colors border-b">
+                                <TableRow v-for="epp in filteredEpps" :key="epp.id" class="group hover:bg-slate-50/50 transition-colors border-b">
                                     <TableCell class="p-4 font-bold text-slate-700 sticky left-0 z-10 bg-white group-hover:bg-slate-50 border-r shadow-[2px_0_5px_-2px_rgba(0,0,0,0.05)]">
                                         <div class="flex items-center gap-3">
                                             <div class="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-500 transition-colors">
-                                                <Shirt class="h-4 w-4" />
+                                                <Box class="h-4 w-4" />
                                             </div>
-                                            <span class="text-sm uppercase tracking-tight">{{ cloth.name }}</span>
+                                            <span class="text-sm uppercase tracking-tight">{{ epp.name }}</span>
                                         </div>
                                     </TableCell>
                                     
-                                    <TableCell class="p-0 border-r">
-                                        <input 
-                                            type="number" 
-                                            v-model="cloth.quantity" 
-                                            @change="updateQuantity(cloth.id, Number(cloth.quantity))"
-                                            class="w-full h-full bg-transparent text-center text-xs font-bold text-slate-600 focus:outline-none focus:bg-indigo-50 focus:text-indigo-600 transition-colors"
-                                        />
-                                    </TableCell>
-
                                     <!-- Matrix Intersection Points -->
                                     <TableCell 
                                         v-for="role in filteredRoles" 
                                         :key="role.id" 
                                         class="p-0 border-r text-center group/cell cursor-pointer relative"
-                                        @click="toggleRole(cloth.id, role.id, hasRole(cloth, role.id))"
+                                        @click="toggleRole(epp.id, role.id, hasRole(epp, role.id))"
                                     >
                                         <div 
                                             class="absolute inset-0 transition-colors"
-                                            :class="hasRole(cloth, role.id) ? 'bg-indigo-500/5' : 'group-hover/cell:bg-slate-100/50'"
+                                            :class="hasRole(epp, role.id) ? 'bg-indigo-500/5' : 'group-hover/cell:bg-slate-100/50'"
                                         ></div>
                                         <div class="relative py-3">
                                             <div 
-                                                v-if="hasRole(cloth, role.id)"
+                                                v-if="hasRole(epp, role.id)"
                                                 class="mx-auto h-6 w-6 rounded-md bg-indigo-600 flex items-center justify-center transform scale-110 shadow-sm transition-transform group-hover/cell:scale-125"
                                             >
                                                 <span class="text-[10px] font-black text-white">X</span>
@@ -367,23 +347,23 @@ const selectedCafeLabel = computed(() => {
                                         <TooltipProvider>
                                             <Tooltip>
                                                 <TooltipTrigger as-child>
-                                                    <Button variant="ghost" size="sm" @click="deleteCloth(cloth.id)" class="text-slate-300 hover:text-rose-500 transition-colors h-8 w-8 p-0">
+                                                    <Button variant="ghost" size="sm" @click="deleteEpp(epp.id)" class="text-slate-300 hover:text-rose-500 transition-colors h-8 w-8 p-0">
                                                         <Trash2 class="h-4 w-4" />
                                                     </Button>
                                                 </TooltipTrigger>
-                                                <TooltipContent><p>Eliminar prenda del catálogo</p></TooltipContent>
+                                                <TooltipContent><p>Eliminar EPP del catálogo</p></TooltipContent>
                                             </Tooltip>
                                         </TooltipProvider>
                                     </TableCell>
                                 </TableRow>
 
-                                <TableRow v-if="filteredClothes.length === 0">
-                                    <TableCell :colspan="filteredRoles.length + 3" class="h-64 text-center">
+                                <TableRow v-if="filteredEpps.length === 0">
+                                    <TableCell :colspan="filteredRoles.length + 2" class="h-64 text-center">
                                         <div class="flex flex-col items-center gap-3">
                                             <div class="h-12 w-12 bg-slate-50 rounded-full flex items-center justify-center">
-                                                <Shirt class="h-6 w-6 text-slate-200" />
+                                                <Box class="h-6 w-6 text-slate-200" />
                                             </div>
-                                            <p class="text-slate-400 font-medium italic">No se encontraron prendas con los filtros actuales.</p>
+                                            <p class="text-slate-400 font-medium italic">No se encontraron EPPs con los filtros actuales.</p>
                                         </div>
                                     </TableCell>
                                 </TableRow>
@@ -401,12 +381,12 @@ const selectedCafeLabel = computed(() => {
                         {{ roles.length }} Roles
                     </span>
                     <span class="flex items-center gap-1">
-                        <Shirt class="h-3 w-3" />
-                        {{ clothes.length }} Prendas
+                        <Box class="h-3 w-3" />
+                        {{ epps.length }} EPPs
                     </span>
                 </div>
                 <div class="text-xs text-gray-500">
-                    Haz clic en una prenda para asignarla o quitarla de un rol
+                    Haz clic en una intersección para asignar o quitar un EPP de un rol
                 </div>
             </div>
         </div>
