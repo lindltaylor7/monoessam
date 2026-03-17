@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Trash2, Plus, ArrowLeft, Shirt, Briefcase, Check, X, Coffee, Package } from 'lucide-vue-next';
+import { Trash2, Plus, ArrowLeft, Shirt, Briefcase, Check, X, Coffee, Package, Box } from 'lucide-vue-next';
+import Swal from 'sweetalert2';
 
 import { 
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
@@ -29,6 +30,7 @@ const props = defineProps<{
         roles: Array<{ id: number }>,
         unit: { name: string, mine: { name: string } } 
     }>;
+    colors: Array<{ id: number, name: string }>;
 }>();
 
 const newEppName = ref('');
@@ -70,6 +72,11 @@ const hasRole = (epp: any, roleId: number) => {
     return epp.roles.some((r: any) => r.id === roleId && String(r.pivot.cafe_id) === selectedCafeId.value);
 };
 
+const getPivotData = (epp: any, roleId: number) => {
+    const role = epp.roles.find((r: any) => r.id === roleId && String(r.pivot.cafe_id) === selectedCafeId.value);
+    return role ? role.pivot : null;
+};
+
 const createEpp = () => {
     if(!newEppName.value) return;
     isCreating.value = true;
@@ -91,19 +98,69 @@ const deleteEpp = (id: number) => {
     }
 };
 
-const toggleRole = (eppId: number, roleId: number, currentStatus: boolean) => {
+const toggleRole = (eppId: number, roleId: number, currentStatus: boolean, quantity: number = 1, color_id: number | null = null) => {
     if (!selectedCafeId.value) {
-        alert('Por favor selecciona un café primero');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Atención',
+            text: 'Por favor selecciona un café primero'
+        });
         return;
     }
+
+    Swal.fire({
+        title: 'Procesando...',
+        text: currentStatus ? 'Desvinculando EPP...' : 'Asignando EPP...',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+
     router.post(route('clothes.assign-epp-role'), {
         epp_id: eppId,
         role_id: roleId,
         cafe_id: selectedCafeId.value,
-        action: currentStatus ? 'detach' : 'attach'
+        action: currentStatus ? 'detach' : 'attach',
+        quantity: quantity,
+        color_id: color_id
     }, {
         preserveScroll: true,
-        preserveState: true
+        preserveState: true,
+        onFinish: () => Swal.close()
+    });
+};
+
+const updatePivot = (eppId: number, roleId: number, field: string, value: any) => {
+    const epp = props.epps.find(e => e.id === eppId);
+    const pivot = getPivotData(epp, roleId);
+    if (!pivot) return;
+
+    const data = {
+        quantity: pivot.quantity,
+        color_id: pivot.color_id,
+        [field]: value
+    };
+
+    Swal.fire({
+        title: 'Actualizando...',
+        text: 'Guardando cambios en la matriz',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+
+    router.post(route('clothes.assign-epp-role'), {
+        epp_id: eppId,
+        role_id: roleId,
+        cafe_id: selectedCafeId.value,
+        action: 'attach',
+        ...data
+    }, {
+        preserveScroll: true,
+        preserveState: true,
+        onFinish: () => Swal.close()
     });
 };
 
@@ -322,23 +379,51 @@ const selectedCafeLabel = computed(() => {
                                     <TableCell 
                                         v-for="role in filteredRoles" 
                                         :key="role.id" 
-                                        class="p-0 border-r text-center group/cell cursor-pointer relative"
-                                        @click="toggleRole(epp.id, role.id, hasRole(epp, role.id))"
+                                        class="p-0 border-r text-center group/cell cursor-pointer relative min-w-[120px]"
                                     >
                                         <div 
                                             class="absolute inset-0 transition-colors"
                                             :class="hasRole(epp, role.id) ? 'bg-indigo-500/5' : 'group-hover/cell:bg-slate-100/50'"
+                                            @click="toggleRole(epp.id, role.id, hasRole(epp, role.id))"
                                         ></div>
-                                        <div class="relative py-3">
-                                            <div 
-                                                v-if="hasRole(epp, role.id)"
-                                                class="mx-auto h-6 w-6 rounded-md bg-indigo-600 flex items-center justify-center transform scale-110 shadow-sm transition-transform group-hover/cell:scale-125"
-                                            >
-                                                <span class="text-[10px] font-black text-white">X</span>
+                                        <div class="relative py-2 px-1 flex flex-col items-center gap-1">
+                                            <div v-if="hasRole(epp, role.id)" class="flex flex-col items-center gap-1.5 w-full">
+                                                <div 
+                                                    class="mx-auto h-5 w-5 rounded-md bg-indigo-600 flex items-center justify-center transform scale-100 shadow-sm transition-transform group-hover/cell:scale-110 cursor-pointer"
+                                                    @click="toggleRole(epp.id, role.id, true)"
+                                                >
+                                                    <span class="text-[9px] font-black text-white">X</span>
+                                                </div>
+                                                
+                                                <div class="flex flex-col gap-1 w-full px-2" @click.stop>
+                                                    <div class="flex items-center gap-1 bg-white/50 rounded-lg p-0.5 border border-slate-100">
+                                                        <Input 
+                                                            type="number" 
+                                                            :model-value="getPivotData(epp, role.id)?.quantity || 1"
+                                                            @change="(e: any) => updatePivot(epp.id, role.id, 'quantity', parseInt(e.target.value))"
+                                                            class="h-6 w-full text-[10px] text-center p-0 border-none bg-transparent font-black"
+                                                            placeholder="Cant"
+                                                        />
+                                                    </div>
+                                                    <Select 
+                                                        :model-value="String(getPivotData(epp, role.id)?.color_id || '')" 
+                                                        @update:model-value="(val: any) => updatePivot(epp.id, role.id, 'color_id', val ? parseInt(val) : null)"
+                                                    >
+                                                        <SelectTrigger class="h-6 w-full text-[9px] px-1 border-none bg-white/50 font-bold uppercase overflow-hidden">
+                                                            <SelectValue placeholder="Color" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem v-for="color in colors" :key="color.id" :value="String(color.id)">
+                                                                <span class="text-[10px] uppercase font-black">{{ color.name }}</span>
+                                                            </SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
                                             </div>
                                             <div 
                                                 v-else
                                                 class="mx-auto h-5 w-5 rounded-md border-2 border-slate-100 opacity-0 group-hover/cell:opacity-100 transition-opacity"
+                                                @click="toggleRole(epp.id, role.id, false)"
                                             ></div>
                                         </div>
                                     </TableCell>

@@ -660,6 +660,7 @@ class InventoryController extends Controller
                             'color_id' => $itemData['color_id'],
                             'clothing_size' => $itemData['size'],
                             'status' => 'Entregado',
+                            'quantity' => 1,
                         ]);
 
                         // SUBTRACT FROM CLOTH_INVOICE_ITEMS (FIFO)

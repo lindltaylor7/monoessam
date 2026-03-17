@@ -36,7 +36,7 @@ class Epp extends Model
     public function roles()
     {
         return $this->belongsToMany(\Spatie\Permission\Models\Role::class, 'epp_role')
-            ->withPivot('cafe_id')
+            ->withPivot(['cafe_id', 'quantity', 'color_id'])
             ->withTimestamps();
     }
 }

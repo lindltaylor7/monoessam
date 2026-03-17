@@ -43,7 +43,7 @@ const props = defineProps<{
     colors: Array<{ id: number, name: string }>;
     headquarters?: Array<{ id: number, name: string, business?: { name: string } }>;
     roleClothes?: Record<number, Record<string, Array<{ id: number; name: string }>>>;
-    roleEpps?: Record<number, Record<string, Array<{ id: number; name: string; sizes: Array<{ id: number, size: string }> }>>>;
+    roleEpps?: Record<number, Record<string, Array<{ id: number; name: string; sizes: Array<{ id: number, size: string }>; pivot?: { quantity: number; color_id: number | null } }>>>;
 }>();
 
 const emit = defineEmits(['update:open']);
@@ -228,9 +228,9 @@ const mergedClothes = computed(() => {
                 epp_id: req.id,
                 sizes: req.sizes || [],
                 clothing_size: '',
-                quantity: 1,
+                quantity: req.pivot?.quantity || 1,
                 status: 'Pendiente',
-                color_id: null,
+                color_id: req.pivot?.color_id || null,
                 is_requirement: true
             });
         }
