@@ -144,6 +144,8 @@ class InventoryController extends Controller
             'stockable_type' => $modelClass,
             'headquarter_id' => $validated['headquarter_id'] ?? null,
             'cafe_id' => $validated['cafe_id'] ?? null,
+            'size' => $request->input('size'),
+            'color_id' => $request->input('color_id'),
         ]);
 
         if ($validated['action'] === 'add') {
@@ -278,6 +280,7 @@ class InventoryController extends Controller
                         'cafe_id' => $validated['cafe_id'] ?? null,
                         'headquarter_id' => $validated['headquarter_id'] ?? null,
                         'size' => $itemData['size'] ?? null,
+                        'color_id' => $itemData['color_id'] ?? null,
                     ]);
                     $stock->quantity += $itemData['quantity'];
                     $stock->save();
@@ -289,6 +292,7 @@ class InventoryController extends Controller
                         'cafe_id' => $validated['cafe_id'] ?? null,
                         'headquarter_id' => $validated['headquarter_id'] ?? null,
                         'size' => $itemData['size'] ?? null,
+                        'color_id' => $itemData['color_id'] ?? null,
                     ]);
                     $stock->quantity += $itemData['quantity'];
                     $stock->save();
@@ -627,6 +631,7 @@ class InventoryController extends Controller
                         'stockable_id' => $itemData['epp_id'],
                         'stockable_type' => Epp::class,
                         'size' => $itemData['size'],
+                        'color_id' => $itemData['color_id'],
                     ]);
 
                     if (!empty($itemData['headquarter_id'])) {
@@ -639,10 +644,11 @@ class InventoryController extends Controller
 
                     if (!$stock || $stock->quantity < $itemData['quantity']) {
                         $epp = Epp::find($itemData['epp_id']);
+                        $colorName = Color::find($itemData['color_id'])?->name ?: 'N/A';
                         $locationName = !empty($itemData['headquarter_id']) 
                             ? (Headquarter::find($itemData['headquarter_id'])?->name ?: 'la sede seleccionada')
                             : ($staff->cafe?->name ?: 'el punto de venta');
-                        throw new \Exception("Stock insuficiente de '{$epp->name}' (Talla: {$itemData['size']}) en {$locationName}. Disponible: " . ($stock?->quantity ?: 0));
+                        throw new \Exception("Stock insuficiente de '{$epp->name}' (Talla: {$itemData['size']}, Color: {$colorName}) en {$locationName}. Disponible: " . ($stock?->quantity ?: 0));
                     }
 
                     $stock->decrement('quantity', $itemData['quantity']);
@@ -682,7 +688,7 @@ class InventoryController extends Controller
         $stocks = InventoryStock::where([
             'stockable_id' => $id,
             'stockable_type' => $modelType
-        ])->get(['headquarter_id', 'cafe_id', 'quantity', 'size']);
+        ])->get(['headquarter_id', 'cafe_id', 'quantity', 'size', 'color_id']);
         
         return response()->json($stocks);
     }

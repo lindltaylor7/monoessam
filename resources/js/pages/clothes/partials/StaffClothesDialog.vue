@@ -320,9 +320,14 @@ const getStockForHq = (hqId: number) => {
         ? getDraftValue(deliveryModal.value.item.epp_id, 'clothing_size', deliveryModal.value.item.clothing_size)
         : deliveryModal.value.item.clothing_size;
 
+    const colorId = deliveryModal.value.item.epp_id 
+        ? getDraftValue(deliveryModal.value.item.epp_id, 'color_id', deliveryModal.value.item.color_id)
+        : deliveryModal.value.item.color_id;
+
     const stock = deliveryModal.value.stocks.find(s => 
         s.headquarter_id === hqId && 
-        String(s.size) === String(size)
+        String(s.size) === String(size) &&
+        String(s.color_id) === String(colorId)
     );
     return stock ? stock.quantity : 0;
 };

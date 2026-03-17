@@ -16,6 +16,7 @@ class InventoryStock extends Model
         'unit_id',
         'quantity',
         'size',
+        'color_id',
     ];
 
     public function unit(): BelongsTo
@@ -36,5 +37,10 @@ class InventoryStock extends Model
     public function cafe(): BelongsTo
     {
         return $this->belongsTo(Cafe::class);
+    }
+
+    public function color(): BelongsTo
+    {
+        return $this->belongsTo(Color::class);
     }
 }

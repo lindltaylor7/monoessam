@@ -249,6 +249,7 @@ class ClothController extends Controller
                         'stockable_id' => $itemId,
                         'stockable_type' => $itemType,
                         'size' => $entry->clothing_size,
+                        'color_id' => $newColorId ?? $oldColorId,
                     ]);
 
                     if ($finalHqId) {
@@ -260,8 +261,9 @@ class ClothController extends Controller
                     $stock = $stockQuery->first();
                     if (!$stock || $stock->quantity < $qtyToDecrement) {
                         $itemName = $entry->epp?->name ?: ($entry->cloth?->name ?: $entry->clothe_name);
-                        $locationName = $finalHqId ? Headquarter::find($finalHqId)?->name : ($staff->cafe?->name ?: 'el punto de venta');
-                        return back()->with('error', "Stock insuficiente de '{$itemName}' (Talla: {$entry->clothing_size}) en {$locationName}. Disponible: " . ($stock?->quantity ?: 0));
+                        $locationName = $finalHqId ? \App\Models\Headquarter::find($finalHqId)?->name : ($staff->cafe?->name ?: 'el punto de venta');
+                        $colorName = \App\Models\Color::find($newColorId ?? $oldColorId)?->name ?: 'N/A';
+                        return back()->with('error', "Stock insuficiente de '{$itemName}' (Talla: {$entry->clothing_size}, Color: {$colorName}) en {$locationName}. Disponible: " . ($stock?->quantity ?: 0));
                     }
                     $stock->decrement('quantity', $qtyToDecrement);
 
