@@ -653,17 +653,30 @@ class InventoryController extends Controller
 
                     $stock->decrement('quantity', $itemData['quantity']);
 
-                    for ($i = 0; $i < $itemData['quantity']; $i++) {
+                    // Find if there's already a record for this EPP, status, color and size to update it.
+                    $staffCloth = Staff_clothes::where([
+                        'staff_id' => $staff->id,
+                        'epp_id' => $itemData['epp_id'],
+                        'status' => $itemData['status'] ?? 'Entregado',
+                        'color_id' => $itemData['color_id'],
+                        'clothing_size' => $itemData['size']
+                    ])->first();
+
+                    if ($staffCloth) {
+                        $staffCloth->increment('quantity', $itemData['quantity']);
+                    } else {
                         Staff_clothes::create([
                             'staff_id' => $staff->id,
                             'epp_id' => $itemData['epp_id'],
                             'color_id' => $itemData['color_id'],
                             'clothing_size' => $itemData['size'],
-                            'status' => 'Entregado',
-                            'quantity' => 1,
+                            'status' => $itemData['status'] ?? 'Entregado',
+                            'quantity' => $itemData['quantity'],
                         ]);
+                    }
 
-                        // SUBTRACT FROM CLOTH_INVOICE_ITEMS (FIFO)
+                    // SUBTRACT FROM CLOTH_INVOICE_ITEMS (FIFO)
+                    for ($i = 0; $i < $itemData['quantity']; $i++) {
                         $invoiceItem = \App\Models\ClothInvoiceItem::where('epp_id', $itemData['epp_id'])
                             ->where('color_id', $itemData['color_id'])
                             ->where('size', $itemData['size'])

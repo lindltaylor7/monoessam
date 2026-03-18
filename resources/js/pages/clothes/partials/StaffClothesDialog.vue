@@ -25,6 +25,7 @@ interface StaffCloth {
     clothing_size: string;
     status?: string | null;
     color_id: number | null;
+    quantity: number;
     cloth?: { name: string };
     epp?: { name: string, sizes: Array<{ id: number, size: string }> };
 }
@@ -200,27 +201,51 @@ const staffRequirements = computed(() => {
 const mergedClothes = computed(() => {
     if (!props.staff) return [];
     
-    const assignments = [...(props.staff.staff_clothes || [])];
+    const assignmentsDraft = [...(props.staff.staff_clothes || [])];
     const eppRequirements = staffRequirements.value;
     
+    // Stage 1: Aggregate identical assignments (optional but highly recommended for cleanliness)
+    const aggregatedAssignments: any[] = [];
+    assignmentsDraft.forEach(a => {
+        const existing = aggregatedAssignments.find(x => 
+            x.epp_id === a.epp_id && 
+            x.cloth_id === a.cloth_id && 
+            x.color_id == a.color_id && 
+            x.clothing_size === a.clothing_size && 
+            x.status === a.status
+        );
+        if (existing) {
+            existing.quantity = (existing.quantity || 1) + (a.quantity || 1);
+            // Keep track of IDs for updating (we might need a list of IDs if we want to update all, but for now we take the first)
+            if (!existing.original_ids) existing.original_ids = [existing.id];
+            existing.original_ids.push(a.id);
+        } else {
+            aggregatedAssignments.push({ ...a, quantity: a.quantity || 1, original_ids: [a.id] });
+        }
+    });
+
     const result: any[] = [];
     
     // Process EPP requirements first
     eppRequirements.forEach(req => {
-        // Find if this EPP requirement is already satisfied
-        const existing = assignments.find(a => a.epp_id === req.id);
-        if (existing) {
-            result.push({
-                ...existing,
-                required_name: req.name,
-                sizes: req.sizes || [],
-                is_requirement: true
+        // Find ALL assignments for this EPP ID
+        const matches = aggregatedAssignments.filter(a => a.epp_id === req.id);
+        
+        if (matches.length > 0) {
+            matches.forEach(match => {
+                result.push({
+                    ...match,
+                    required_name: req.name,
+                    sizes: req.sizes || [],
+                    is_requirement: true,
+                    expected_quantity: req.pivot?.quantity || 1 // for UI reference
+                });
+                // Remove from local list so it's not added as extra
+                const idx = aggregatedAssignments.findIndex(a => a.id === match.id);
+                if (idx > -1) aggregatedAssignments.splice(idx, 1);
             });
-            // Remove from assignments so we don't double count
-            const idx = assignments.findIndex(a => a.id === existing.id);
-            if (idx > -1) assignments.splice(idx, 1);
         } else {
-            // New entry for EPP requirement
+            // New entry for EPP requirement (no assignments yet)
             result.push({
                 id: null,
                 cloth_id: null,
@@ -237,12 +262,12 @@ const mergedClothes = computed(() => {
     });
     
     // Add remaining assignments (manual EPPs or clothes)
-    assignments.forEach(a => {
-        if (!a.cloth_id && !a.epp_id) return; // Skip profile items (managed in other section)
+    aggregatedAssignments.forEach(a => {
+        if (!a.cloth_id && !a.epp_id) return; // Skip profile items
         result.push({
             ...a,
             required_name: a.epp?.name || a.cloth?.name || a.clothe_name || 'Item Extra',
-            quantity: (a as any).quantity || 1,
+            quantity: a.quantity || 1,
             sizes: a.epp?.sizes || [],
             is_requirement: false
         });
