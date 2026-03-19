@@ -619,6 +619,9 @@ class InventoryController extends Controller
             'items.*.size' => 'required|string',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.headquarter_id' => 'nullable|exists:headquarters,id',
+            'items.*.id' => 'nullable|exists:staff_clothes,id',
+            'reason' => 'nullable|string',
+            'create_history' => 'nullable|boolean',
         ]);
 
         $staff = Staff::findOrFail($validated['staff_id']);
@@ -653,26 +656,35 @@ class InventoryController extends Controller
 
                     $stock->decrement('quantity', $itemData['quantity']);
 
-                    // Find if there's already a record for this EPP, status, color and size to update it.
-                    $staffCloth = Staff_clothes::where([
-                        'staff_id' => $staff->id,
-                        'epp_id' => $itemData['epp_id'],
-                        'status' => $itemData['status'] ?? 'Entregado',
-                        'color_id' => $itemData['color_id'],
-                        'clothing_size' => $itemData['size']
-                    ])->first();
-
-                    if ($staffCloth) {
-                        $staffCloth->increment('quantity', $itemData['quantity']);
-                    } else {
-                        Staff_clothes::create([
-                            'staff_id' => $staff->id,
-                            'epp_id' => $itemData['epp_id'],
+                    if (!empty($itemData['id'])) {
+                        $staffCloth = Staff_clothes::find($itemData['id']);
+                        $staffCloth->update([
+                            'status' => 'Entregado',
                             'color_id' => $itemData['color_id'],
                             'clothing_size' => $itemData['size'],
-                            'status' => $itemData['status'] ?? 'Entregado',
                             'quantity' => $itemData['quantity'],
                         ]);
+                    } else {
+                        $staffCloth = Staff_clothes::where([
+                            'staff_id' => $staff->id,
+                            'epp_id' => $itemData['epp_id'],
+                            'status' => $itemData['status'] ?? 'Entregado',
+                            'color_id' => $itemData['color_id'],
+                            'clothing_size' => $itemData['size']
+                        ])->first();
+
+                        if ($staffCloth) {
+                            $staffCloth->increment('quantity', $itemData['quantity']);
+                        } else {
+                            Staff_clothes::create([
+                                'staff_id' => $staff->id,
+                                'epp_id' => $itemData['epp_id'],
+                                'color_id' => $itemData['color_id'],
+                                'clothing_size' => $itemData['size'],
+                                'status' => $itemData['status'] ?? 'Entregado',
+                                'quantity' => $itemData['quantity'],
+                            ]);
+                        }
                     }
 
                     // SUBTRACT FROM CLOTH_INVOICE_ITEMS (FIFO)
@@ -685,6 +697,17 @@ class InventoryController extends Controller
                             ->first();
                         if ($invoiceItem) $invoiceItem->decrement('quantity');
                     }
+                }
+
+                // Only create history when explicitly requested (multi-delivery flow)
+                if (!empty($validated['create_history'])) {
+                    \App\Models\StaffClothesHistory::create([
+                        'staff_id' => $staff->id,
+                        'user_id' => Auth::id(),
+                        'reason' => $validated['reason'] ?? 'Nuevo',
+                        'assigned_at' => now(),
+                        'items' => $validated['items']
+                    ]);
                 }
             });
         } catch (\Exception $e) {

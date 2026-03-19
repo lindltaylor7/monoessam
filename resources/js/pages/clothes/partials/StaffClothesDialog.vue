@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, reactive } from 'vue';
 import {
     Dialog,
     DialogContent,
@@ -14,6 +14,8 @@ import { router, usePage } from '@inertiajs/vue3';
 import { Plus, Trash2, Search, Loader2, Package, Check, AlertTriangle } from 'lucide-vue-next';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
 import axios from 'axios';
 import Swal from 'sweetalert2';
 
@@ -40,6 +42,15 @@ const props = defineProps<{
         role?: { name: string };
         staffable?: { name: string };
         staff_clothes: StaffCloth[];
+        clothes_histories?: Array<{
+            id: number;
+            user_id: number;
+            reason: string;
+            assigned_at: string;
+            user?: { name: string };
+            items: any;
+            created_at: string;
+        }>;
     } | null; 
     colors: Array<{ id: number, name: string }>;
     headquarters?: Array<{ id: number, name: string, business?: { name: string } }>;
@@ -50,6 +61,100 @@ const props = defineProps<{
 const emit = defineEmits(['update:open']);
 
 const isAssigning = ref(false);
+const assignReason = ref('Renovación'); // Default to Regular
+const selectedKeys = ref<string[]>([]);
+const selectionMode = ref(false);
+
+const toggleSelection = (item: any) => {
+    if (!item.epp_id) return;
+    const key = getRowKey(item);
+    const idx = selectedKeys.value.indexOf(key);
+    if (idx > -1) {
+        selectedKeys.value.splice(idx, 1);
+    } else {
+        selectedKeys.value.push(key);
+    }
+};
+
+const getRowKey = (item: any) => {
+    return `${item.id || 'null'}-${item.epp_id || 'no-epp'}`;
+};
+
+const isSelected = (item: any) => {
+    return selectedKeys.value.includes(getRowKey(item));
+};
+
+const selectedKeysCount = computed(() => {
+    return selectedKeys.value.length;
+});
+
+const getSelectedItems = () => {
+    return mergedClothes.value.filter(i => selectedKeys.value.includes(getRowKey(i)));
+};
+
+const selectAll = (checked: boolean) => {
+    if (checked) {
+        selectedKeys.value = mergedClothes.value
+            .filter((i: any) => i.epp_id)
+            .map(i => getRowKey(i));
+    } else {
+        selectedKeys.value = [];
+    }
+};
+
+const multiDeliveryModal = ref({
+    open: false,
+    headquarter_id: '',
+});
+
+const openMultiDeliveryModal = () => {
+    const selectedItems = getSelectedItems();
+    const errorItems = selectedItems.filter(i => !getDraftValue(i.epp_id, 'clothing_size', i.clothing_size) || !getDraftValue(i.epp_id, 'color_id', i.color_id));
+    
+    if (errorItems.length > 0) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Faltan Datos',
+            text: 'Asegúrate de seleccionar Talla y Color para todos los items seleccionados.',
+            confirmButtonColor: '#4f46e5'
+        });
+        return;
+    }
+    multiDeliveryModal.value.open = true;
+};
+
+const confirmMultiAssignment = (headquarterId: string | null = null) => {
+    const selectedItems = getSelectedItems();
+    
+    const itemsPayload = selectedItems.map(draft => ({
+        id: draft.id || null, // Important: pass the existing ID if present
+        epp_id: draft.epp_id,
+        epp_name: draft.required_name || draft.epp_name || (props.staff?.staff_clothes.find(a => a.epp_id === draft.epp_id)?.epp?.name),
+        size: getDraftValue(draft.epp_id, 'clothing_size', draft.clothing_size) || draft.size,
+        color_id: getDraftValue(draft.epp_id, 'color_id', draft.color_id),
+        quantity: getDraftValue(draft.epp_id, 'quantity', draft.quantity) || 1,
+        status: getDraftValue(draft.epp_id, 'status', draft.status) || 'Entregado',
+        headquarter_id: headquarterId
+    }));
+
+    router.post(route('inventory.assign-clothes'), {
+        staff_id: props.staff?.id,
+        reason: assignReason.value,
+        create_history: true,
+        items: itemsPayload
+    }, {
+        onSuccess: () => {
+            selectedItems.forEach(draft => {
+                if (draft.epp_id) delete requirementDrafts.value[draft.epp_id];
+            });
+            selectedKeys.value = [];
+            multiDeliveryModal.value.open = false;
+        },
+        preserveScroll: true,
+        preserveState: true
+    });
+};
+
 const eppSearch = ref('');
 const searchResults = ref<any[]>([]);
 const isSearching = ref(false);
@@ -162,6 +267,8 @@ const submitAssignments = () => {
     if (!props.staff) return;
     router.post(route('inventory.assign-clothes'), {
         staff_id: props.staff.id,
+        reason: assignReason.value,
+        create_history: true,
         items: pendingAssignments.value
     }, {
         onSuccess: () => {
@@ -232,15 +339,22 @@ const mergedClothes = computed(() => {
         const matches = aggregatedAssignments.filter(a => a.epp_id === req.id);
         
         if (matches.length > 0) {
+            // Use the first match as the primary row (keeps its id, color, size for editing)
+            const primary = matches[0];
+            // Sum the total quantity across ALL matches for this EPP
+            const totalQuantity = matches.reduce((sum, m) => sum + (m.quantity || 1), 0);
+            
+            result.push({
+                ...primary,
+                quantity: totalQuantity,
+                required_name: req.name,
+                sizes: req.sizes || [],
+                is_requirement: true,
+                expected_quantity: req.pivot?.quantity || 1
+            });
+            
+            // Remove ALL matches from local list so they don't appear as extras
             matches.forEach(match => {
-                result.push({
-                    ...match,
-                    required_name: req.name,
-                    sizes: req.sizes || [],
-                    is_requirement: true,
-                    expected_quantity: req.pivot?.quantity || 1 // for UI reference
-                });
-                // Remove from local list so it's not added as extra
                 const idx = aggregatedAssignments.findIndex(a => a.id === match.id);
                 if (idx > -1) aggregatedAssignments.splice(idx, 1);
             });
@@ -416,8 +530,9 @@ watch(() => props.open, (val) => {
         isAssigning.value = false;
         pendingAssignments.value = [];
         searchResults.value = [];
-        eppSearch.value = '';
         requirementDrafts.value = {};
+        selectedKeys.value = [];
+        multiDeliveryModal.value.open = false;
     }
 });
 </script>
@@ -555,16 +670,39 @@ watch(() => props.open, (val) => {
                             </table>
                         </div>
                         
-                        <Button @click="submitAssignments" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase text-[11px] tracking-widest h-12 shadow-xl shadow-indigo-200">
-                            Confirmar Asignación y Descontar Stock
-                        </Button>
+                        <div class="bg-indigo-50 p-4 rounded-2xl flex flex-col sm:flex-row gap-4 items-center justify-between border border-indigo-100">
+                            <div class="flex items-center gap-3 w-full sm:w-auto">
+                                <Label class="text-[10px] font-black uppercase text-indigo-700 whitespace-nowrap">Motivo de Asignación:</Label>
+                                <Select v-model="assignReason">
+                                    <SelectTrigger class="bg-white border-none shadow-sm h-10 w-full sm:w-40 text-xs">
+                                        <SelectValue placeholder="Seleccionar..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Nuevo">Nuevo Ingreso / Asignación</SelectItem>
+                                        <SelectItem value="Renovación">Renovación regular</SelectItem>
+                                        <SelectItem value="Reposición">Reposición por pérdida o daño</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <Button @click="submitAssignments" class="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase text-[11px] tracking-widest h-10 shadow-lg shadow-indigo-200">
+                                Confirmar Asignación y Descontar
+                            </Button>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Normal View (Summary) -->
                 <div v-else class="space-y-6">
-                    <!-- Perfil de Tallas (Reference) -->
-                    <div v-if="staff.staff_clothes && staff.staff_clothes.filter((c: StaffCloth) => !c.cloth_id && !c.epp_id).length > 0" class="space-y-3">
+                    <Tabs defaultValue="assignments" class="w-full">
+                        <TabsList class="w-full grid grid-cols-2 mb-4 bg-slate-100 h-12 rounded-xl p-1">
+                            <TabsTrigger value="assignments" class="text-xs font-bold uppercase tracking-widest rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">Estado Actual</TabsTrigger>
+                            <TabsTrigger value="history" class="text-xs font-bold uppercase tracking-widest rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">Historial de Entregas</TabsTrigger>
+                        </TabsList>
+                        
+                        <TabsContent value="assignments" class="space-y-6 animate-in fade-in zoom-in-95 duration-200">
+                            <!-- Perfil de Tallas (Reference) -->
+                            <div v-if="staff.staff_clothes && staff.staff_clothes.filter((c: StaffCloth) => !c.cloth_id && !c.epp_id).length > 0" class="space-y-3">
                         <h3 class="text-xs font-black uppercase tracking-widest text-slate-400 px-1 border-l-2 border-slate-200 pl-3">Perfil de Referencia</h3>
                         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
                             <div 
@@ -585,6 +723,12 @@ watch(() => props.open, (val) => {
                             <table class="w-full text-sm">
                                 <thead class="bg-slate-50 border-b">
                                     <tr>
+                                        <th class="px-4 py-2 w-10">
+                                            <Checkbox 
+                                                :checked="selectedKeysCount === mergedClothes.filter((i: any) => i.epp_id).length && selectedKeysCount > 0" 
+                                                @update:checked="selectAll" 
+                                            />
+                                        </th>
                                         <th class="px-4 py-2 text-left text-[10px] font-black uppercase text-slate-400">Requerimiento / Item</th>
                                         <th class="px-4 py-2 text-center text-[10px] font-black uppercase text-slate-400">Cant</th>
                                         <th class="px-4 py-2 text-center text-[10px] font-black uppercase text-slate-400">Talla</th>
@@ -593,7 +737,26 @@ watch(() => props.open, (val) => {
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-slate-100">
-                                    <tr v-for="item in mergedClothes" :key="item.id || item.cloth_id" class="hover:bg-slate-50/50 transition-colors">
+                                    <tr 
+                                        v-for="(item, idx) in mergedClothes" 
+                                        :key="(item.id ? 'id-'+item.id : 'idx-'+idx) + (item.epp_id ? '-epp-'+item.epp_id : '')" 
+                                        class="transition-all duration-200 cursor-pointer"
+                                        :class="[
+                                            isSelected(item) ? 'bg-indigo-50/80 border-l-4 border-l-indigo-500' : 'hover:bg-slate-50/50',
+                                            selectionMode && item.epp_id ? 'ring-1 ring-indigo-100' : ''
+                                        ]"
+                                        @click="selectionMode ? toggleSelection(item) : null"
+                                    >
+                                        <td class="px-4 py-3">
+                                            <div 
+                                                v-if="item.epp_id"
+                                                class="h-5 w-5 rounded-md border-2 flex items-center justify-center transition-all"
+                                                :class="isSelected(item) ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'border-slate-300 bg-white'"
+                                                @click.stop="toggleSelection(item)"
+                                            >
+                                                <Check v-if="isSelected(item)" class="h-3.5 w-3.5 stroke-[3]" />
+                                            </div>
+                                        </td>
                                         <td class="px-4 py-3">
                                             <div class="flex flex-col gap-1">
                                                 <div class="font-bold text-slate-900 text-xs">
@@ -670,11 +833,85 @@ watch(() => props.open, (val) => {
                                 </tbody>
                             </table>
                         </div>
+
                         <div v-else class="text-center py-10 text-slate-400 bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-200">
                             <Package class="h-8 w-8 mx-auto mb-2 opacity-20" />
                             <p class="text-[11px] font-black uppercase tracking-widest">No hay EPPs asignados todavía.</p>
                         </div>
+
+                        <!-- Action Bar -->
+                        <div class="sticky bottom-0 bg-slate-50/90 backdrop-blur-md p-4 rounded-b-2xl flex flex-col sm:flex-row gap-4 items-center justify-between border-t border-slate-200 shadow-xl z-20">
+                            <div class="flex items-center gap-4">
+                                <Button 
+                                    @click="selectionMode = !selectionMode" 
+                                    size="sm"
+                                    variant="outline"
+                                    :class="selectionMode ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700' : 'bg-white border-slate-200'"
+                                    class="h-10 text-[10px] font-black uppercase tracking-widest px-4 shadow-sm transition-all"
+                                >
+                                    {{ selectionMode ? 'Finalizar Selección' : 'Modo Selección' }}
+                                </Button>
+                                
+                                <div class="flex flex-col">
+                                    <span class="text-[11px] font-black uppercase" :class="selectedKeysCount > 0 ? 'text-indigo-700' : 'text-slate-400'">
+                                        {{ selectedKeysCount }} items seleccionados
+                                    </span>
+                                    <span v-if="selectionMode" class="text-[9px] font-bold text-indigo-400 uppercase leading-none">Haz click en las filas</span>
+                                </div>
+                            </div>
+                            
+                            <div class="flex items-center gap-3 w-full sm:w-auto">
+                                <Select v-model="assignReason" v-if="selectedKeysCount > 0">
+                                    <SelectTrigger class="bg-white border-slate-200 shadow-sm h-10 w-full sm:w-48 text-xs font-bold">
+                                        <SelectValue placeholder="Motivo..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Nuevo">Nuevo Ingreso</SelectItem>
+                                        <SelectItem value="Renovación">Renovación regular</SelectItem>
+                                        <SelectItem value="Reposición">Reposición</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <Button 
+                                    @click="openMultiDeliveryModal" 
+                                    :disabled="selectedKeysCount === 0"
+                                    class="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-black uppercase text-[10px] tracking-widest h-10 px-6 shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:shadow-none transition-all active:scale-95"
+                                >
+                                    Registrar Entrega Múltiple
+                                </Button>
+                            </div>
+                        </div>
                     </div>
+                        </TabsContent>
+
+                        <TabsContent value="history" class="animate-in fade-in zoom-in-95 duration-200">
+                            <div v-if="staff.clothes_histories && staff.clothes_histories.length > 0" class="space-y-4">
+                                <div v-for="hist in staff.clothes_histories.slice().reverse()" :key="hist.id" class="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm flex flex-col gap-3">
+                                    <div class="flex justify-between items-start border-b border-slate-50 pb-3">
+                                        <div class="space-y-1">
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-[10px] font-black uppercase text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">{{ hist.reason }}</span>
+                                                <span class="text-xs font-medium text-slate-500">{{ new Date(hist.created_at).toLocaleString() }}</span>
+                                            </div>
+                                            <div class="text-[10px] font-medium text-slate-400">Asignado por: <span class="font-bold text-slate-700">{{ hist.user?.name || 'Sistema' }}</span></div>
+                                        </div>
+                                    </div>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
+                                        <div v-for="(item, idx) in hist.items" :key="idx" class="flex flex-col p-2 bg-slate-50 rounded-xl">
+                                            <span class="text-[11px] font-bold text-slate-800">{{ eppOptions.find(e => String(e.id) === String(item.epp_id))?.name || item.epp_name || `EPP #${item.epp_id}` }}</span>
+                                            <div class="flex gap-3 text-[10px] text-slate-500 mt-1">
+                                                <span class="font-medium">Cant: <strong class="text-indigo-600">{{ item.quantity }}</strong></span>
+                                                <span class="font-medium">Talla: <strong class="text-slate-700">{{ item.size || '-' }}</strong></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div v-else class="text-center py-10 text-slate-400 bg-slate-50/50 rounded-2xl border-2 border-dashed border-slate-200">
+                                <Package class="h-8 w-8 mx-auto mb-2 opacity-20" />
+                                <p class="text-[11px] font-black uppercase tracking-widest">No hay historial de asignaciones.</p>
+                            </div>
+                        </TabsContent>
+                    </Tabs>
                 </div>
             </div>
 
@@ -735,6 +972,46 @@ watch(() => props.open, (val) => {
                         class="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase"
                     >
                         Confirmar y Descontar
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+        <!-- Multi Delivery Location Modal -->
+        <Dialog :open="multiDeliveryModal.open" @update:open="multiDeliveryModal.open = $event">
+            <DialogContent class="sm:max-w-[400px]">
+                <DialogHeader>
+                    <DialogTitle class="text-lg font-black uppercase tracking-tight">Confirmar Entrega de Historial</DialogTitle>
+                    <DialogDescription class="text-xs">
+                        Vas a registrar la entrega y actualizar historial para <span class="font-bold text-slate-900">{{ selectedKeysCount }}</span> items.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div class="py-4 space-y-4">
+                    <div class="space-y-2">
+                        <Label class="text-[10px] font-black uppercase text-slate-500">Almacén de Origen (Sede)</Label>
+                        <Select v-model="multiDeliveryModal.headquarter_id">
+                            <SelectTrigger class="w-full bg-slate-50 border-none h-11">
+                                <SelectValue placeholder="Seleccionar sede..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">
+                                    <div class="flex justify-between w-64 items-center">
+                                        <span>{{ hq.name }} <span class="text-[9px] opacity-50 ml-1">({{ hq.business?.name }})</span></span>
+                                    </div>
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+
+                <DialogFooter>
+                    <Button variant="outline" @click="multiDeliveryModal.open = false" class="text-[10px] font-bold uppercase">Cancelar</Button>
+                    <Button 
+                        @click="confirmMultiAssignment(multiDeliveryModal.headquarter_id)"
+                        :disabled="!multiDeliveryModal.headquarter_id"
+                        class="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase"
+                    >
+                        Confirmar y Procesar
                     </Button>
                 </DialogFooter>
             </DialogContent>

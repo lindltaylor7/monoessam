@@ -25,7 +25,11 @@ interface ExtendedStaff extends Staff {
         epp?: { name: string, sizes: Array<{ id: number, size: string }> };
         color?: { id: number; name: string };
         status?: string;
+        quantity: number;
     }>;
+    staff_financial?: {
+        start_date?: string;
+    };
 }
 
 const props = defineProps<{
@@ -189,6 +193,7 @@ const getInitials = (name: string) => {
                         <thead class="bg-gray-50 text-gray-500 border-b">
                             <tr>
                                 <th class="p-4 font-medium">Personal</th>
+                                <th class="p-4 font-medium">Fecha de ingreso</th>
                                 <th class="p-4 font-medium">Cargo</th>
                                 <th class="p-4 font-medium">Café</th>
                                 <th class="p-4 font-medium">Unidad</th>
@@ -210,6 +215,12 @@ const getInitials = (name: string) => {
                                         </Avatar>
                                         <div class="font-medium text-gray-900">{{ person.name }}</div>
                                     </div>
+                                </td>
+                                <td class="p-4">
+                                    <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-700/10" v-if="person.staff_financial && person.staff_financial.start_date">
+                                        {{ person.staff_financial.start_date }}
+                                    </span>
+                                    <span v-else class="text-gray-400 italic">Sin fecha de ingreso</span>
                                 </td>
                                 <td class="p-4">
                                     <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10" v-if="person.role">

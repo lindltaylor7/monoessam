@@ -22,7 +22,7 @@ class ClothController extends Controller
      */
     public function index()
     {
-        $staff = Staff::with(['role', 'staff_clothes.cloth', 'staff_clothes.epp.sizes', 'staff_clothes.color', 'photo', 'staffable.unit.mine'])
+        $staff = Staff::with(['role', 'staff_clothes.cloth', 'staff_clothes.epp.sizes', 'staff_clothes.color', 'photo', 'staffable.unit.mine', 'staff_financial', 'clothes_histories.user'])
             ->where('status', 2)
             ->whereHasMorph('staffable', [Cafe::class])
             ->get();
@@ -69,6 +69,10 @@ class ClothController extends Controller
                     $roleEpps[$roleId][$key] = [];
                 }
                 
+                // Prevent duplicates: skip if this epp_id already exists in this role/cafe bucket
+                $alreadyExists = collect($roleEpps[$roleId][$key])->contains('id', $epp->id);
+                if ($alreadyExists) continue;
+
                 // Clone the item to include the specific pivot for this role/cafe
                 $item = $epp->toArray();
                 $item['pivot'] = $role->pivot->toArray();
@@ -351,31 +355,32 @@ class ClothController extends Controller
             'color_id' => 'nullable|exists:colors,id',
         ]);
 
-        $epp = \App\Models\Epp::findOrFail($request->epp_id);
+        $where = [
+            'epp_id' => $request->epp_id,
+            'role_id' => $request->role_id,
+            'cafe_id' => $request->cafe_id,
+        ];
 
         if ($request->action === 'attach') {
-            $pivotData = [
-                'cafe_id' => $request->cafe_id,
-                'quantity' => $request->input('quantity', 1),
-                'color_id' => $request->input('color_id')
-            ];
+            $existing = \Illuminate\Support\Facades\DB::table('epp_role')->where($where)->first();
 
-            $exists = $epp->roles()
-                ->wherePivot('cafe_id', $request->cafe_id)
-                ->where('roles.id', $request->role_id)
-                ->exists();
-
-            if ($exists) {
-                $epp->roles()
-                    ->wherePivot('cafe_id', $request->cafe_id)
-                    ->updateExistingPivot($request->role_id, $pivotData);
+            if ($existing) {
+                \Illuminate\Support\Facades\DB::table('epp_role')->where('id', $existing->id)->update([
+                    'quantity' => $request->input('quantity', 1),
+                    'color_id' => $request->input('color_id'),
+                    'updated_at' => now(),
+                ]);
             } else {
-                $epp->roles()->attach($request->role_id, $pivotData);
+                \Illuminate\Support\Facades\DB::table('epp_role')->insert([
+                    ...$where,
+                    'quantity' => $request->input('quantity', 1),
+                    'color_id' => $request->input('color_id'),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
             }
         } else {
-            $epp->roles()
-                ->wherePivot('cafe_id', $request->cafe_id)
-                ->detach($request->role_id);
+            \Illuminate\Support\Facades\DB::table('epp_role')->where($where)->delete();
         }
 
         return back();
