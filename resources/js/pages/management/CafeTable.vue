@@ -4,7 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Service } from '@/types';
 import { Pencil, ShieldCheck } from 'lucide-vue-next';
-import { Link } from '@inertiajs/vue3';
+import { ref } from 'vue';
+import CafeRolesModal from './CafeRolesModal.vue';
 
 // Definición de las props
 const props = defineProps<{
@@ -21,7 +22,17 @@ const props = defineProps<{
         };
     }[];
     services: Service[];
+    roles: any[];
 }>();
+
+const isRolesModalOpen = ref(false);
+const selectedCafeForRoles = ref<any>(null);
+
+const openRolesModal = (cafe: any) => {
+    selectedCafeForRoles.value = cafe;
+    isRolesModalOpen.value = true;
+};
+
 
 // Constante para el tipo de lugar (Cafetería)
 const PLACE_TYPE_CAFE = 3;
@@ -46,10 +57,8 @@ const PLACE_TYPE_CAFE = 3;
                         <TableRow v-for="cafe in cafes" :key="cafe.id">
                             <TableCell class="font-medium">{{ cafe.name }}</TableCell>
                             <TableCell class="flex flex-row justify-end gap-2 text-right">
-                                <Button size="icon" variant="outline" as-child>
-                                    <Link :href="route('cafes.roles.index')">
-                                        <ShieldCheck class="h-4 w-4" />
-                                    </Link>
+                                <Button size="icon" variant="outline" @click="openRolesModal(cafe)">
+                                    <ShieldCheck class="h-4 w-4" />
                                 </Button>
                                 <Button size="icon" variant="outline">
                                     <Pencil class="h-4 w-4" />
@@ -63,5 +72,6 @@ const PLACE_TYPE_CAFE = 3;
             </div>
             <div v-else class="p-4 text-center text-gray-500">Selecciona una Unidad o esta Unidad no tiene Cafeterías.</div>
         </CardContent>
+        <CafeRolesModal :cafe="selectedCafeForRoles" :roles="roles" v-model:open="isRolesModalOpen" />
     </Card>
 </template>

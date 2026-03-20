@@ -12,9 +12,9 @@ interface Props {
     // Es CRUCIAL que las relaciones estén precargadas (eager loaded)
     mines: (Mine & { units: Unit[] })[];
     units: Unit[]; 
-    cafes: Cafe[]; 
     services: Service[];
     businesses: Business[];
+    roles: any[];
 }
 
 const props = defineProps<Props>();
@@ -60,7 +60,7 @@ const handleSelectUnit = (unitId: number) => {
                 Selecciona una Mina para ver sus Unidades.
             </div>
 
-            <CafeTable v-if="selectedUnit" :cafes="selectedUnit.cafes" :services="services" />
+            <CafeTable v-if="selectedUnit" :cafes="selectedUnit.cafes" :services="services" :roles="roles" />
             <div v-else class="flex items-center justify-center rounded-xl border p-4 text-center text-gray-500">
                 Selecciona una Unidad para ver sus Cafeterías.
             </div>

@@ -854,7 +854,7 @@ const getItemIcon = (type: string) => {
                                     <div class="flex justify-between items-start gap-4">
                                         <div class="flex gap-3">
                                             <div :class="[
-                                                'p-2.5 rounded-xl shadow-sm transition-transform group-hover:scale-110',
+                                                'p-2 rounded-xl shadow-sm transition-transform group-hover:scale-110 flex-shrink-0 flex items-center justify-center size-10 self-start',
                                                 activeTab === 'clothes' ? 'bg-indigo-50 text-indigo-600' :
                                                 activeTab === 'epps' ? 'bg-amber-50 text-amber-600' :
                                                 activeTab === 'computer' ? 'bg-blue-50 text-blue-600' :
@@ -864,8 +864,8 @@ const getItemIcon = (type: string) => {
                                                 <component :is="getItemIcon(activeTab)" class="h-5 w-5" />
                                             </div>
                                             <div class="min-w-0">
-                                                <CardTitle class="text-base font-bold text-slate-900 truncate">{{ item.stockable?.name }}</CardTitle>
-                                                <CardDescription class="text-xs mt-0.5 flex items-center gap-1.5 truncate text-slate-500">
+                                                <CardTitle class="text-[14px] leading-tight font-black text-slate-900 line-clamp-2 min-h-[40px] flex items-center break-words">{{ item.stockable?.name }}</CardTitle>
+                                                <CardDescription class="text-xs mt-0.5 flex items-center gap-1.5 whitespace-normal text-slate-500">
                                                     <template v-if="activeTab === 'clothes'">
                                                         <Palette class="h-3 w-3" /> Prendas de Personal
                                                     </template>
@@ -912,13 +912,10 @@ const getItemIcon = (type: string) => {
                                     
                                     <div class="mt-5 space-y-2.5">
                                         <div class="flex items-center justify-between text-[11px]">
-                                            <span class="text-slate-400 font-medium flex items-center gap-1.5"><Building2 class="h-3 w-3" /> Gestión HQ</span>
+                                            <span class="text-slate-400 font-medium flex items-center gap-1.5"><Building2 class="h-3 w-3" /> Gestión / Ubicación</span>
                                             <span class="text-slate-700 font-bold truncate max-w-[120px]">{{ item.display_headquarter }}</span>
                                         </div>
-                                        <div class="flex items-center justify-between text-[11px]">
-                                            <span class="text-slate-400 font-medium flex items-center gap-1.5"><Coffee class="h-3 w-3" /> Punto de Venta</span>
-                                            <span class="text-slate-700 font-bold truncate max-w-[120px]">{{ item.display_cafe }}</span>
-                                        </div>
+                                        
                                     </div>
                                 </CardContent>
 
@@ -989,10 +986,6 @@ const getItemIcon = (type: string) => {
                                                 <div class="flex items-center gap-1.5 text-xs">
                                                     <Building2 class="h-3 w-3 text-slate-400" />
                                                     <span class="font-medium text-slate-700">{{ item.display_headquarter }}</span>
-                                                </div>
-                                                <div class="flex items-center gap-1.5 text-[10px] text-slate-500 mt-1">
-                                                    <Coffee class="h-2.5 w-2.5" />
-                                                    <span>{{ item.display_cafe }}</span>
                                                 </div>
                                             </div>
                                         </TableCell>
