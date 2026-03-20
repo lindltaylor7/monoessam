@@ -41,12 +41,12 @@ const PLACE_TYPE_CAFE = 3;
 <template>
     <Card>
         <CardHeader>
-            <CardTitle>Cafeterías ☕</CardTitle>
+            <CardTitle>Comedores ☕</CardTitle>
         </CardHeader>
         <CardContent class="max-h-[80vh] space-y-4 overflow-y-auto">
             <div v-if="cafes && cafes.length > 0">
                 <Table>
-                    <TableCaption>Lista de Cafeterías en la Unidad seleccionada.</TableCaption>
+                    <TableCaption>Lista de Comedores en la Unidad seleccionada.</TableCaption>
                     <TableHeader>
                         <TableRow>
                             <TableHead class="w-[100px]">Nombre</TableHead>

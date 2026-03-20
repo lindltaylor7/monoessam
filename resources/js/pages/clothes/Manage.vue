@@ -285,7 +285,7 @@ const hasRoleInSelection = (roleId: number) => {
             <div class="bg-slate-900 rounded-2xl p-4 flex flex-col xl:flex-row gap-3 items-center flex-none shadow-2xl shadow-indigo-100 border border-slate-800">
                 <div class="flex-1 w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 min-w-0">
                     <div class="space-y-1 min-w-0">
-                        <Label class="text-[9px] font-black uppercase text-slate-400 ml-1">Unidad / Café</Label>
+                        <Label class="text-[9px] font-black uppercase text-slate-400 ml-1">Unidad / Comedor</Label>
                         <Select v-model="selectedCafeId">
                             <SelectTrigger class="h-9 bg-slate-800 border-none text-white shadow-none focus:ring-1 focus:ring-indigo-500 w-full overflow-hidden">
                                 <div class="truncate text-[10px] font-black uppercase tracking-tight">

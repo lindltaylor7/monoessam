@@ -369,7 +369,7 @@ const handleCreateItem = () => {
                 code: '',
                 status: '',
             };
-        }
+        },
     });
 };
 
@@ -817,7 +817,7 @@ const getItemIcon = (type: string) => {
                                     <SelectValue placeholder="Cafés" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">Todos los Cafés</SelectItem>
+                                    <SelectItem value="all">Todos los Comedores</SelectItem>
                                     <SelectItem v-for="cafe in cafes" :key="cafe.id" :value="String(cafe.id)">{{ cafe.name }} - {{ cafe.unit.name }} - {{ cafe.unit.mine.name }}</SelectItem>
                                 </SelectContent>
                             </Select>
@@ -1151,9 +1151,18 @@ const getItemIcon = (type: string) => {
                                 <span>Talla</span>
                                 <span>Cant. Recibida</span>
                             </div>
-                                <div v-if="isLoadingSizes" class="p-8 flex flex-col items-center justify-center gap-3">
-                                    <Loader2 class="h-8 w-8 text-indigo-500 animate-spin" />
-                                    <p class="text-xs text-slate-400 font-bold uppercase tracking-widest">Cargando datos...</p>
+                                <div v-if="isLoadingSizes" class="p-6 space-y-4">
+                                    <div v-for="i in 3" :key="i" class="flex justify-between items-center bg-slate-50/50 p-3 rounded-xl border border-slate-100 animate-pulse">
+                                        <div class="flex items-center gap-3">
+                                            <div class="h-8 w-8 rounded-lg bg-slate-200"></div>
+                                            <div class="space-y-2">
+                                                <div class="h-3 w-16 bg-slate-200 rounded"></div>
+                                                <div class="h-2 w-10 bg-slate-100 rounded"></div>
+                                            </div>
+                                        </div>
+                                        <div class="h-6 w-8 bg-slate-200 rounded-lg"></div>
+                                    </div>
+                                    <p class="text-[9px] text-slate-400 font-bold uppercase tracking-widest text-center animate-pulse">Recuperando registros...</p>
                                 </div>
                                 <div v-else-if="filteredStockSizes.length === 0" class="p-8 text-center">
                                     <p class="text-xs text-slate-400 font-bold uppercase tracking-widest">No se encontraron registros</p>

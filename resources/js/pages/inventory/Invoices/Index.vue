@@ -158,7 +158,19 @@ const isInvoiceSubmitDisabled = computed(() => {
            !invoiceForm.value.cloth_provider_id || 
            (filteredHeadquarters.value.length > 0 && !invoiceForm.value.headquarter_id) ||
            invoiceForm.value.items.length === 0 || 
-           invoiceForm.value.items.some(i => (!i.cloth_id && !i.epp_id) || i.quantity <= 0);
+           invoiceForm.value.items.some(i => {
+               const hasItem = i.cloth_id || i.epp_id;
+               const validQty = i.quantity > 0;
+               const hasSize = i.size && i.size.trim() !== '';
+               
+               // Verification for EPP
+               if (i.epp_id) {
+                   const sizes = getSizesForItem(`epp_${i.epp_id}`);
+                   return !hasItem || !validQty || !hasSize || sizes.length === 0;
+               }
+               
+               return !hasItem || !validQty || !hasSize;
+           });
 });
 
 const handleInvoiceSubmit = () => {
@@ -606,6 +618,12 @@ const saveInlinePrice = (cp: any) => {
                                                                     </SelectItem>
                                                                 </SelectContent>
                                                             </Select>
+                                                        </div>
+                                                        <div v-else-if="item.epp_id" class="flex flex-col items-center justify-center p-1 bg-rose-50 rounded-lg border border-rose-100">
+                                                            <span class="text-[8px] text-rose-600 font-black uppercase text-center leading-tight mb-1">Requiere<br>asignar tallas</span>
+                                                            <Button @click="openSizeModal(props.epps.find(e => String(e.id) === String(item.epp_id)))" variant="ghost" size="sm" class="h-5 text-[8px] text-indigo-600 font-bold p-0 hover:bg-transparent hover:text-indigo-700">
+                                                                Configurar
+                                                            </Button>
                                                         </div>
                                                         <Input v-else v-model="item.size" placeholder="Talla..." class="h-9 border-none shadow-none focus:ring-1" />
                                                     </td>

@@ -149,9 +149,9 @@ const getInitials = (name: string) => {
         <div class="p-6">
              <div class="flex justify-between items-center mb-6">
                  <div>
-                    <h1 class="text-3xl font-bold tracking-tight">Asignación de Prendas por Rol y Café</h1>
+                    <h1 class="text-3xl font-bold tracking-tight">Asignación de Prendas por Rol y Comedor</h1>
                     <p class="text-muted-foreground text-xs sm:text-sm mt-1">
-                        Selecciona las prendas asignadas a cada rol/cargo en el café seleccionado
+                        Selecciona las prendas asignadas a cada rol/cargo en el comedor seleccionado
                     </p>
                  </div>
                  <div class="flex flex-wrap gap-2">
@@ -195,7 +195,7 @@ const getInitials = (name: string) => {
                                 <th class="p-4 font-medium">Personal</th>
                                 <th class="p-4 font-medium">Fecha de ingreso</th>
                                 <th class="p-4 font-medium">Cargo</th>
-                                <th class="p-4 font-medium">Café</th>
+                                <th class="p-4 font-medium">Comedor</th>
                                 <th class="p-4 font-medium">Unidad</th>
                                <!-- <th class="p-4 font-medium">Tallas</th> -->
                                 <th class="p-4 font-medium w-16">Prendas</th>
