@@ -89,7 +89,7 @@ const selectedHeadquarterId = ref('all');
 
 // Filtrado de inventario (Polymorphic)
 const filteredStocks = computed(() => {
-    return props.stocks.filter(stock => {
+    const filtered = props.stocks.filter(stock => {
         const itemType = stock.stockable_type;
         
         if (activeTab.value === 'clothes' && itemType !== 'App\\Models\\Cloth') return false;
@@ -108,6 +108,30 @@ const filteredStocks = computed(() => {
 
         return matchesSearch && matchesCafe && matchesHQ;
     });
+
+    // Grouping logic to avoid duplicate cards per item
+    const groups: Record<string, any> = {};
+    filtered.forEach(stock => {
+        const key = `${stock.stockable_type}-${stock.stockable_id}`;
+        if (!groups[key]) {
+            groups[key] = {
+                ...stock,
+                total_quantity: 0,
+                headquarter_names: new Set(),
+                cafe_names: new Set(),
+            };
+        }
+        groups[key].total_quantity += Number(stock.quantity);
+        if (stock.headquarter?.name) groups[key].headquarter_names.add(stock.headquarter.name);
+        if (stock.cafe?.name) groups[key].cafe_names.add(stock.cafe.name);
+    });
+
+    return Object.values(groups).map(g => ({
+        ...g,
+        quantity: g.total_quantity,
+        display_headquarter: Array.from(g.headquarter_names).join(', ') || 'N/A',
+        display_cafe: Array.from(g.cafe_names).join(', ') || 'N/A'
+    }));
 });
 
 // Estado para modales
@@ -140,12 +164,42 @@ const openSizesModal = (stock: any) => {
 };
 
 const filteredStockSizes = computed(() => {
-    if (!sizeSearch.value) return stockSizes.value;
+    if (!stockSizes.value) return [];
+    
+    // Group sizes by location (Headquarter / Cafe)
+    const grouped: Record<string, any> = {};
+    
+    stockSizes.value.forEach((item: any) => {
+        const hqName = item.headquarter?.name || 'Sede Central / Almacén';
+        const cafeName = item.cafe?.name || 'Principal';
+        const groupKey = `${hqName} - ${cafeName}`;
+        
+        if (!grouped[groupKey]) {
+            grouped[groupKey] = {
+                title: groupKey,
+                hq: hqName,
+                cafe: cafeName,
+                items: []
+            };
+        }
+        grouped[groupKey].items.push(item);
+    });
+    
     const s = sizeSearch.value.toLowerCase();
-    return stockSizes.value.filter((item: any) => 
-        (item.size && item.size.toLowerCase().includes(s)) || 
-        (item.color?.name && item.color.name.toLowerCase().includes(s))
-    );
+    
+    return Object.values(grouped).map((group: any) => {
+        // Filter items within the group
+        const filteredItems = group.items.filter((item: any) => {
+            if (!s) return true;
+            return (item.size && item.size.toLowerCase().includes(s)) || 
+                   (item.color?.name && item.color.name.toLowerCase().includes(s));
+        });
+        
+        return {
+            ...group,
+            items: filteredItems
+        };
+    }).filter(group => group.items.length > 0);
 });
 
 const isReturnModalOpen = ref(false);
@@ -859,11 +913,11 @@ const getItemIcon = (type: string) => {
                                     <div class="mt-5 space-y-2.5">
                                         <div class="flex items-center justify-between text-[11px]">
                                             <span class="text-slate-400 font-medium flex items-center gap-1.5"><Building2 class="h-3 w-3" /> Gestión HQ</span>
-                                            <span class="text-slate-700 font-bold truncate max-w-[120px]">{{ item.headquarter?.name || 'Distribución Global' }}</span>
+                                            <span class="text-slate-700 font-bold truncate max-w-[120px]">{{ item.display_headquarter }}</span>
                                         </div>
                                         <div class="flex items-center justify-between text-[11px]">
                                             <span class="text-slate-400 font-medium flex items-center gap-1.5"><Coffee class="h-3 w-3" /> Punto de Venta</span>
-                                            <span class="text-slate-700 font-bold truncate max-w-[120px]">{{ item.cafe?.name || 'N/A' }}</span>
+                                            <span class="text-slate-700 font-bold truncate max-w-[120px]">{{ item.display_cafe }}</span>
                                         </div>
                                     </div>
                                 </CardContent>
@@ -934,11 +988,11 @@ const getItemIcon = (type: string) => {
                                             <div class="flex flex-col">
                                                 <div class="flex items-center gap-1.5 text-xs">
                                                     <Building2 class="h-3 w-3 text-slate-400" />
-                                                    <span class="font-medium text-slate-700">{{ item.headquarter?.name || 'General' }}</span>
+                                                    <span class="font-medium text-slate-700">{{ item.display_headquarter }}</span>
                                                 </div>
                                                 <div class="flex items-center gap-1.5 text-[10px] text-slate-500 mt-1">
                                                     <Coffee class="h-2.5 w-2.5" />
-                                                    <span>{{ item.cafe?.name || 'Sin Asignar' }}</span>
+                                                    <span>{{ item.display_cafe }}</span>
                                                 </div>
                                             </div>
                                         </TableCell>
@@ -1104,29 +1158,36 @@ const getItemIcon = (type: string) => {
                                 <span>Talla</span>
                                 <span>Cant. Recibida</span>
                             </div>
-                            <div v-if="isLoadingSizes" class="p-8 flex flex-col items-center justify-center gap-3">
-                                <Loader2 class="h-8 w-8 text-indigo-500 animate-spin" />
-                                <p class="text-xs text-slate-400 font-bold uppercase tracking-widest">Cargando datos...</p>
-                            </div>
-                            <div v-else-if="filteredStockSizes.length === 0" class="p-8 text-center">
-                                <p class="text-xs text-slate-400 font-bold uppercase tracking-widest">No se encontraron registros</p>
-                            </div>
-                            <div v-else class="max-h-[300px] overflow-y-auto custom-scrollbar divide-y divide-slate-100">
-                                <div v-for="(sz, idx) in filteredStockSizes" :key="idx" class="px-4 py-3 flex justify-between items-center hover:bg-slate-50/50 transition-colors">
-                                    <div class="flex items-center gap-3">
-                                        <div class="h-8 w-8 rounded-lg bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-700 border border-indigo-100 uppercase">
-                                            {{ sz.size ? sz.size.toUpperCase() : 'U' }}
+                                <div v-if="isLoadingSizes" class="p-8 flex flex-col items-center justify-center gap-3">
+                                    <Loader2 class="h-8 w-8 text-indigo-500 animate-spin" />
+                                    <p class="text-xs text-slate-400 font-bold uppercase tracking-widest">Cargando datos...</p>
+                                </div>
+                                <div v-else-if="filteredStockSizes.length === 0" class="p-8 text-center">
+                                    <p class="text-xs text-slate-400 font-bold uppercase tracking-widest">No se encontraron registros</p>
+                                </div>
+                                <div v-else class="max-h-[350px] overflow-y-auto custom-scrollbar divide-y divide-slate-100">
+                                    <div v-for="group in filteredStockSizes" :key="group.title" class="px-4 py-4 space-y-3">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <div class="p-1 px-2 bg-slate-100 rounded text-[9px] font-black uppercase text-slate-500 border border-slate-200">
+                                                {{ group.hq }} - {{ group.cafe }}
+                                            </div>
                                         </div>
-                                        <div v-if="sz.color" class="flex items-center gap-1.5">
-                                            <div class="w-2.5 h-2.5 rounded-full border border-slate-200 shadow-sm" :style="{ backgroundColor: sz.color.hex_code }"></div>
-                                            <span class="text-[10px] font-bold text-slate-500 uppercase">{{ sz.color.name }}</span>
+                                        <div v-for="(sz, idx) in group.items" :key="idx" class="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-50 shadow-sm transition-all hover:border-indigo-100">
+                                            <div class="flex items-center gap-3">
+                                                <div class="h-8 w-8 rounded-lg bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-700 border border-indigo-100 uppercase">
+                                                    {{ sz.size ? sz.size.toUpperCase() : 'U' }}
+                                                </div>
+                                                <div v-if="sz.color" class="flex items-center gap-1.5">
+                                                    <div class="w-2.5 h-2.5 rounded-full border border-slate-200 shadow-sm" :style="{ backgroundColor: sz.color.hex_code }"></div>
+                                                    <span class="text-[10px] font-bold text-slate-500 uppercase">{{ sz.color.name }}</span>
+                                                </div>
+                                            </div>
+                                            <Badge variant="secondary" class="font-mono font-black text-xs px-2.5 py-0.5 rounded-lg bg-white border border-slate-200">
+                                                {{ sz.quantity }}
+                                            </Badge>
                                         </div>
                                     </div>
-                                    <Badge variant="secondary" class="font-mono font-black text-xs px-2.5 py-0.5 rounded-lg bg-white border border-slate-200">
-                                        {{ sz.total_received }}
-                                    </Badge>
                                 </div>
-                            </div>
                         </div>
                     </div>
                     

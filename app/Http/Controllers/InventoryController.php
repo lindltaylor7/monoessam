@@ -468,28 +468,14 @@ class InventoryController extends Controller
 
     public function getStockSizes($id)
     {
-        $stock = InventoryStock::findOrFail($id);
+        $stockItem = InventoryStock::findOrFail($id);
         
-        $query = ClothInvoiceItem::with(['color']);
-            
-        if ($stock->stockable_type === Cloth::class) {
-            $query->where('cloth_id', $stock->stockable_id);
-        } else {
-            $query->where('epp_id', $stock->stockable_id);
-        }
-        
-        // Filter by location if the stock is tied to a specific headquarter
-        if ($stock->headquarter_id) {
-            $query->whereHas('invoice', function ($q) use ($stock) {
-                $q->where('headquarter_id', $stock->headquarter_id);
-            });
-        }
-        
-        $sizes = $query->select('size', 'color_id', DB::raw('SUM(quantity) as total_received'))
-            ->groupBy('size', 'color_id')
+        $stocks = InventoryStock::with(['color', 'headquarter', 'cafe'])
+            ->where('stockable_id', $stockItem->stockable_id)
+            ->where('stockable_type', $stockItem->stockable_type)
             ->get();
-
-        return response()->json($sizes);
+            
+        return response()->json($stocks);
     }
 
     public function storeTransfer(Request $request)
