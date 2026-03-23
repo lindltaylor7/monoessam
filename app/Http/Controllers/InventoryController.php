@@ -47,7 +47,7 @@ class InventoryController extends Controller
 
         // New polymorphic stocks
         $stocks = InventoryStock::with(['stockable', 'cafe', 'headquarter', 'unit.mine'])->get();
-        
+
         $transfers = InventoryTransfer::with(['staff', 'unit.mine', 'items.stockable'])
             ->orderBy('created_at', 'desc')
             ->get();
@@ -99,7 +99,7 @@ class InventoryController extends Controller
             $q->with('sizes');
         }
 
-        $items = $q->limit(10)->get();
+        $items = $q->get();
 
         // Format label for dropdown
         $items->transform(function ($item) use ($type) {
@@ -387,7 +387,7 @@ class InventoryController extends Controller
             'name' => $validated['name'],
             'category_epp_id' => $validated['category_epp_id'] ?? null,
         ]);
-        
+
         if (!empty($validated['size_ids'])) {
             $epp->availableSizes()->sync($validated['size_ids']);
         }
@@ -468,13 +468,55 @@ class InventoryController extends Controller
     public function getStockSizes($id)
     {
         $stockItem = InventoryStock::findOrFail($id);
-        
+
         $stocks = InventoryStock::with(['color', 'headquarter', 'cafe'])
             ->where('stockable_id', $stockItem->stockable_id)
             ->where('stockable_type', $stockItem->stockable_type)
             ->get();
-            
+
         return response()->json($stocks);
+    }
+
+    public function unitsStockIndex()
+    {
+        $units = Unit::with('mine')->get();
+        $epps = Epp::with('category')->get();
+        $colors = Color::all();
+        $stocks = InventoryStock::with(['stockable', 'unit.mine', 'color'])
+            ->whereNotNull('unit_id')
+            ->where('stockable_type', Epp::class) // specifically for EPPs
+            ->get();
+
+        $transfers = InventoryTransfer::with(['staff', 'unit.mine', 'items.stockable'])
+            ->whereNotNull('unit_id')
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get();
+
+        $staffHistories = \App\Models\StaffClothesHistory::with([
+            'staff.staffable' => function ($morphTo) {
+                $morphTo->morphWith([
+                    \App\Models\Cafe::class => ['unit.mine']
+                ]);
+            },
+            'user'
+        ])
+            ->whereHas('staff', function ($q) {
+                $q->whereHasMorph('staffable', [\App\Models\Cafe::class], function ($sq) {
+                    $sq->whereNotNull('unit_id');
+                });
+            })
+            ->latest()
+            ->get();
+
+        return Inertia::render('inventory-unit/Index', [
+            'units' => $units,
+            'epps' => $epps,
+            'colors' => $colors,
+            'stocks' => $stocks,
+            'transfers' => $transfers,
+            'staffHistories' => $staffHistories,
+        ]);
     }
 
     public function storeTransfer(Request $request)
@@ -591,7 +633,6 @@ class InventoryController extends Controller
                 $principalStock->increment('quantity', $itemData['quantity']);
             }
         });
-
     }
 
     public function assignStaffClothes(Request $request)
@@ -600,6 +641,7 @@ class InventoryController extends Controller
             'staff_id' => 'required|exists:staff,id',
             'items' => 'required|array|min:1',
             'items.*.epp_id' => 'required|exists:epps,id',
+            'items.*.epp_name' => 'nullable|string',
             'items.*.color_id' => 'required|exists:colors,id',
             'items.*.size' => 'required|string',
             'items.*.quantity' => 'required|integer|min:1',
@@ -633,7 +675,7 @@ class InventoryController extends Controller
                     if (!$stock || $stock->quantity < $itemData['quantity']) {
                         $epp = Epp::find($itemData['epp_id']);
                         $colorName = Color::find($itemData['color_id'])?->name ?: 'N/A';
-                        $locationName = !empty($itemData['headquarter_id']) 
+                        $locationName = !empty($itemData['headquarter_id'])
                             ? (Headquarter::find($itemData['headquarter_id'])?->name ?: 'la sede seleccionada')
                             : ($staff->cafe?->name ?: 'el punto de venta');
                         throw new \Exception("Stock insuficiente de '{$epp->name}' (Talla: {$itemData['size']}, Color: {$colorName}) en {$locationName}. Disponible: " . ($stock?->quantity ?: 0));
@@ -711,7 +753,7 @@ class InventoryController extends Controller
             'stockable_id' => $id,
             'stockable_type' => $modelType
         ])->get(['headquarter_id', 'cafe_id', 'quantity', 'size', 'color_id']);
-        
+
         return response()->json($stocks);
     }
 }

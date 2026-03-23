@@ -313,6 +313,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/transfer', [InventoryController::class, 'storeTransfer'])->name('transfer.store');
         Route::post('/transfer/return', [InventoryController::class, 'returnToPrincipal'])->name('transfer.return');
         Route::post('/assign-clothes', [InventoryController::class, 'assignStaffClothes'])->name('assign-clothes');
+        Route::get('/units', [InventoryController::class, 'unitsStockIndex'])->name('units.index');
     });
 
     Route::prefix('reportsales')->name('reportsales.')->group(function () {

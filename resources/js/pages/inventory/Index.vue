@@ -35,7 +35,8 @@ import {
     Building,
     LayoutGrid,
     List,
-    MoreHorizontal
+    MoreHorizontal,
+    Mountain
 } from 'lucide-vue-next';
 import { 
     Table, 
@@ -457,6 +458,16 @@ const getItemIcon = (type: string) => {
                             </DialogFooter>
                         </DialogContent>
                     </Dialog>
+
+                    <Button 
+                        @click="router.visit(route('inventory.units.index'))" 
+                        size="sm" 
+                        variant="outline" 
+                        class="gap-2 bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 shadow-sm font-bold"
+                    >
+                        <Mountain class="h-4 w-4" />
+                        Stock por Unidades
+                    </Button>
 
                     <Button 
                         @click="router.visit(route('inventory.invoices.index'))" 

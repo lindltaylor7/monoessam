@@ -410,6 +410,7 @@ const loadEppOptions = async () => {
             params: { type: 'epp', query: '' } // Get some default or just search as needed
         });
         eppOptions.value = response.data;
+        console.log(eppOptions.value);
     } catch (e) {
         console.error(e);
     }
