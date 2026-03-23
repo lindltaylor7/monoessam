@@ -104,10 +104,13 @@ const selectAll = (checked: boolean) => {
 
 const multiDeliveryModal = ref({
     open: false,
-    headquarter_id: '',
+    items: [] as any[],
+    headquarters: {} as Record<string, string>,
+    stocks: {} as Record<string, any[]>,
+    isLoading: false
 });
 
-const openMultiDeliveryModal = () => {
+const openMultiDeliveryModal = async () => {
     const selectedItems = getSelectedItems();
     const errorItems = selectedItems.filter(i => !getDraftValue(i.epp_id, 'clothing_size', i.clothing_size) || !getDraftValue(i.epp_id, 'color_id', i.color_id));
     
@@ -120,34 +123,67 @@ const openMultiDeliveryModal = () => {
         });
         return;
     }
+    
+    multiDeliveryModal.value.items = selectedItems;
+    multiDeliveryModal.value.headquarters = {};
+    multiDeliveryModal.value.stocks = {};
     multiDeliveryModal.value.open = true;
+    multiDeliveryModal.value.isLoading = true;
+    
+    try {
+        const promises = selectedItems.map(async (item) => {
+            const itemId = item.epp_id || item.cloth_id;
+            const type = item.epp_id ? 'epp' : 'cloth';
+            if (itemId) {
+                const response = await axios.get(route('inventory.items.stock', itemId), { params: { type } });
+                multiDeliveryModal.value.stocks[getRowKey(item)] = response.data;
+            }
+        });
+        await Promise.all(promises);
+    } catch (e) {
+        console.error("Error cargando stocks múltiples", e);
+    } finally {
+        multiDeliveryModal.value.isLoading = false;
+    }
 };
 
-const confirmMultiAssignment = (headquarterId: string | null = null) => {
-    const selectedItems = getSelectedItems();
+const confirmMultiAssignment = () => {
+    const selectedItems = multiDeliveryModal.value.items;
     
-    // Multi-item Stock validation
-    if (headquarterId) {
-        // We need to wait for stocks to be loaded for all items, but wait, 
-        // the deliveryModal.stocks is only for the LAST opened single item.
-        // For multi-assignment, we might need a separate stock check or just inform the user.
-        // Actually, we could fetch stock for all selected items, but that's expensive.
-        // A better way is to proceed and let the backend return an error, which is already handled by the watch(page.props.flash.error).
-        // However, the user said "the button does nothing without any error message".
-        // Let's add a small check if we HAVE stock data (though unlikely for multi).
-        // Actually, I'll just improve the backend error handling if it's missing.
+    for (const item of selectedItems) {
+        const key = getRowKey(item);
+        const hqId = multiDeliveryModal.value.headquarters[key];
+        if (!hqId) {
+            Swal.fire('Atención', 'Selecciona el almacén de origen para todos los items.', 'warning');
+            return;
+        }
+        
+        const qty = getDraftValue(item.epp_id, 'quantity', item.quantity) || 1;
+        const stock = getMultiStockForHq(item, Number(hqId));
+        if (stock < qty) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Stock Insuficiente',
+                text: `No hay stock suficiente para ${item.required_name || item.epp_name} en la sede seleccionada.`,
+                confirmButtonColor: '#e11d48'
+            });
+            return;
+        }
     }
 
-    const itemsPayload = selectedItems.map(draft => ({
-        id: draft.id || null, 
-        epp_id: draft.epp_id,
-        epp_name: draft.required_name || draft.epp_name || (props.staff?.staff_clothes.find(a => a.epp_id === draft.epp_id)?.epp?.name),
-        size: getDraftValue(draft.epp_id, 'clothing_size', draft.clothing_size) || draft.size,
-        color_id: getDraftValue(draft.epp_id, 'color_id', draft.color_id),
-        quantity: getDraftValue(draft.epp_id, 'quantity', draft.quantity) || 1,
-        status: getDraftValue(draft.epp_id, 'status', draft.status) || 'Entregado',
-        headquarter_id: headquarterId
-    }));
+    const itemsPayload = selectedItems.map(draft => {
+        const key = getRowKey(draft);
+        return {
+            id: draft.id || null, 
+            epp_id: draft.epp_id,
+            epp_name: draft.required_name || draft.epp_name || (props.staff?.staff_clothes.find(a => a.epp_id === draft.epp_id)?.epp?.name),
+            size: getDraftValue(draft.epp_id, 'clothing_size', draft.clothing_size) || draft.size,
+            color_id: getDraftValue(draft.epp_id, 'color_id', draft.color_id),
+            quantity: getDraftValue(draft.epp_id, 'quantity', draft.quantity) || 1,
+            status: getDraftValue(draft.epp_id, 'status', draft.status) || 'Entregado',
+            headquarter_id: multiDeliveryModal.value.headquarters[key]
+        };
+    });
 
     router.post(route('inventory.assign-clothes'), {
         staff_id: props.staff?.id,
@@ -485,17 +521,24 @@ const getStockForHq = (hqId: number) => {
     return stock ? stock.quantity : 0;
 };
 
-const saveRequirement = (eppId: number) => {
-    const draft = requirementDrafts.value[eppId];
-    if (!draft || !draft.clothing_size || !draft.color_id) return;
+const getMultiStockForHq = (item: any, hqId: number) => {
+    const key = getRowKey(item);
+    const stocks = multiDeliveryModal.value.stocks[key] || [];
     
-    // Al hacer clic en "Confirmar Entrega", asumimos que se entrega en este momento.
-    // Abrimos el modal para seleccionar el origen del stock.
-    openDeliveryModal({ 
-        ...draft, 
-        status: 'Entregado',
-        required_name: props.staff?.staff_clothes.find(a => a.epp_id === eppId)?.epp?.name || 'Requerimiento' 
-    });
+    const size = item.epp_id 
+        ? getDraftValue(item.epp_id, 'clothing_size', item.clothing_size)
+        : item.clothing_size;
+
+    const colorId = item.epp_id 
+        ? getDraftValue(item.epp_id, 'color_id', item.color_id)
+        : item.color_id;
+
+    const stock = stocks.find((s: any) => 
+        s.headquarter_id === hqId && 
+        String(s.size) === String(size) &&
+        String(s.color_id) === String(colorId)
+    );
+    return stock ? stock.quantity : 0;
 };
 
 const updateStatus = (clothEntryId: number, status: string, colorId?: number | null, size?: string, eppId?: number | null, quantity?: number, headquarterId?: string | null) => {
@@ -809,14 +852,6 @@ watch(() => props.open, (val) => {
                                                     <div class="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full inline-block w-fit">
                                                         REQUERIDO
                                                     </div>
-                                                    <Button 
-                                                        v-if="getDraftValue(item.epp_id, 'clothing_size', '') && getDraftValue(item.epp_id, 'color_id', '')"
-                                                        @click="saveRequirement(item.epp_id)"
-                                                        size="sm"
-                                                        class="h-7 text-[9px] bg-green-600 hover:bg-green-700 font-bold uppercase"
-                                                    >
-                                                        Confirmar Entrega
-                                                    </Button>
                                                 </div>
                                                 <div v-else-if="!item.is_requirement" class="text-[8px] font-black text-slate-400 uppercase tracking-widest">
                                                     Asignación Extra
@@ -1021,37 +1056,56 @@ watch(() => props.open, (val) => {
         </Dialog>
         <!-- Multi Delivery Location Modal -->
         <Dialog :open="multiDeliveryModal.open" @update:open="multiDeliveryModal.open = $event">
-            <DialogContent class="sm:max-w-[400px]">
+            <DialogContent class="sm:max-w-[600px] max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
-                    <DialogTitle class="text-lg font-black uppercase tracking-tight">Confirmar Entrega de Historial</DialogTitle>
+                    <DialogTitle class="text-lg font-black uppercase tracking-tight">Seleccionar Origen del Stock</DialogTitle>
                     <DialogDescription class="text-xs">
-                        Vas a registrar la entrega y actualizar historial para <span class="font-bold text-slate-900">{{ selectedKeysCount }}</span> items.
+                        Confirma desde qué almacén se descontará cada uno de los <span class="font-bold text-slate-900">{{ multiDeliveryModal.items.length }}</span> items seleccionados.
                     </DialogDescription>
                 </DialogHeader>
 
                 <div class="py-4 space-y-4">
-                    <div class="space-y-2">
-                        <Label class="text-[10px] font-black uppercase text-slate-500">Almacén de Origen (Sede)</Label>
-                        <Select v-model="multiDeliveryModal.headquarter_id">
-                            <SelectTrigger class="w-full bg-slate-50 border-none h-11">
-                                <SelectValue placeholder="Seleccionar sede..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">
-                                    <div class="flex justify-between w-64 items-center">
-                                        <span>{{ hq.name }} <span class="text-[9px] opacity-50 ml-1">({{ hq.business?.name }})</span></span>
-                                    </div>
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
+                    <div v-if="multiDeliveryModal.isLoading" class="flex justify-center py-6">
+                        <Loader2 class="h-6 w-6 animate-spin text-indigo-500" />
+                    </div>
+                    <div v-else class="space-y-4 flex flex-col gap-2">
+                        <div v-for="item in multiDeliveryModal.items" :key="getRowKey(item)" class="p-4 bg-slate-50 border border-slate-100 rounded-xl flex flex-col gap-3">
+                            <div class="flex justify-between items-start border-b border-slate-200 pb-2">
+                                <div class="font-bold text-slate-800 text-sm truncate max-w-[200px]">{{ item.required_name || item.epp_name }}</div>
+                                <div class="flex gap-2">
+                                    <span class="text-[10px] font-black uppercase text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full flex gap-1 items-center">
+                                        {{ getDraftValue(item.epp_id, 'clothing_size', item.clothing_size) }}
+                                    </span>
+                                    <span class="text-[10px] font-black bg-slate-200 px-2 py-0.5 rounded-full flex gap-1 items-center text-slate-600">
+                                        Cant: {{ getDraftValue(item.epp_id, 'quantity', item.quantity) || 1 }}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            <Select v-model="multiDeliveryModal.headquarters[getRowKey(item)]">
+                                <SelectTrigger class="w-full bg-white border border-slate-200 shadow-sm h-11 text-xs">
+                                    <SelectValue placeholder="Seleccionar sede de origen..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">
+                                        <div class="flex justify-between w-64 items-center">
+                                            <span>{{ hq.name }} <span class="text-[9px] opacity-50 ml-1">({{ hq.business?.name }})</span></span>
+                                            <span :class="['text-[10px] font-black px-2 py-0.5 rounded-full', getMultiStockForHq(item, hq.id) >= (getDraftValue(item.epp_id, 'quantity', item.quantity) || 1) ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700']">
+                                                Stock: {{ getMultiStockForHq(item, hq.id) }}
+                                            </span>
+                                        </div>
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
                 </div>
 
                 <DialogFooter>
                     <Button variant="outline" @click="multiDeliveryModal.open = false" class="text-[10px] font-bold uppercase">Cancelar</Button>
                     <Button 
-                        @click="confirmMultiAssignment(multiDeliveryModal.headquarter_id)"
-                        :disabled="!multiDeliveryModal.headquarter_id"
+                        @click="confirmMultiAssignment()"
+                        :disabled="multiDeliveryModal.isLoading || Object.keys(multiDeliveryModal.headquarters).length !== multiDeliveryModal.items.length"
                         class="bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase"
                     >
                         Confirmar y Procesar
