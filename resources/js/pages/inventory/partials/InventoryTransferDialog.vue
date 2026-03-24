@@ -9,8 +9,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Trash2, Plus, Search, Loader2, Package, User, Building2, Truck, Shirt, X } from 'lucide-vue-next';
+import { Trash2, Plus, Search, Loader2, Package, User, Building2, Truck, Shirt, X, AlertCircle } from 'lucide-vue-next';
 import axios from 'axios';
+import Swal from 'sweetalert2';
 
 const props = defineProps<{
     open: boolean;
@@ -71,6 +72,14 @@ watch(itemSearch, (val) => {
 });
 
 const addItem = (item: any) => {
+    if (item.stock <= 0) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Sin Stock',
+            text: 'Este item no tiene stock disponible en el almacén principal.',
+        });
+        return;
+    }
     const exists = form.value.items.find(i => i.stockable_id === item.id && i.stockable_type === selectedType.value);
     if (exists) {
         exists.quantity++;
@@ -80,7 +89,10 @@ const addItem = (item: any) => {
             stockable_type: selectedType.value,
             name: item.name,
             quantity: 1,
-            size: ''
+            size: '',
+            available_stock: item.stock,
+            stock_details: item.stock_details || [],
+            stock_options: item.stock_options || []
         });
     }
     itemSearch.value = '';
@@ -96,9 +108,33 @@ const handleSubmit = () => {
     
     isSubmitting.value = true;
     router.post(route('inventory.transfer.store'), form.value, {
-        onSuccess: () => {
-            emit('update:open', false);
-            resetForm();
+        onSuccess: (page) => {
+            const flash = page.props.flash as any;
+            if (flash && flash.error) {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Error de Envío',
+                    text: flash.error
+                });
+            } else {
+                emit('update:open', false);
+                setTimeout(() => resetForm(), 300);
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Envío Registrado',
+                    text: 'Los ítems se enviaron correctamente.',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+            }
+        },
+        onError: (errors) => {
+            const errorMsg = Object.values(errors).join('\n');
+            Swal.fire({
+                icon: 'error',
+                title: 'No se pudo generar el envío',
+                text: errorMsg
+            });
         },
         onFinish: () => isSubmitting.value = false,
         preserveScroll: true
@@ -199,15 +235,31 @@ watch(() => props.open, (val) => {
                             </div>
 
                             <!-- Search Results -->
-                            <div v-if="searchResults.length > 0" class="absolute z-50 w-full mt-1 bg-white border rounded-xl shadow-2xl max-h-48 overflow-y-auto border-slate-100">
+                            <div v-if="searchResults.length > 0" class="absolute z-50 w-full mt-1 bg-white border rounded-xl shadow-2xl max-h-64 overflow-y-auto border-slate-100">
                                 <div 
                                     v-for="item in searchResults" 
                                     :key="item.id"
                                     @click="addItem(item)"
-                                    class="p-3 hover:bg-indigo-50 cursor-pointer flex items-center justify-between text-sm transition-colors border-b last:border-none"
+                                    class="p-3 hover:bg-slate-50 cursor-pointer flex items-center justify-between text-sm transition-colors border-b last:border-none"
+                                    :class="{'opacity-50 cursor-not-allowed hover:bg-white': item.stock <= 0}"
                                 >
-                                    <span class="font-bold text-slate-700">{{ item.name }}</span>
-                                    <Plus class="h-4 w-4 text-indigo-400" />
+                                    <div class="flex flex-col gap-1">
+                                        <span class="font-bold text-slate-700">{{ item.name }}</span>
+                                        <div class="flex flex-wrap gap-1 text-[10px]">
+                                            <span v-if="item.stock > 0" class="font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                                Stock: {{ item.stock }}
+                                            </span>
+                                            <span v-else class="font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-100 flex items-center gap-1">
+                                                <AlertCircle class="h-3 w-3" /> Sin Stock Principal
+                                            </span>
+                                            <span v-for="(detalle, i) in item.stock_details" :key="i" class="font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded text-[9px]">
+                                                {{ detalle }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <Button v-if="item.stock > 0" variant="ghost" size="sm" class="h-8 w-8 p-0 text-indigo-600 hover:bg-indigo-50 shrink-0">
+                                        <Plus class="h-4 w-4" />
+                                    </Button>
                                 </div>
                             </div>
                         </div>
@@ -228,18 +280,35 @@ watch(() => props.open, (val) => {
                                 <TableRow v-for="(item, index) in form.items" :key="index" class="hover:bg-slate-50 group">
                                     <TableCell class="p-3">
                                         <div class="flex items-center gap-2">
-                                            <div class="h-7 w-7 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600">
+                                            <div class="h-7 w-7 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
                                                 <Package v-if="item.stockable_type === 'epp'" class="h-3.5 w-3.5" />
                                                 <Shirt v-else class="h-3.5 w-3.5" />
                                             </div>
-                                            <span class="text-sm font-bold text-slate-700">{{ item.name }}</span>
+                                            <div class="flex flex-col gap-0.5 min-w-0">
+                                                <span class="text-xs font-bold text-slate-700 line-clamp-1 truncate block" :title="item.name">{{ item.name }}</span>
+                                                <span class="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.5 rounded w-fit italic">
+                                                    Stock Disp: {{ item.available_stock || 0 }}
+                                                </span>
+                                            </div>
                                         </div>
                                     </TableCell>
                                     <TableCell class="p-3">
-                                        <Input v-model="item.size" placeholder="Talla" class="h-8 text-xs bg-white" />
+                                        <div v-if="item.stock_options && item.stock_options.length > 0">
+                                            <Select v-model="item.size">
+                                                <SelectTrigger class="h-8 text-xs bg-white text-slate-700 min-w-[100px]">
+                                                    <SelectValue placeholder="Elegir Talla" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem v-for="opt in item.stock_options" :key="opt.label" :value="opt.value">
+                                                        {{ opt.label }} ({{ opt.quantity }})
+                                                    </SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div v-else class="text-[10px] text-rose-500 font-bold bg-rose-50 p-1 rounded italic text-center">Sin Tallas</div>
                                     </TableCell>
                                     <TableCell class="p-3">
-                                        <Input type="number" v-model="item.quantity" min="1" class="h-8 text-xs bg-white text-center" />
+                                        <Input type="number" v-model="item.quantity" min="1" :max="item.available_stock" class="h-8 text-xs bg-white text-center" />
                                     </TableCell>
                                     <TableCell class="p-3 text-right">
                                         <Button variant="ghost" size="icon" @click="removeItem(index)" class="h-8 w-8 text-slate-300 hover:text-rose-500">

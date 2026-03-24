@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 use App\Models\Cloth;
 use App\Models\Color;
@@ -109,9 +110,55 @@ class InventoryController extends Controller
             } elseif ($type === 'computer' || $type === 'kitchen') {
                 $label = "{$item->name} - {$item->brand} {$item->model}";
             }
+
+            $stockSum = 0;
+            $stockDetails = [];
+            $stockOptions = [];
+            $modelClassMap = [
+                'cloth' => Cloth::class,
+                'epp' => Epp::class,
+                'computer' => ComputerEquipment::class,
+                'kitchen' => KitchenEquipment::class,
+                'ingredient' => Ingredient::class,
+            ];
+            $modelType = $modelClassMap[$type] ?? null;
+
+            if ($modelType) {
+                $stocks = InventoryStock::where('stockable_id', $item->id)
+                    ->where('stockable_type', $modelType)
+                    ->whereNull('unit_id')
+                    ->whereNull('cafe_id')
+                    ->get();
+                $stockSum = $stocks->sum('quantity');
+                
+                $stockDetailsOptions = [];
+                foreach($stocks as $s) {
+                    if ($s->quantity > 0) {
+                        $stockDetails[] = ($s->size && $s->size !== 'null' ? $s->size : 'Estándar') . ': ' . $s->quantity;
+                        $sizeKey = ($s->size && $s->size !== 'null') ? $s->size : 'Estándar';
+                        if (!isset($stockDetailsOptions[$sizeKey])) {
+                            $stockDetailsOptions[$sizeKey] = 0;
+                        }
+                        $stockDetailsOptions[$sizeKey] += $s->quantity;
+                    }
+                }
+                
+                // transform into array of {size, quantity}
+                foreach($stockDetailsOptions as $k => $v) {
+                    $stockOptions[] = [
+                        'label' => $k,
+                        'value' => $k === 'Estándar' ? 'Estándar' : $k,
+                        'quantity' => $v
+                    ];
+                }
+            }
+
             return [
                 'id' => $item->id,
-                'name' => $label ?: 'Sin Nombre'
+                'name' => $label ?: 'Sin Nombre',
+                'stock' => $stockSum,
+                'stock_details' => $stockDetails,
+                'stock_options' => $stockOptions
             ];
         });
 
@@ -545,20 +592,32 @@ class InventoryController extends Controller
                 // Determine stockable type class
                 $type = $itemData['stockable_type'] === 'epp' ? Epp::class : Cloth::class;
 
-                // 1. Subtract from Principal (assuming principal is null unit/cafe/hq)
-                // Actually, let's find the stock where unit_id is null (Principal General)
-                $principalStock = InventoryStock::where([
+                // Determine size logic (Estándar -> null)
+                $querySize = ($itemData['size'] === 'Estándar' || $itemData['size'] === '') ? null : ($itemData['size'] ?? null);
+
+                // 1. Subtract from Principal (assuming principal is null unit/cafe)
+                // We'll grab the first available stock record that has enough quantity
+                $principalStockQuery = InventoryStock::where([
                     'stockable_id' => $itemData['stockable_id'],
                     'stockable_type' => $type,
                     'unit_id' => null,
                     'cafe_id' => null,
-                    'headquarter_id' => null,
-                    'size' => $itemData['size'] ?? null,
-                ])->first();
+                    'size' => $querySize,
+                ]);
+
+                // First try to find one with exact quantity or more
+                $principalStock = (clone $principalStockQuery)->where('quantity', '>=', $itemData['quantity'])->first();
+
+                // If not found, try getting any that has some quantity (to throw a more accurate error later, though might be insufficient)
+                if (!$principalStock) {
+                    $principalStock = $principalStockQuery->first();
+                }
 
                 if (!$principalStock || $principalStock->quantity < $itemData['quantity']) {
                     $itemName = $type === Epp::class ? Epp::find($itemData['stockable_id'])->name : Cloth::find($itemData['stockable_id'])->name;
-                    throw new \Exception("Stock insuficiente en Principal para: {$itemName} (Talla: " . ($itemData['size'] ?? 'N/A') . ")");
+                    throw ValidationException::withMessages([
+                        'items' => "Stock insuficiente en Principal/Sede para: {$itemName} (Talla: " . ($querySize ?? 'N/A') . "). Disponible: " . ($principalStock ? $principalStock->quantity : 0)
+                    ]);
                 }
 
                 $principalStock->decrement('quantity', $itemData['quantity']);
@@ -568,7 +627,7 @@ class InventoryController extends Controller
                     'stockable_id' => $itemData['stockable_id'],
                     'stockable_type' => $type,
                     'unit_id' => $validated['unit_id'],
-                    'size' => $itemData['size'] ?? null,
+                    'size' => $querySize,
                 ], ['quantity' => 0]);
 
                 $unitStock->increment('quantity', $itemData['quantity']);
@@ -578,7 +637,7 @@ class InventoryController extends Controller
                     'stockable_id' => $itemData['stockable_id'],
                     'stockable_type' => $type,
                     'quantity' => $itemData['quantity'],
-                    'size' => $itemData['size'],
+                    'size' => $querySize,
                 ]);
 
                 // 4. If staff_id is provided, record in staff_clothes if it's cloth
@@ -626,7 +685,7 @@ class InventoryController extends Controller
                     'stockable_type' => $type,
                     'unit_id' => null,
                     'cafe_id' => null,
-                    'headquarter_id' => null,
+                    'headquarter_id' => $unitStock->headquarter_id ?? null,
                     'size' => $itemData['size'] ?? null,
                 ], ['quantity' => 0]);
 

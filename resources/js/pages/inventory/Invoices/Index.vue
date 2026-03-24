@@ -1151,9 +1151,6 @@ const saveInlinePrice = (cp: any) => {
                                     {{ selectedInvoice?.provider?.name }} • {{ selectedInvoice?.date }} • Reg. por: {{ selectedInvoice?.user?.name || 'Sistema' }}
                                 </DialogDescription>
                             </div>
-                            <Badge class="bg-indigo-600 text-white border-none shadow-md">
-                                S/. {{ Number(selectedInvoice?.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
-                            </Badge>
                         </div>
                     </DialogHeader>
 
@@ -1217,6 +1214,21 @@ const saveInlinePrice = (cp: any) => {
                                             <TableCell class="py-2 text-center text-xs font-black text-slate-700">{{ item.quantity }}</TableCell>
                                             <TableCell class="py-2 text-right text-[10px] text-slate-500 font-medium">S/.{{ Number(item.unit_price).toFixed(2) }}</TableCell>
                                             <TableCell class="py-2 text-right text-xs font-black text-indigo-600">S/.{{ Number(item.total_price).toFixed(2) }}</TableCell>
+                                        </TableRow>
+                                        <TableRow class="bg-slate-50/30">
+                                            <TableCell colspan="4" class="border-t border-slate-100 rounded-bl-xl"></TableCell>
+                                            <TableCell colspan="2" class="p-0 border-t border-slate-100 rounded-br-xl">
+                                                <div class="p-4 space-y-3">
+                                                    <div class="flex justify-between items-center px-2">
+                                                        <span class="text-[10px] font-black uppercase text-slate-400 tracking-widest">IGV (18%)</span>
+                                                        <span class="text-xs font-bold text-slate-600 font-mono">S/. {{ Number(selectedInvoice?.total_amount / 1.18 * 0.18 || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</span>
+                                                    </div>
+                                                    <div class="flex justify-between items-center p-3 bg-indigo-50/50 rounded-xl border border-indigo-100 shadow-sm">
+                                                        <span class="text-[10px] font-black uppercase text-indigo-700 tracking-widest">Total Factura</span>
+                                                        <span class="text-sm font-black text-indigo-700 font-mono">S/. {{ Number(selectedInvoice?.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</span>
+                                                    </div>
+                                                </div>
+                                            </TableCell>
                                         </TableRow>
                                     </TableBody>
                                 </Table>
