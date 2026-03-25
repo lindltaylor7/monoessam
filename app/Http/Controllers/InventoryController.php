@@ -738,16 +738,41 @@ class InventoryController extends Controller
 
                     $stock = $stockQuery->first();
 
-                    if (!$stock || $stock->quantity < $itemData['quantity']) {
-                        $epp = Epp::find($itemData['epp_id']);
-                        $colorName = Color::find($itemData['color_id'])?->name ?: 'N/A';
-                        $locationName = !empty($itemData['headquarter_id'])
-                            ? (Headquarter::find($itemData['headquarter_id'])?->name ?: 'la sede seleccionada')
-                            : ($staff->cafe?->name ?: 'el punto de venta');
-                        throw new \Exception("Stock insuficiente de '{$epp->name}' (Talla: {$itemData['size']}, Color: {$colorName}) en {$locationName}. Disponible: " . ($stock?->quantity ?: 0));
-                    }
+                    $isReplacement = ($validated['reason'] ?? '') === 'Reposición';
 
-                    $stock->decrement('quantity', $itemData['quantity']);
+                    if (!$isReplacement) {
+                        if (!$stock || $stock->quantity < $itemData['quantity']) {
+                            $epp = Epp::find($itemData['epp_id']);
+                            $colorName = Color::find($itemData['color_id'])?->name ?: 'N/A';
+                            $locationName = !empty($itemData['headquarter_id'])
+                                ? (Headquarter::find($itemData['headquarter_id'])?->name ?: 'la sede seleccionada')
+                                : ($staff->cafe?->name ?: 'el punto de venta');
+                            throw new \Exception("Stock insuficiente de '{$epp->name}' (Talla: {$itemData['size']}, Color: {$colorName}) en {$locationName}. Disponible: " . ($stock?->quantity ?: 0));
+                        }
+
+                        $stock->decrement('quantity', $itemData['quantity']);
+                    } else {
+                        if ($stock) {
+                            $stock->increment('quantity', $itemData['quantity']);
+                        } else {
+                            // Create stock if it doesn't exist to increment it
+                            $newStockData = [
+                                'stockable_id' => $itemData['epp_id'],
+                                'stockable_type' => Epp::class,
+                                'size' => $itemData['size'],
+                                'color_id' => $itemData['color_id'],
+                                'quantity' => $itemData['quantity'],
+                            ];
+                            
+                            if (!empty($itemData['headquarter_id'])) {
+                                $newStockData['headquarter_id'] = $itemData['headquarter_id'];
+                            } else {
+                                $newStockData['cafe_id'] = $staff->cafe_id;
+                            }
+                            
+                            InventoryStock::create($newStockData);
+                        }
+                    }
 
                     if (!empty($itemData['id'])) {
                         $staffCloth = Staff_clothes::find($itemData['id']);
@@ -782,13 +807,23 @@ class InventoryController extends Controller
 
                     // SUBTRACT FROM CLOTH_INVOICE_ITEMS (FIFO)
                     for ($i = 0; $i < $itemData['quantity']; $i++) {
-                        $invoiceItem = \App\Models\ClothInvoiceItem::where('epp_id', $itemData['epp_id'])
-                            ->where('color_id', $itemData['color_id'])
-                            ->where('size', $itemData['size'])
-                            ->where('quantity', '>', 0)
-                            ->orderBy('created_at', 'asc')
-                            ->first();
-                        if ($invoiceItem) $invoiceItem->decrement('quantity');
+                        if (!$isReplacement) {
+                            $invoiceItem = \App\Models\ClothInvoiceItem::where('epp_id', $itemData['epp_id'])
+                                ->where('color_id', $itemData['color_id'])
+                                ->where('size', $itemData['size'])
+                                ->where('quantity', '>', 0)
+                                ->orderBy('created_at', 'asc')
+                                ->first();
+                            if ($invoiceItem) $invoiceItem->decrement('quantity');
+                        } else {
+                            // If it's a return for replacement, add it back to the most recent invoice item
+                            $invoiceItem = \App\Models\ClothInvoiceItem::where('epp_id', $itemData['epp_id'])
+                                ->where('color_id', $itemData['color_id'])
+                                ->where('size', $itemData['size'])
+                                ->orderBy('created_at', 'desc')
+                                ->first();
+                            if ($invoiceItem) $invoiceItem->increment('quantity');
+                        }
                     }
                 }
 
