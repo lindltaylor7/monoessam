@@ -47,7 +47,7 @@ class InventoryController extends Controller
         $units = Unit::with('mine')->get();
 
         // New polymorphic stocks
-        $stocks = InventoryStock::with(['stockable', 'cafe', 'headquarter', 'unit.mine'])->get();
+        $stocks = InventoryStock::with(['stockable', 'cafe', 'headquarter', 'unit.mine', 'color'])->get();
 
         $transfers = InventoryTransfer::with(['staff', 'unit.mine', 'items.stockable'])
             ->orderBy('created_at', 'desc')
@@ -124,32 +124,31 @@ class InventoryController extends Controller
             $modelType = $modelClassMap[$type] ?? null;
 
             if ($modelType) {
-                $stocks = InventoryStock::where('stockable_id', $item->id)
+                $stocks = InventoryStock::with('color')
+                    ->where('stockable_id', $item->id)
                     ->where('stockable_type', $modelType)
                     ->whereNull('unit_id')
                     ->whereNull('cafe_id')
                     ->get();
                 $stockSum = $stocks->sum('quantity');
                 
-                $stockDetailsOptions = [];
                 foreach($stocks as $s) {
                     if ($s->quantity > 0) {
-                        $stockDetails[] = ($s->size && $s->size !== 'null' ? $s->size : 'Estándar') . ': ' . $s->quantity;
-                        $sizeKey = ($s->size && $s->size !== 'null') ? $s->size : 'Estándar';
-                        if (!isset($stockDetailsOptions[$sizeKey])) {
-                            $stockDetailsOptions[$sizeKey] = 0;
-                        }
-                        $stockDetailsOptions[$sizeKey] += $s->quantity;
+                        $sizeVal = ($s->size && $s->size !== 'null') ? $s->size : 'Estándar';
+                        $colorName = $s->color ? $s->color->name : 'N/A';
+                        $colorHex = $s->color ? $s->color->hex_code : '#ccc';
+                        
+                        $stockDetails[] = "{$sizeVal} ({$colorName}): {$s->quantity}";
+                        
+                        $stockOptions[] = [
+                            'label' => "{$sizeVal} - {$colorName}",
+                            'value' => $sizeVal,
+                            'color_id' => $s->color_id,
+                            'color_name' => $colorName,
+                            'color_hex' => $colorHex,
+                            'quantity' => $s->quantity
+                        ];
                     }
-                }
-                
-                // transform into array of {size, quantity}
-                foreach($stockDetailsOptions as $k => $v) {
-                    $stockOptions[] = [
-                        'label' => $k,
-                        'value' => $k === 'Estándar' ? 'Estándar' : $k,
-                        'quantity' => $v
-                    ];
                 }
             }
 
@@ -577,6 +576,7 @@ class InventoryController extends Controller
             'items.*.stockable_type' => 'required|string',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.size' => 'nullable|string',
+            'items.*.color_id' => 'nullable|exists:colors,id',
         ]);
 
         DB::transaction(function () use ($validated) {
@@ -603,6 +603,7 @@ class InventoryController extends Controller
                     'unit_id' => null,
                     'cafe_id' => null,
                     'size' => $querySize,
+                    'color_id' => $itemData['color_id'] ?? null,
                 ]);
 
                 // First try to find one with exact quantity or more
@@ -615,8 +616,9 @@ class InventoryController extends Controller
 
                 if (!$principalStock || $principalStock->quantity < $itemData['quantity']) {
                     $itemName = $type === Epp::class ? Epp::find($itemData['stockable_id'])->name : Cloth::find($itemData['stockable_id'])->name;
+                    $colorName = $itemData['color_id'] ? Color::find($itemData['color_id'])->name : 'N/A';
                     throw ValidationException::withMessages([
-                        'items' => "Stock insuficiente en Principal/Sede para: {$itemName} (Talla: " . ($querySize ?? 'N/A') . "). Disponible: " . ($principalStock ? $principalStock->quantity : 0)
+                        'items' => "Stock insuficiente en Principal para: {$itemName} (Talla: " . ($querySize ?? 'N/A') . ", Color: {$colorName}). Disponible: " . ($principalStock ? $principalStock->quantity : 0)
                     ]);
                 }
 
@@ -628,6 +630,7 @@ class InventoryController extends Controller
                     'stockable_type' => $type,
                     'unit_id' => $validated['unit_id'],
                     'size' => $querySize,
+                    'color_id' => $itemData['color_id'] ?? null,
                 ], ['quantity' => 0]);
 
                 $unitStock->increment('quantity', $itemData['quantity']);
@@ -638,6 +641,7 @@ class InventoryController extends Controller
                     'stockable_type' => $type,
                     'quantity' => $itemData['quantity'],
                     'size' => $querySize,
+                    'color_id' => $itemData['color_id'] ?? null,
                 ]);
 
                 // 4. If staff_id is provided, record in staff_clothes if it's cloth
@@ -657,11 +661,12 @@ class InventoryController extends Controller
             'items.*.stockable_type' => 'required|string',
             'items.*.quantity' => 'required|integer|min:1',
             'items.*.size' => 'nullable|string',
+            'items.*.color_id' => 'nullable|exists:colors,id',
         ]);
 
         DB::transaction(function () use ($validated) {
             foreach ($validated['items'] as $itemData) {
-                $type = $itemData['stockable_type']; // already full class usually or mapped
+                $type = $itemData['stockable_type']; 
                 if ($type === 'App\Models\Epp' || $type === 'Epp') $type = Epp::class;
                 if ($type === 'App\Models\Cloth' || $type === 'Cloth') $type = Cloth::class;
 
@@ -671,6 +676,7 @@ class InventoryController extends Controller
                     'stockable_type' => $type,
                     'unit_id' => $validated['unit_id'],
                     'size' => $itemData['size'] ?? null,
+                    'color_id' => $itemData['color_id'] ?? null,
                 ])->first();
 
                 if (!$unitStock || $unitStock->quantity < $itemData['quantity']) {
@@ -687,6 +693,7 @@ class InventoryController extends Controller
                     'cafe_id' => null,
                     'headquarter_id' => $unitStock->headquarter_id ?? null,
                     'size' => $itemData['size'] ?? null,
+                    'color_id' => $itemData['color_id'] ?? null,
                 ], ['quantity' => 0]);
 
                 $principalStock->increment('quantity', $itemData['quantity']);

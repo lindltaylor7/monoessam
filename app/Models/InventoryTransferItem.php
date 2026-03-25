@@ -14,7 +14,13 @@ class InventoryTransferItem extends Model
         'stockable_type',
         'quantity',
         'size',
+        'color_id',
     ];
+
+    public function color(): BelongsTo
+    {
+        return $this->belongsTo(Color::class, 'color_id');
+    }
 
     public function transfer(): BelongsTo
     {

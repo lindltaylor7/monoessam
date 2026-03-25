@@ -78,34 +78,34 @@ const activeMainTab = ref('stock'); // 'stock', 'movements' or 'assignments'
 
 // Filtering logic
 const filteredStocks = computed(() => {
-    return props.stocks.filter(stock => {
+    return (props.stocks || []).filter(stock => {
         const matchesUnit = selectedUnitId.value === 'all' || String(stock.unit_id) === selectedUnitId.value;
-        const matchesSearch = stock.stockable.name.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-                             (stock.unit.name.toLowerCase().includes(searchQuery.value.toLowerCase()));
+        const matchesSearch = stock.stockable?.name?.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+                             (stock.unit?.name?.toLowerCase().includes(searchQuery.value.toLowerCase()));
         return matchesUnit && matchesSearch;
     });
 });
 
 const filteredTransfers = computed(() => {
-    return props.transfers.filter(t => {
+    return (props.transfers || []).filter(t => {
         const matchesUnit = selectedUnitId.value === 'all' || String(t.unit_id) === selectedUnitId.value;
         return matchesUnit;
     });
 });
 
 const filteredStaffHistories = computed(() => {
-    return props.staffHistories.filter(h => {
+    return (props.staffHistories || []).filter(h => {
         if (!h.staff?.staffable || h.staff.staffable_type !== 'App\\Models\\Cafe') return false;
         const matchesUnit = selectedUnitId.value === 'all' || String(h.staff.staffable.unit_id) === selectedUnitId.value;
-        const matchesSearch = h.staff.names.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
-                             (h.reason && h.reason.toLowerCase().includes(searchQuery.value.toLowerCase()));
+        const matchesSearch = h.staff?.names?.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+                             (h.reason && h.reason?.toLowerCase().includes(searchQuery.value.toLowerCase()));
         return matchesUnit && matchesSearch;
     });
 });
 
 const unitStats = computed(() => {
     if (selectedUnitId.value === 'all') return null;
-    const unitStocks = props.stocks.filter(s => String(s.unit_id) === selectedUnitId.value);
+    const unitStocks = (props.stocks || []).filter(s => String(s.unit_id) === selectedUnitId.value);
     return {
         totalItems: unitStocks.reduce((acc, s) => acc + s.quantity, 0),
         uniqueEpps: new Set(unitStocks.map(s => s.stockable_id)).size,
@@ -332,7 +332,7 @@ const getStockStatus = (quantity: number) => {
                     </div>
 
                     <!-- Data Display -->
-                    <div v-if="filteredStocks.length > 0">
+                    <div v-if="filteredStocks?.length > 0">
                         <!-- Table View -->
                         <div v-if="viewMode === 'table'" class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
                             <Table>
@@ -455,7 +455,7 @@ const getStockStatus = (quantity: number) => {
 
                 <TabsContent value="movements" class="m-0">
                     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                        <div v-if="filteredTransfers.length > 0">
+                        <div v-if="filteredTransfers?.length > 0">
                             <Table>
                                 <TableHeader class="bg-slate-50/50">
                                     <TableRow>
@@ -483,7 +483,7 @@ const getStockStatus = (quantity: number) => {
                                         </TableCell>
                                         <TableCell>
                                             <Badge variant="outline" class="bg-blue-50 text-blue-700 border-blue-100">
-                                                {{ transfer.items.length }} Items
+                                                {{ transfer.items?.length || 0 }} Items
                                             </Badge>
                                         </TableCell>
                                         <TableCell>
@@ -492,9 +492,88 @@ const getStockStatus = (quantity: number) => {
                                             </Badge>
                                         </TableCell>
                                         <TableCell class="text-right">
-                                            <Button variant="ghost" size="sm" class="text-xs text-primary font-bold">
-                                                Ver Detalles
-                                            </Button>
+                                            <Dialog>
+                                                <DialogTrigger as-child>
+                                                    <Button variant="ghost" size="sm" class="text-xs text-primary font-bold">
+                                                        Ver Detalles
+                                                    </Button>
+                                                </DialogTrigger>
+                                                <DialogContent class="sm:max-w-[500px] rounded-2xl shadow-2xl">
+                                                    <DialogHeader>
+                                                        <DialogTitle class="text-2xl font-bold flex items-center gap-2">
+                                                            <Truck class="h-6 w-6 text-primary" />
+                                                            Detalles del Envío
+                                                        </DialogTitle>
+                                                        <DialogDescription>
+                                                            Información de la transferencia a unidad minera.
+                                                        </DialogDescription>
+                                                    </DialogHeader>
+                                                    <div class="grid gap-4 py-4">
+                                                        <div class="grid grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl text-sm">
+                                                            <div>
+                                                                <Label class="text-xs font-bold text-slate-500 uppercase">Origen / Enviado por</Label>
+                                                                <p class="font-semibold text-slate-900">{{ transfer.user?.name || transfer.staff?.names || 'Almacén Central' }}</p>
+                                                            </div>
+                                                            <div>
+                                                                <Label class="text-xs font-bold text-slate-500 uppercase">Destino</Label>
+                                                                <div class="flex flex-col">
+                                                                    <span class="text-xs text-slate-500 uppercase">{{ transfer.unit?.mine?.name }}</span>
+                                                                    <span class="font-semibold text-slate-900">{{ transfer.unit?.name }}</span>
+                                                                </div>
+                                                            </div>
+                                                            <div>
+                                                                <Label class="text-xs font-bold text-slate-500 uppercase">Fecha de Envío</Label>
+                                                                <p class="font-semibold text-slate-900">{{ new Date(transfer.created_at).toLocaleDateString() }} - {{ new Date(transfer.created_at).toLocaleTimeString() }}</p>
+                                                            </div>
+                                                            <div>
+                                                                <Label class="text-xs font-bold text-slate-500 uppercase">Estado</Label>
+                                                                <div>
+                                                                    <Badge :variant="transfer.status === 'sent' ? 'secondary' : 'default'">
+                                                                        {{ transfer.status === 'sent' ? 'Enviado' : 'Recibido' }}
+                                                                    </Badge>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        
+                                                        <div class="space-y-3">
+                                                            <h4 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                                                                <Package class="h-4 w-4 text-slate-500" />
+                                                                Ítems Transferidos ({{ transfer.items?.length || 0 }})
+                                                            </h4>
+                                                            <div class="max-h-[250px] overflow-y-auto space-y-2 pr-2">
+                                                                <div v-for="(item, idx) in transfer.items" :key="idx" class="flex flex-col p-3 bg-white border border-slate-100 rounded-xl">
+                                                                    <div class="flex justify-between items-start">
+                                                                        <span class="text-sm font-bold text-slate-800">
+                                                                            {{ epps.find(e => String(e.id) === String(item.stockable_id || item.epp_id))?.name || item.stockable?.name || `Ítem #${item.stockable_id || item.epp_id}` }}
+                                                                        </span>
+                                                                        <Badge variant="secondary" class="font-bold">
+                                                                            {{ item.quantity }} Unid.
+                                                                        </Badge>
+                                                                    </div>
+                                                                    <div class="flex gap-4 mt-2 text-xs text-slate-500">
+                                                                        <span class="flex items-center gap-1">
+                                                                            <span class="font-medium text-slate-400">Talla:</span>
+                                                                            <strong class="text-slate-700">{{ item.size || 'General' }}</strong>
+                                                                        </span>
+                                                                        <span class="flex items-center gap-1">
+                                                                            <span class="font-medium text-slate-400">Color:</span>
+                                                                            <div class="flex items-center gap-1">
+                                                                                <div class="h-2 w-2 rounded-full border border-slate-200" 
+                                                                                     :style="{ backgroundColor: colors.find(c => String(c.id) === String(item.color_id))?.hex_code }">
+                                                                                </div>
+                                                                                <strong class="text-slate-700">{{ colors.find(c => String(c.id) === String(item.color_id))?.name || 'Varios' }}</strong>
+                                                                            </div>
+                                                                        </span>
+                                                                    </div>
+                                                                </div>
+                                                                <div v-if="!transfer.items || transfer.items.length === 0" class="text-center py-4 text-slate-500 text-sm">
+                                                                    No hay detalles de ítems disponibles.
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </DialogContent>
+                                            </Dialog>
                                         </TableCell>
                                     </TableRow>
                                 </TableBody>
@@ -509,7 +588,7 @@ const getStockStatus = (quantity: number) => {
                 </TabsContent>
 
                 <TabsContent value="assignments" class="m-0">
-                    <div v-if="filteredStaffHistories.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div v-if="filteredStaffHistories?.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         <div v-for="hist in filteredStaffHistories" :key="hist.id" class="bg-white border border-slate-100 rounded-2xl p-5 shadow-sm flex flex-col gap-4 hover:shadow-md transition-all">
                             <div class="flex justify-between items-start border-b border-slate-50 pb-3">
                                 <div class="space-y-1">

@@ -36,7 +36,10 @@ import {
     LayoutGrid,
     List,
     MoreHorizontal,
-    Mountain
+    Mountain,
+    ChevronDown,
+    ChevronRight,
+    User
 } from 'lucide-vue-next';
 import { 
     Table, 
@@ -69,10 +72,13 @@ const props = defineProps<{
         cafe_id: number | null;
         unit_id: number | null;
         quantity: number;
+        size: string | null;
+        color_id: number | null;
         stockable: any;
         cafe?: { name: string };
         headquarter?: { name: string };
         unit?: { name: string, mine: { name: string } };
+        color?: { id: number, name: string, hex_code: string };
     }>;
     businesses: Array<{ id: number, name: string }>;
     providers: Array<{ id: number, name: string }>;
@@ -117,23 +123,69 @@ const filteredStocks = computed(() => {
         if (!groups[key]) {
             groups[key] = {
                 ...stock,
+                key, // Unique key for expansion tracking
                 total_quantity: 0,
                 headquarter_names: new Set(),
                 cafe_names: new Set(),
+                sizes: {} as Record<string, any>
             };
         }
         groups[key].total_quantity += Number(stock.quantity);
         if (stock.headquarter?.name) groups[key].headquarter_names.add(stock.headquarter.name);
         if (stock.cafe?.name) groups[key].cafe_names.add(stock.cafe.name);
+
+        const sizeLabel = stock.size || 'Única';
+        if (!groups[key].sizes[sizeLabel]) {
+            groups[key].sizes[sizeLabel] = {
+                label: sizeLabel,
+                total: 0,
+                colors: {} as Record<string, any>
+            };
+        }
+        groups[key].sizes[sizeLabel].total += Number(stock.quantity);
+
+        const colorId = stock.color_id || 'no-color';
+        if (!groups[key].sizes[sizeLabel].colors[colorId]) {
+            groups[key].sizes[sizeLabel].colors[colorId] = {
+                id: colorId,
+                color: stock.color,
+                quantity: 0,
+                records: []
+            };
+        }
+        groups[key].sizes[sizeLabel].colors[colorId].quantity += Number(stock.quantity);
+        groups[key].sizes[sizeLabel].colors[colorId].records.push(stock);
     });
 
     return Object.values(groups).map(g => ({
         ...g,
         quantity: g.total_quantity,
         display_headquarter: Array.from(g.headquarter_names).join(', ') || 'N/A',
-        display_cafe: Array.from(g.cafe_names).join(', ') || 'N/A'
+        display_cafe: Array.from(g.cafe_names).join(', ') || 'N/A',
+        nestedSizes: Object.values(g.sizes).map((s: any) => ({
+            ...s,
+            nestedColors: Object.values(s.colors)
+        }))
     }));
 });
+
+// Expanded state for nested rows
+const expandedRows = ref(new Set<string>());
+const toggleRow = (key: string) => {
+    const newSet = new Set(expandedRows.value);
+    if (newSet.has(key)) newSet.delete(key);
+    else newSet.add(key);
+    expandedRows.value = newSet;
+};
+
+const expandedSizeRows = ref(new Set<string>());
+const toggleSizeRow = (itemKey: string, sizeLabel: string) => {
+    const key = `${itemKey}-${sizeLabel}`;
+    const newSet = new Set(expandedSizeRows.value);
+    if (newSet.has(key)) newSet.delete(key);
+    else newSet.add(key);
+    expandedSizeRows.value = newSet;
+};
 
 // Estado para modales
 const isAddStockOpen = ref(false);
@@ -217,7 +269,8 @@ const openReturnModal = (transfer: any) => {
             stockable_type: i.stockable_type,
             name: i.stockable?.name,
             quantity: i.quantity,
-            size: i.size
+            size: i.size,
+            color_id: i.color_id
         }))
     };
     isReturnModalOpen.value = true;
@@ -775,10 +828,10 @@ const getItemIcon = (type: string) => {
                                 <Box class="h-4 w-4" />
                                 <span class="hidden sm:inline">Insumos</span>
                             </TabsTrigger>
-                            <TabsTrigger value="units_transfers" class="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm bg-indigo-50/50">
+                           <!--  <TabsTrigger value="units_transfers" class="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm bg-indigo-50/50">
                                 <Truck class="h-4 w-4 text-indigo-600" />
                                 <span class="hidden sm:inline text-indigo-700 font-bold">Envíos a Unidades</span>
-                            </TabsTrigger>
+                            </TabsTrigger> -->
                         </TabsList>
                     </Tabs>
 
@@ -956,84 +1009,126 @@ const getItemIcon = (type: string) => {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    <TableRow v-for="item in filteredStocks" :key="item.id" class="group transition-colors hover:bg-slate-50/50">
-                                        <TableCell>
-                                            <div class="flex items-center gap-3">
-                                                <div :class="[
-                                                    'p-2 rounded-lg',
-                                                    activeTab === 'clothes' ? 'bg-indigo-50 text-indigo-600' :
-                                                    activeTab === 'epps' ? 'bg-amber-50 text-amber-600' :
-                                                    activeTab === 'computer' ? 'bg-blue-50 text-blue-600' :
-                                                    activeTab === 'kitchen' ? 'bg-orange-50 text-orange-600' :
-                                                    'bg-emerald-50 text-emerald-600'
-                                                ]">
-                                                    <component :is="getItemIcon(activeTab)" class="h-4 w-4" />
+                                    <template v-for="item in filteredStocks" :key="item.key">
+                                        <!-- Main EPP Row -->
+                                        <TableRow class="group transition-colors hover:bg-slate-50/50 cursor-pointer" @click="toggleRow(item.key)">
+                                            <TableCell>
+                                                <div class="flex items-center gap-3">
+                                                    <div class="p-1">
+                                                        <ChevronDown v-if="expandedRows.has(item.key)" class="h-4 w-4 text-slate-400" />
+                                                        <ChevronRight v-else class="h-4 w-4 text-slate-400" />
+                                                    </div>
+                                                    <div :class="[
+                                                        'p-2 rounded-lg',
+                                                        activeTab === 'clothes' ? 'bg-indigo-50 text-indigo-600' :
+                                                        activeTab === 'epps' ? 'bg-amber-50 text-amber-600' :
+                                                        activeTab === 'computer' ? 'bg-blue-50 text-blue-600' :
+                                                        activeTab === 'kitchen' ? 'bg-orange-50 text-orange-600' :
+                                                        'bg-emerald-50 text-emerald-600'
+                                                    ]">
+                                                        <component :is="getItemIcon(activeTab)" class="h-4 w-4" />
+                                                    </div>
+                                                    <div class="flex flex-col">
+                                                        <span class="font-bold text-slate-900">{{ item.stockable?.name }} ({{ item.nestedSizes.length }} tallas)</span>
+                                                        <span class="text-[10px] font-bold text-slate-400 tracking-wider uppercase">
+                                                            {{ activeTab }}
+                                                        </span>
+                                                    </div>
                                                 </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div class="flex flex-col gap-1">
+                                                    <template v-if="activeTab === 'computer'">
+                                                        <span class="text-xs font-semibold text-slate-700">{{ item.stockable?.brand }}</span>
+                                                        <span class="text-[10px] text-slate-500">{{ item.stockable?.model || 'Sin Modelo' }}</span>
+                                                    </template>
+                                                    <template v-else-if="activeTab === 'kitchen'">
+                                                        <span class="text-xs font-semibold text-slate-700">{{ item.stockable?.brand }}</span>
+                                                        <span class="text-[10px] text-slate-500">{{ item.stockable?.size }}</span>
+                                                    </template>
+                                                    <template v-else>
+                                                        <span class="text-xs text-slate-500 italic">Desglosado por tallas</span>
+                                                    </template>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
                                                 <div class="flex flex-col">
-                                                    <span class="font-bold text-slate-900">{{ item.stockable?.name }}</span>
-                                                    <span class="text-[10px] font-bold text-slate-400 tracking-wider uppercase">
-                                                        {{ activeTab }}
-                                                    </span>
+                                                    <div class="flex items-center gap-1.5 text-xs">
+                                                        <Building2 class="h-3 w-3 text-slate-400" />
+                                                        <span class="font-medium text-slate-700">{{ item.display_headquarter }}</span>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <div class="flex flex-col gap-1">
-                                                <template v-if="activeTab === 'computer'">
-                                                    <span class="text-xs font-semibold text-slate-700">{{ item.stockable?.brand }}</span>
-                                                    <span class="text-[10px] text-slate-500">{{ item.stockable?.model || 'Sin Modelo' }}</span>
-                                                </template>
-                                                <template v-else-if="activeTab === 'kitchen'">
-                                                    <span class="text-xs font-semibold text-slate-700">{{ item.stockable?.brand }}</span>
-                                                    <span class="text-[10px] text-slate-500">{{ item.stockable?.size }}</span>
-                                                </template>
-                                                <template v-else>
-                                                    <span class="text-xs text-slate-500 italic">Datos en detalle</span>
-                                                </template>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <div class="flex flex-col">
-                                                <div class="flex items-center gap-1.5 text-xs">
-                                                    <Building2 class="h-3 w-3 text-slate-400" />
-                                                    <span class="font-medium text-slate-700">{{ item.display_headquarter }}</span>
+                                            </TableCell>
+                                            <TableCell class="text-center font-black text-slate-900 text-lg">
+                                                {{ item.quantity }}
+                                            </TableCell>
+                                            <TableCell class="text-center">
+                                                <div class="flex flex-col items-center gap-1">
+                                                    <Badge :variant="getStockStatus(item.quantity).variant" class="rounded-full px-2 shadow-none border-none text-[9px] uppercase font-black tracking-tighter">
+                                                        {{ getStockStatus(item.quantity).label }}
+                                                    </Badge>
                                                 </div>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell class="text-center font-black text-slate-900 text-lg">
-                                            {{ item.quantity }}
-                                        </TableCell>
-                                        <TableCell class="text-center">
-                                            <div class="flex flex-col items-center gap-1">
-                                                <Badge :variant="getStockStatus(item.quantity).variant" class="rounded-full px-2 shadow-none border-none text-[9px] uppercase font-black tracking-tighter">
-                                                    {{ getStockStatus(item.quantity).label }}
-                                                </Badge>
-                                                <Button 
-                                                    v-if="item.unit_id && item.quantity > 0"
-                                                    @click="openReturnModal({ 
-                                                        unit_id: item.unit_id, 
-                                                        items: [{ 
-                                                            stockable_id: item.stockable_id, 
-                                                            stockable_type: item.stockable_type, 
-                                                            stockable: item.stockable,
-                                                            quantity: item.quantity, 
-                                                            size: '' 
-                                                        }] 
-                                                    })"
-                                                    variant="link" 
-                                                    size="sm" 
-                                                    class="h-6 text-[9px] text-rose-500 font-bold p-0"
-                                                >
-                                                    Devolver a Principal
+                                            </TableCell>
+                                            <TableCell>
+                                                <Button @click.stop="openSizesModal(item)" variant="ghost" size="sm" class="h-8 w-8 p-0 text-slate-400 hover:text-primary transition-colors">
+                                                    <MoreHorizontal class="h-4 w-4" />
                                                 </Button>
-                                            </div>
-                                        </TableCell>
-                                        <TableCell>
-                                            <Button @click="openSizesModal(item)" variant="ghost" size="sm" class="h-8 w-8 p-0 text-slate-400 hover:text-primary transition-colors">
-                                                <MoreHorizontal class="h-4 w-4" />
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
+                                            </TableCell>
+                                        </TableRow>
+
+                                        <!-- Nested Sizes Level -->
+                                        <template v-if="expandedRows.has(item.key)">
+                                            <template v-for="sizeRow in item.nestedSizes" :key="sizeRow.label">
+                                                <TableRow class="bg-slate-50/30 border-l-4 border-l-primary/30 cursor-pointer" @click="toggleSizeRow(item.key, sizeRow.label)">
+                                                    <TableCell class="pl-12">
+                                                        <div class="flex items-center gap-2">
+                                                            <div class="p-0.5">
+                                                                <ChevronDown v-if="expandedSizeRows.has(`${item.key}-${sizeRow.label}`)" class="h-3 w-3 text-slate-400" />
+                                                                <ChevronRight v-else class="h-3 w-3 text-slate-400" />
+                                                            </div>
+                                                            <div class="h-6 w-6 rounded bg-primary/10 flex items-center justify-center text-[10px] font-black text-primary">
+                                                                {{ sizeRow.label.toUpperCase().slice(0, 2) }}
+                                                            </div>
+                                                            <span class="text-sm font-bold text-slate-700">Talla: {{ sizeRow.label }}</span>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell colspan="2" class="text-[11px] text-slate-400 italic">
+                                                        {{ sizeRow.nestedColors.length }} combinaciones de color
+                                                    </TableCell>
+                                                    <TableCell class="text-center font-bold text-slate-600">
+                                                        {{ sizeRow.total }}
+                                                    </TableCell>
+                                                    <TableCell colspan="2"></TableCell>
+                                                </TableRow>
+
+                                                <!-- Nested Colors Level -->
+                                                <template v-if="expandedSizeRows.has(`${item.key}-${sizeRow.label}`)">
+                                                    <TableRow v-for="colorData in sizeRow.nestedColors" :key="colorData.id" class="bg-slate-100/20 border-l-4 border-l-slate-200">
+                                                        <TableCell class="pl-24 py-2">
+                                                            <div class="flex items-center gap-3">
+                                                                <div 
+                                                                    class="h-3 w-3 rounded-full border border-white shadow-sm" 
+                                                                    :style="{ backgroundColor: colorData.color?.hex_code || '#ccc' }"
+                                                                ></div>
+                                                                <span class="text-xs font-semibold text-slate-600">{{ colorData.color?.name || 'Sin color' }}</span>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell colspan="2">
+                                                            <div class="flex flex-wrap gap-1">
+                                                                <Badge v-for="rec in colorData.records" :key="rec.id" variant="outline" class="text-[9px] py-0 px-1 border-slate-200 text-slate-400 bg-white">
+                                                                    {{ rec.headquarter?.name || rec.cafe?.name || 'N/A' }}: {{ rec.quantity }}
+                                                                </Badge>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell class="text-center font-black text-slate-900">
+                                                            {{ colorData.quantity }}
+                                                        </TableCell>
+                                                        <TableCell colspan="2"></TableCell>
+                                                    </TableRow>
+                                                </template>
+                                            </template>
+                                        </template>
+                                    </template>
                                 </TableBody>
                             </Table>
                         </div>

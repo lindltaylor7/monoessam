@@ -90,6 +90,9 @@ const addItem = (item: any) => {
             name: item.name,
             quantity: 1,
             size: '',
+            color_id: null,
+            color_name: '',
+            color_hex: '',
             available_stock: item.stock,
             stock_details: item.stock_details || [],
             stock_options: item.stock_options || []
@@ -271,7 +274,7 @@ watch(() => props.open, (val) => {
                             <TableHeader class="bg-slate-50">
                                 <TableRow>
                                     <TableHead class="text-[10px] font-black uppercase py-2">Item</TableHead>
-                                    <TableHead class="text-[10px] font-black uppercase py-2 w-24">Talla</TableHead>
+                                    <TableHead class="text-[10px] font-black uppercase py-2 w-48">Talla y Color</TableHead>
                                     <TableHead class="text-[10px] font-black uppercase py-2 w-24">Cantidad</TableHead>
                                     <TableHead class="w-12"></TableHead>
                                 </TableRow>
@@ -294,18 +297,36 @@ watch(() => props.open, (val) => {
                                     </TableCell>
                                     <TableCell class="p-3">
                                         <div v-if="item.stock_options && item.stock_options.length > 0">
-                                            <Select v-model="item.size">
-                                                <SelectTrigger class="h-8 text-xs bg-white text-slate-700 min-w-[100px]">
-                                                    <SelectValue placeholder="Elegir Talla" />
+                                            <Select 
+                                                :model-value="item.size + '|' + (item.color_id || '')" 
+                                                @update:model-value="(val: any) => {
+                                                    const sVal = String(val);
+                                                    const [size, colorId] = sVal.split('|');
+                                                    item.size = size;
+                                                    item.color_id = colorId ? Number(colorId) : null;
+                                                    const opt = item.stock_options.find((o: any) => o.value === size && String(o.color_id || '') === String(colorId || ''));
+                                                    if (opt) {
+                                                        item.color_name = opt.color_name;
+                                                        item.color_hex = opt.color_hex;
+                                                        item.available_stock = opt.quantity;
+                                                        if (item.quantity > opt.quantity) item.quantity = opt.quantity;
+                                                    }
+                                                }"
+                                            >
+                                                <SelectTrigger class="h-8 text-xs bg-white text-slate-700 w-full min-w-[160px]">
+                                                    <SelectValue placeholder="Elegir Opción" />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem v-for="opt in item.stock_options" :key="opt.label" :value="opt.value">
-                                                        {{ opt.label }} ({{ opt.quantity }})
+                                                    <SelectItem v-for="opt in item.stock_options" :key="opt.label" :value="opt.value + '|' + (opt.color_id || '')">
+                                                        <div class="flex items-center gap-2">
+                                                            <div v-if="opt.color_hex" class="h-2 w-2 rounded-full" :style="{ backgroundColor: opt.color_hex }"></div>
+                                                            <span>{{ opt.label }} ({{ opt.quantity }})</span>
+                                                        </div>
                                                     </SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
-                                        <div v-else class="text-[10px] text-rose-500 font-bold bg-rose-50 p-1 rounded italic text-center">Sin Tallas</div>
+                                        <div v-else class="text-[10px] text-rose-500 font-bold bg-rose-50 p-1 rounded italic text-center">Sin Opciones de Stock</div>
                                     </TableCell>
                                     <TableCell class="p-3">
                                         <Input type="number" v-model="item.quantity" min="1" :max="item.available_stock" class="h-8 text-xs bg-white text-center" />
