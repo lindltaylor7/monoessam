@@ -212,7 +212,7 @@ class ClothController extends Controller
             'epp_id' => 'nullable|exists:epps,id',
             'clothing_size' => 'nullable|string',
             'quantity' => 'nullable|integer|min:1',
-            'headquarter_id' => 'nullable|exists:headquarters,id'
+            'headquarter_id' => 'nullable|exists:headquarters,id',
         ]);
 
         $entry = Staff_clothes::findOrFail($request->id);
@@ -301,8 +301,6 @@ class ClothController extends Controller
                         ]);
                         $oldInventory->increment('quantity');
                     }
-                    
-                    // Also add back to invoice item if color changed? (complex to find which one it came from)
                 }
             } elseif ($oldStatus === 'Entregado' && $newStatus !== 'Entregado') {
                 // If it was delivered and now it's not (e.g. "Devuelto"), return to inventory
@@ -337,6 +335,22 @@ class ClothController extends Controller
         $entry->color_id = $newColorId;
         if ($request->has('quantity')) $entry->quantity = $request->quantity;
         $entry->save();
+
+        if ($newStatus === 'Entregado' && $oldStatus !== 'Entregado') {
+            \App\Models\StaffClothesHistory::create([
+                'staff_id' => $staff->id,
+                'user_id' => \Illuminate\Support\Facades\Auth::id(),
+                'reason' => 'Confirmación de Entrega',
+                'assigned_at' => now(),
+                'items' => [[
+                    'epp_id' => $entry->epp_id,
+                    'epp_name' => $entry->epp?->name ?: $entry->clothe_name,
+                    'quantity' => $entry->quantity,
+                    'size' => $entry->clothing_size,
+                    'color_id' => $entry->color_id,
+                ]],
+            ]);
+        }
 
         return back();
     }

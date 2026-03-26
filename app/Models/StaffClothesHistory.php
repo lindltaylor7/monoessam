@@ -12,6 +12,7 @@ class StaffClothesHistory extends Model
         'reason',
         'assigned_at',
         'items',
+        'evidence_image',
     ];
 
     protected $casts = [

@@ -11,7 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { router, usePage } from '@inertiajs/vue3';
-import { Plus, Trash2, Search, Loader2, Package, Check, AlertTriangle } from 'lucide-vue-next';
+import { Plus, Trash2, Search, Loader2, Package, Check, AlertTriangle, Camera } from 'lucide-vue-next';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -50,6 +50,7 @@ const props = defineProps<{
             user?: { name: string };
             items: any;
             created_at: string;
+            evidence_image?: string;
         }>;
     } | null; 
     colors: Array<{ id: number, name: string }>;
@@ -588,6 +589,8 @@ const confirmAssignment = (draft: any, headquarterId: string | null = null) => {
 
     router.post(route('inventory.assign-clothes'), {
         staff_id: props.staff?.id,
+        reason: assignReason.value,
+        create_history: true,
         items: [{
             epp_id: draft.epp_id,
             size: draft.clothing_size || draft.size,
@@ -608,6 +611,33 @@ const confirmAssignment = (draft: any, headquarterId: string | null = null) => {
 };
 
 
+const evidenceFile = ref<File | null>(null);
+const handleFileChange = (e: Event) => {
+    const target = e.target as HTMLInputElement;
+    if (target.files && target.files.length > 0) {
+        evidenceFile.value = target.files[0];
+    } else {
+        evidenceFile.value = null;
+    }
+};
+
+const uploadEvidence = (histId: number, file: File) => {
+    router.post(route('inventory.history.evidence', histId), {
+        evidence_image: file
+    }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            Swal.fire({
+                icon: 'success',
+                title: 'Éxito',
+                text: 'Evidencia subida correctamente',
+                timer: 1500,
+                showConfirmButton: false
+            });
+        }
+    });
+};
+
 watch(() => props.open, (val) => {
     if (val) {
         loadEppOptions();
@@ -619,6 +649,7 @@ watch(() => props.open, (val) => {
         requirementDrafts.value = {};
         selectedKeys.value = [];
         multiDeliveryModal.value.open = false;
+        evidenceFile.value = null;
     }
 });
 </script>
@@ -758,15 +789,15 @@ watch(() => props.open, (val) => {
                         
                         <div class="bg-indigo-50 p-4 rounded-2xl flex flex-col sm:flex-row gap-4 items-center justify-between border border-indigo-100">
                             <div class="flex items-center gap-3 w-full sm:w-auto">
-                                <Label class="text-[10px] font-black uppercase text-indigo-700 whitespace-nowrap">Motivo de Asignación:</Label>
+                                <Label class="text-[10px] font-black uppercase text-indigo-700 whitespace-nowrap">Motivo:</Label>
                                 <Select v-model="assignReason">
                                     <SelectTrigger class="bg-white border-none shadow-sm h-10 w-full sm:w-40 text-xs">
-                                        <SelectValue placeholder="Seleccionar..." />
+                                        <SelectValue placeholder="Motivo..." />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="Nuevo">Nuevo Ingreso / Asignación</SelectItem>
+                                        <SelectItem value="Nuevo">Nuevo Ingreso</SelectItem>
                                         <SelectItem value="Renovación">Renovación regular</SelectItem>
-                                        <SelectItem value="Reposición">Reposición por pérdida o daño</SelectItem>
+                                        <SelectItem value="Reposición">Reposición</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
@@ -959,7 +990,7 @@ watch(() => props.open, (val) => {
                             </div>
                         </div>
                     </div>
-                        </TabsContent>
+                </TabsContent>
 
                         <TabsContent value="history" class="animate-in fade-in zoom-in-95 duration-200">
                             <div v-if="staff.clothes_histories && staff.clothes_histories.length > 0" class="space-y-4">
@@ -981,6 +1012,23 @@ watch(() => props.open, (val) => {
                                                 <span class="font-medium">Talla: <strong class="text-slate-700">{{ item.size || '-' }}</strong></span>
                                             </div>
                                         </div>
+                                    </div>
+                                    <div v-if="hist.evidence_image" class="mt-2">
+                                        <div class="text-[10px] font-bold uppercase text-slate-400 mb-2">Evidencia Fotográfica:</div>
+                                        <a :href="hist.evidence_image" target="_blank" class="block w-fit rounded-xl overflow-hidden border border-slate-200">
+                                            <img :src="hist.evidence_image" class="h-20 w-auto object-cover hover:scale-105 transition-transform" />
+                                        </a>
+                                    </div>
+                                    <div v-else class="mt-2 pt-2 border-t border-slate-50">
+                                        <Label class="text-[9px] font-black uppercase text-indigo-400 mb-1 flex items-center gap-1">
+                                            <Camera class="h-3 w-3" /> Subir Evidencia
+                                        </Label>
+                                        <Input 
+                                            type="file" 
+                                            accept="image/*" 
+                                            class="h-8 text-[10px] border-dashed border-slate-200 bg-slate-50/50" 
+                                            @change="(e: any) => e.target.files?.[0] && uploadEvidence(hist.id, e.target.files[0])"
+                                        />
                                     </div>
                                 </div>
                             </div>

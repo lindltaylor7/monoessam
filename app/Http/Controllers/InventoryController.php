@@ -722,7 +722,7 @@ class InventoryController extends Controller
         try {
             DB::transaction(function () use ($validated, $staff) {
                 foreach ($validated['items'] as $itemData) {
-                    // Now targeting EPP class
+                    // Logic for EPP stock decrement/increment
                     $stockQuery = InventoryStock::where([
                         'stockable_id' => $itemData['epp_id'],
                         'stockable_type' => Epp::class,
@@ -755,28 +755,20 @@ class InventoryController extends Controller
                         if ($stock) {
                             $stock->increment('quantity', $itemData['quantity']);
                         } else {
-                            // Create stock if it doesn't exist to increment it
-                            $newStockData = [
+                            InventoryStock::create([
                                 'stockable_id' => $itemData['epp_id'],
                                 'stockable_type' => Epp::class,
                                 'size' => $itemData['size'],
                                 'color_id' => $itemData['color_id'],
                                 'quantity' => $itemData['quantity'],
-                            ];
-                            
-                            if (!empty($itemData['headquarter_id'])) {
-                                $newStockData['headquarter_id'] = $itemData['headquarter_id'];
-                            } else {
-                                $newStockData['cafe_id'] = $staff->cafe_id;
-                            }
-                            
-                            InventoryStock::create($newStockData);
+                                'headquarter_id' => $itemData['headquarter_id'] ?? null,
+                                'cafe_id' => empty($itemData['headquarter_id']) ? $staff->cafe_id : null,
+                            ]);
                         }
                     }
 
                     if (!empty($itemData['id'])) {
-                        $staffCloth = Staff_clothes::find($itemData['id']);
-                        $staffCloth->update([
+                        Staff_clothes::find($itemData['id'])->update([
                             'status' => 'Entregado',
                             'color_id' => $itemData['color_id'],
                             'clothing_size' => $itemData['size'],
@@ -805,7 +797,7 @@ class InventoryController extends Controller
                         }
                     }
 
-                    // SUBTRACT FROM CLOTH_INVOICE_ITEMS (FIFO)
+                    // Subtract from ClothInvoiceItems
                     for ($i = 0; $i < $itemData['quantity']; $i++) {
                         if (!$isReplacement) {
                             $invoiceItem = \App\Models\ClothInvoiceItem::where('epp_id', $itemData['epp_id'])
@@ -816,7 +808,6 @@ class InventoryController extends Controller
                                 ->first();
                             if ($invoiceItem) $invoiceItem->decrement('quantity');
                         } else {
-                            // If it's a return for replacement, add it back to the most recent invoice item
                             $invoiceItem = \App\Models\ClothInvoiceItem::where('epp_id', $itemData['epp_id'])
                                 ->where('color_id', $itemData['color_id'])
                                 ->where('size', $itemData['size'])
@@ -827,7 +818,6 @@ class InventoryController extends Controller
                     }
                 }
 
-                // Only create history when explicitly requested (multi-delivery flow)
                 if (!empty($validated['create_history'])) {
                     \App\Models\StaffClothesHistory::create([
                         'staff_id' => $staff->id,
@@ -856,5 +846,25 @@ class InventoryController extends Controller
         ])->get(['headquarter_id', 'cafe_id', 'quantity', 'size', 'color_id']);
 
         return response()->json($stocks);
+    }
+
+    public function uploadHistoryEvidence(Request $request, $id)
+    {
+        try {
+            $request->validate([
+                'evidence_image' => 'required|file|image|max:10240',
+            ]);
+
+            $history = \App\Models\StaffClothesHistory::findOrFail($id);
+
+            if ($request->hasFile('evidence_image')) {
+                $path = $request->file('evidence_image')->store('evidence_images', 'public');
+                $history->update(['evidence_image' => '/storage/' . $path]);
+            }
+
+            return back()->with('success', 'Evidencia subida correctamente');
+        } catch (\Exception $e) {
+            return back()->with('error', 'Error al subir evidencia: ' . $e->getMessage());
+        }
     }
 }
