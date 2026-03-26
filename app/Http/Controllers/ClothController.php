@@ -314,13 +314,18 @@ class ClothController extends Controller
                 }
 
                 // Add back to global polymorphic stock
-                $stock = \App\Models\InventoryStock::where([
+                $stock = \App\Models\InventoryStock::firstOrCreate([
                     'stockable_id' => $itemId,
                     'stockable_type' => $itemType,
+                    'size' => $entry->clothing_size,
+                    'color_id' => $oldColorId,
+                    'condition' => 'En Almacén', // Returned items are always "En Almacén"
                     'cafe_id' => $cafeId,
                     'headquarter_id' => $headquarterId,
-                ])->first();
-                if ($stock) $stock->increment('quantity');
+                ], [
+                    'quantity' => 0
+                ]);
+                $stock->increment('quantity');
 
                 // ADD BACK TO CLOTH_INVOICE_ITEMS
                 $invoiceItem = \App\Models\ClothInvoiceItem::where($itemColumn, $itemId)
@@ -334,6 +339,7 @@ class ClothController extends Controller
         $entry->status = $newStatus;
         $entry->color_id = $newColorId;
         if ($request->has('quantity')) $entry->quantity = $request->quantity;
+        if ($newStatus === 'Entregado') $entry->condition = 'En Almacén';
         $entry->save();
 
         if ($newStatus === 'Entregado' && $oldStatus !== 'Entregado') {

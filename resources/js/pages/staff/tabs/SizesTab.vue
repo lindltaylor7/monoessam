@@ -28,8 +28,24 @@ defineProps<Props>();
                             {{ prenda.label }}
                         </Label>
 
+                        <!-- Select específico para Pantalón -->
+                        <Select v-if="prenda.label.includes('Pantalón')" v-model="prenda.talla">
+                            <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100">
+                                <SelectValue placeholder="Talla" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="S - 28">S - 28</SelectItem>
+                                <SelectItem value="M - 30">M - 30</SelectItem>
+                                <SelectItem value="L - 32">L - 32</SelectItem>
+                                <SelectItem value="XL - 34">XL - 34</SelectItem>
+                                <SelectItem value="XXL - 36">XXL - 36</SelectItem>
+                                <SelectItem value="XXXL - 38">XXXL - 38</SelectItem>
+                                <SelectItem value="XXXXL - 40">XXXXL - 40</SelectItem>
+                            </SelectContent>
+                        </Select>
+
                         <!-- Selects para tallas estándar (Ropa) -->
-                        <Select v-if="['Polo', 'Cafarena', 'Overall', 'Casaca', 'Chaleco', 'Chaqueta', 'Camisa', 'Blusa', 'Guardapolvo', 'Pantalón'].some(s => prenda.label.includes(s))" v-model="prenda.talla">
+                        <Select v-else-if="['Polo', 'Cafarena', 'Overall', 'Casaca', 'Chaleco', 'Chaqueta', 'Camisa', 'Blusa', 'Guardapolvo'].some(s => prenda.label.includes(s))" v-model="prenda.talla">
                             <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"><SelectValue placeholder="Talla" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="s">S</SelectItem>

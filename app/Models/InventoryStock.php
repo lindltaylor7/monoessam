@@ -17,6 +17,7 @@ class InventoryStock extends Model
         'quantity',
         'size',
         'color_id',
+        'condition',
     ];
 
     public function unit(): BelongsTo

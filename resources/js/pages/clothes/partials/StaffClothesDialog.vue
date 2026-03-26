@@ -850,6 +850,7 @@ watch(() => props.open, (val) => {
                                         <th class="px-4 py-2 text-center text-[10px] font-black uppercase text-slate-400">Cant</th>
                                         <th class="px-4 py-2 text-center text-[10px] font-black uppercase text-slate-400">Talla</th>
                                         <th class="px-4 py-2 text-left text-[10px] font-black uppercase text-slate-400">Color</th>
+                                        <th class="px-4 py-2 text-left text-[10px] font-black uppercase text-slate-400">Condición</th>
                                         <th class="px-4 py-2 text-left text-[10px] font-black uppercase text-slate-400">Estado</th>
                                     </tr>
                                 </thead>
@@ -924,6 +925,12 @@ watch(() => props.open, (val) => {
                                                     </SelectItem>
                                                 </SelectContent>
                                             </Select>
+                                        </td>
+                                        <td class="px-4 py-3">
+                                            <span v-if="item.id" :class="['text-[9px] font-black uppercase px-2 py-0.5 rounded-full', item.condition === 'Nuevo' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700 border border-amber-200']">
+                                                {{ item.condition || 'Nuevo' }}
+                                            </span>
+                                            <span v-else class="text-[9px] text-slate-300 italic font-bold">Sin asignar</span>
                                         </td>
                                         <td class="px-4 py-3">
                                             <Select :model-value="getDraftValue(item.epp_id, 'status', item.status || 'Pendiente')" @update:model-value="(val: any) => updateAssignment(item, 'status', val)">
@@ -1006,7 +1013,12 @@ watch(() => props.open, (val) => {
                                     </div>
                                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
                                         <div v-for="(item, idx) in hist.items" :key="idx" class="flex flex-col p-2 bg-slate-50 rounded-xl">
-                                            <span class="text-[11px] font-bold text-slate-800">{{ eppOptions.find(e => String(e.id) === String(item.epp_id))?.name || item.epp_name || `EPP #${item.epp_id}` }}</span>
+                                            <div class="flex justify-between items-start">
+                                                <span class="text-[11px] font-bold text-slate-800">{{ eppOptions.find(e => String(e.id) === String(item.epp_id))?.name || item.epp_name || `EPP #${item.epp_id}` }}</span>
+                                                <span v-if="item.condition" :class="['text-[8px] font-black uppercase px-2 py-0.5 rounded-full', item.condition === 'Nuevo' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700']">
+                                                    {{ item.condition }}
+                                                </span>
+                                            </div>
                                             <div class="flex gap-3 text-[10px] text-slate-500 mt-1">
                                                 <span class="font-medium">Cant: <strong class="text-indigo-600">{{ item.quantity }}</strong></span>
                                                 <span class="font-medium">Talla: <strong class="text-slate-700">{{ item.size || '-' }}</strong></span>

@@ -326,6 +326,7 @@ class InventoryController extends Controller
                         'headquarter_id' => $validated['headquarter_id'] ?? null,
                         'size' => $itemData['size'] ?? null,
                         'color_id' => $itemData['color_id'] ?? null,
+                        'condition' => 'Nuevo',
                     ]);
                     $stock->quantity += $itemData['quantity'];
                     $stock->save();
@@ -338,6 +339,7 @@ class InventoryController extends Controller
                         'headquarter_id' => $validated['headquarter_id'] ?? null,
                         'size' => $itemData['size'] ?? null,
                         'color_id' => $itemData['color_id'] ?? null,
+                        'condition' => 'Nuevo',
                     ]);
                     $stock->quantity += $itemData['quantity'];
                     $stock->save();
@@ -722,57 +724,70 @@ class InventoryController extends Controller
         try {
             DB::transaction(function () use ($validated, $staff) {
                 foreach ($validated['items'] as $itemData) {
-                    // Logic for EPP stock decrement/increment
-                    $stockQuery = InventoryStock::where([
-                        'stockable_id' => $itemData['epp_id'],
-                        'stockable_type' => Epp::class,
-                        'size' => $itemData['size'],
-                        'color_id' => $itemData['color_id'],
-                    ]);
-
-                    if (!empty($itemData['headquarter_id'])) {
-                        $stockQuery->where('headquarter_id', $itemData['headquarter_id']);
-                    } else {
-                        $stockQuery->where('cafe_id', $staff->cafe_id);
-                    }
-
-                    $stock = $stockQuery->first();
-
                     $isReplacement = ($validated['reason'] ?? '') === 'Reposición';
-
+                    
                     if (!$isReplacement) {
+                        // First try to use recycled/used stock ('En Almacén')
+                        $stock = InventoryStock::where([
+                            'stockable_id' => $itemData['epp_id'],
+                            'stockable_type' => Epp::class,
+                            'size' => $itemData['size'],
+                            'color_id' => $itemData['color_id'],
+                            'condition' => 'En Almacén',
+                        ])->where(function($q) use($itemData, $staff) {
+                            if (!empty($itemData['headquarter_id'])) $q->where('headquarter_id', $itemData['headquarter_id']);
+                            else $q->where('cafe_id', $staff->cafe_id);
+                        })->first();
+
+                        if (!$stock || $stock->quantity < $itemData['quantity']) {
+                            // If not enough in 'En Almacén', try 'Nuevo'
+                            $stock = InventoryStock::where([
+                                'stockable_id' => $itemData['epp_id'],
+                                'stockable_type' => Epp::class,
+                                'size' => $itemData['size'],
+                                'color_id' => $itemData['color_id'],
+                                'condition' => 'Nuevo',
+                            ])->where(function($q) use($itemData, $staff) {
+                                if (!empty($itemData['headquarter_id'])) $q->where('headquarter_id', $itemData['headquarter_id']);
+                                else $q->where('cafe_id', $staff->cafe_id);
+                            })->first();
+                        }
+
                         if (!$stock || $stock->quantity < $itemData['quantity']) {
                             $epp = Epp::find($itemData['epp_id']);
                             $colorName = Color::find($itemData['color_id'])?->name ?: 'N/A';
                             $locationName = !empty($itemData['headquarter_id'])
                                 ? (Headquarter::find($itemData['headquarter_id'])?->name ?: 'la sede seleccionada')
                                 : ($staff->cafe?->name ?: 'el punto de venta');
-                            throw new \Exception("Stock insuficiente de '{$epp->name}' (Talla: {$itemData['size']}, Color: {$colorName}) en {$locationName}. Disponible: " . ($stock?->quantity ?: 0));
+                            throw new \Exception("Stock insuficiente de '{$epp->name}' (Talla: {$itemData['size']}, Color: {$colorName}) en {$locationName}.");
                         }
 
                         $stock->decrement('quantity', $itemData['quantity']);
                     } else {
-                        if ($stock) {
-                            $stock->increment('quantity', $itemData['quantity']);
-                        } else {
-                            InventoryStock::create([
-                                'stockable_id' => $itemData['epp_id'],
-                                'stockable_type' => Epp::class,
-                                'size' => $itemData['size'],
-                                'color_id' => $itemData['color_id'],
-                                'quantity' => $itemData['quantity'],
-                                'headquarter_id' => $itemData['headquarter_id'] ?? null,
-                                'cafe_id' => empty($itemData['headquarter_id']) ? $staff->cafe_id : null,
-                            ]);
-                        }
+                        // REPOSICIÓN: Increment 'En Almacén' stock (the returned item)
+                        $stock = InventoryStock::firstOrCreate([
+                            'stockable_id' => $itemData['epp_id'],
+                            'stockable_type' => Epp::class,
+                            'size' => $itemData['size'],
+                            'color_id' => $itemData['color_id'],
+                            'condition' => 'En Almacén', // They become "En Almacén" when returned
+                            'headquarter_id' => $itemData['headquarter_id'] ?? null,
+                            'cafe_id' => empty($itemData['headquarter_id']) ? $staff->cafe_id : null,
+                        ], [
+                            'quantity' => 0
+                        ]);
+                        $stock->increment('quantity', $itemData['quantity']);
                     }
 
+                    // Update or create Staff_clothes assignment
+                    // All assigned items "se convierten en Almacén"
                     if (!empty($itemData['id'])) {
                         Staff_clothes::find($itemData['id'])->update([
                             'status' => 'Entregado',
                             'color_id' => $itemData['color_id'],
                             'clothing_size' => $itemData['size'],
                             'quantity' => $itemData['quantity'],
+                            'condition' => 'En Almacén' 
                         ]);
                     } else {
                         $staffCloth = Staff_clothes::where([
@@ -784,7 +799,10 @@ class InventoryController extends Controller
                         ])->first();
 
                         if ($staffCloth) {
-                            $staffCloth->increment('quantity', $itemData['quantity']);
+                            $staffCloth->update([
+                                'quantity' => $staffCloth->quantity + $itemData['quantity'],
+                                'condition' => 'En Almacén'
+                            ]);
                         } else {
                             Staff_clothes::create([
                                 'staff_id' => $staff->id,
@@ -793,13 +811,14 @@ class InventoryController extends Controller
                                 'clothing_size' => $itemData['size'],
                                 'status' => $itemData['status'] ?? 'Entregado',
                                 'quantity' => $itemData['quantity'],
+                                'condition' => 'En Almacén'
                             ]);
                         }
                     }
 
-                    // Subtract from ClothInvoiceItems
-                    for ($i = 0; $i < $itemData['quantity']; $i++) {
-                        if (!$isReplacement) {
+                    // Subtract from ClothInvoiceItems (FIFO logic usually only for New)
+                    if (!$isReplacement) {
+                        for ($i = 0; $i < $itemData['quantity']; $i++) {
                             $invoiceItem = \App\Models\ClothInvoiceItem::where('epp_id', $itemData['epp_id'])
                                 ->where('color_id', $itemData['color_id'])
                                 ->where('size', $itemData['size'])
@@ -807,24 +826,21 @@ class InventoryController extends Controller
                                 ->orderBy('created_at', 'asc')
                                 ->first();
                             if ($invoiceItem) $invoiceItem->decrement('quantity');
-                        } else {
-                            $invoiceItem = \App\Models\ClothInvoiceItem::where('epp_id', $itemData['epp_id'])
-                                ->where('color_id', $itemData['color_id'])
-                                ->where('size', $itemData['size'])
-                                ->orderBy('created_at', 'desc')
-                                ->first();
-                            if ($invoiceItem) $invoiceItem->increment('quantity');
                         }
                     }
                 }
 
                 if (!empty($validated['create_history'])) {
+                    $historyItems = array_map(function($item) {
+                        return array_merge($item, ['condition' => 'En Almacén']);
+                    }, $validated['items']);
+
                     \App\Models\StaffClothesHistory::create([
                         'staff_id' => $staff->id,
                         'user_id' => Auth::id(),
                         'reason' => $validated['reason'] ?? 'Nuevo',
                         'assigned_at' => now(),
-                        'items' => $validated['items']
+                        'items' => $historyItems
                     ]);
                 }
             });
