@@ -314,6 +314,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/transfer/return', [InventoryController::class, 'returnToPrincipal'])->name('transfer.return');
         Route::post('/assign-clothes', [InventoryController::class, 'assignStaffClothes'])->name('assign-clothes');
         Route::post('/history/{id}/evidence', [InventoryController::class, 'uploadHistoryEvidence'])->name('history.evidence');
+        Route::get('/history/{id}/pdf', [InventoryController::class, 'historyPdf'])->name('history.pdf');
         Route::get('/units', [InventoryController::class, 'unitsStockIndex'])->name('units.index');
     });
 

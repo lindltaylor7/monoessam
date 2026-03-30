@@ -11,7 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { router, usePage } from '@inertiajs/vue3';
-import { Plus, Trash2, Search, Loader2, Package, Check, AlertTriangle, Camera } from 'lucide-vue-next';
+import { Plus, Trash2, Search, Loader2, Package, Check, AlertTriangle, Camera, FileText } from 'lucide-vue-next';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -657,7 +657,7 @@ watch(() => props.open, (val) => {
 <template>
     <div class="contents">
         <Dialog :open="open" @update:open="$emit('update:open', $event)">
-        <DialogContent class="sm:max-w-[750px] max-h-[90vh] overflow-y-auto">
+        <DialogContent class="sm:max-w-[850px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
                 <div class="flex justify-between items-start">
                     <div>
@@ -1010,6 +1010,14 @@ watch(() => props.open, (val) => {
                                             </div>
                                             <div class="text-[10px] font-medium text-slate-400">Asignado por: <span class="font-bold text-slate-700">{{ hist.user?.name || 'Sistema' }}</span></div>
                                         </div>
+                                        <a 
+                                            :href="route('inventory.history.pdf', hist.id)" 
+                                            target="_blank"
+                                            class="p-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-500 hover:text-indigo-600 transition-all border border-slate-100 flex items-center gap-1.5"
+                                        >
+                                            <FileText class="h-4 w-4" />
+                                            <span class="text-[9px] font-black uppercase tracking-widest hidden sm:inline">PDF Entrega</span>
+                                        </a>
                                     </div>
                                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
                                         <div v-for="(item, idx) in hist.items" :key="idx" class="flex flex-col p-2 bg-slate-50 rounded-xl">

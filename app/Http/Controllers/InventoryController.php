@@ -883,4 +883,29 @@ class InventoryController extends Controller
             return back()->with('error', 'Error al subir evidencia: ' . $e->getMessage());
         }
     }
+
+    /**
+     * Generate PDF for a specific history record
+     */
+    public function historyPdf($id)
+    {
+        $history = \App\Models\StaffClothesHistory::with(['staff', 'staff.role', 'user'])->findOrFail($id);
+        
+        // Find staff headquarters or cafe
+        $location = null;
+        if ($history->staff->cafe_id) {
+            $location = Cafe::with('unit')->find($history->staff->cafe_id);
+        }
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.epp_delivery', [
+            'history' => $history,
+            'staff' => $history->staff,
+            'location' => $location,
+            'items' => is_string($history->items) ? json_decode($history->items, true) : $history->items,
+            'date' => $history->assigned_at ? $history->assigned_at->format('d/m/Y') : now()->format('d/m/Y'),
+            'user' => $history->user
+        ]);
+
+        return $pdf->setPaper('a4', 'landscape')->stream("Entrega_EPP_{$history->staff->name}.pdf");
+    }
 }
