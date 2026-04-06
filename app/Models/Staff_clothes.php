@@ -10,7 +10,7 @@ class Staff_clothes extends Model
     /** @use HasFactory<\Database\Factories\StaffClothesFactory> */
     use HasFactory;
 
-    protected $fillable = ['staff_id', 'clothe_name', 'clothing_size', 'cloth_id', 'status', 'color_id'];
+    protected $fillable = ['staff_id', 'clothe_name', 'clothing_size', 'cloth_id', 'epp_id', 'status', 'color_id', 'quantity', 'condition'];
 
     public function staff()
     {
@@ -20,6 +20,11 @@ class Staff_clothes extends Model
     public function cloth()
     {
         return $this->belongsTo(Cloth::class);
+    }
+
+    public function epp()
+    {
+        return $this->belongsTo(Epp::class);
     }
 
     public function color()

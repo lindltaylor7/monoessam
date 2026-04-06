@@ -42,9 +42,17 @@ interface Props {
 const props = defineProps<Props>();
 
 const searchQuery = ref('');
+const roleSearchQuery = ref('');
 const isModalOpen = ref(false);
 const selectedCafe = ref<any>(null);
 const selectedRoleIds = ref<number[]>([]);
+
+const filteredRoles = computed(() => {
+    if (!roleSearchQuery.value) return props.roles;
+    return props.roles.filter(role => 
+        role.name.toLowerCase().includes(roleSearchQuery.value.toLowerCase())
+    );
+});
 
 const filteredCafes = computed(() => {
     if (!searchQuery.value) return props.cafes;
@@ -56,6 +64,7 @@ const filteredCafes = computed(() => {
 const openEditModal = (cafe: any) => {
     selectedCafe.value = cafe;
     selectedRoleIds.value = cafe.roles.map((r: any) => r.id);
+    roleSearchQuery.value = '';
     isModalOpen.value = true;
 };
 
@@ -164,10 +173,13 @@ const handleSave = () => {
                                 <Coffee class="h-6 w-6" />
                             </div>
                             <div>
-                                <CardTitle class="text-lg font-black text-slate-900 tabular-nums uppercase tracking-tight">
-                                    {{ cafe.name }}
+                                <CardTitle class="text-lg font-black text-slate-900 tabular-nums uppercase tracking-tight flex flex-col">
+                                    <span>{{ cafe.name }}</span>
+                                    <span class="text-[10px] text-slate-400 font-bold tracking-tighter">
+                                        {{ cafe.unit?.mine?.name }} — {{ cafe.unit?.name }}
+                                    </span>
                                 </CardTitle>
-                                <CardDescription class="text-xs font-bold text-slate-400 flex items-center gap-1">
+                                <CardDescription class="text-xs font-bold text-slate-400 flex items-center gap-1 mt-1">
                                     <Badge variant="outline" class="text-[10px] py-0 px-1.5 border-slate-200 text-slate-400">ID: {{ cafe.id }}</Badge>
                                 </CardDescription>
                             </div>
@@ -213,16 +225,30 @@ const handleSave = () => {
                             Gestionar Roles
                         </DialogTitle>
                         <DialogDescription class="text-slate-400 font-medium">
-                            Configura qué roles están habilitados para el café: <span class="text-white font-black underline decoration-amber-500 underline-offset-4">{{ selectedCafe?.name }}</span>
+                            Configura qué roles están habilitados para: 
+                            <span class="text-white font-black underline decoration-amber-500 underline-offset-4">
+                                {{ selectedCafe?.name }} ({{ selectedCafe?.unit?.mine?.name }})
+                            </span>
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div class="p-8 space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                    <div class="p-8 pb-0">
+                        <div class="relative">
+                            <Search class="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                            <Input 
+                                v-model="roleSearchQuery"
+                                placeholder="Buscar rol..." 
+                                class="pl-10 h-10 bg-slate-50 border-slate-100 rounded-xl focus:ring-amber-500"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="p-8 space-y-4 max-h-[50vh] overflow-y-auto custom-scrollbar">
                         <p class="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-4">Roles Disponibles en el Sistema</p>
                         
                         <div class="grid grid-cols-1 gap-2">
                             <button 
-                                v-for="role in roles" 
+                                v-for="role in filteredRoles" 
                                 :key="role.id"
                                 @click="toggleRole(role.id)"
                                 class="w-full text-left p-4 rounded-2xl border transition-all duration-200 flex items-center justify-between group"
@@ -245,6 +271,11 @@ const handleSave = () => {
                                     :class="selectedRoleIds.includes(role.id) ? 'text-indigo-600 scale-110 opacity-100' : 'text-slate-100 opacity-0 group-hover:opacity-100'"
                                 />
                             </button>
+                        </div>
+                        
+                        <div v-if="filteredRoles.length === 0" class="py-12 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-100">
+                            <UserCircle class="h-10 w-10 mx-auto text-slate-200 mb-2" />
+                            <p class="text-slate-400 text-xs font-bold">No se encontraron roles con ese nombre.</p>
                         </div>
                     </div>
 

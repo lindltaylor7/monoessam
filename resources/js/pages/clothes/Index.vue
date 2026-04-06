@@ -10,25 +10,35 @@ import { Eye, ChevronLeft, ChevronRight, Package, Plus } from 'lucide-vue-next';
 import { useStaffFilter } from '@/composables/useStaffFilter';
 import { Staff, Unit } from '@/types';
 import StaffClothesDialog from '@/pages/clothes/partials/StaffClothesDialog.vue';
+import InventoryTransferDialog from '@/pages/inventory/partials/InventoryTransferDialog.vue';
+import { Truck } from 'lucide-vue-next';
 
 interface ExtendedStaff extends Staff {
     staff_clothes: Array<{
         id: number;
-        cloth_id: number;
+        cloth_id: number | null;
+        epp_id: number | null;
         color_id: number | null;
         clothing_size: string;
         clothe_name?: string;
         cloth?: { name: string };
+        epp?: { name: string, sizes: Array<{ id: number, size: string }> };
         color?: { id: number; name: string };
         status?: string;
+        quantity: number;
     }>;
+    staff_financial?: {
+        start_date?: string;
+    };
 }
 
 const props = defineProps<{
     staff: ExtendedStaff[]; 
     roleClothes: Record<number, Record<string, Array<{ id: number; name: string }>>>;
+    roleEpps: Record<number, Record<string, Array<{ id: number; name: string; sizes: Array<{ id: number, size: string }> }>>>;
     units: any[];
     colors: Array<{ id: number, name: string }>;
+    headquarters?: Array<{ id: number, name: string, business?: { name: string } }>;
 }>();
 
 const getClothesForStaff = (person: ExtendedStaff) => {
@@ -36,9 +46,16 @@ const getClothesForStaff = (person: ExtendedStaff) => {
     const roleMap = props.roleClothes[person.role_id];
     if (!roleMap) return [];
     
-    const cafeId = person.cafe_id;
-    const clothes = roleMap[String(cafeId)] || roleMap['all'] || [];
-    return clothes;
+    const cafeId = person.cafe_id || (person.staffable_type === 'App\\Models\\Cafe' ? person.staffable_id : null);
+    const specific = cafeId ? (roleMap[String(cafeId)] || []) : [];
+    const common = roleMap['all'] || [];
+    
+    // Merge without duplicates
+    const merged = [...specific];
+    common.forEach(c => {
+        if (!merged.find(m => m.id === c.id)) merged.push(c);
+    });
+    return merged;
 };
 
 const localStaff = ref(props.staff as any[]);
@@ -88,6 +105,7 @@ watch(filteredStaff, () => {
 });
 
 const isModalOpen = ref(false);
+const isTransferModalOpen = ref(false);
 
 const openModal = (staff: ExtendedStaff) => {
     selectedStaff.value = staff;
@@ -131,9 +149,9 @@ const getInitials = (name: string) => {
         <div class="p-6">
              <div class="flex justify-between items-center mb-6">
                  <div>
-                    <h1 class="text-3xl font-bold tracking-tight">Asignación de Prendas por Rol y Café</h1>
+                    <h1 class="text-3xl font-bold tracking-tight">Asignación de Prendas por Rol y Comedor</h1>
                     <p class="text-muted-foreground text-xs sm:text-sm mt-1">
-                        Selecciona las prendas asignadas a cada rol/cargo en el café seleccionado
+                        Selecciona las prendas asignadas a cada rol/cargo en el comedor seleccionado
                     </p>
                  </div>
                  <div class="flex flex-wrap gap-2">
@@ -143,12 +161,10 @@ const getInitials = (name: string) => {
                             Inventario
                         </Button>
                     </Link> -->
-                   <!--  <Link :href="route('clothes.manage')">
-                        <Button class="gap-2">
-                            <Plus class="h-4 w-4" />
-                            Configurar Prendas
-                        </Button>
-                    </Link> -->
+                    <Button @click="isTransferModalOpen = true" size="sm" class="gap-2 bg-slate-900 hover:bg-black text-white shadow-lg">
+                        <Truck class="h-4 w-4" />
+                        Generar Envío a Unidad
+                    </Button>
                  </div>
             </div>
 
@@ -177,7 +193,9 @@ const getInitials = (name: string) => {
                         <thead class="bg-gray-50 text-gray-500 border-b">
                             <tr>
                                 <th class="p-4 font-medium">Personal</th>
+                                <th class="p-4 font-medium">Fecha de ingreso</th>
                                 <th class="p-4 font-medium">Cargo</th>
+                                <th class="p-4 font-medium">Comedor</th>
                                 <th class="p-4 font-medium">Unidad</th>
                                <!-- <th class="p-4 font-medium">Tallas</th> -->
                                 <th class="p-4 font-medium w-16">Prendas</th>
@@ -199,10 +217,22 @@ const getInitials = (name: string) => {
                                     </div>
                                 </td>
                                 <td class="p-4">
+                                    <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-700/10" v-if="person.staff_financial && person.staff_financial.start_date">
+                                        {{ person.staff_financial.start_date }}
+                                    </span>
+                                    <span v-else class="text-gray-400 italic">Sin fecha de ingreso</span>
+                                </td>
+                                <td class="p-4">
                                     <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10" v-if="person.role">
                                         {{ person.role.name }}
                                     </span>
                                     <span v-else class="text-gray-400 italic">Sin cargo</span>
+                                </td>
+                                <td class="p-4">
+                                    <span class="inline-flex items-center rounded-md bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700 ring-1 ring-inset ring-orange-700/10" v-if="person.staffable">
+                                        {{ person.staffable.name }}
+                                    </span>
+                                    <span v-else class="text-gray-400 italic">Sin café</span>
                                 </td>
                                 <td class="p-4">
                                     <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-700/10" v-if="person.staffable?.unit">
@@ -279,7 +309,20 @@ const getInitials = (name: string) => {
             :open="isModalOpen" 
             :staff="selectedStaff" 
             :colors="colors"
+            :role-clothes="roleClothes"
+            :role-epps="roleEpps"
+            :headquarters="headquarters"
             @update:open="isModalOpen = $event" 
+        />
+
+        <InventoryTransferDialog
+            v-if="isTransferModalOpen"
+            :open="isTransferModalOpen"
+            :units="units"
+            :staff="staff"
+            :clothes="[]"
+            :epps="[]"
+            @update:open="isTransferModalOpen = $event"
         />
     </AppLayout>
 </template>

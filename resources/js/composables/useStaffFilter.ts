@@ -23,9 +23,11 @@ export function useStaffFilter(initialStaff: Ref<Staff[]>) {
         result = result.filter((staff) => {
             const name = staff.name.toLowerCase();
             const dni = staff.dni.toLowerCase();
+            const cafeName = staff.staffable?.name?.toLowerCase() || '';
+            const roleName = staff.role?.name?.toLowerCase() || '';
 
             // A. Coincidencia exacta o parcial (Rápido)
-            if (name.includes(query) || dni.includes(query)) return true;
+            if (name.includes(query) || dni.includes(query) || cafeName.includes(query) || roleName.includes(query)) return true;
 
             // B. Lógica Levenshtein (Fuzzy)
             // Dividimos el nombre por palabras para comparar la query con cada una
@@ -43,8 +45,8 @@ export function useStaffFilter(initialStaff: Ref<Staff[]>) {
     return result;
 });
 
-    const getLevenshteinDistance = (a, b) => {
-    const matrix = [];
+    const getLevenshteinDistance = (a: string, b: string) => {
+        const matrix = [];
 
     for (let i = 0; i <= b.length; i++) matrix[i] = [i];
     for (let j = 0; j <= a.length; j++) matrix[0][j] = j;

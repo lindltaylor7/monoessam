@@ -32,8 +32,23 @@ import {
     Calendar,
     FileText,
     Truck,
-    Building
+    Building,
+    LayoutGrid,
+    List,
+    MoreHorizontal,
+    Mountain,
+    ChevronDown,
+    ChevronRight,
+    User
 } from 'lucide-vue-next';
+import { 
+    Table, 
+    TableBody, 
+    TableCell, 
+    TableHead, 
+    TableHeader, 
+    TableRow 
+} from '@/components/ui/table';
 import { 
     Dialog, 
     DialogContent, 
@@ -47,7 +62,7 @@ import { Label } from '@/components/ui/label';
 
 const props = defineProps<{
     colors: Array<{ id: number, name: string, hex_code?: string }>;
-    cafes: Array<{ id: number, name: string, unit: { name: string } }>;
+    cafes: Array<{ id: number, name: string, unit: { name: string, mine:{ name:string } } }>;
     headquarters: Array<{ id: number, name: string, business_id: number, business: { id: number, name: string } }>;
     stocks: Array<{
         id: number;
@@ -55,24 +70,33 @@ const props = defineProps<{
         stockable_type: string;
         headquarter_id: number | null;
         cafe_id: number | null;
+        unit_id: number | null;
         quantity: number;
+        size: string | null;
+        color_id: number | null;
         stockable: any;
         cafe?: { name: string };
         headquarter?: { name: string };
+        unit?: { name: string, mine: { name: string } };
+        color?: { id: number, name: string, hex_code: string };
     }>;
     businesses: Array<{ id: number, name: string }>;
     providers: Array<{ id: number, name: string }>;
     clothes: Array<{ id: number, name: string }>;
+    epps: Array<{ id: number, name: string }>;
+    units: Array<{ id: number, name: string, mine: { name: string } }>;
+    transfers: Array<any>;
 }>();
 
 const activeTab = ref('clothes');
+const viewMode = ref<'cards' | 'table'>('cards');
 const searchQuery = ref('');
 const selectedCafeId = ref('all');
 const selectedHeadquarterId = ref('all');
 
 // Filtrado de inventario (Polymorphic)
 const filteredStocks = computed(() => {
-    return props.stocks.filter(stock => {
+    const filtered = props.stocks.filter(stock => {
         const itemType = stock.stockable_type;
         
         if (activeTab.value === 'clothes' && itemType !== 'App\\Models\\Cloth') return false;
@@ -91,12 +115,176 @@ const filteredStocks = computed(() => {
 
         return matchesSearch && matchesCafe && matchesHQ;
     });
+
+    // Grouping logic to avoid duplicate cards per item
+    const groups: Record<string, any> = {};
+    filtered.forEach(stock => {
+        const key = `${stock.stockable_type}-${stock.stockable_id}`;
+        if (!groups[key]) {
+            groups[key] = {
+                ...stock,
+                key, // Unique key for expansion tracking
+                total_quantity: 0,
+                headquarter_names: new Set(),
+                cafe_names: new Set(),
+                sizes: {} as Record<string, any>
+            };
+        }
+        groups[key].total_quantity += Number(stock.quantity);
+        if (stock.headquarter?.name) groups[key].headquarter_names.add(stock.headquarter.name);
+        if (stock.cafe?.name) groups[key].cafe_names.add(stock.cafe.name);
+
+        const sizeLabel = stock.size || 'Única';
+        if (!groups[key].sizes[sizeLabel]) {
+            groups[key].sizes[sizeLabel] = {
+                label: sizeLabel,
+                total: 0,
+                colors: {} as Record<string, any>
+            };
+        }
+        groups[key].sizes[sizeLabel].total += Number(stock.quantity);
+
+        const colorId = stock.color_id || 'no-color';
+        if (!groups[key].sizes[sizeLabel].colors[colorId]) {
+            groups[key].sizes[sizeLabel].colors[colorId] = {
+                id: colorId,
+                color: stock.color,
+                quantity: 0,
+                records: []
+            };
+        }
+        groups[key].sizes[sizeLabel].colors[colorId].quantity += Number(stock.quantity);
+        groups[key].sizes[sizeLabel].colors[colorId].records.push(stock);
+    });
+
+    return Object.values(groups).map(g => ({
+        ...g,
+        quantity: g.total_quantity,
+        display_headquarter: Array.from(g.headquarter_names).join(', ') || 'N/A',
+        display_cafe: Array.from(g.cafe_names).join(', ') || 'N/A',
+        nestedSizes: Object.values(g.sizes).map((s: any) => ({
+            ...s,
+            nestedColors: Object.values(s.colors)
+        }))
+    }));
 });
+
+// Expanded state for nested rows
+const expandedRows = ref(new Set<string>());
+const toggleRow = (key: string) => {
+    const newSet = new Set(expandedRows.value);
+    if (newSet.has(key)) newSet.delete(key);
+    else newSet.add(key);
+    expandedRows.value = newSet;
+};
+
+const expandedSizeRows = ref(new Set<string>());
+const toggleSizeRow = (itemKey: string, sizeLabel: string) => {
+    const key = `${itemKey}-${sizeLabel}`;
+    const newSet = new Set(expandedSizeRows.value);
+    if (newSet.has(key)) newSet.delete(key);
+    else newSet.add(key);
+    expandedSizeRows.value = newSet;
+};
 
 // Estado para modales
 const isAddStockOpen = ref(false);
 const isNewItemOpen = ref(false);
 const isNewColorOpen = ref(false);
+
+// --- Sizes Modal Logic ---
+const isSizesModalOpen = ref(false);
+const isLoadingSizes = ref(false);
+const selectedStockForSizes = ref<any>(null);
+const stockSizes = ref<any[]>([]);
+const sizeSearch = ref('');
+
+const openSizesModal = (stock: any) => {
+    selectedStockForSizes.value = stock;
+    isSizesModalOpen.value = true;
+    isLoadingSizes.value = true;
+    stockSizes.value = [];
+    sizeSearch.value = '';
+    
+    axios.get(route('inventory.stock.sizes', { id: stock.id }))
+        .then(res => {
+            stockSizes.value = res.data;
+        })
+        .catch(err => console.error(err))
+        .finally(() => {
+            isLoadingSizes.value = false;
+        });
+};
+
+const filteredStockSizes = computed(() => {
+    if (!stockSizes.value) return [];
+    
+    // Group sizes by location (Headquarter / Cafe)
+    const grouped: Record<string, any> = {};
+    
+    stockSizes.value.forEach((item: any) => {
+        const hqName = item.headquarter?.name || 'Sede Central / Almacén';
+        const cafeName = item.cafe?.name || 'Principal';
+        const groupKey = `${hqName} - ${cafeName}`;
+        
+        if (!grouped[groupKey]) {
+            grouped[groupKey] = {
+                title: groupKey,
+                hq: hqName,
+                cafe: cafeName,
+                items: []
+            };
+        }
+        grouped[groupKey].items.push(item);
+    });
+    
+    const s = sizeSearch.value.toLowerCase();
+    
+    return Object.values(grouped).map((group: any) => {
+        // Filter items within the group
+        const filteredItems = group.items.filter((item: any) => {
+            if (!s) return true;
+            return (item.size && item.size.toLowerCase().includes(s)) || 
+                   (item.color?.name && item.color.name.toLowerCase().includes(s));
+        });
+        
+        return {
+            ...group,
+            items: filteredItems
+        };
+    }).filter(group => group.items.length > 0);
+});
+
+const isReturnModalOpen = ref(false);
+const returnForm = ref({
+    unit_id: '',
+    items: [] as any[]
+});
+
+const openReturnModal = (transfer: any) => {
+    returnForm.value = {
+        unit_id: String(transfer.unit_id),
+        items: transfer.items.map((i: any) => ({
+            stockable_id: i.stockable_id,
+            stockable_type: i.stockable_type,
+            name: i.stockable?.name,
+            quantity: i.quantity,
+            size: i.size,
+            color_id: i.color_id
+        }))
+    };
+    isReturnModalOpen.value = true;
+};
+
+const handleReturn = () => {
+    router.post(route('inventory.transfer.return'), returnForm.value, {
+        onSuccess: () => {
+            isReturnModalOpen.value = false;
+        },
+        preserveScroll: true
+    });
+};
+
 
 const stockForm = ref({
     stockable_type: 'cloth',
@@ -235,7 +423,7 @@ const handleCreateItem = () => {
                 code: '',
                 status: '',
             };
-        }
+        },
     });
 };
 
@@ -323,6 +511,16 @@ const getItemIcon = (type: string) => {
                             </DialogFooter>
                         </DialogContent>
                     </Dialog>
+
+                    <Button 
+                        @click="router.visit(route('inventory.units.index'))" 
+                        size="sm" 
+                        variant="outline" 
+                        class="gap-2 bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 shadow-sm font-bold"
+                    >
+                        <Mountain class="h-4 w-4" />
+                        Stock por Unidades
+                    </Button>
 
                     <Button 
                         @click="router.visit(route('inventory.invoices.index'))" 
@@ -630,10 +828,38 @@ const getItemIcon = (type: string) => {
                                 <Box class="h-4 w-4" />
                                 <span class="hidden sm:inline">Insumos</span>
                             </TabsTrigger>
+                           <!--  <TabsTrigger value="units_transfers" class="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm bg-indigo-50/50">
+                                <Truck class="h-4 w-4 text-indigo-600" />
+                                <span class="hidden sm:inline text-indigo-700 font-bold">Envíos a Unidades</span>
+                            </TabsTrigger> -->
                         </TabsList>
                     </Tabs>
 
                     <div class="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                        <!-- View Toggle -->
+                        <div class="flex items-center bg-slate-100 p-1 rounded-xl mr-2">
+                            <button 
+                                @click="viewMode = 'cards'"
+                                :class="[
+                                    'p-1.5 rounded-lg transition-all',
+                                    viewMode === 'cards' ? 'bg-white shadow-sm text-primary' : 'text-slate-400 hover:text-slate-600'
+                                ]"
+                                title="Vista Cuadrícula"
+                            >
+                                <LayoutGrid class="h-4 w-4" />
+                            </button>
+                            <button 
+                                @click="viewMode = 'table'"
+                                :class="[
+                                    'p-1.5 rounded-lg transition-all',
+                                    viewMode === 'table' ? 'bg-white shadow-sm text-primary' : 'text-slate-400 hover:text-slate-600'
+                                ]"
+                                title="Vista Tabla"
+                            >
+                                <List class="h-4 w-4" />
+                            </button>
+                        </div>
+
                         <div class="relative flex-1 sm:w-64">
                             <Search class="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                             <Input v-model="searchQuery" placeholder="Buscar item..." class="pl-9 h-10 rounded-xl bg-slate-50 border-none focus-visible:ring-1" />
@@ -646,7 +872,7 @@ const getItemIcon = (type: string) => {
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">Todas las Sedes</SelectItem>
-                                    <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">{{ hq.name }}</SelectItem>
+                                    <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">{{ hq.name }} - {{ hq.business.name }}</SelectItem>
                                 </SelectContent>
                             </Select>
 
@@ -655,15 +881,15 @@ const getItemIcon = (type: string) => {
                                     <SelectValue placeholder="Cafés" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">Todos los Cafés</SelectItem>
-                                    <SelectItem v-for="cafe in cafes" :key="cafe.id" :value="String(cafe.id)">{{ cafe.name }}</SelectItem>
+                                    <SelectItem value="all">Todos los Comedores</SelectItem>
+                                    <SelectItem v-for="cafe in cafes" :key="cafe.id" :value="String(cafe.id)">{{ cafe.name }} - {{ cafe.unit.name }} - {{ cafe.unit.mine.name }}</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
                     </div>
                 </div>
 
-                <!-- Content Grid -->
+                <!-- Content Grid / Table -->
                 <div class="flex-1 overflow-y-auto pr-2 custom-scrollbar">
                     <div v-if="filteredStocks.length === 0" class="flex flex-col items-center justify-center h-64 border-2 border-dashed rounded-3xl bg-white/50 border-slate-200">
                         <div class="h-16 w-16 bg-slate-100 rounded-full flex items-center justify-center mb-4">
@@ -673,115 +899,311 @@ const getItemIcon = (type: string) => {
                         <p class="text-slate-400 text-sm mt-1">No hay existencias registradas para esta categoría</p>
                     </div>
 
-                    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 pb-6">
-                        <Card 
-                            v-for="item in filteredStocks" 
-                            :key="item.id"
-                            class="group hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500 overflow-hidden border-slate-200 rounded-2xl bg-white flex flex-col"
-                        >
-                            <div class="h-1.5 w-full bg-slate-100">
-                                <div v-if="item.stockable_type.includes('Cloth')" class="h-full bg-primary/40"></div>
-                                <div v-else-if="item.stockable_type.includes('Computer')" class="h-full bg-blue-400"></div>
-                                <div v-else-if="item.stockable_type.includes('Kitchen')" class="h-full bg-orange-400"></div>
-                                <div v-else class="h-full bg-emerald-400"></div>
-                            </div>
+                    <template v-else>
+                        <!-- Cards View -->
+                        <div v-if="viewMode === 'cards'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 pb-6">
+                            <Card 
+                                v-for="item in filteredStocks" 
+                                :key="item.id"
+                                class="group hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-500 overflow-hidden border-slate-200 rounded-2xl bg-white flex flex-col"
+                            >
+                                <div class="h-1.5 w-full bg-slate-100">
+                                    <div v-if="item.stockable_type.includes('Cloth')" class="h-full bg-primary/40"></div>
+                                    <div v-else-if="item.stockable_type.includes('Computer')" class="h-full bg-blue-400"></div>
+                                    <div v-else-if="item.stockable_type.includes('Kitchen')" class="h-full bg-orange-400"></div>
+                                    <div v-else class="h-full bg-emerald-400"></div>
+                                </div>
 
-                            <CardHeader class="p-5 pb-3">
-                                <div class="flex justify-between items-start gap-4">
-                                    <div class="flex gap-3">
-                                        <div :class="[
-                                            'p-2.5 rounded-xl shadow-sm transition-transform group-hover:scale-110',
-                                            activeTab === 'clothes' ? 'bg-indigo-50 text-indigo-600' :
-                                            activeTab === 'epps' ? 'bg-amber-50 text-amber-600' :
-                                            activeTab === 'computer' ? 'bg-blue-50 text-blue-600' :
-                                            activeTab === 'kitchen' ? 'bg-orange-50 text-orange-600' :
-                                            'bg-emerald-50 text-emerald-600'
-                                        ]">
-                                            <component :is="getItemIcon(activeTab)" class="h-5 w-5" />
+                                <CardHeader class="p-5 pb-3">
+                                    <div class="flex justify-between items-start gap-4">
+                                        <div class="flex gap-3">
+                                            <div :class="[
+                                                'p-2 rounded-xl shadow-sm transition-transform group-hover:scale-110 flex-shrink-0 flex items-center justify-center size-10 self-start',
+                                                activeTab === 'clothes' ? 'bg-indigo-50 text-indigo-600' :
+                                                activeTab === 'epps' ? 'bg-amber-50 text-amber-600' :
+                                                activeTab === 'computer' ? 'bg-blue-50 text-blue-600' :
+                                                activeTab === 'kitchen' ? 'bg-orange-50 text-orange-600' :
+                                                'bg-emerald-50 text-emerald-600'
+                                            ]">
+                                                <component :is="getItemIcon(activeTab)" class="h-5 w-5" />
+                                            </div>
+                                            <div class="min-w-0">
+                                                <CardTitle class="text-[14px] leading-tight font-black text-slate-900 line-clamp-2 min-h-[40px] flex items-center break-words">{{ item.stockable?.name }}</CardTitle>
+                                                <CardDescription class="text-xs mt-0.5 flex items-center gap-1.5 whitespace-normal text-slate-500">
+                                                    <template v-if="activeTab === 'clothes'">
+                                                        <Palette class="h-3 w-3" /> Prendas de Personal
+                                                    </template>
+                                                    <template v-else-if="activeTab === 'epps'">
+                                                        <Box class="h-3 w-3" /> Elemento de Protección
+                                                    </template>
+                                                    <template v-else-if="activeTab === 'computer'">
+                                                        {{ item.stockable?.brand }} | {{ item.stockable?.model || 'S/M' }}
+                                                    </template>
+                                                    <template v-else-if="activeTab === 'kitchen'">
+                                                        {{ item.stockable?.brand }} | {{ item.stockable?.size }}
+                                                        <span v-if="item.stockable?.code" class="ml-1 text-[10px] text-slate-400 font-mono">#{{ item.stockable?.code }}</span>
+                                                    </template>
+                                                    <template v-else>
+                                                        Insumo / Ingrediente
+                                                    </template>
+                                                </CardDescription>
+                                            </div>
                                         </div>
-                                        <div class="min-w-0">
-                                            <CardTitle class="text-base font-bold text-slate-900 truncate">{{ item.stockable?.name }}</CardTitle>
-                                            <CardDescription class="text-xs mt-0.5 flex items-center gap-1.5 truncate text-slate-500">
-                                                <template v-if="activeTab === 'clothes'">
-                                                    <Palette class="h-3 w-3" /> Prendas de Personal
-                                                </template>
-                                                <template v-else-if="activeTab === 'epps'">
-                                                    <Box class="h-3 w-3" /> Elemento de Protección
-                                                </template>
-                                                <template v-else-if="activeTab === 'computer'">
-                                                    {{ item.stockable?.brand }} | {{ item.stockable?.model || 'S/M' }}
-                                                </template>
-                                                <template v-else-if="activeTab === 'kitchen'">
-                                                    {{ item.stockable?.brand }} | {{ item.stockable?.size }}
-                                                    <span v-if="item.stockable?.code" class="ml-1 text-[10px] text-slate-400 font-mono">#{{ item.stockable?.code }}</span>
-                                                </template>
-                                                <template v-else>
-                                                    Insumo / Ingrediente
-                                                </template>
-                                            </CardDescription>
-                                        </div>
-                                    </div>
-                                    <Badge :variant="getStockStatus(item.quantity).variant" class="rounded-full px-2.5 shadow-none border-none text-[10px] uppercase font-bold">
-                                        {{ getStockStatus(item.quantity).label }}
-                                    </Badge>
-                                </div>
-                            </CardHeader>
-
-                            <CardContent class="p-5 pt-0 flex-1">
-                                <div class="mt-4 p-4 rounded-2xl bg-slate-50 flex items-center justify-between group-hover:bg-slate-100/50 transition-colors border border-transparent group-hover:border-slate-200">
-                                    <div>
-                                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Stock Disponible</p>
-                                        <div class="flex items-baseline gap-1.5 text-slate-900">
-                                            <span class="text-3xl font-black leading-none">{{ item.quantity }}</span>
-                                            <span class="text-xs font-bold text-slate-400 uppercase">Unidades</span>
-                                        </div>
-                                    </div>
-                                    <div class="flex flex-col items-end gap-1">
-                                        <div v-if="item.quantity > 0" class="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
-                                            <ArrowUpRight class="h-3 w-3" /> ACTIVO
-                                        </div>
-                                        <div v-else class="flex items-center gap-1 text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100">
-                                            <ArrowDownRight class="h-3 w-3" /> AGOTADO
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <div class="mt-5 space-y-2.5">
-                                    <div class="flex items-center justify-between text-[11px]">
-                                        <span class="text-slate-400 font-medium flex items-center gap-1.5"><Building2 class="h-3 w-3" /> Gestión HQ</span>
-                                        <span class="text-slate-700 font-bold truncate max-w-[120px]">{{ item.headquarter?.name || 'Distribución Global' }}</span>
-                                    </div>
-                                    <div class="flex items-center justify-between text-[11px]">
-                                        <span class="text-slate-400 font-medium flex items-center gap-1.5"><Coffee class="h-3 w-3" /> Punto de Venta</span>
-                                        <span class="text-slate-700 font-bold truncate max-w-[120px]">{{ item.cafe?.name || 'N/A' }}</span>
-                                    </div>
-                                </div>
-                                <div v-if="activeTab === 'kitchen' && item.stockable" class="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-2 text-[10px]">
-                                    <div v-if="item.stockable.series" class="flex flex-col">
-                                        <span class="text-slate-400 uppercase tracking-tighter">Serie</span>
-                                        <span class="font-bold text-slate-700 truncate">{{ item.stockable.series }}</span>
-                                    </div>
-                                    <div v-if="item.stockable.status" class="flex flex-col">
-                                        <span class="text-slate-400 uppercase tracking-tighter">Estado</span>
-                                        <Badge variant="outline" class="h-4 text-[8px] px-1 w-fit font-bold uppercase bg-white border-slate-200">
-                                            {{ item.stockable.status }}
+                                        <Badge :variant="getStockStatus(item.quantity).variant" class="rounded-full px-2.5 shadow-none border-none text-[10px] uppercase font-bold">
+                                            {{ getStockStatus(item.quantity).label }}
                                         </Badge>
                                     </div>
-                                </div>
-                            </CardContent>
+                                </CardHeader>
 
-                            <div class="px-5 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/10 group-hover:bg-slate-50/50 transition-colors">
-                                <div class="flex -space-x-1.5 overflow-hidden">
-                                   <div class="h-6 w-6 rounded-full border-2 border-white bg-indigo-100 flex items-center justify-center text-[8px] font-bold text-indigo-600">HQ</div>
-                                   <div class="h-6 w-6 rounded-full border-2 border-white bg-amber-100 flex items-center justify-center text-[8px] font-bold text-amber-600">CF</div>
+                                <CardContent class="p-5 pt-0 flex-1">
+                                    <div class="mt-4 p-4 rounded-2xl bg-slate-50 flex items-center justify-between group-hover:bg-slate-100/50 transition-colors border border-transparent group-hover:border-slate-200">
+                                        <div>
+                                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Stock Disponible</p>
+                                            <div class="flex items-baseline gap-1.5 text-slate-900">
+                                                <span class="text-3xl font-black leading-none">{{ item.quantity }}</span>
+                                                <span class="text-xs font-bold text-slate-400 uppercase">Unidades</span>
+                                            </div>
+                                        </div>
+                                        <div @click="openSizesModal(item)" class="flex flex-col items-end gap-1 cursor-pointer hover:opacity-80 transition-opacity">
+                                            <div v-if="item.quantity > 0" class="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100">
+                                                <ArrowUpRight class="h-3 w-3" /> ACTIVO
+                                            </div>
+                                            <div v-else class="flex items-center gap-1 text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-100">
+                                                <ArrowDownRight class="h-3 w-3" /> AGOTADO
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mt-5 space-y-2.5">
+                                        <div class="flex items-center justify-between text-[11px]">
+                                            <span class="text-slate-400 font-medium flex items-center gap-1.5"><Building2 class="h-3 w-3" /> Gestión / Ubicación</span>
+                                            <span class="text-slate-700 font-bold truncate max-w-[120px]">{{ item.display_headquarter }}</span>
+                                        </div>
+                                        
+                                    </div>
+                                </CardContent>
+
+                                <div class="px-5 py-4 border-t border-slate-100 flex items-center justify-between bg-slate-50/10 group-hover:bg-slate-50/50 transition-colors">
+                                    <div class="flex -space-x-1.5 overflow-hidden">
+                                       <div class="h-6 w-6 rounded-full border-2 border-white bg-indigo-100 flex items-center justify-center text-[8px] font-bold text-indigo-600">HQ</div>
+                                       <div class="h-6 w-6 rounded-full border-2 border-white bg-amber-100 flex items-center justify-center text-[8px] font-bold text-amber-600">CF</div>
+                                    </div>
+                                    <button @click="openSizesModal(item)" class="text-[10px] font-black text-primary flex items-center gap-1 hover:gap-2 transition-all tracking-tighter uppercase">
+                                        AUDITAR STOCK <ArrowUpRight class="h-3.5 w-3.5" />
+                                    </button>
                                 </div>
-                                <button class="text-[10px] font-black text-primary flex items-center gap-1 hover:gap-2 transition-all tracking-tighter uppercase">
-                                    AUDITAR STOCK <ArrowUpRight class="h-3.5 w-3.5" />
-                                </button>
+                            </Card>
+                        </div>
+
+                        <!-- Table View -->
+                        <div v-else-if="viewMode === 'table' && activeTab !== 'units_transfers'" class="bg-white rounded-2xl border shadow-sm overflow-hidden mb-6">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow class="bg-slate-50/50 hover:bg-slate-50/50">
+                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px] w-[300px]">Item / Catálogo</TableHead>
+                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Atributos</TableHead>
+                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Gestión / Ubicación</TableHead>
+                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px] text-center">Disponible</TableHead>
+                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px] text-center">Estado</TableHead>
+                                        <TableHead class="w-[80px]"></TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    <template v-for="item in filteredStocks" :key="item.key">
+                                        <!-- Main EPP Row -->
+                                        <TableRow class="group transition-colors hover:bg-slate-50/50 cursor-pointer" @click="toggleRow(item.key)">
+                                            <TableCell>
+                                                <div class="flex items-center gap-3">
+                                                    <div class="p-1">
+                                                        <ChevronDown v-if="expandedRows.has(item.key)" class="h-4 w-4 text-slate-400" />
+                                                        <ChevronRight v-else class="h-4 w-4 text-slate-400" />
+                                                    </div>
+                                                    <div :class="[
+                                                        'p-2 rounded-lg',
+                                                        activeTab === 'clothes' ? 'bg-indigo-50 text-indigo-600' :
+                                                        activeTab === 'epps' ? 'bg-amber-50 text-amber-600' :
+                                                        activeTab === 'computer' ? 'bg-blue-50 text-blue-600' :
+                                                        activeTab === 'kitchen' ? 'bg-orange-50 text-orange-600' :
+                                                        'bg-emerald-50 text-emerald-600'
+                                                    ]">
+                                                        <component :is="getItemIcon(activeTab)" class="h-4 w-4" />
+                                                    </div>
+                                                    <div class="flex flex-col">
+                                                        <span class="font-bold text-slate-900">{{ item.stockable?.name }} ({{ item.nestedSizes.length }} tallas)</span>
+                                                        <span class="text-[10px] font-bold text-slate-400 tracking-wider uppercase">
+                                                            {{ activeTab }}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div class="flex flex-col gap-1">
+                                                    <template v-if="activeTab === 'computer'">
+                                                        <span class="text-xs font-semibold text-slate-700">{{ item.stockable?.brand }}</span>
+                                                        <span class="text-[10px] text-slate-500">{{ item.stockable?.model || 'Sin Modelo' }}</span>
+                                                    </template>
+                                                    <template v-else-if="activeTab === 'kitchen'">
+                                                        <span class="text-xs font-semibold text-slate-700">{{ item.stockable?.brand }}</span>
+                                                        <span class="text-[10px] text-slate-500">{{ item.stockable?.size }}</span>
+                                                    </template>
+                                                    <template v-else>
+                                                        <span class="text-xs text-slate-500 italic">Desglosado por tallas</span>
+                                                    </template>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div class="flex flex-col">
+                                                    <div class="flex items-center gap-1.5 text-xs">
+                                                        <Building2 class="h-3 w-3 text-slate-400" />
+                                                        <span class="font-medium text-slate-700">{{ item.display_headquarter }}</span>
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell class="text-center font-black text-slate-900 text-lg">
+                                                {{ item.quantity }}
+                                            </TableCell>
+                                            <TableCell class="text-center">
+                                                <div class="flex flex-col items-center gap-1">
+                                                    <Badge :variant="getStockStatus(item.quantity).variant" class="rounded-full px-2 shadow-none border-none text-[9px] uppercase font-black tracking-tighter">
+                                                        {{ getStockStatus(item.quantity).label }}
+                                                    </Badge>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Button @click.stop="openSizesModal(item)" variant="ghost" size="sm" class="h-8 w-8 p-0 text-slate-400 hover:text-primary transition-colors">
+                                                    <MoreHorizontal class="h-4 w-4" />
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+
+                                        <!-- Nested Sizes Level -->
+                                        <template v-if="expandedRows.has(item.key)">
+                                            <template v-for="sizeRow in item.nestedSizes" :key="sizeRow.label">
+                                                <TableRow class="bg-slate-50/30 border-l-4 border-l-primary/30 cursor-pointer" @click="toggleSizeRow(item.key, sizeRow.label)">
+                                                    <TableCell class="pl-12">
+                                                        <div class="flex items-center gap-2">
+                                                            <div class="p-0.5">
+                                                                <ChevronDown v-if="expandedSizeRows.has(`${item.key}-${sizeRow.label}`)" class="h-3 w-3 text-slate-400" />
+                                                                <ChevronRight v-else class="h-3 w-3 text-slate-400" />
+                                                            </div>
+                                                            <div class="h-6 w-6 rounded bg-primary/10 flex items-center justify-center text-[10px] font-black text-primary">
+                                                                {{ sizeRow.label.toUpperCase().slice(0, 2) }}
+                                                            </div>
+                                                            <span class="text-sm font-bold text-slate-700">Talla: {{ sizeRow.label }}</span>
+                                                        </div>
+                                                    </TableCell>
+                                                    <TableCell colspan="2" class="text-[11px] text-slate-400 italic">
+                                                        {{ sizeRow.nestedColors.length }} combinaciones de color
+                                                    </TableCell>
+                                                    <TableCell class="text-center font-bold text-slate-600">
+                                                        {{ sizeRow.total }}
+                                                    </TableCell>
+                                                    <TableCell colspan="2"></TableCell>
+                                                </TableRow>
+
+                                                <!-- Nested Colors Level -->
+                                                <template v-if="expandedSizeRows.has(`${item.key}-${sizeRow.label}`)">
+                                                    <TableRow v-for="colorData in sizeRow.nestedColors" :key="colorData.id" class="bg-slate-100/20 border-l-4 border-l-slate-200">
+                                                        <TableCell class="pl-24 py-2">
+                                                            <div class="flex items-center gap-3">
+                                                                <div 
+                                                                    class="h-3 w-3 rounded-full border border-white shadow-sm" 
+                                                                    :style="{ backgroundColor: colorData.color?.hex_code || '#ccc' }"
+                                                                ></div>
+                                                                <span class="text-xs font-semibold text-slate-600">{{ colorData.color?.name || 'Sin color' }}</span>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell colspan="2">
+                                                            <div class="flex flex-wrap gap-1">
+                                                                <Badge v-for="rec in colorData.records" :key="rec.id" variant="outline" class="text-[9px] py-0 px-1 border-slate-200 text-slate-400 bg-white">
+                                                                    {{ rec.headquarter?.name || rec.cafe?.name || 'N/A' }}: {{ rec.quantity }}
+                                                                </Badge>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell class="text-center font-black text-slate-900">
+                                                            {{ colorData.quantity }}
+                                                        </TableCell>
+                                                        <TableCell colspan="2"></TableCell>
+                                                    </TableRow>
+                                                </template>
+                                            </template>
+                                        </template>
+                                    </template>
+                                </TableBody>
+                            </Table>
+                        </div>
+
+                        <!-- Transfers Tab Content -->
+                        <div v-else-if="activeTab === 'units_transfers'" class="space-y-6">
+                            <div class="bg-white rounded-2xl border shadow-sm overflow-hidden mb-6">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow class="bg-indigo-50/30">
+                                            <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Fecha Envío</TableHead>
+                                            <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Destino (Unidad)</TableHead>
+                                            <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Personal Asignado</TableHead>
+                                            <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Items</TableHead>
+                                            <TableHead class="font-bold text-slate-500 uppercase text-[10px] text-center">Estado</TableHead>
+                                            <TableHead class="w-[120px]"></TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        <TableRow v-for="transfer in transfers" :key="transfer.id" class="group transition-colors hover:bg-slate-50/50">
+                                            <TableCell class="text-xs font-medium text-slate-600">
+                                                {{ new Date(transfer.created_at).toLocaleDateString() }}
+                                                <span class="block text-[10px] text-slate-400 font-mono">{{ new Date(transfer.created_at).toLocaleTimeString() }}</span>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div class="flex items-center gap-2">
+                                                    <div class="p-1.5 bg-indigo-100 rounded-lg text-indigo-600">
+                                                        <Building2 class="h-3.5 w-3.5" />
+                                                    </div>
+                                                    <div class="flex flex-col">
+                                                        <span class="font-bold text-slate-900 leading-tight">{{ transfer.unit?.name }}</span>
+                                                        <span class="text-[10px] text-slate-400 uppercase font-black tracking-tighter">{{ transfer.unit?.mine?.name }}</span>
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div class="flex items-center gap-2">
+                                                    <User class="h-3.5 w-3.5 text-slate-300" />
+                                                    <span class="text-sm text-slate-600">{{ transfer.staff?.name || 'Stock de Unidad' }}</span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell>
+                                                <div class="flex flex-wrap gap-1">
+                                                    <Badge v-for="item in transfer.items" :key="item.id" variant="outline" class="text-[10px] px-1.5 py-0 bg-white border-slate-200 text-slate-500 lowercase">
+                                                        {{ item.quantity }}x {{ item.stockable?.name }} ({{ item.size || 'U' }})
+                                                    </Badge>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell class="text-center">
+                                                <Badge :class="[
+                                                    'rounded-full px-2 shadow-none border-none text-[9px] uppercase font-black tracking-tighter',
+                                                    transfer.status === 'sent' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'
+                                                ]">
+                                                    {{ transfer.status === 'sent' ? 'En Tránsito / Uso' : 'Devuelto' }}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                <Button 
+                                                    v-if="transfer.status === 'sent'"
+                                                    @click="openReturnModal(transfer)" 
+                                                    variant="outline" 
+                                                    size="sm" 
+                                                    class="h-8 text-[10px] font-black tracking-tighter uppercase gap-1 bg-white hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 border-slate-200 transition-all rounded-lg"
+                                                >
+                                                    <History class="h-3.5 w-3.5" /> DEVOLVER
+                                                </Button>
+                                            </TableCell>
+                                        </TableRow>
+                                    </TableBody>
+                                </Table>
                             </div>
-                        </Card>
-                    </div>
+                        </div>
+                    </template>
                 </div>
+            </div>
             </div>
 
             <!-- Footer Metrics -->
@@ -806,7 +1228,122 @@ const getItemIcon = (type: string) => {
                     </Button>
                 </div>
             </div>
-        </div>
+
+            <!-- Sizes Details Modal -->
+            <Dialog v-model:open="isSizesModalOpen">
+                <DialogContent class="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle class="flex items-center gap-2">
+                            <Box class="h-5 w-5 text-indigo-600" />
+                            Detalle de Tallas
+                        </DialogTitle>
+                        <DialogDescription v-if="selectedStockForSizes">
+                            Stock histórico recibido para: {{ selectedStockForSizes.stockable?.name }}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div class="mt-4 space-y-4">
+                        <div class="relative">
+                            <Search class="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                            <Input 
+                                v-model="sizeSearch"
+                                placeholder="Buscar talla..." 
+                                class="pl-10 h-10 border-slate-200 focus:ring-indigo-500 rounded-xl"
+                            />
+                        </div>
+
+                        <div class="border rounded-2xl overflow-hidden shadow-sm">
+                            <div class="bg-slate-50 border-b px-4 py-2 flex justify-between text-[10px] font-black uppercase text-slate-400">
+                                <span>Talla</span>
+                                <span>Cant. Recibida</span>
+                            </div>
+                                <div v-if="isLoadingSizes" class="p-6 space-y-4">
+                                    <div v-for="i in 3" :key="i" class="flex justify-between items-center bg-slate-50/50 p-3 rounded-xl border border-slate-100 animate-pulse">
+                                        <div class="flex items-center gap-3">
+                                            <div class="h-8 w-8 rounded-lg bg-slate-200"></div>
+                                            <div class="space-y-2">
+                                                <div class="h-3 w-16 bg-slate-200 rounded"></div>
+                                                <div class="h-2 w-10 bg-slate-100 rounded"></div>
+                                            </div>
+                                        </div>
+                                        <div class="h-6 w-8 bg-slate-200 rounded-lg"></div>
+                                    </div>
+                                    <p class="text-[9px] text-slate-400 font-bold uppercase tracking-widest text-center animate-pulse">Recuperando registros...</p>
+                                </div>
+                                <div v-else-if="filteredStockSizes.length === 0" class="p-8 text-center">
+                                    <p class="text-xs text-slate-400 font-bold uppercase tracking-widest">No se encontraron registros</p>
+                                </div>
+                                <div v-else class="max-h-[350px] overflow-y-auto custom-scrollbar divide-y divide-slate-100">
+                                    <div v-for="group in filteredStockSizes" :key="group.title" class="px-4 py-4 space-y-3">
+                                        <div class="flex items-center gap-2 mb-2">
+                                            <div class="p-1 px-2 bg-slate-100 rounded text-[9px] font-black uppercase text-slate-500 border border-slate-200">
+                                                {{ group.hq }} - {{ group.cafe }}
+                                            </div>
+                                        </div>
+                                        <div v-for="(sz, idx) in group.items" :key="idx" class="flex justify-between items-center bg-white p-2 rounded-xl border border-slate-50 shadow-sm transition-all hover:border-indigo-100">
+                                            <div class="flex items-center gap-3">
+                                                <div class="h-8 w-8 rounded-lg bg-indigo-50 flex items-center justify-center text-[10px] font-black text-indigo-700 border border-indigo-100 uppercase">
+                                                    {{ sz.size ? sz.size.toUpperCase() : 'U' }}
+                                                </div>
+                                                <div v-if="sz.color" class="flex items-center gap-1.5">
+                                                    <div class="w-2.5 h-2.5 rounded-full border border-slate-200 shadow-sm" :style="{ backgroundColor: sz.color.hex_code }"></div>
+                                                    <span class="text-[10px] font-bold text-slate-500 uppercase">{{ sz.color.name }}</span>
+                                                </div>
+                                            </div>
+                                            <Badge variant="secondary" class="font-mono font-black text-xs px-2.5 py-0.5 rounded-lg bg-white border border-slate-200">
+                                                {{ sz.quantity }}
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                </div>
+                        </div>
+                    </div>
+                    
+                    <DialogFooter class="p-0 mt-2">
+                        <Button @click="isSizesModalOpen = false" variant="ghost" class="w-full font-bold uppercase tracking-widest text-[10px]">Cerrar</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <!-- Return Modal -->
+            <Dialog v-model:open="isReturnModalOpen">
+                <DialogContent class="sm:max-w-[500px] rounded-2xl p-0 overflow-hidden border-none shadow-2xl">
+                    <DialogHeader class="p-6 bg-rose-600 text-white">
+                        <DialogTitle class="text-xl font-black flex items-center gap-3">
+                            <History class="h-6 w-6 text-rose-200" />
+                            Confirmar Devolución
+                        </DialogTitle>
+                        <DialogDescription class="text-rose-100">
+                            Estos items retornarán al stock general (Principal).
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div class="p-6 space-y-4 bg-white">
+                        <div class="p-4 bg-slate-50 rounded-xl border border-slate-100 space-y-3">
+                            <div v-for="(item, idx) in returnForm.items" :key="idx" class="flex justify-between items-center text-sm">
+                                <div class="flex items-center gap-2">
+                                    <Package class="h-4 w-4 text-slate-400" />
+                                    <span class="font-bold text-slate-700">{{ item.name }} ({{ item.size || 'U' }})</span>
+                                </div>
+                                <span class="font-black text-rose-600 bg-white px-2 py-0.5 rounded-lg border border-slate-100">{{ item.quantity }}</span>
+                            </div>
+                        </div>
+                        
+                        <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">
+                            ¿Estás seguro de que este stock regresó al almacén?
+                        </p>
+                    </div>
+
+                    <DialogFooter class="p-6 bg-slate-50 border-t flex gap-3 sm:justify-center">
+                        <Button variant="ghost" @click="isReturnModalOpen = false" class="font-bold uppercase text-[10px] text-slate-500">
+                            Cancelar
+                        </Button>
+                        <Button @click="handleReturn" class="bg-rose-600 hover:bg-rose-700 text-white px-8 font-black uppercase text-[10px] tracking-widest shadow-lg">
+                            Sí, Devolver a Principal
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
     </AppLayout>
 </template>
 

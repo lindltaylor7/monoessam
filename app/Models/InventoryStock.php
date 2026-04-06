@@ -13,8 +13,17 @@ class InventoryStock extends Model
         'stockable_type',
         'headquarter_id',
         'cafe_id',
+        'unit_id',
         'quantity',
+        'size',
+        'color_id',
+        'condition',
     ];
+
+    public function unit(): BelongsTo
+    {
+        return $this->belongsTo(Unit::class);
+    }
 
     public function stockable(): MorphTo
     {
@@ -29,5 +38,10 @@ class InventoryStock extends Model
     public function cafe(): BelongsTo
     {
         return $this->belongsTo(Cafe::class);
+    }
+
+    public function color(): BelongsTo
+    {
+        return $this->belongsTo(Color::class);
     }
 }

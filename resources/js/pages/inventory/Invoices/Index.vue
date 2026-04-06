@@ -13,7 +13,7 @@ import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
 } from '@/components/ui/select';
 import { 
-    Plus, Trash2, Calendar, FileText, Truck, Building, Box, Shirt, ArrowUpRight, History, MoreHorizontal, Edit2, UploadCloud, Loader2
+    Plus, Trash2, Calendar, FileText, Truck, Building, Box, Shirt, ArrowUpRight, History, MoreHorizontal, Edit2, UploadCloud, Loader2, Tags, Search
 } from 'lucide-vue-next';
 import { 
     Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
@@ -31,6 +31,8 @@ interface Props {
     colors: any[];
     epps: any[];
     cities: any[];
+    all_sizes: any[];
+    epp_categories: any[];
 }
 
 const props = defineProps<Props>();
@@ -41,9 +43,9 @@ const invoiceForm = ref({
     business_id: '',
     headquarter_id: '',
     cloth_provider_id: '',
+    document_type: 'factura',
     invoice_number: '',
     date: new Date().toISOString().split('T')[0],
-    cafe_id: '',
     notes: '',
     invoice_image: null as File | null,
     items: [
@@ -88,11 +90,11 @@ const onItemSelect = (uniqueId: string, index: number) => {
         if (selected.type === 'cloth') {
             item.cloth_id = String(selected.id);
             item.epp_id = '';
-            item.unit_price = 0; // Clothes don't have cost_price in this model yet
+            item.unit_price = 0; 
         } else {
             item.epp_id = String(selected.id);
             item.cloth_id = '';
-            item.unit_price = Number(selected.cost_price || 0);
+            item.unit_price = 0; 
         }
         item.size = ''; // Reset size on item change
     }
@@ -114,6 +116,12 @@ const getSizesForItem = (uniqueId: string) => {
     return []; // Cloth models don't have sizes relation in migration yet
 };
 
+const getAvailablePrices = (eppId: string | number, providerId: string | number) => {
+    const epp = props.epps.find(e => String(e.id) === String(eppId));
+    if (!epp || !epp.city_providers) return [];
+    return epp.city_providers.filter((cp: any) => String(cp.cloth_provider_id) === String(providerId));
+};
+
 
 const addInvoiceItem = () => {
     invoiceForm.value.items.push({ cloth_id: '', epp_id: '', color_id: '', size: '', quantity: 1, unit_price: 0 });
@@ -125,6 +133,21 @@ const removeInvoiceItem = (index: number) => {
     }
 };
 
+const totalAmount = computed(() => {
+    return invoiceForm.value.items.reduce((acc, item) => acc + (item.quantity * item.unit_price), 0);
+});
+
+const subtotal = computed(() => {
+    if (invoiceForm.value.document_type === 'factura') {
+        return totalAmount.value / 1.18;
+    }
+    return totalAmount.value;
+});
+
+const igv = computed(() => {
+    return totalAmount.value - subtotal.value;
+});
+
 const handleInvoiceImageUpload = (e: Event) => {
     const target = e.target as HTMLInputElement;
     invoiceForm.value.invoice_image = target.files?.[0] || null;
@@ -133,10 +156,21 @@ const handleInvoiceImageUpload = (e: Event) => {
 const isInvoiceSubmitDisabled = computed(() => {
     return !invoiceForm.value.business_id || 
            !invoiceForm.value.cloth_provider_id || 
-           !invoiceForm.value.cafe_id || 
            (filteredHeadquarters.value.length > 0 && !invoiceForm.value.headquarter_id) ||
            invoiceForm.value.items.length === 0 || 
-           invoiceForm.value.items.some(i => (!i.cloth_id && !i.epp_id) || i.quantity <= 0);
+           invoiceForm.value.items.some(i => {
+               const hasItem = i.cloth_id || i.epp_id;
+               const validQty = i.quantity > 0;
+               const hasSize = i.size && i.size.trim() !== '';
+               
+               // Verification for EPP
+               if (i.epp_id) {
+                   const sizes = getSizesForItem(`epp_${i.epp_id}`);
+                   return !hasItem || !validQty || !hasSize || sizes.length === 0;
+               }
+               
+               return !hasItem || !validQty || !hasSize;
+           });
 });
 
 const handleInvoiceSubmit = () => {
@@ -170,9 +204,9 @@ const resetInvoiceForm = () => {
         business_id: '',
         headquarter_id: '',
         cloth_provider_id: '',
+        document_type: 'factura',
         invoice_number: '',
         date: new Date().toISOString().split('T')[0],
-        cafe_id: '',
         notes: '',
         invoice_image: null as File | null,
         items: [{ cloth_id: '', epp_id: '', color_id: '', size: '', quantity: 1, unit_price: 0 }]
@@ -221,16 +255,70 @@ const deleteProvider = (id: number) => {
     }
 };
 
-// --- EPP Logic ---
 const isEppModalOpen = ref(false);
-const eppForm = ref({ name: '', cost_price: '' });
+const eppForm = ref({ 
+    name: '',
+    category_epp_id: 'none',
+    size_ids: [] as number[]
+});
 
 const handleEppSubmit = () => {
-    router.post(route('inventory.epps.store'), eppForm.value, {
+    const submitData = {
+        ...eppForm.value,
+        category_epp_id: eppForm.value.category_epp_id === 'none' ? null : eppForm.value.category_epp_id
+    };
+
+    router.post(route('inventory.epps.store'), submitData, {
         onSuccess: () => {
             isEppModalOpen.value = false;
             eppForm.value.name = '';
-            eppForm.value.cost_price = '';
+            eppForm.value.category_epp_id = 'none';
+            eppForm.value.size_ids = [];
+        }
+    });
+};
+
+// --- EPP Category Logic ---
+const isCategoryModalOpen = ref(false);
+const categoryForm = ref({ name: '' });
+
+const handleCategorySubmit = () => {
+    router.post(route('inventory.epp-categories.store'), categoryForm.value, {
+        onSuccess: () => {
+            isCategoryModalOpen.value = false;
+            categoryForm.value.name = '';
+        }
+    });
+};
+
+// --- EPP Price Logic ---
+const isPriceModalOpen = ref(false);
+const selectedEppForPrice = ref<any>(null);
+const priceForm = ref({
+    epp_id: '',
+    cloth_provider_id: '',
+    city_id: '',
+    cost_price: ''
+});
+
+const openPriceModal = (epp: any, providerId: string | number | null = null) => {
+    selectedEppForPrice.value = epp;
+    priceForm.value = {
+        epp_id: String(epp.id),
+        cloth_provider_id: providerId ? String(providerId) : '',
+        city_id: '',
+        cost_price: ''
+    };
+    isPriceModalOpen.value = true;
+};
+
+const handlePriceSubmit = () => {
+    router.post(route('inventory.epps.assign-price'), priceForm.value, {
+        onSuccess: () => {
+            priceForm.value.cloth_provider_id = '';
+            priceForm.value.city_id = '';
+            priceForm.value.cost_price = '';
+             isPriceModalOpen.value = false;
         }
     });
 };
@@ -240,10 +328,25 @@ const isAssignEppModalOpen = ref(false);
 const assigningProvider = ref<any>(null);
 const selectedEppIds = ref<number[]>([]);
 const selectedClothIds = ref<number[]>([]);
+const eppAssignmentSearch = ref('');
+
+const filteredEppsForAssignment = computed(() => {
+    if (!eppAssignmentSearch.value) return props.epps;
+    const s = eppAssignmentSearch.value.toLowerCase();
+    return props.epps.filter(e => e.name.toLowerCase().includes(s));
+});
 
 const openAssignModal = (provider: any) => {
     assigningProvider.value = provider;
-    selectedEppIds.value = provider.epps.map((e: any) => e.id);
+    eppAssignmentSearch.value = ''; // Reset search
+    
+    // Get unique IDs from both the pivot relationship and the city_providers price table
+    const pivotIds = provider.epps.map((e: any) => e.id);
+    const ternaryIds = props.epps
+        .filter(epp => epp.city_providers?.some((cp: any) => String(cp.cloth_provider_id) === String(provider.id)))
+        .map(epp => epp.id);
+
+    selectedEppIds.value = [...new Set([...pivotIds, ...ternaryIds])];
     selectedClothIds.value = provider.clothes?.map((c: any) => c.id) || [];
     isAssignEppModalOpen.value = true;
 };
@@ -295,7 +398,6 @@ const isSizeModalOpen = ref(false);
 const selectedEppForSizes = ref<any>(null);
 const sizeForm = ref({
     epp_id: '',
-    city_id: '',
     size: ''
 });
 
@@ -303,7 +405,6 @@ const openSizeModal = (epp: any) => {
     selectedEppForSizes.value = epp;
     sizeForm.value = {
         epp_id: epp.id,
-        city_id: '',
         size: ''
     };
     isSizeModalOpen.value = true;
@@ -312,7 +413,6 @@ const openSizeModal = (epp: any) => {
 const handleSizeSubmit = () => {
     router.post(route('inventory.epp-sizes.store'), sizeForm.value, {
         onSuccess: () => {
-            sizeForm.value.city_id = '';
             sizeForm.value.size = '';
             // Update the local list if needed or let Inertia reload
         }
@@ -324,6 +424,43 @@ const deleteSize = (id: number) => {
         router.delete(route('inventory.epp-sizes.destroy', id));
     }
 };
+
+// --- EPP Inline Editing ---
+const editingPriceId = ref<number | null>(null);
+const tempPriceValue = ref('');
+
+const startEditingPrice = (cp: any) => {
+    editingPriceId.value = cp.id;
+    tempPriceValue.value = String(cp.cost_price);
+};
+
+const saveInlinePrice = (cp: any) => {
+    if (editingPriceId.value === null) return;
+    
+    const newPrice = parseFloat(tempPriceValue.value);
+    if (isNaN(newPrice) || newPrice < 0) {
+        editingPriceId.value = null;
+        return;
+    }
+
+    // Only update if value changed
+    if (newPrice !== parseFloat(cp.cost_price)) {
+        router.post(route('inventory.epps.assign-price'), {
+            epp_id: cp.epp_id,
+            cloth_provider_id: cp.cloth_provider_id,
+            city_id: cp.city_id,
+            cost_price: newPrice
+        }, {
+            preserveScroll: true,
+            onSuccess: () => {
+                editingPriceId.value = null;
+            }
+        });
+    } else {
+        editingPriceId.value = null;
+    }
+};
+
 
 </script>
 
@@ -359,7 +496,7 @@ const deleteSize = (id: number) => {
                                 <Plus class="h-4 w-4" /> Ingresar Factura
                             </Button>
                         </DialogTrigger>
-                        <DialogContent class="sm:max-w-[900px] max-h-[100vh] overflow-y-auto">
+                        <DialogContent class="sm:max-w-[1400px] max-h-[100vh] overflow-y-auto">
                             <DialogHeader>
                                 <DialogTitle class="flex items-center gap-2">
                                     <FileText class="h-5 w-5 text-indigo-600" />
@@ -397,17 +534,20 @@ const deleteSize = (id: number) => {
                                             </SelectContent>
                                         </Select>
                                     </div>
+
                                     <div class="space-y-2">
-                                        <Label class="text-xs font-bold uppercase text-slate-500">Punto de Acopio (Café)</Label>
-                                        <Select v-model="invoiceForm.cafe_id">
+                                        <Label class="text-xs font-bold uppercase text-slate-500">Tipo de Documento</Label>
+                                        <Select v-model="invoiceForm.document_type">
                                             <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem v-for="cafe in cafes" :key="cafe.id" :value="String(cafe.id)">{{ cafe.name }} - {{ cafe.unit.name }}</SelectItem>
+                                                <SelectItem value="factura">Factura (Con IGV)</SelectItem>
+                                                <SelectItem value="boleta">Boleta (Sin IGV)</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
+
                                     <div class="space-y-2">
-                                        <Label class="text-xs font-bold uppercase text-slate-500">Nº Factura</Label>
+                                        <Label class="text-xs font-bold uppercase text-slate-500">Nº Documento</Label>
                                         <Input v-model="invoiceForm.invoice_number" placeholder="Ej: F-001-123" class="bg-white" />
                                     </div>
                                     <div class="space-y-2">
@@ -442,22 +582,27 @@ const deleteSize = (id: number) => {
                                                     <th class="px-4 py-3">Item (Prenda/EPP)</th>
                                                     <th class="px-4 py-3">Talla</th>
                                                     <th class="px-4 py-3">Color</th>
-                                                    <th class="px-4 py-3 w-20">Cant.</th>
-                                                    <th class="px-4 py-3 w-32">P. Unitario</th>
-                                                    <th class="px-4 py-3 w-32">Total</th>
-                                                    <th class="px-4 py-3 w-12 text-center"></th>
+                                                    <th class="px-4 py-3 w-24">Cant.</th>
+                                                    <th class="px-4 py-3 w-24">P. Unitario</th>
+                                                    <th class="px-4 py-3 w-24 text-right">Subtotal</th>
+                                                    <th v-if="invoiceForm.document_type === 'factura'" class="px-4 py-3 w-24 text-right">IGV (18%)</th>
+                                                    <th class="px-4 py-3 w-28 text-right">Total</th>
+                                                    <th class="px-4 py-3 w-10 text-center"></th>
                                                 </tr>
                                             </thead>
                                             <tbody class="divide-y">
                                                 <tr v-for="(item, index) in invoiceForm.items" :key="index" class="group hover:bg-slate-50/50 transition-colors">
-                                                    <td class="p-3">
+                                                   <td class="p-3">
                                                         <Select :model-value="getItemUniqueId(item)" @update:model-value="onItemSelect($event as string, index)">
-                                                            <SelectTrigger class="h-9 border-none shadow-none focus:ring-1"><SelectValue placeholder="Elegir..." /></SelectTrigger>
+                                                            <SelectTrigger class="h-9 w-[200px] border-none shadow-none focus:ring-1 justify-start">
+                                                                <SelectValue placeholder="Elegir..." class="truncate" />
+                                                            </SelectTrigger>
+                                                            
                                                             <SelectContent>
                                                                 <SelectItem v-for="c in getAvailableClothes(invoiceForm.cloth_provider_id)" :key="c.unique_id" :value="c.unique_id">
                                                                     <div class="flex items-center gap-2">
                                                                         <component :is="c.type === 'cloth' ? Shirt : Box" class="h-3.5 w-3.5 text-slate-400" />
-                                                                        {{ c.name }}
+                                                                        <span class="truncate">{{ c.name }}</span>
                                                                     </div>
                                                                 </SelectItem>
                                                             </SelectContent>
@@ -469,10 +614,16 @@ const deleteSize = (id: number) => {
                                                                 <SelectTrigger class="h-9 border-none shadow-none focus:ring-1"><SelectValue placeholder="Talla" /></SelectTrigger>
                                                                 <SelectContent>
                                                                     <SelectItem v-for="s in getSizesForItem(getItemUniqueId(item))" :key="s.id" :value="s.size">
-                                                                        {{ s.size }} <span class="text-[10px] text-slate-400 text-right">({{ s.city?.name }})</span>
+                                                                        {{ s.size }}
                                                                     </SelectItem>
                                                                 </SelectContent>
                                                             </Select>
+                                                        </div>
+                                                        <div v-else-if="item.epp_id" class="flex flex-col items-center justify-center p-1 bg-rose-50 rounded-lg border border-rose-100">
+                                                            <span class="text-[8px] text-rose-600 font-black uppercase text-center leading-tight mb-1">Requiere<br>asignar tallas</span>
+                                                            <Button @click="openSizeModal(props.epps.find(e => String(e.id) === String(item.epp_id)))" variant="ghost" size="sm" class="h-5 text-[8px] text-indigo-600 font-bold p-0 hover:bg-transparent hover:text-indigo-700">
+                                                                Configurar
+                                                            </Button>
                                                         </div>
                                                         <Input v-else v-model="item.size" placeholder="Talla..." class="h-9 border-none shadow-none focus:ring-1" />
                                                     </td>
@@ -494,12 +645,33 @@ const deleteSize = (id: number) => {
                                                         <Input type="number" v-model="item.quantity" min="1" class="h-9 border-none shadow-none focus:ring-1 text-center font-bold" />
                                                     </td>
                                                     <td class="p-3">
-                                                        <div class="relative">
+                                                        <div v-if="item.epp_id && getAvailablePrices(item.epp_id, invoiceForm.cloth_provider_id).length > 0" class="flex flex-col gap-1">
+                                                            <Select v-model="item.unit_price">
+                                                                <SelectTrigger class="h-9 border-none shadow-none focus:ring-1 text-xs font-bold text-indigo-600">
+                                                                    <SelectValue placeholder="Elegir Precio" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    <SelectItem v-for="cp in getAvailablePrices(item.epp_id, invoiceForm.cloth_provider_id)" :key="cp.id" :value="Number(cp.cost_price)">
+                                                                        S/.{{ Number(cp.cost_price).toFixed(2) }} ({{ cp.city?.name }})
+                                                                    </SelectItem>
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div v-else class="relative">
                                                             <span class="absolute left-2 top-2 text-slate-400 text-xs">S/.</span>
                                                             <Input type="number" v-model="item.unit_price" step="0.01" class="h-9 pl-6 border-none shadow-none focus:ring-1 font-bold text-indigo-600" />
                                                         </div>
                                                     </td>
-                                                    <td class="p-3 font-bold text-slate-900">
+                                                                                                      <!-- Subtotal Item (Base Imponible si es factura) -->
+                                                    <td class="p-3 text-right text-xs font-medium text-slate-600">
+                                                        S/.{{ (invoiceForm.document_type === 'factura' ? (item.quantity * item.unit_price) / 1.18 : (item.quantity * item.unit_price)).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                    </td>
+                                                    <!-- IGV Item (Desglosado si es factura) -->
+                                                    <td v-if="invoiceForm.document_type === 'factura'" class="p-3 text-right text-xs font-medium text-indigo-500">
+                                                        S/.{{ ((item.quantity * item.unit_price) - ((item.quantity * item.unit_price) / 1.18)).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                    </td>
+                                                    <!-- Total Item (Precio real ingresado) -->
+                                                    <td class="p-3 text-right font-bold text-slate-900 text-xs">
                                                         S/.{{ (item.quantity * item.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
                                                     </td>
                                                     <td class="p-3 text-center">
@@ -509,11 +681,35 @@ const deleteSize = (id: number) => {
                                                     </td>
                                                 </tr>
                                             </tbody>
-                                            <tfoot class="bg-indigo-50/30 border-t">
+                                            <tfoot class="bg-slate-50 border-t border-slate-200">
                                                 <tr>
-                                                    <td colspan="4" class="px-4 py-3 text-right font-black uppercase text-slate-500 text-[10px]">Importe Total</td>
-                                                    <td class="px-4 py-3 text-lg font-black text-indigo-700">
-                                                        S/.{{ invoiceForm.items.reduce((acc, item) => acc + (item.quantity * item.unit_price), 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                    <td :colspan="invoiceForm.document_type === 'factura' ? 6 : 5" rowspan="3" class="px-4 py-3 align-top">
+                                                        <div class="p-3 bg-white rounded-xl border border-dashed border-slate-200 text-[10px] text-slate-400">
+                                                            <p class="font-bold uppercase tracking-widest mb-1">Notas de Cálculo:</p>
+                                                            <p v-if="invoiceForm.document_type === 'factura'">• Los precios ingresados ya **incluyen** IGV.</p>
+                                                            <p v-if="invoiceForm.document_type === 'factura'">• Se extrae el 18% para mostrar la base imponible.</p>
+                                                            <p v-else>• Las boletas no desglosan impuestos; el total es el monto bruto.</p>
+                                                        </div>
+                                                    </td>
+                                                    <td class="px-4 py-2 text-right font-bold text-slate-500 text-[11px] uppercase tracking-wider">Subtotal Gravado</td>
+                                                    <td class="px-4 py-2 text-right font-mono font-bold text-slate-700">
+                                                        S/.{{ subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                    </td>
+                                                    <td></td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="px-4 py-2 text-right font-bold text-slate-500 text-[11px] uppercase tracking-wider">IGV (18%)</td>
+                                                    <td class="px-4 py-2 text-right font-mono font-bold text-slate-600">
+                                                        S/.{{ igv.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                    </td>
+                                                    <td></td>
+                                                </tr>
+                                                <tr class="bg-indigo-50/50">
+                                                    <td class="px-4 py-3 text-right font-black text-indigo-900 text-[12px] uppercase tracking-widest">Total Factura</td>
+                                                    <td class="px-4 py-3 text-right">
+                                                        <span class="text-xl font-black text-indigo-700 font-mono">
+                                                            S/.{{ totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                        </span>
                                                     </td>
                                                     <td></td>
                                                 </tr>
@@ -564,6 +760,7 @@ const deleteSize = (id: number) => {
                                         <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Empresa / Sede</TableHead>
                                         <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Proveedor</TableHead>
                                         <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Fecha</TableHead>
+                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Registrado por</TableHead>
                                         <TableHead class="font-bold text-slate-500 uppercase text-[10px] text-right">Total</TableHead>
                                         <TableHead class="w-[50px]"></TableHead>
                                     </TableRow>
@@ -579,6 +776,14 @@ const deleteSize = (id: number) => {
                                         </TableCell>
                                         <TableCell class="font-medium text-slate-700">{{ inv.provider?.name }}</TableCell>
                                         <TableCell class="text-slate-500">{{ inv.date  }}</TableCell>
+                                        <TableCell>
+                                            <div class="flex items-center gap-2">
+                                                <div class="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">
+                                                    {{ inv.user?.name?.charAt(0) || '?' }}
+                                                </div>
+                                                <span class="text-xs text-slate-600">{{ inv.user?.name || 'Sistema' }}</span>
+                                            </div>
+                                        </TableCell>
                                         <TableCell class="text-right font-black text-slate-900">
                                             S/.{{ Number(inv.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
                                         </TableCell>
@@ -653,31 +858,50 @@ const deleteSize = (id: number) => {
                                 <TableHeader>
                                     <TableRow class="bg-slate-50/50 hover:bg-slate-50/50">
                                         <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Nombre</TableHead>
+                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Categoría</TableHead>
                                         <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Precio Costo</TableHead>
-                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Tallas por Ciudad</TableHead>
+                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Tallas Estándar</TableHead>
                                         <TableHead class="w-[100px]"></TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    <TableRow v-for="epp in epps" :key="epp.id" class="group transition-colors">
+                                    <TableRow v-for="epp in epps" :key="epp.id" :class="'group transition-colors ' + (epp.id % 2 === 0 ? '' : 'bg-slate-50/30')">
                                         <TableCell class="font-bold text-slate-900">{{ epp.name }}</TableCell>
-                                        <TableCell class="font-medium text-slate-600">S/.{{ Number(epp.cost_price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</TableCell>
                                         <TableCell>
-                                            <div class="flex flex-wrap gap-2">
-                                                <Badge v-for="sz in epp.sizes" :key="sz.id" variant="outline" class="gap-1 pr-1 border-slate-200 bg-slate-50">
-                                                    <span class="font-bold text-indigo-600">{{ sz.size }}</span> 
-                                                    <span class="text-[10px] text-slate-400">({{ sz.city?.name }})</span>
-                                                    <Button @click="deleteSize(sz.id)" variant="ghost" size="sm" class="h-4 w-4 p-0 text-slate-300 hover:text-rose-600">
-                                                        <Trash2 class="h-2.5 w-2.5" />
-                                                    </Button>
+                                            <Badge v-if="epp.category" variant="outline" class="bg-indigo-50 text-indigo-700 border-indigo-100 flex items-center gap-1 w-fit">
+                                                <Tags class="h-3 w-3" /> {{ epp.category.name }}
+                                            </Badge>
+                                            <span v-else class="text-xs text-slate-400 italic">Sin Categoría</span>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div class="flex flex-col gap-1.5 max-w-[300px]">
+                                                <div v-for="cp in epp.city_providers" :key="cp.id" class="flex items-center justify-between p-1.5 rounded-lg border border-indigo-100 bg-indigo-50/20 text-[10px]">
+                                                    <span class="font-bold text-slate-700 truncate mr-2" :title="cp.provider?.name">{{ cp.provider?.name }}</span>
+                                                    <div class="flex items-center gap-2 shrink-0">
+                                                        <Badge variant="outline" class="h-4 border-slate-200 text-slate-500 whitespace-nowrap">{{ cp.city?.name }}</Badge>
+                                                        <span class="font-black text-indigo-600 font-mono">S/.{{ Number(cp.cost_price).toFixed(2) }}</span>
+                                                    </div>
+                                                </div>
+                                                <span v-if="!epp.city_providers || epp.city_providers.length === 0" class="text-xs text-slate-400 italic">Precios no asignados</span>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div class="flex flex-wrap gap-1.5 max-w-[200px]">
+                                                <Badge v-for="sz in epp.sizes" :key="sz.id" class="bg-indigo-600 text-[9px] font-black uppercase tracking-tighter">
+                                                    {{ sz.size }}
                                                 </Badge>
-                                                <span v-if="epp.sizes.length === 0" class="text-xs text-slate-400 italic">Sin tallas registradas</span>
+                                                <span v-if="!epp.sizes?.length" class="text-xs text-slate-400 italic">Sin tallas base</span>
                                             </div>
                                         </TableCell>
                                         <TableCell class="text-right">
-                                            <Button @click="openSizeModal(epp)" variant="ghost" size="sm" class="h-8 gap-2 text-indigo-600 hover:bg-indigo-50">
-                                                <Plus class="h-4 w-4" /> <span class="text-xs font-bold uppercase">Talla</span>
-                                            </Button>
+                                            <div class="flex justify-end gap-1">
+                                                <Button @click="openPriceModal(epp)" variant="ghost" size="sm" class="h-8 gap-2 text-indigo-600 hover:bg-indigo-50">
+                                                    <Truck class="h-4 w-4" /> <span class="text-xs font-bold uppercase">Precio</span>
+                                                </Button>
+                                                <Button @click="openSizeModal(epp)" variant="ghost" size="sm" class="h-8 gap-2 text-indigo-600 hover:bg-indigo-50">
+                                                    <Plus class="h-4 w-4" /> <span class="text-xs font-bold uppercase">Talla</span>
+                                                </Button>
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                     <TableRow v-if="epps.length === 0">
@@ -724,28 +948,52 @@ const deleteSize = (id: number) => {
 
             <!-- Epp Insertion Modal -->
             <Dialog v-model:open="isEppModalOpen">
-                <DialogContent class="sm:max-w-[400px]">
+                <DialogContent class="sm:max-w-[450px]">
                     <DialogHeader>
                         <DialogTitle>Nuevo Elemento de Protección (EPP)</DialogTitle>
-                        <DialogDescription>Ingrese el nombre del nuevo elemento para el inventario.</DialogDescription>
+                        <DialogDescription>Ingrese el nombre del nuevo elemento y seleccione las tallas base disponibles.</DialogDescription>
                     </DialogHeader>
-                    <div class="space-y-4 py-4">
+                    <div class="space-y-6 py-4">
                         <div class="grid gap-2">
-                            <Label>Nombre del EPP</Label>
-                            <Input v-model="eppForm.name" placeholder="Ej: Guantes de Nitrilo" />
+                            <Label class="text-xs font-bold uppercase text-slate-500 tracking-widest">Nombre del EPP</Label>
+                            <Input v-model="eppForm.name" placeholder="Ej: Guantes de Nitrilo" class="border-slate-200" />
                         </div>
+
                         <div class="grid gap-2">
-                            <Label>Precio de Costo (Opcional)</Label>
-                            <div class="relative">
-                                <span class="absolute left-3 top-2.5 text-slate-400 text-sm">S/.</span>
-                                <Input v-model="eppForm.cost_price" type="number" step="0.01" placeholder="0.00" class="pl-10" />
+                            <div class="flex items-center justify-between">
+                                <Label class="text-xs font-bold uppercase text-slate-500 tracking-widest">Categoría</Label>
+                                <Button @click="isCategoryModalOpen = true" variant="ghost" class="h-6 text-[10px] gap-1 text-indigo-600 hover:text-indigo-700 p-0">
+                                    <Plus class="h-3 w-3" /> Nueva Categoría
+                                </Button>
+                            </div>
+                            <Select v-model="eppForm.category_epp_id">
+                                <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar categoría (Opcional)" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">Ninguna</SelectItem>
+                                    <SelectItem v-for="cat in epp_categories || []" :key="cat.id" :value="String(cat.id)">{{ cat.name }}</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div class="space-y-3">
+                            <Label class="text-xs font-bold uppercase text-slate-500 tracking-widest flex items-center gap-2">
+                                <Plus class="h-3 w-3" /> Tallas Estándar (Selección Múltiple)
+                            </Label>
+                            <div class="grid grid-cols-4 gap-2 border rounded-2xl p-4 bg-slate-50/50 max-h-[200px] overflow-y-auto">
+                                <label v-for="size in all_sizes" :key="size.id" 
+                                    class="flex items-center gap-2 p-2 rounded-xl border bg-white transition-all cursor-pointer hover:border-indigo-400"
+                                    :class="eppForm.size_ids.includes(size.id) ? 'border-indigo-600 ring-1 ring-indigo-600' : 'border-slate-100'"
+                                >
+                                    <input type="checkbox" :value="size.id" v-model="eppForm.size_ids" class="h-3 w-3 rounded text-indigo-600" />
+                                    <span class="text-xs font-bold text-slate-700">{{ size.name }}</span>
+                                </label>
                             </div>
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="ghost" @click="isEppModalOpen = false">Cancelar</Button>
-                        <Button @click="handleEppSubmit" :disabled="!eppForm.name" class="bg-slate-900 text-white hover:bg-slate-800">
-                            Guardar EPP
+                        <Button variant="ghost" @click="isEppModalOpen = false" class="font-bold">Cancelar</Button>
+                        <Button @click="handleEppSubmit" :disabled="!eppForm.name" class="bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100 font-bold">
+                            Registrar EPP con Tallas
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -764,15 +1012,25 @@ const deleteSize = (id: number) => {
                     <div class="py-4 max-h-[500px] overflow-y-auto pr-2 space-y-6">
                         <!-- EPPs Section -->
                         <div class="space-y-3">
-                            <h3 class="text-sm font-bold text-slate-500 uppercase flex items-center gap-2 px-1">
-                                <Box class="h-4 w-4" /> Catálogo de EPPs
-                            </h3>
-                            <div v-if="epps.length === 0" class="text-center py-4 text-slate-400 italic text-xs">
-                                No hay EPPs registrados.
+                            <div class="flex items-center justify-between px-1">
+                                <h3 class="text-sm font-bold text-slate-500 uppercase flex items-center gap-2">
+                                    <Box class="h-4 w-4" /> Catálogo de EPPs
+                                </h3>
+                                <div class="relative w-48">
+                                    <Search class="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                                    <Input 
+                                        v-model="eppAssignmentSearch" 
+                                        placeholder="Buscar EPP..." 
+                                        class="h-8 pl-8 text-[10px] rounded-xl border-slate-200 focus:ring-indigo-500" 
+                                    />
+                                </div>
+                            </div>
+                            <div v-if="filteredEppsForAssignment.length === 0" class="text-center py-4 text-slate-400 italic text-xs">
+                                No se encontraron EPPs.
                             </div>
                             <div class="grid grid-cols-1 gap-2">
                                 <label 
-                                    v-for="epp in epps" 
+                                    v-for="epp in filteredEppsForAssignment" 
                                     :key="epp.id" 
                                     class="flex items-center gap-3 p-2.5 rounded-xl border transition-all cursor-pointer hover:bg-slate-50"
                                     :class="selectedEppIds.includes(epp.id) ? 'border-indigo-600 bg-indigo-50/50' : 'border-slate-100'"
@@ -784,6 +1042,41 @@ const deleteSize = (id: number) => {
                                         class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
                                     />
                                     <span class="text-sm font-semibold text-slate-700">{{ epp.name }}</span>
+                                    
+                                    <!-- Prices for this specific provider -->
+                                    <div class="ml-auto flex flex-col items-end gap-1">
+                                        <div v-if="assigningProvider && epp.city_providers?.some((cp: any) => String(cp.cloth_provider_id) === String(assigningProvider.id))" 
+                                             class="flex flex-col items-end gap-1">
+                                            <div v-for="cp in epp.city_providers.filter((cp: any) => String(cp.cloth_provider_id) === String(assigningProvider.id))" 
+                                                 :key="cp.id"
+                                                 class="text-[10px] font-black text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-200 flex items-center gap-1.5"
+                                                 @dblclick.stop="startEditingPrice(cp)"
+                                            >
+                                                <span class="text-[8px] text-slate-400 uppercase tracking-tighter">{{ cp.city?.name }}</span>
+                                                
+                                                <template v-if="editingPriceId === cp.id">
+                                                    <input 
+                                                        v-model="tempPriceValue"
+                                                        class="w-16 h-4 px-1 text-[10px] border border-indigo-500 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                                                        @blur="saveInlinePrice(cp)"
+                                                        @keyup.enter="saveInlinePrice(cp)"
+                                                        @click.stop
+                                                    />
+                                                </template>
+                                                <span v-else>S/.{{ Number(cp.cost_price).toFixed(2) }}</span>
+                                            </div>
+                                        </div>
+                                        
+                                        <Button 
+                                            v-if="assigningProvider"
+                                            variant="ghost" 
+                                            size="sm" 
+                                            class="h-5 px-1.5 text-[8px] font-bold uppercase text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50"
+                                            @click.stop.prevent="openPriceModal(epp, assigningProvider.id)"
+                                        >
+                                            <Plus class="h-2.5 w-2.5 mr-1" /> Precio
+                                        </Button>
+                                    </div>
                                 </label>
                             </div>
                         </div>
@@ -828,18 +1121,9 @@ const deleteSize = (id: number) => {
                 <DialogContent class="sm:max-w-[400px]">
                     <DialogHeader>
                         <DialogTitle>Gestionar Tallas - {{ selectedEppForSizes?.name }}</DialogTitle>
-                        <DialogDescription>Asigne una nueva talla y su ciudad correspondiente.</DialogDescription>
+                        <DialogDescription>Asigne una nueva talla al elemento seleccionado.</DialogDescription>
                     </DialogHeader>
                     <div class="grid gap-4 py-4">
-                        <div class="grid gap-2">
-                            <Label>Ciudad</Label>
-                            <Select v-model="sizeForm.city_id">
-                                <SelectTrigger><SelectValue placeholder="Seleccionar ciudad" /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem v-for="city in cities" :key="city.id" :value="String(city.id)">{{ city.name }}</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
                         <div class="grid gap-2">
                             <Label>Talla / Medida</Label>
                             <Input v-model="sizeForm.size" placeholder="Ej: XL, 42, Grande" />
@@ -847,7 +1131,7 @@ const deleteSize = (id: number) => {
                     </div>
                     <DialogFooter>
                         <Button variant="ghost" @click="isSizeModalOpen = false">Cerrar</Button>
-                        <Button @click="handleSizeSubmit" :disabled="!sizeForm.city_id || !sizeForm.size" class="bg-indigo-600 text-white">
+                        <Button @click="handleSizeSubmit" :disabled="!sizeForm.size" class="bg-indigo-600 text-white">
                             Agregar Talla
                         </Button>
                     </DialogFooter>
@@ -864,12 +1148,9 @@ const deleteSize = (id: number) => {
                                     Factura #{{ selectedInvoice?.invoice_number }}
                                 </DialogTitle>
                                 <DialogDescription class="mt-1">
-                                    {{ selectedInvoice?.provider?.name }} • {{ selectedInvoice?.date }}
+                                    {{ selectedInvoice?.provider?.name }} • {{ selectedInvoice?.date }} • Reg. por: {{ selectedInvoice?.user?.name || 'Sistema' }}
                                 </DialogDescription>
                             </div>
-                            <Badge class="bg-indigo-600 text-white border-none shadow-md">
-                                S/. {{ Number(selectedInvoice?.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
-                            </Badge>
                         </div>
                     </DialogHeader>
 
@@ -934,6 +1215,21 @@ const deleteSize = (id: number) => {
                                             <TableCell class="py-2 text-right text-[10px] text-slate-500 font-medium">S/.{{ Number(item.unit_price).toFixed(2) }}</TableCell>
                                             <TableCell class="py-2 text-right text-xs font-black text-indigo-600">S/.{{ Number(item.total_price).toFixed(2) }}</TableCell>
                                         </TableRow>
+                                        <TableRow class="bg-slate-50/30">
+                                            <TableCell colspan="4" class="border-t border-slate-100 rounded-bl-xl"></TableCell>
+                                            <TableCell colspan="2" class="p-0 border-t border-slate-100 rounded-br-xl">
+                                                <div class="p-4 space-y-3">
+                                                    <div class="flex justify-between items-center px-2">
+                                                        <span class="text-[10px] font-black uppercase text-slate-400 tracking-widest">IGV (18%)</span>
+                                                        <span class="text-xs font-bold text-slate-600 font-mono">S/. {{ Number(selectedInvoice?.total_amount / 1.18 * 0.18 || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</span>
+                                                    </div>
+                                                    <div class="flex justify-between items-center p-3 bg-indigo-50/50 rounded-xl border border-indigo-100 shadow-sm">
+                                                        <span class="text-[10px] font-black uppercase text-indigo-700 tracking-widest">Total Factura</span>
+                                                        <span class="text-sm font-black text-indigo-700 font-mono">S/. {{ Number(selectedInvoice?.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</span>
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
                                     </TableBody>
                                 </Table>
                             </div>
@@ -966,6 +1262,71 @@ const deleteSize = (id: number) => {
                     <DialogFooter class="p-4 border-t bg-slate-50/50">
                         <Button variant="outline" @click="isViewInvoiceModalOpen = false" class="rounded-xl border-slate-200 font-bold uppercase text-[10px] tracking-widest h-10">
                             Cerrar Detalle
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <!-- EPP Price Assignment Modal -->
+            <Dialog v-model:open="isPriceModalOpen">
+                <DialogContent class="sm:max-w-[400px]">
+                    <DialogHeader>
+                        <DialogTitle>Asignar Precio - {{ selectedEppForPrice?.name }}</DialogTitle>
+                        <DialogDescription>Defina el costo de este EPP para un proveedor y ciudad específicos.</DialogDescription>
+                    </DialogHeader>
+                    <div class="grid gap-4 py-4">
+                        <div class="grid gap-2">
+                            <Label>Proveedor</Label>
+                            <Select v-model="priceForm.cloth_provider_id">
+                                <SelectTrigger><SelectValue placeholder="Seleccionar proveedor" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem v-for="prov in clothProviders" :key="prov.id" :value="String(prov.id)">{{ prov.name }}</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div class="grid gap-2">
+                            <Label>Ciudad</Label>
+                            <Select v-model="priceForm.city_id">
+                                <SelectTrigger><SelectValue placeholder="Seleccionar ciudad" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem v-for="city in cities" :key="city.id" :value="String(city.id)">{{ city.name }}</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div class="grid gap-2">
+                            <Label>Precio de Costo</Label>
+                            <div class="relative">
+                                <span class="absolute left-3 top-2.5 text-slate-400 text-sm">S/.</span>
+                                <Input v-model="priceForm.cost_price" type="number" step="0.01" placeholder="0.00" class="pl-10" />
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" @click="isPriceModalOpen = false">Cerrar</Button>
+                        <Button @click="handlePriceSubmit" :disabled="!priceForm.cloth_provider_id || !priceForm.city_id || !priceForm.cost_price" class="bg-indigo-600 text-white font-bold">
+                            Asignar Precio
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <!-- Epp Category Modal -->
+            <Dialog v-model:open="isCategoryModalOpen">
+                <DialogContent class="sm:max-w-[400px]">
+                    <DialogHeader>
+                        <DialogTitle>Nueva Categoría de EPP</DialogTitle>
+                        <DialogDescription>Agrupe sus EPPs por tipos (ej: Protección Visual, Calzado, etc.)</DialogDescription>
+                    </DialogHeader>
+                    <div class="grid gap-4 py-4">
+                        <div class="grid gap-2">
+                            <Label>Nombre de la Categoría</Label>
+                            <Input v-model="categoryForm.name" placeholder="Ej: Protección Facial" />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" @click="isCategoryModalOpen = false">Cancelar</Button>
+                        <Button @click="handleCategorySubmit" :disabled="!categoryForm.name" class="bg-indigo-600 text-white font-bold">
+                            Guardar Categoría
                         </Button>
                     </DialogFooter>
                 </DialogContent>

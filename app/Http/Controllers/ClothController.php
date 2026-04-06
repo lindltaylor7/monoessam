@@ -12,6 +12,7 @@ use Inertia\Inertia;
 use Spatie\Permission\Models\Role;
 use App\Models\Unit;
 use App\Models\Color;
+use App\Models\Headquarter;
 use App\Models\ClothInventory;
 
 class ClothController extends Controller
@@ -21,7 +22,7 @@ class ClothController extends Controller
      */
     public function index()
     {
-        $staff = Staff::with(['role', 'staff_clothes.cloth', 'staff_clothes.color', 'photo', 'staffable.unit.mine'])
+        $staff = Staff::with(['role', 'staff_clothes.cloth', 'staff_clothes.epp.sizes', 'staff_clothes.color', 'photo', 'staffable.unit.mine', 'staff_financial', 'clothes_histories.user'])
             ->where('status', 2)
             ->whereHasMorph('staffable', [Cafe::class])
             ->get();
@@ -48,11 +49,44 @@ class ClothController extends Controller
             }
         }
 
+        // GET EPP ASSIGNMENTS (roleEpps)
+        $epps = \App\Models\Epp::with(['roles' => function($q) {
+            $q->withPivot(['cafe_id', 'quantity', 'color_id']);
+        }, 'sizes'])->get();
+        
+        $roleEpps = [];
+        foreach ($epps as $epp) {
+            foreach ($epp->roles as $role) {
+                $roleId = $role->id;
+                $cafeId = $role->pivot->cafe_id;
+
+                if (!isset($roleEpps[$roleId])) {
+                    $roleEpps[$roleId] = [];
+                }
+
+                $key = $cafeId ?: 'all';
+                if (!isset($roleEpps[$roleId][$key])) {
+                    $roleEpps[$roleId][$key] = [];
+                }
+                
+                // Prevent duplicates: skip if this epp_id already exists in this role/cafe bucket
+                $alreadyExists = collect($roleEpps[$roleId][$key])->contains('id', $epp->id);
+                if ($alreadyExists) continue;
+
+                // Clone the item to include the specific pivot for this role/cafe
+                $item = $epp->toArray();
+                $item['pivot'] = $role->pivot->toArray();
+                $roleEpps[$roleId][$key][] = $item;
+            }
+        }
+
         return Inertia::render('clothes/Index', [
             'staff' => $staff,
             'roleClothes' => $roleClothes,
+            'roleEpps' => $roleEpps,
             'units' => Unit::with(['cafes', 'mine'])->get(),
-            'colors' => Color::all()
+            'colors' => Color::all(),
+            'headquarters' => Headquarter::with('business')->get(),
         ]);
     }
 
@@ -62,13 +96,14 @@ class ClothController extends Controller
     public function manage()
     {
         $roles = Role::all();
-        $clothes = Cloth::with('roles')->get();
-        $cafes = Cafe::with('roles')->get();
+        $epps = \App\Models\Epp::with('roles')->get();
+        $cafes = Cafe::with(['roles', 'unit.mine'])->get();
 
         return Inertia::render('clothes/Manage', [
             'roles' => $roles,
-            'clothes' => $clothes,
-            'cafes' => $cafes
+            'epps' => $epps,
+            'cafes' => $cafes,
+            'colors' => Color::all(),
         ]);
     }
 
@@ -173,10 +208,17 @@ class ClothController extends Controller
         $request->validate([
             'id' => 'required|exists:staff_clothes,id',
             'status' => 'required|string',
-            'color_id' => 'nullable|exists:colors,id'
+            'color_id' => 'nullable|exists:colors,id',
+            'epp_id' => 'nullable|exists:epps,id',
+            'clothing_size' => 'nullable|string',
+            'quantity' => 'nullable|integer|min:1',
+            'headquarter_id' => 'nullable|exists:headquarters,id',
         ]);
 
         $entry = Staff_clothes::findOrFail($request->id);
+        
+        if ($request->has('epp_id')) $entry->epp_id = $request->epp_id;
+        if ($request->has('clothing_size')) $entry->clothing_size = $request->clothing_size;
         $oldStatus = $entry->status;
         $newStatus = $request->status;
         $newColorId = $request->color_id;
@@ -185,48 +227,193 @@ class ClothController extends Controller
         $staff = $entry->staff;
         $cafeId = $staff->cafe_id;
 
-        // If color changed or status changed to Entregado
-        if ($newStatus === 'Entregado' && ($oldStatus !== 'Entregado' || $newColorId != $oldColorId)) {
-            // Subtract from new color inventory
-            if ($newColorId) {
-                $inventory = ClothInventory::firstOrCreate([
-                    'cloth_id' => $entry->cloth_id,
-                    'color_id' => $newColorId,
-                    'cafe_id' => $cafeId
-                ]);
-                $inventory->quantity -= 1;
-                $inventory->save();
+        if ($entry->cloth_id || $entry->epp_id) {
+            $itemId = $entry->cloth_id ?: $entry->epp_id;
+            $itemType = $entry->cloth_id ? \App\Models\Cloth::class : \App\Models\Epp::class;
+            $itemColumn = $entry->cloth_id ? 'cloth_id' : 'epp_id';
+
+            // Determine headquarter_id from staffable if it's an Area
+            $headquarterId = null;
+            if ($staff->staffable && get_class($staff->staffable) === \App\Models\Area::class) {
+                $headquarterId = $staff->staffable->headquarter_id;
             }
 
-            // Add back to old color inventory if it was already Entregado
-            if ($oldStatus === 'Entregado' && $oldColorId) {
-                $oldInventory = ClothInventory::firstOrCreate([
-                    'cloth_id' => $entry->cloth_id,
+            // If color changed or status changed to Entregado
+            if ($newStatus === 'Entregado' && ($oldStatus !== 'Entregado' || $newColorId != $oldColorId)) {
+                $qtyToDecrement = $request->input('quantity', 1);
+
+                // Subtract from new color inventory
+                if ($entry->cloth_id) {
+                    $inventory = \App\Models\ClothInventory::firstOrCreate([
+                        'cloth_id' => $entry->cloth_id,
+                        'color_id' => $newColorId,
+                        'cafe_id' => $cafeId
+                    ]);
+                    $inventory->decrement('quantity', $qtyToDecrement);
+                }
+
+                // Subtract from global polymorphic stock
+                if ($oldStatus !== 'Entregado') {
+                    // Use headquarter_id from request if provided, otherwise fallback to auto-detection
+                    $finalHqId = $request->headquarter_id ?: $headquarterId;
+
+                    $stockQuery = \App\Models\InventoryStock::where([
+                        'stockable_id' => $itemId,
+                        'stockable_type' => $itemType,
+                        'size' => $entry->clothing_size,
+                        'color_id' => $newColorId ?? $oldColorId,
+                    ]);
+
+                    if ($finalHqId) {
+                        $stockQuery->where('headquarter_id', $finalHqId);
+                    } else {
+                        $stockQuery->where('cafe_id', $cafeId);
+                    }
+
+                    $stock = $stockQuery->first();
+                    if (!$stock || $stock->quantity < $qtyToDecrement) {
+                        $itemName = $entry->epp?->name ?: ($entry->cloth?->name ?: $entry->clothe_name);
+                        $locationName = $finalHqId ? \App\Models\Headquarter::find($finalHqId)?->name : ($staff->cafe?->name ?: 'el punto de venta');
+                        $colorName = \App\Models\Color::find($newColorId ?? $oldColorId)?->name ?: 'N/A';
+                        return back()->with('error', "Stock insuficiente de '{$itemName}' (Talla: {$entry->clothing_size}, Color: {$colorName}) en {$locationName}. Disponible: " . ($stock?->quantity ?: 0));
+                    }
+                    $stock->decrement('quantity', $qtyToDecrement);
+
+                    // SUBTRACT FROM CLOTH_INVOICE_ITEMS (FIFO)
+                    for ($i = 0; $i < $qtyToDecrement; $i++) {
+                        $invoiceItem = \App\Models\ClothInvoiceItem::where($itemColumn, $itemId)
+                            ->where('color_id', $newColorId)
+                            ->where('size', $entry->clothing_size)
+                            ->where('quantity', '>', 0)
+                            ->orderBy('created_at', 'asc')
+                            ->first();
+                        if ($invoiceItem) $invoiceItem->decrement('quantity');
+                    }
+                }
+
+                // Add back to old color inventory if it was already Entregado and color changed
+                if ($oldStatus === 'Entregado' && $oldColorId != $newColorId) {
+                    if ($entry->cloth_id) {
+                        $oldInventory = \App\Models\ClothInventory::firstOrCreate([
+                            'cloth_id' => $entry->cloth_id,
+                            'color_id' => $oldColorId,
+                            'cafe_id' => $cafeId
+                        ]);
+                        $oldInventory->increment('quantity');
+                    }
+                }
+            } elseif ($oldStatus === 'Entregado' && $newStatus !== 'Entregado') {
+                // If it was delivered and now it's not (e.g. "Devuelto"), return to inventory
+                if ($entry->cloth_id) {
+                    $inventory = \App\Models\ClothInventory::firstOrCreate([
+                        'cloth_id' => $entry->cloth_id,
+                        'color_id' => $oldColorId,
+                        'cafe_id' => $cafeId
+                    ]);
+                    $inventory->increment('quantity');
+                }
+
+                // Add back to global polymorphic stock
+                $stock = \App\Models\InventoryStock::firstOrCreate([
+                    'stockable_id' => $itemId,
+                    'stockable_type' => $itemType,
+                    'size' => $entry->clothing_size,
                     'color_id' => $oldColorId,
-                    'cafe_id' => $cafeId
+                    'condition' => 'En Almacén', // Returned items are always "En Almacén"
+                    'cafe_id' => $cafeId,
+                    'headquarter_id' => $headquarterId,
+                ], [
+                    'quantity' => 0
                 ]);
-                $oldInventory->quantity += 1;
-                $oldInventory->save();
-            }
-        } elseif ($oldStatus === 'Entregado' && $newStatus !== 'Entregado') {
-            // If it was delivered and now it's not, return to inventory
-            if ($oldColorId) {
-                $inventory = ClothInventory::firstOrCreate([
-                    'cloth_id' => $entry->cloth_id,
-                    'color_id' => $oldColorId,
-                    'cafe_id' => $cafeId
-                ]);
-                $inventory->quantity += 1;
-                $inventory->save();
+                $stock->increment('quantity');
+
+                // ADD BACK TO CLOTH_INVOICE_ITEMS
+                $invoiceItem = \App\Models\ClothInvoiceItem::where($itemColumn, $itemId)
+                    ->where('color_id', $oldColorId)
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+                if ($invoiceItem) $invoiceItem->increment('quantity');
             }
         }
 
         $entry->status = $newStatus;
-        if ($newColorId) {
-            $entry->color_id = $newColorId;
-        }
+        $entry->color_id = $newColorId;
+        if ($request->has('quantity')) $entry->quantity = $request->quantity;
+        if ($newStatus === 'Entregado') $entry->condition = 'En Almacén';
         $entry->save();
 
+        if ($newStatus === 'Entregado' && $oldStatus !== 'Entregado') {
+            \App\Models\StaffClothesHistory::create([
+                'staff_id' => $staff->id,
+                'user_id' => \Illuminate\Support\Facades\Auth::id(),
+                'reason' => 'Confirmación de Entrega',
+                'assigned_at' => now(),
+                'items' => [[
+                    'epp_id' => $entry->epp_id,
+                    'epp_name' => $entry->epp?->name ?: $entry->clothe_name,
+                    'quantity' => $entry->quantity,
+                    'size' => $entry->clothing_size,
+                    'color_id' => $entry->color_id,
+                ]],
+            ]);
+        }
+
         return back();
+    }
+
+    /**
+     * Assign Roles to an EPP (Pivot).
+     */
+    public function assignEppRole(Request $request)
+    {
+        $request->validate([
+            'epp_id' => 'required|exists:epps,id',
+            'role_id' => 'required|exists:roles,id',
+            'cafe_id' => 'required|exists:cafes,id',
+            'action' => 'required|in:attach,detach',
+            'quantity' => 'nullable|integer|min:1',
+            'color_id' => 'nullable|exists:colors,id',
+        ]);
+
+        $where = [
+            'epp_id' => $request->epp_id,
+            'role_id' => $request->role_id,
+            'cafe_id' => $request->cafe_id,
+        ];
+
+        if ($request->action === 'attach') {
+            $existing = \Illuminate\Support\Facades\DB::table('epp_role')->where($where)->first();
+
+            if ($existing) {
+                \Illuminate\Support\Facades\DB::table('epp_role')->where('id', $existing->id)->update([
+                    'quantity' => $request->input('quantity', 1),
+                    'color_id' => $request->input('color_id'),
+                    'updated_at' => now(),
+                ]);
+            } else {
+                \Illuminate\Support\Facades\DB::table('epp_role')->insert([
+                    ...$where,
+                    'quantity' => $request->input('quantity', 1),
+                    'color_id' => $request->input('color_id'),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        } else {
+            \Illuminate\Support\Facades\DB::table('epp_role')->where($where)->delete();
+        }
+
+        return back();
+    }
+
+    /**
+     * Delete an EPP.
+     */
+    public function destroyEpp($id)
+    {
+        $epp = \App\Models\Epp::findOrFail($id);
+        $epp->delete();
+
+        return back()->with('success', 'EPP eliminado exitosamente');
     }
 }

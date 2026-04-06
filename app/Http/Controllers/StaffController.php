@@ -67,7 +67,7 @@ class StaffController extends Controller
                     ]);
                 },
                 'guardRole.guardSelected'
-            ])->get(),
+            ])->orderBy('id', 'desc')->get(),
             'roles' => Role::all(),
             'units' => Unit::with(['cafes', 'mine'])->get(),
             'businneses' => Business::with(['headquarters', 'headquarters.areas'])->get(),
@@ -145,10 +145,14 @@ class StaffController extends Controller
                 'role_id' => $request->roleId
             ]);
 
-            $guard =  Guard::findOrCreate([
+            $guard = Guard::firstOrCreate([
+                'name' => $request->guard,
+            ]);
+
+            DB::table('guard_roles')->insert([
+                'guard_id' => $guard->id,
+                'role_id' => $request->roleId,
                 'staff_id' => $staff->id,
-                'workplace' => $request->workplace,
-                'guard' => $request->guard,
             ]);
         } else {
             $staff = Staff::create([
@@ -223,7 +227,8 @@ class StaffController extends Controller
                 $staff_clothes = Staff_clothes::create([
                     'staff_id' => $staff->id,
                     'clothe_name' => $clothe['label'],
-                    'clothing_size' => $clothe['talla']
+                    'clothing_size' => $clothe['talla'],
+                    'cloth_id' => isset($clothe['id']) ? $clothe['id'] : null,
                 ]);
             }
         }
@@ -356,7 +361,8 @@ class StaffController extends Controller
                 $staff_clothes = Staff_clothes::create([
                     'staff_id' => $staff->id,
                     'clothe_name' => $clothe['label'],
-                    'clothing_size' => $clothe['talla']
+                    'clothing_size' => $clothe['talla'],
+                    'cloth_id' => isset($clothe['id']) ? $clothe['id'] : null,
                 ]);
             }
         }
@@ -487,5 +493,55 @@ class StaffController extends Controller
         $staff_file = Staff_file::find($id);
         Storage::disk('public')->delete($staff_file->file_path);
         $staff_file->delete();
+    }
+
+    public function massUploadSctr(Request $request)
+    {
+        $request->validate([
+            'staffIds' => 'required|array',
+            'sctr_vida_ley' => 'nullable|file|mimes:pdf',
+            'sctr_vida_ley_exp' => 'nullable|date',
+            'sctr_pension_salud' => 'nullable|file|mimes:pdf',
+            'sctr_pension_salud_exp' => 'nullable|date',
+            'sctr_socavon' => 'nullable|file|mimes:pdf',
+            'sctr_socavon_exp' => 'nullable|date'
+        ]);
+
+        $config = [
+            'SCTR Vida Ley' => [
+                'file' => $request->file('sctr_vida_ley'),
+                'exp' => $request->sctr_vida_ley_exp
+            ],
+            'SCTR Pensión y Salud' => [
+                'file' => $request->file('sctr_pension_salud'),
+                'exp' => $request->sctr_pension_salud_exp
+            ],
+            'SCTR Socavón' => [
+                'file' => $request->file('sctr_socavon'),
+                'exp' => $request->sctr_socavon_exp
+            ],
+        ];
+
+        foreach ($config as $type => $data) {
+            if ($data['file']) {
+                $fileName = time() . '_' . str_replace(' ', '_', $type) . '.pdf';
+                $filePath = $data['file']->storeAs('files', $fileName, 'public');
+
+                foreach ($request->staffIds as $staffId) {
+                    Staff_file::updateOrCreate(
+                        [
+                            'staff_id' => $staffId,
+                            'file_type' => $type,
+                        ],
+                        [
+                            'file_path' => $filePath,
+                            'expiration_date' => $data['exp']
+                        ]
+                    );
+                }
+            }
+        }
+
+        return back()->with('success', 'Documentos cargados exitosamente');
     }
 }

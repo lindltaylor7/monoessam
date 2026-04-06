@@ -16,11 +16,8 @@ defineProps<Props>();
             <div class="mb-4 flex flex-col justify-between border-b pb-2 sm:flex-row sm:items-center">
                 <h3 class="text-lg font-semibold text-zinc-800">Implementos</h3>
             </div>
-            <div v-if="prendas.length === 0" class="text-center py-8 text-zinc-500">
-                Seleccione un Café y Rol para ver las prendas asignadas.
-            </div>
 
-            <div v-else class="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
                 <div
                     v-for="(prenda, index) in prendas"
                     :key="index"
@@ -31,8 +28,24 @@ defineProps<Props>();
                             {{ prenda.label }}
                         </Label>
 
+                        <!-- Select específico para Pantalón -->
+                        <Select v-if="prenda.label.includes('Pantalón')" v-model="prenda.talla">
+                            <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100">
+                                <SelectValue placeholder="Talla" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="S - 28">S - 28</SelectItem>
+                                <SelectItem value="M - 30">M - 30</SelectItem>
+                                <SelectItem value="L - 32">L - 32</SelectItem>
+                                <SelectItem value="XL - 34">XL - 34</SelectItem>
+                                <SelectItem value="XXL - 36">XXL - 36</SelectItem>
+                                <SelectItem value="XXXL - 38">XXXL - 38</SelectItem>
+                                <SelectItem value="XXXXL - 40">XXXXL - 40</SelectItem>
+                            </SelectContent>
+                        </Select>
+
                         <!-- Selects para tallas estándar (Ropa) -->
-                        <Select v-if="['Polo', 'Cafarena', 'Overall', 'Casaca', 'Chaleco', 'Chaqueta', 'Camisa', 'Blusa', 'Guardapolvo'].some(s => prenda.label.includes(s))" v-model="prenda.talla">
+                        <Select v-else-if="['Polo', 'Cafarena', 'Overall', 'Casaca', 'Chaleco', 'Chaqueta', 'Camisa', 'Blusa', 'Guardapolvo'].some(s => prenda.label.includes(s))" v-model="prenda.talla">
                             <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"><SelectValue placeholder="Talla" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="s">S</SelectItem>
@@ -63,11 +76,9 @@ defineProps<Props>();
                             </SelectContent>
                         </Select>
 
-                        
-
                         <!-- Select para Lentes -->
                         <Select v-else-if="prenda.label.toLowerCase().includes('lentes')" v-model="prenda.talla">
-                            <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"><SelectValue placeholder="Talla" /></SelectTrigger>
+                            <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"><SelectValue placeholder="Tipo" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="Lentes">Lentes</SelectItem>
                                 <SelectItem value="Sobrelentes">Sobrelentes</SelectItem>

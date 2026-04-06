@@ -15,6 +15,7 @@ class ClothInvoice extends Model
         'total_amount',
         'notes',
         'invoice_image',
+        'user_id',
     ];
 
     public function headquarter()
@@ -35,5 +36,10 @@ class ClothInvoice extends Model
     public function items()
     {
         return $this->hasMany(ClothInvoiceItem::class);
+    }
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
     }
 }

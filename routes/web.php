@@ -111,6 +111,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/upload-file', [StaffController::class, 'uploadFile'])->name('upload-file');
         Route::post('/upload-filedate', [StaffController::class, 'uploadFileDate'])->name('update-filedate');
         Route::delete('/delete-file/{id}', [StaffController::class, 'deleteFile'])->name('delete-file');
+        Route::post('/mass-upload-sctr', [StaffController::class, 'massUploadSctr'])->name('mass-upload-sctr');
     });
 
     Route::prefix('headcount')->name('headcount.')->group(function () {
@@ -272,6 +273,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('/quantity/{id}', [ClothController::class, 'updateQuantity'])->name('update-quantity');
         Route::post('/staff-size', [ClothController::class, 'updateStaffSize'])->name('staff-size');
         Route::post('/status', [ClothController::class, 'updateStatus'])->name('status');
+        
+        // EPP Manage Routes
+        Route::post('/assign-epp-role', [ClothController::class, 'assignEppRole'])->name('assign-epp-role');
+        Route::delete('/epps/{id}', [ClothController::class, 'destroyEpp'])->name('epps.destroy');
     });
 
     Route::prefix('inventory')->name('inventory.')->group(function () {
@@ -291,11 +296,26 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
         // EPPs
         Route::post('/epps', [InventoryController::class, 'storeEpp'])->name('epps.store');
+        Route::post('/epps/categories', [InventoryController::class, 'storeCategoryEpp'])->name('epp-categories.store');
+        Route::post('/epps/assign-price', [InventoryController::class, 'assignEppPrice'])->name('epps.assign-price');
         Route::post('/providers/{id}/epps', [InventoryController::class, 'syncProviderEpps'])->name('providers.epps.sync');
+        Route::get('/items/{id}/stock', [InventoryController::class, 'getItemStock'])->name('items.stock');
 
         // EPP Sizes
         Route::post('/epp-sizes', [InventoryController::class, 'storeEppSize'])->name('epp-sizes.store');
         Route::delete('/epp-sizes/{id}', [InventoryController::class, 'destroyEppSize'])->name('epp-sizes.destroy');
+        
+        
+        // Stock details
+        Route::get('/stock/{id}/sizes', [InventoryController::class, 'getStockSizes'])->name('stock.sizes');
+
+        // Transfers
+        Route::post('/transfer', [InventoryController::class, 'storeTransfer'])->name('transfer.store');
+        Route::post('/transfer/return', [InventoryController::class, 'returnToPrincipal'])->name('transfer.return');
+        Route::post('/assign-clothes', [InventoryController::class, 'assignStaffClothes'])->name('assign-clothes');
+        Route::post('/history/{id}/evidence', [InventoryController::class, 'uploadHistoryEvidence'])->name('history.evidence');
+        Route::get('/history/{id}/pdf', [InventoryController::class, 'historyPdf'])->name('history.pdf');
+        Route::get('/units', [InventoryController::class, 'unitsStockIndex'])->name('units.index');
     });
 
     Route::prefix('reportsales')->name('reportsales.')->group(function () {

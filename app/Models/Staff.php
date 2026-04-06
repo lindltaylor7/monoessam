@@ -59,6 +59,11 @@ class Staff extends Model
         return $this->hasMany(Observation::class);
     }
 
+    public function clothes_histories(): HasMany
+    {
+        return $this->hasMany(StaffClothesHistory::class);
+    }
+
     public function staffable(): MorphTo
     {
         return $this->morphTo();
