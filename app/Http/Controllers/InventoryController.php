@@ -908,4 +908,43 @@ class InventoryController extends Controller
 
         return $pdf->setPaper('a4', 'landscape')->stream("Entrega_EPP_{$history->staff->name}.pdf");
     }
+
+    /**
+     * Generate PDF for ALL history records of a specific staff combined
+     */
+    public function staffHistoryPdf($id)
+    {
+        $staff = \App\Models\Staff::with(['role'])->findOrFail($id);
+        $histories = \App\Models\StaffClothesHistory::with(['user'])
+            ->where('staff_id', $id)
+            ->orderBy('assigned_at', 'asc')
+            ->get();
+        
+        $location = null;
+        if ($staff->cafe_id) {
+            $location = Cafe::with('unit')->find($staff->cafe_id);
+        }
+
+        $flatItems = [];
+        foreach ($histories as $h) {
+            $hItems = is_string($h->items) ? json_decode($h->items, true) : $h->items;
+            if (is_array($hItems)) {
+                foreach ($hItems as $item) {
+                    $item['reason'] = $h->reason;
+                    $item['assigned_at'] = $h->assigned_at ? $h->assigned_at->format('d/m/Y') : $h->created_at->format('d/m/Y');
+                    $item['supervisor'] = $h->user ? $h->user->name : 'Sistema';
+                    $flatItems[] = $item;
+                }
+            }
+        }
+
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.epp_delivery_staff_all', [
+            'staff' => $staff,
+            'items' => $flatItems,
+            'location' => $location,
+            'date' => now()->format('d/m/Y'),
+        ]);
+
+        return $pdf->setPaper('a4', 'landscape')->stream("Historial_Completo_EPP_{$staff->name}.pdf");
+    }
 }
