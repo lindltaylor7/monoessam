@@ -13,6 +13,7 @@ use App\Http\Controllers\GuardController;
 use App\Http\Controllers\HeadcountController;
 use App\Http\Controllers\IngredientCategoryController;
 use App\Http\Controllers\InventoryController;
+use App\Http\Controllers\LaboralController;
 use App\Http\Controllers\IngredientController;
 use App\Http\Controllers\LogisticController;
 use App\Http\Controllers\ManagementController;
@@ -112,6 +113,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/upload-filedate', [StaffController::class, 'uploadFileDate'])->name('update-filedate');
         Route::delete('/delete-file/{id}', [StaffController::class, 'deleteFile'])->name('delete-file');
         Route::post('/mass-upload-sctr', [StaffController::class, 'massUploadSctr'])->name('mass-upload-sctr');
+    });
+
+    Route::prefix('laboral')->name('laboral.')->group(function () {
+        Route::get('/', [LaboralController::class, 'index'])->name('index');
     });
 
     Route::prefix('headcount')->name('headcount.')->group(function () {
@@ -315,6 +320,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/assign-clothes', [InventoryController::class, 'assignStaffClothes'])->name('assign-clothes');
         Route::post('/history/{id}/evidence', [InventoryController::class, 'uploadHistoryEvidence'])->name('history.evidence');
         Route::get('/history/{id}/pdf', [InventoryController::class, 'historyPdf'])->name('history.pdf');
+        Route::get('/history/staff/{id}/pdf', [InventoryController::class, 'staffHistoryPdf'])->name('history.staff.pdf');
         Route::get('/units', [InventoryController::class, 'unitsStockIndex'])->name('units.index');
     });
 
