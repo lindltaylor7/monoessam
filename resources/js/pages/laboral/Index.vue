@@ -3,9 +3,10 @@ import { Head } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import Input from '@/components/ui/input/Input.vue';
 import { Button } from '@/components/ui/button';
-import { Search } from 'lucide-vue-next';
+import { Search, Download } from 'lucide-vue-next';
 import { ref, computed } from 'vue';
 import { Staff } from '@/types';
+import * as XLSX from 'xlsx';
 import FilesModal from '@/pages/staff/FilesModal.vue';
 import StatusBadge from '@/components/shared/StatusBadge.vue';
 import { getStatusColor, getStatusLabel } from '@/composables/useStaffConstants';
@@ -86,6 +87,40 @@ const filteredStaff = computed(() => {
     return filtered;
 });
 
+const exportToExcel = () => {
+    if (!startDateFilter.value && !endDateFilter.value) return;
+
+    const dataToExport = filteredStaff.value.map(staff => {
+        let location = staff.staffable?.name || 'Sin asignar';
+        if (staff.staffable?.unit?.name) {
+            location += ` - ${staff.staffable.unit.name}`;
+        } else if (staff.staffable?.headquarters?.name) {
+            location += ` - ${staff.staffable.headquarters.name}`;
+        }
+
+        return {
+            'Nombre': staff.name,
+            'DNI': staff.dni,
+            'Cargo': staff.role?.name || 'Sin asignar',
+            'Comedor/Unidad': location,
+            'Sueldo': staff.staff_financial?.salary || '0.00',
+            'Fecha de Inicio': formatDate(getStartDate(staff)),
+            'Estado': getStatusLabel(staff.status)
+        };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Expedientes");
+
+    const wscols = [
+        {wch: 35}, {wch: 12}, {wch: 25}, {wch: 35}, {wch: 10}, {wch: 15}, {wch: 15}
+    ];
+    worksheet['!cols'] = wscols;
+
+    XLSX.writeFile(workbook, 'Expedientes_Laborales.xlsx');
+};
+
 </script>
 
 <template>
@@ -144,6 +179,18 @@ const filteredStaff = computed(() => {
                         </Button>
                     </Transition>
                 </div>
+
+                <div class="ml-auto">
+                    <Button 
+                        v-if="startDateFilter || endDateFilter" 
+                        variant="default" 
+                        class="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2 font-semibold shadow-sm transition-all"
+                        @click="exportToExcel"
+                    >
+                        <Download class="h-4 w-4" />
+                        Exportar Excel
+                    </Button>
+                </div>
             </div>
 
             <!-- Tabla -->
@@ -154,6 +201,9 @@ const filteredStaff = computed(() => {
                             <tr>
                                 <th class="p-4 text-left text-sm font-bold text-zinc-700">Nombre del Staff</th>
                                 <th class="p-4 text-left text-sm font-bold text-zinc-700">DNI</th>
+                                <th class="p-4 text-left text-sm font-bold text-zinc-700">Cargo</th>
+                                <th class="p-4 text-left text-sm font-bold text-zinc-700">Comedor/Unidad</th>
+                                <th class="p-4 text-left text-sm font-bold text-zinc-700">Sueldo</th>
                                 <th class="p-4 text-left text-sm font-bold text-zinc-700">Fecha de Inicio</th>
                                 <th class="p-4 text-left text-sm font-bold text-zinc-700">Estado</th>
                                 <th class="p-4 text-center text-sm font-bold text-zinc-700">Expediente Digital</th>
@@ -167,6 +217,19 @@ const filteredStaff = computed(() => {
                                 </td>
                                 <td class="p-4">
                                     <div class="text-sm text-zinc-600">{{ staff.dni }}</div>
+                                </td>
+                                <td class="p-4">
+                                    <div class="text-sm font-medium text-zinc-700">{{ staff.role?.name || 'Sin asignar' }}</div>
+                                </td>
+                                <td class="p-4">
+                                    <div class="text-sm text-zinc-600">
+                                        {{ staff.staffable?.name || 'Sin asignar' }}
+                                        <span v-if="staff.staffable?.unit" class="text-xs text-zinc-400 block mt-0.5">{{ staff.staffable.unit.name }}</span>
+                                        <span v-else-if="staff.staffable?.headquarters" class="text-xs text-zinc-400 block mt-0.5">{{ staff.staffable.headquarters.name }}</span>
+                                    </div>
+                                </td>
+                                <td class="p-4">
+                                    <div class="text-sm font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-md inline-block">S/. {{ staff.staff_financial?.salary || '0.00' }}</div>
                                 </td>
                                 <td class="p-4">
                                     <div class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
@@ -187,7 +250,7 @@ const filteredStaff = computed(() => {
                                 </td>
                             </tr>
                             <tr v-if="filteredStaff.length === 0">
-                                <td colspan="5" class="p-12 text-center">
+                                <td colspan="8" class="p-12 text-center">
                                     <div class="flex flex-col items-center justify-center text-zinc-500 space-y-2">
                                         <Search class="h-8 w-8 text-zinc-300" />
                                         <p class="font-medium text-lg">No se encontraron registros</p>
