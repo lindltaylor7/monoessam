@@ -54,7 +54,10 @@ export function useHeadcountData() {
     const asignRolesToGuard = (guardId: number, roles: Role[]) => {
         const guard = guardsSelected.value.find((g) => g.id === guardId);
         if (guard) {
-            guard.assigned_roles = [];
+            if (!guard.assigned_roles) {
+                guard.assigned_roles = [];
+            }
+            
             roles.forEach((role) => {
                 const newRole = {
                     role: {

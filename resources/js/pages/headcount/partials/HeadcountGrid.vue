@@ -22,8 +22,8 @@ const emit = defineEmits([
 
 <template>
     <div v-if="guardsSelected && guardsSelected.length > 0" class="grid h-full auto-rows-fr gap-6 md:grid-cols-8">
-        <StaffSelectables :users="unassignedUsers" class="md:col-span-2" />
-        <div class="md:col-span-6">
+        <!-- <StaffSelectables :users="unassignedUsers" class="md:col-span-2" /> -->
+        <div class="md:col-span-12">
             <div class="overflow-x-auto" v-for="guard in guardsSelected" :key="guard.id">
                 <div class="flex h-full gap-6">
                     <GuardAreaDroppable
