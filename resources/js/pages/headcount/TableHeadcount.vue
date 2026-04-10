@@ -164,14 +164,14 @@ const addColumn = async () => {
             
             if (workMode.value === '14x7') {
                 let end = new Date(pStartDate);
-                end.setDate(end.getDate() + 13);
+                end.setDate(end.getDate() + 6);
                 endStr = end.toISOString().split('T')[0];
-                nextStart.setDate(nextStart.getDate() + 21);
+                nextStart.setDate(nextStart.getDate() + 7);
             } else if (workMode.value === '20x10') {
                 let end = new Date(pStartDate);
-                end.setDate(end.getDate() + 19);
+                end.setDate(end.getDate() + 9);
                 endStr = end.toISOString().split('T')[0];
-                nextStart.setDate(nextStart.getDate() + 30);
+                nextStart.setDate(nextStart.getDate() + 10);
             }
             
             try {
