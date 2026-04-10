@@ -8,6 +8,7 @@ import axios from 'axios';
 import { Trash } from 'lucide-vue-next';
 import { ref } from 'vue';
 import { filesRequired } from '../staff/composables/useStaffForm'
+import Swal from 'sweetalert2';
 
 // Interfaces
 interface DateColumn {
@@ -133,9 +134,22 @@ const formatDate = (dateString: string) => {
 
 const addColumn = async () => {
     if (!newStartDate.value || (workMode.value === 'manual' && !newEndDate.value)) {
-        alert('Por favor selecciona las fechas correctamente.');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Atención',
+            text: 'Por favor selecciona las fechas correctamente.'
+        });
         return;
     }
+
+    Swal.fire({
+        title: 'Cargando...',
+        text: 'Agregando periodo(s)...',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
 
     if (workMode.value === 'manual') {
         try {
@@ -146,16 +160,30 @@ const addColumn = async () => {
                 status: form.status,
                 users: props.users
             });
-            emit('fetchCafeData', props.cafeId);
+            emit('fetchCafeData', props.cafeId);           
             newStartDate.value = '';
             newEndDate.value = '';
             form.status = '0';
+            
+            Swal.fire({
+                icon: 'success',
+                title: 'Éxito',
+                text: 'Periodo agregado correctamente',
+                timer: 1500,
+                showConfirmButton: false
+            });
         } catch (err) {
             console.error(err);
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'No se pudo agregar el periodo'
+            });
         }
     } else {
         const cycles = 4;
         let pStartDate = new Date(newStartDate.value + 'T12:00:00');
+        let hasError = false;
         
         for (let i = 0; i < cycles; i++) {
             let startStr = pStartDate.toISOString().split('T')[0];
@@ -184,6 +212,7 @@ const addColumn = async () => {
                 });
             } catch (err) {
                 console.error(err);
+                hasError = true;
             }
             
             pStartDate = nextStart;
@@ -194,6 +223,22 @@ const addColumn = async () => {
         newEndDate.value = '';
         form.status = '0';
         workMode.value = 'manual';
+
+        if (hasError) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'Hubo un error al agregar algunos periodos'
+            });
+        } else {
+            Swal.fire({
+                icon: 'success',
+                title: 'Éxito',
+                text: 'Periodos agregados correctamente',
+                timer: 1500,
+                showConfirmButton: false
+            });
+        }
     }
 };
 

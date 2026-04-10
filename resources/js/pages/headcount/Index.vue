@@ -8,6 +8,7 @@ import HeadcountFilters from './partials/HeadcountFilters.vue';
 import HeadcountGrid from './partials/HeadcountGrid.vue';
 import { useHeadcountSelection } from '@/composables/useHeadcountSelection';
 import { useHeadcountData } from '@/composables/useHeadcountData';
+import Swal from 'sweetalert2';
 
 interface Props {
     users: User[];
@@ -50,7 +51,18 @@ watch(
     () => selectedOptions.value.cafe,
     (newCafeId) => {
         if (newCafeId) {
+            Swal.fire({
+                title: 'Cargando...',
+                text: 'Por favor espere',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+            
             fetchCafeData(Number(newCafeId));
+
+            Swal.close()
         }
     }
 );
