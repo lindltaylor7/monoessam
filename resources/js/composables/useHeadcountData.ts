@@ -6,6 +6,7 @@ export function useHeadcountData() {
     const guardsSelected = ref<Cafe[]>([]);
     const unassignedUsers = ref<User[]>([]);
     const assignedUsers = ref<User[]>([]);
+    const allStaff = ref<User[]>([]);
     const selectedPeriods = ref<any[]>([]);
 
     const fetchCafeData = async (cafeId: number) => {
@@ -15,6 +16,7 @@ export function useHeadcountData() {
             guardsSelected.value = cafeData.guards;
             unassignedUsers.value = cafeData.users.unassigned;
             assignedUsers.value = cafeData.users.assigned;
+            allStaff.value = cafeData.staff;
             selectedPeriods.value = cafeData.periods;
         } catch (error) {
             console.error('Error fetching cafe data:', error);
@@ -85,6 +87,7 @@ export function useHeadcountData() {
         guardsSelected,
         unassignedUsers,
         assignedUsers,
+        allStaff,
         selectedPeriods,
         fetchCafeData,
         assignGuards,

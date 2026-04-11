@@ -49,7 +49,7 @@ const breadcrumbs: BreadcrumbItem[] = [
                 </div>
 
                 <!-- Abstract UI Illustration (Right) -->
-                <div class="hidden md:block relative z-10 w-2/5">
+                <div class="hidden md:block relative z-10 w-2/5 cursor-pointer">
                     <div class="flex justify-end pr-4">
                         <div class="relative w-72 h-52 bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-5 shadow-2xl transform md:-rotate-3 hover:rotate-0 transition-transform duration-500">
                             <div class="flex gap-2 mb-4">

@@ -36,6 +36,7 @@ const {
     guardsSelected, 
     unassignedUsers, 
     assignedUsers, 
+    allStaff,
     selectedPeriods, 
     fetchCafeData,
     assignGuards,
@@ -117,7 +118,7 @@ const exportToExcel = () => {
                 <div class="grid h-full">
                     <TableHeadcount
                         :guards="guardsSelected"
-                        :users="assignedUsers"
+                        :users="allStaff"
                         :cafeId="String(selectedOptions.cafe || '')"
                         :periods="selectedPeriods"
                         @fetchCafeData="(id) => fetchCafeData(Number(id))"
