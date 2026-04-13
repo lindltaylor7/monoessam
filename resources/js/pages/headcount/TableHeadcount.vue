@@ -112,9 +112,23 @@ const updateObservation = async (role: any) => {
             guard_role_id: role.id,
             observation: role.observation
         });
-        // Opcional: mostrar un toast o algo sutil
+        Swal.fire({
+            icon: 'success',
+            title: 'Observación guardada',
+            text: 'La observación se ha almacenado correctamente.',
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true
+        });
     } catch (e) {
         console.error(e);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Hubo un problema al guardar la observación.',
+        });
     }
 };
 
