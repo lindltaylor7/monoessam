@@ -5,8 +5,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Staff, User } from '@/types';
 import { useForm } from '@inertiajs/vue3';
 import axios from 'axios';
-import { Trash, Info, UserPlus, ArrowRight } from 'lucide-vue-next';
-import { ref } from 'vue';
+import { Trash, Info, UserPlus, ArrowRight, FilterX } from 'lucide-vue-next';
+import { ref, computed } from 'vue';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -360,6 +360,56 @@ const updateUserStatus = (newStatus: string, userId: number, periodId: number) =
             alert('No se pudo actualizar el estado');
         });
 };
+
+// --- Filtros ---
+const filterDate = ref('');
+const filterStatus = ref('all');
+
+const clearFilters = () => {
+    filterDate.value = '';
+    filterStatus.value = 'all';
+};
+
+const filteredPeriods = computed(() => {
+    if (!filterDate.value) return props.periods;
+    const fDateStr = filterDate.value;
+    return props.periods.filter(p => p.start_date <= fDateStr && p.end_date >= fDateStr);
+});
+
+const filteredGuards = computed(() => {
+    if (!filterDate.value && filterStatus.value === 'all') {
+        return props.guards;
+    }
+
+    const targetPeriods = filteredPeriods.value;
+    if (targetPeriods.length === 0) return [];
+
+    return props.guards.map((guard: any) => {
+        const matchingRoles = guard.assigned_roles.filter((role: any) => {
+            const activeStaff = role.replacement || role.staff;
+            
+            if (filterStatus.value !== 'all') {
+                if (!activeStaff) return false;
+                return targetPeriods.some((p: any) => {
+                    const st = getCurrentStatusId(role, p);
+                    if (filterStatus.value === 'pending') {
+                        return st === undefined;
+                    }
+                    return st === filterStatus.value;
+                });
+            }
+            return true;
+        });
+
+        if (matchingRoles.length > 0) {
+            return {
+                ...guard,
+                assigned_roles: matchingRoles
+            };
+        }
+        return null;
+    }).filter((g: any) => g !== null);
+});
 </script>
 
 <template>
@@ -405,12 +455,44 @@ const updateUserStatus = (newStatus: string, userId: number, periodId: number) =
             </button>
         </div>
 
+        <div class="relative flex items-end gap-4 rounded-lg border bg-white shadow-sm p-4 border-l-4 border-l-blue-500 mt-2">
+            <div class="absolute -top-3 left-2 bg-blue-500 text-white px-3 py-0.5 rounded text-[10px] font-bold shadow uppercase tracking-wider">
+                Filtros de Búsqueda
+            </div>
+            <div class="flex flex-col gap-1 w-full max-w-[200px]">
+                <label class="text-xs font-bold text-gray-500 uppercase">Por Fecha</label>
+                <input type="date" v-model="filterDate" class="rounded-md border border-gray-200 px-3 py-2 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+            </div>
+            <div class="flex flex-col gap-1 w-full max-w-[200px]">
+                <label class="text-xs font-bold text-gray-500 uppercase">Por Estado</label>
+                <Select v-model="filterStatus">
+                    <SelectTrigger class="w-full bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500">
+                        <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Todos</SelectItem>
+                        <SelectItem value="1">Trabajando</SelectItem>
+                        <SelectItem value="2">Libre</SelectItem>
+                        <SelectItem value="3">Falta</SelectItem>
+                        <SelectItem value="4">Nuevo</SelectItem>
+                        <SelectItem value="pending">Pendiente</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+            <div class="flex flex-col gap-1">
+                <button v-if="filterDate || filterStatus !== 'all'" @click="clearFilters" class="flex items-center gap-2 h-10 px-4 py-2 text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition-colors">
+                    <FilterX :size="16" />
+                    Limpiar Filtros
+                </button>
+            </div>
+        </div>
+
         <Table>
             <TableHeader>
                 <TableRow>
                     <TableHead class="w-[150px] font-bold"> Guardia </TableHead>
                     <TableHead class="w-[150px] font-bold"> Personal </TableHead>
-                    <TableHead v-for="col in props.periods" :key="col.id" class="min-w-[120px] text-center">
+                    <TableHead v-for="col in filteredPeriods" :key="col.id" class="min-w-[120px] text-center">
                         <div class="flex flex-col items-center justify-center gap-1">
                             <span>{{ formatDate(col.start_date) }}</span>
                             <span class="text-xs text-gray-400">al</span>
@@ -431,7 +513,7 @@ const updateUserStatus = (newStatus: string, userId: number, periodId: number) =
                 </TableRow>
             </TableHeader>
             <TableBody>
-                <template v-for="guard in props.guards" :key="guard.id">
+                <template v-for="guard in filteredGuards" :key="guard.id">
                     <TableRow v-for="(role, index) in guard.assigned_roles" :key="role.id">
                         <TableCell v-if="index === 0" class="font-medium" :rowspan="guard.assigned_roles.length">
                             {{ guard.name }}
@@ -520,7 +602,7 @@ const updateUserStatus = (newStatus: string, userId: number, periodId: number) =
                                 </div>
                             </div>
                         </TableCell>
-                        <TableCell v-for="period in props.periods" :key="period.id" class="p-2 text-center border-l border-gray-50">
+                        <TableCell v-for="period in filteredPeriods" :key="period.id" class="p-2 text-center border-l border-gray-50">
                             <Select
                                 :model-value="getCurrentStatusId(role, period)"
                                 @update:model-value="(val) => updateUserStatusWithRole(val, role, period.id)"
@@ -547,6 +629,11 @@ const updateUserStatus = (newStatus: string, userId: number, periodId: number) =
                         </TableCell>
                     </TableRow>
                 </template>
+                <TableRow v-if="filteredGuards.length === 0">
+                    <TableCell :colspan="filteredPeriods.length + 2" class="h-24 text-center text-gray-500">
+                        No se encontraron resultados para los filtros aplicados.
+                    </TableCell>
+                </TableRow>
             </TableBody>
         </Table>
 
