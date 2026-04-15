@@ -5,7 +5,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Staff, User } from '@/types';
 import { useForm } from '@inertiajs/vue3';
 import axios from 'axios';
-import { Trash, Info, UserPlus, ArrowRight, FilterX } from 'lucide-vue-next';
+import * as XLSX from 'xlsx';
+import { Trash, Info, UserPlus, ArrowRight, FilterX, Download } from 'lucide-vue-next';
 import { ref, computed } from 'vue';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -361,6 +362,70 @@ const updateUserStatus = (newStatus: string, userId: number, periodId: number) =
         });
 };
 
+// --- Excel Export ---
+const exportToExcel = () => {
+    const wsData: any[][] = [];
+    const merges: any[] = [];
+    
+    // Header Row
+    const headerRow = ['Guardia', 'Personal'];
+    filteredPeriods.value.forEach((p: any) => {
+        headerRow.push(`${formatDate(p.start_date)} al ${formatDate(p.end_date)}`);
+    });
+    wsData.push(headerRow);
+    
+    let currentRow = 1; // 0 is header
+
+    if (filteredGuards.value.length === 0) {
+        wsData.push(['No se encontraron resultados para los filtros aplicados.']);
+    } else {
+        filteredGuards.value.forEach((guard: any) => {
+            const startRow = currentRow;
+            
+            guard.assigned_roles.forEach((role: any, index: number) => {
+                const rowData: any[] = [];
+                
+                rowData.push(index === 0 ? guard.name : '');
+                
+                let staffInfo = role.role.name;
+                if (role.staff) {
+                    staffInfo += ` - ${role.staff.name} (Titular)`;
+                } else {
+                    staffInfo += ' - Sin asignar';
+                }
+                if (role.replacement) {
+                    staffInfo += `\nReemplazo: ${role.replacement.name}`;
+                }
+                if (role.observation) {
+                    staffInfo += `\nObs: ${role.observation}`;
+                }
+                rowData.push(staffInfo);
+                
+                filteredPeriods.value.forEach((period: any) => {
+                    const statusId = getCurrentStatusId(role, period);
+                    const statusLabel = getStatusDetails(statusId).label;
+                    rowData.push(statusLabel);
+                });
+                
+                wsData.push(rowData);
+                currentRow++;
+            });
+
+            if (guard.assigned_roles.length > 1) {
+                merges.push({ s: { r: startRow, c: 0 }, e: { r: currentRow - 1, c: 0 } });
+            }
+        });
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    if (merges.length > 0) {
+        ws['!merges'] = merges;
+    }
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Headcount");
+    XLSX.writeFile(wb, "Headcount.xlsx");
+};
+
 // --- Filtros ---
 const filterDate = ref('');
 const filterStatus = ref('all');
@@ -483,6 +548,12 @@ const filteredGuards = computed(() => {
                 <button v-if="filterDate || filterStatus !== 'all'" @click="clearFilters" class="flex items-center gap-2 h-10 px-4 py-2 text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition-colors">
                     <FilterX :size="16" />
                     Limpiar Filtros
+                </button>
+            </div>
+            <div class="ml-auto flex flex-col gap-1">
+                <button @click="exportToExcel" class="flex items-center gap-2 h-10 px-4 py-2 text-sm font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-md transition-colors">
+                    <Download :size="16" />
+                    Exportar Excel
                 </button>
             </div>
         </div>
