@@ -8,6 +8,7 @@ import HeadcountFilters from './partials/HeadcountFilters.vue';
 import HeadcountGrid from './partials/HeadcountGrid.vue';
 import { useHeadcountSelection } from '@/composables/useHeadcountSelection';
 import { useHeadcountData } from '@/composables/useHeadcountData';
+import Swal from 'sweetalert2';
 
 interface Props {
     users: User[];
@@ -35,6 +36,7 @@ const {
     guardsSelected, 
     unassignedUsers, 
     assignedUsers, 
+    allStaff,
     selectedPeriods, 
     fetchCafeData,
     assignGuards,
@@ -50,7 +52,18 @@ watch(
     () => selectedOptions.value.cafe,
     (newCafeId) => {
         if (newCafeId) {
+            Swal.fire({
+                title: 'Cargando...',
+                text: 'Por favor espere',
+                allowOutsideClick: false,
+                didOpen: () => {
+                    Swal.showLoading();
+                }
+            });
+            
             fetchCafeData(Number(newCafeId));
+
+            Swal.close()
         }
     }
 );
@@ -105,7 +118,7 @@ const exportToExcel = () => {
                 <div class="grid h-full">
                     <TableHeadcount
                         :guards="guardsSelected"
-                        :users="assignedUsers"
+                        :users="allStaff"
                         :cafeId="String(selectedOptions.cafe || '')"
                         :periods="selectedPeriods"
                         @fetchCafeData="(id) => fetchCafeData(Number(id))"

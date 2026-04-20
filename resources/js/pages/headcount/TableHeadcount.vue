@@ -5,9 +5,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Staff, User } from '@/types';
 import { useForm } from '@inertiajs/vue3';
 import axios from 'axios';
-import { Trash } from 'lucide-vue-next';
-import { ref } from 'vue';
+import * as XLSX from 'xlsx';
+import { Trash, Info, UserPlus, ArrowRight, FilterX, Download } from 'lucide-vue-next';
+import { ref, computed } from 'vue';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { filesRequired } from '../staff/composables/useStaffForm'
+import Swal from 'sweetalert2';
 
 // Interfaces
 interface DateColumn {
@@ -40,6 +46,127 @@ const form = useForm({
 
 const newStartDate = ref('');
 const newEndDate = ref('');
+const workMode = ref('manual');
+
+const searchQueries = ref<Record<string, string>>({});
+const showDropdowns = ref<Record<string, boolean>>({});
+
+const hideDropdown = (roleId: string) => {
+    setTimeout(() => {
+        showDropdowns.value[roleId] = false;
+    }, 150);
+};
+
+const isReplacementModalOpen = ref(false);
+const selectedRoleForReplacement = ref<any>(null);
+const replacementSearchQuery = ref('');
+
+const openReplacementModal = (role: any) => {
+    selectedRoleForReplacement.value = role;
+    replacementSearchQuery.value = '';
+    isReplacementModalOpen.value = true;
+};
+
+const filteredReplacementUsers = () => {
+    const q = replacementSearchQuery.value || '';
+    if (!q) return props.users;
+    return props.users.filter(u => u.name.toLowerCase().includes(q.toLowerCase()));
+};
+
+const assignReplacement = async (user: User) => {
+    if (!selectedRoleForReplacement.value) return;
+    try {
+        await axios.post('/guards/roles/replacement', {
+            guard_role_id: selectedRoleForReplacement.value.id,
+            user_id: user.id
+        });
+        selectedRoleForReplacement.value.replacement = user;
+        isReplacementModalOpen.value = false;
+        emit('fetchCafeData', props.cafeId);
+        Swal.fire({
+            icon: 'success',
+            title: 'Reemplazo asignado',
+            timer: 1500,
+            showConfirmButton: false
+        });
+    } catch (e) {
+        console.error(e);
+        alert('Error asignando reemplazo');
+    }
+};
+
+const unassignReplacement = async (role: any) => {
+    if(!confirm('¿Está seguro de quitar el reemplazo?')) return;
+    try {
+        await axios.delete(`/guards/roles/replacement/${role.id}`);
+        role.replacement = null;
+        emit('fetchCafeData', props.cafeId);
+    } catch(e) {
+        console.error(e);
+        alert('Error quitando reemplazo');
+    }
+};
+
+const updateObservation = async (role: any) => {
+    try {
+        await axios.put('/guards/roles/observation', {
+            guard_role_id: role.id,
+            observation: role.observation
+        });
+        Swal.fire({
+            icon: 'success',
+            title: 'Observación guardada',
+            text: 'La observación se ha almacenado correctamente.',
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true
+        });
+    } catch (e) {
+        console.error(e);
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: 'Hubo un problema al guardar la observación.',
+        });
+    }
+};
+
+const filteredUsers = (roleId: string) => {
+    const q = searchQueries.value[roleId] || '';
+    if (!q) return props.users;
+    return props.users.filter(u => u.name.toLowerCase().includes(q.toLowerCase()));
+};
+
+const assignStaff = async (role: any, user: User) => {
+    try {
+        await axios.post('/guards/roles/user', {
+            guard_role_id: role.id,
+            user_id: user.id
+        });
+        role.staff = user;
+        searchQueries.value[role.id] = '';
+        showDropdowns.value[role.id] = false;
+        emit('fetchCafeData', props.cafeId);
+    } catch (e) {
+        console.error(e);
+        alert('Error asignando staff');
+    }
+};
+
+const unassignStaff = async (role: any) => {
+    if(!role.staff) return;
+    if(!confirm('¿Está seguro de quitar a este personal?')) return;
+    try {
+        await axios.delete(`/guards/roles/user/${role.staff.id}`);
+        role.staff = null;
+        emit('fetchCafeData', props.cafeId);
+    } catch(e) {
+        console.error(e);
+        alert('Error quitando staff');
+    }
+};
 
 const filesRequired = ref([
         { label: 'CV Documentado', file: {} },
@@ -72,10 +199,19 @@ const getStatusDetails = (statusId: number | string | undefined) => {
 };
 
 // Obtener el ID del status actual para un usuario en un periodo
-const getCurrentStatusId = (staff: Staff, period: any) => {
-    const staffFound = period.staffs.find((s: any) => s.id === staff?.id);
-    // Convertimos a String porque el Select Value suele trabajar mejor con strings
+const getCurrentStatusId = (role: any, period: any) => {
+    const activeStaff = role.replacement || role.staff;
+    if (!activeStaff) return undefined;
+    
+    const staffFound = period.staffs.find((s: any) => s.id === activeStaff.id);
     return staffFound?.pivot?.status ? String(staffFound.pivot.status) : undefined;
+};
+
+const updateUserStatusWithRole = (newStatus: string, role: any, periodId: number) => {
+    const activeStaff = role.replacement || role.staff;
+    if (!activeStaff) return;
+    
+    updateUserStatus(newStatus, activeStaff.id, periodId);
 };
 
 const formatDate = (dateString: string) => {
@@ -86,28 +222,114 @@ const formatDate = (dateString: string) => {
 
 // --- Acciones ---
 
-const addColumn = () => {
-    if (!newStartDate.value || !newEndDate.value) {
-        alert('Por favor selecciona ambas fechas');
+const addColumn = async () => {
+    if (!newStartDate.value || (workMode.value === 'manual' && !newEndDate.value)) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Atención',
+            text: 'Por favor selecciona las fechas correctamente.'
+        });
         return;
     }
-    // Asignamos valores al form
-    form.cafe_id = props.cafeId;
-    form.start_date = newStartDate.value;
-    form.end_date = newEndDate.value;
-    // Nota: Asegúrate de que form.users tenga el formato que espera el backend
-    // Aquí solo estamos enviando el array completo de usuarios props
-    form.users = props.users;
 
-    axios
-        .post('/periods', form) // Ajusta la ruta a tu API
-        .then(() => {
-            emit('fetchCafeData', props.cafeId);
+    Swal.fire({
+        title: 'Cargando...',
+        text: 'Agregando periodo(s)...',
+        allowOutsideClick: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+
+    if (workMode.value === 'manual') {
+        try {
+            await axios.post('/periods', {
+                cafe_id: props.cafeId,
+                start_date: newStartDate.value,
+                end_date: newEndDate.value,
+                status: form.status,
+                users: props.users
+            });
+            emit('fetchCafeData', props.cafeId);           
             newStartDate.value = '';
             newEndDate.value = '';
             form.status = '0';
-        })
-        .catch((err) => console.error(err));
+            
+            Swal.fire({
+                icon: 'success',
+                title: 'Éxito',
+                text: 'Periodo agregado correctamente',
+                timer: 1500,
+                showConfirmButton: false
+            });
+        } catch (err) {
+            console.error(err);
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'No se pudo agregar el periodo'
+            });
+        }
+    } else {
+        const cycles = 4;
+        let pStartDate = new Date(newStartDate.value + 'T12:00:00');
+        let hasError = false;
+        
+        for (let i = 0; i < cycles; i++) {
+            let startStr = pStartDate.toISOString().split('T')[0];
+            let endStr = '';
+            let nextStart = new Date(pStartDate);
+            
+            if (workMode.value === '14x7') {
+                let end = new Date(pStartDate);
+                end.setDate(end.getDate() + 6);
+                endStr = end.toISOString().split('T')[0];
+                nextStart.setDate(nextStart.getDate() + 7);
+            } else if (workMode.value === '20x10') {
+                let end = new Date(pStartDate);
+                end.setDate(end.getDate() + 9);
+                endStr = end.toISOString().split('T')[0];
+                nextStart.setDate(nextStart.getDate() + 10);
+            }
+            
+            try {
+                await axios.post('/periods', {
+                    cafe_id: props.cafeId,
+                    start_date: startStr,
+                    end_date: endStr,
+                    status: form.status,
+                    users: props.users
+                });
+            } catch (err) {
+                console.error(err);
+                hasError = true;
+            }
+            
+            pStartDate = nextStart;
+        }
+        
+        emit('fetchCafeData', props.cafeId);
+        newStartDate.value = '';
+        newEndDate.value = '';
+        form.status = '0';
+        workMode.value = 'manual';
+
+        if (hasError) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Error',
+                text: 'Hubo un error al agregar algunos periodos'
+            });
+        } else {
+            Swal.fire({
+                icon: 'success',
+                title: 'Éxito',
+                text: 'Periodos agregados correctamente',
+                timer: 1500,
+                showConfirmButton: false
+            });
+        }
+    }
 };
 
 const deletePeriod = (periodId: string) => {
@@ -139,23 +361,150 @@ const updateUserStatus = (newStatus: string, userId: number, periodId: number) =
             alert('No se pudo actualizar el estado');
         });
 };
+
+// --- Excel Export ---
+const exportToExcel = () => {
+    const wsData: any[][] = [];
+    const merges: any[] = [];
+    
+    // Header Row
+    const headerRow = ['Guardia', 'Personal'];
+    filteredPeriods.value.forEach((p: any) => {
+        headerRow.push(`${formatDate(p.start_date)} al ${formatDate(p.end_date)}`);
+    });
+    wsData.push(headerRow);
+    
+    let currentRow = 1; // 0 is header
+
+    if (filteredGuards.value.length === 0) {
+        wsData.push(['No se encontraron resultados para los filtros aplicados.']);
+    } else {
+        filteredGuards.value.forEach((guard: any) => {
+            const startRow = currentRow;
+            
+            guard.assigned_roles.forEach((role: any, index: number) => {
+                const rowData: any[] = [];
+                
+                rowData.push(index === 0 ? guard.name : '');
+                
+                let staffInfo = role.role.name;
+                if (role.staff) {
+                    staffInfo += ` - ${role.staff.name} (Titular)`;
+                } else {
+                    staffInfo += ' - Sin asignar';
+                }
+                if (role.replacement) {
+                    staffInfo += `\nReemplazo: ${role.replacement.name}`;
+                }
+                if (role.observation) {
+                    staffInfo += `\nObs: ${role.observation}`;
+                }
+                rowData.push(staffInfo);
+                
+                filteredPeriods.value.forEach((period: any) => {
+                    const statusId = getCurrentStatusId(role, period);
+                    const statusLabel = getStatusDetails(statusId).label;
+                    rowData.push(statusLabel);
+                });
+                
+                wsData.push(rowData);
+                currentRow++;
+            });
+
+            if (guard.assigned_roles.length > 1) {
+                merges.push({ s: { r: startRow, c: 0 }, e: { r: currentRow - 1, c: 0 } });
+            }
+        });
+    }
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    if (merges.length > 0) {
+        ws['!merges'] = merges;
+    }
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Headcount");
+    XLSX.writeFile(wb, "Headcount.xlsx");
+};
+
+// --- Filtros ---
+const filterDate = ref('');
+const filterStatus = ref('all');
+
+const clearFilters = () => {
+    filterDate.value = '';
+    filterStatus.value = 'all';
+};
+
+const filteredPeriods = computed(() => {
+    if (!filterDate.value) return props.periods;
+    const fDateStr = filterDate.value;
+    return props.periods.filter(p => p.start_date <= fDateStr && p.end_date >= fDateStr);
+});
+
+const filteredGuards = computed(() => {
+    if (!filterDate.value && filterStatus.value === 'all') {
+        return props.guards;
+    }
+
+    const targetPeriods = filteredPeriods.value;
+    if (targetPeriods.length === 0) return [];
+
+    return props.guards.map((guard: any) => {
+        const matchingRoles = guard.assigned_roles.filter((role: any) => {
+            const activeStaff = role.replacement || role.staff;
+            
+            if (filterStatus.value !== 'all') {
+                if (!activeStaff) return false;
+                return targetPeriods.some((p: any) => {
+                    const st = getCurrentStatusId(role, p);
+                    if (filterStatus.value === 'pending') {
+                        return st === undefined;
+                    }
+                    return st === filterStatus.value;
+                });
+            }
+            return true;
+        });
+
+        if (matchingRoles.length > 0) {
+            return {
+                ...guard,
+                assigned_roles: matchingRoles
+            };
+        }
+        return null;
+    }).filter((g: any) => g !== null);
+});
 </script>
 
 <template>
     <div class="space-y-4">
         <div class="flex items-end gap-4 rounded-lg border bg-gray-50 p-4">
             <div class="flex flex-col gap-1">
+                <label class="text-sm font-medium text-gray-700">Modo</label>
+                <Select v-model="workMode">
+                    <SelectTrigger class="w-[120px]">
+                        <SelectValue placeholder="Modo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="manual">Manual</SelectItem>
+                        <SelectItem value="14x7">14x7</SelectItem>
+                        <SelectItem value="20x10">20x10</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+            <div class="flex flex-col gap-1">
                 <label class="text-sm font-medium text-gray-700">Fecha Inicio</label>
                 <input type="date" v-model="newStartDate" class="rounded border px-3 py-2 text-sm" />
             </div>
-            <div class="flex flex-col gap-1">
+            <div class="flex flex-col gap-1" v-if="workMode === 'manual'">
                 <label class="text-sm font-medium text-gray-700">Fecha Fin</label>
                 <input type="date" v-model="newEndDate" class="rounded border px-3 py-2 text-sm" />
             </div>
             <div class="flex flex-col gap-1">
-                <label class="text-sm font-medium text-gray-700">Estado Inicial</label>
+                <label class="text-sm font-medium text-gray-700">Estado</label>
                 <Select v-model="form.status">
-                    <SelectTrigger>
+                    <SelectTrigger class="w-[140px]">
                         <SelectValue placeholder="Estado" />
                     </SelectTrigger>
                     <SelectContent>
@@ -167,8 +516,46 @@ const updateUserStatus = (newStatus: string, userId: number, periodId: number) =
                 </Select>
             </div>
             <button @click="addColumn" class="h-10 rounded bg-black px-4 py-2 text-sm text-white transition hover:bg-gray-800">
-                Agregar Periodo
+                Agregar Periodo{{ workMode !== 'manual' ? 's' : '' }}
             </button>
+        </div>
+
+        <div class="relative flex items-end gap-4 rounded-lg border bg-white shadow-sm p-4 border-l-4 border-l-blue-500 mt-2">
+            <div class="absolute -top-3 left-2 bg-blue-500 text-white px-3 py-0.5 rounded text-[10px] font-bold shadow uppercase tracking-wider">
+                Filtros de Búsqueda
+            </div>
+            <div class="flex flex-col gap-1 w-full max-w-[200px]">
+                <label class="text-xs font-bold text-gray-500 uppercase">Por Fecha</label>
+                <input type="date" v-model="filterDate" class="rounded-md border border-gray-200 px-3 py-2 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all" />
+            </div>
+            <div class="flex flex-col gap-1 w-full max-w-[200px]">
+                <label class="text-xs font-bold text-gray-500 uppercase">Por Estado</label>
+                <Select v-model="filterStatus">
+                    <SelectTrigger class="w-full bg-gray-50 focus:bg-white focus:ring-2 focus:ring-blue-500">
+                        <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">Todos</SelectItem>
+                        <SelectItem value="1">Trabajando</SelectItem>
+                        <SelectItem value="2">Libre</SelectItem>
+                        <SelectItem value="3">Falta</SelectItem>
+                        <SelectItem value="4">Nuevo</SelectItem>
+                        <SelectItem value="pending">Pendiente</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+            <div class="flex flex-col gap-1">
+                <button v-if="filterDate || filterStatus !== 'all'" @click="clearFilters" class="flex items-center gap-2 h-10 px-4 py-2 text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded-md transition-colors">
+                    <FilterX :size="16" />
+                    Limpiar Filtros
+                </button>
+            </div>
+            <div class="ml-auto flex flex-col gap-1">
+                <button @click="exportToExcel" class="flex items-center gap-2 h-10 px-4 py-2 text-sm font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 rounded-md transition-colors">
+                    <Download :size="16" />
+                    Exportar Excel
+                </button>
+            </div>
         </div>
 
         <Table>
@@ -176,7 +563,7 @@ const updateUserStatus = (newStatus: string, userId: number, periodId: number) =
                 <TableRow>
                     <TableHead class="w-[150px] font-bold"> Guardia </TableHead>
                     <TableHead class="w-[150px] font-bold"> Personal </TableHead>
-                    <TableHead v-for="col in props.periods" :key="col.id" class="min-w-[120px] text-center">
+                    <TableHead v-for="col in filteredPeriods" :key="col.id" class="min-w-[120px] text-center">
                         <div class="flex flex-col items-center justify-center gap-1">
                             <span>{{ formatDate(col.start_date) }}</span>
                             <span class="text-xs text-gray-400">al</span>
@@ -197,25 +584,107 @@ const updateUserStatus = (newStatus: string, userId: number, periodId: number) =
                 </TableRow>
             </TableHeader>
             <TableBody>
-                <template v-for="guard in props.guards" :key="guard.id">
+                <template v-for="guard in filteredGuards" :key="guard.id">
                     <TableRow v-for="(role, index) in guard.assigned_roles" :key="role.id">
                         <TableCell v-if="index === 0" class="font-medium" :rowspan="guard.assigned_roles.length">
                             {{ guard.name }}
                         </TableCell>
-                        <TableCell class="font-medium"> {{ role.role.name }} - {{ role.staff?.name }} {{ getFilesIncomplete(role.staff) }} </TableCell>
-                        <TableCell v-for="period in props.periods" :key="period.id" class="p-2 text-center">
+                        <TableCell class="font-medium min-w-[280px] align-top bg-white/50">
+                            <div class="flex flex-col gap-3">
+                                <!-- Role Header -->
+                                <div class="flex items-center justify-between border-b pb-1">
+                                    <span class="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{{ role.role.name }}</span>
+                                    <span v-if="role.staff" class="text-xs text-red-500 font-normal">{{ getFilesIncomplete(role.staff) }}</span>
+                                </div>
+                                
+                                <!-- Staff Display Area -->
+                                <div class="space-y-2">
+                                    <!-- Search if no staff -->
+                                    <div class="relative w-full" v-if="!role.staff">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Asignar personal..." 
+                                            class="w-full rounded-md border border-gray-200 bg-white px-3 py-1.5 text-sm transition-all focus:ring-2 focus:ring-black/5 focus:border-black"
+                                            v-model="searchQueries[role.id]"
+                                            @focus="showDropdowns[role.id] = true"
+                                            @blur="hideDropdown(role.id)"
+                                        />
+                                        <div v-if="showDropdowns[role.id] && filteredUsers(role.id).length" class="absolute z-50 left-0 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-white shadow-xl">
+                                            <ul class="py-1 text-sm text-gray-700">
+                                                <li 
+                                                    v-for="user in filteredUsers(role.id)" 
+                                                    :key="user.id" 
+                                                    @mousedown.prevent="assignStaff(role, user)"
+                                                    class="cursor-pointer px-4 py-2.5 hover:bg-gray-50 flex flex-col"
+                                                >
+                                                    <span class="font-medium">{{ user.name }}</span>
+                                                    <span class="text-[10px] text-gray-400 capitalize">{{ user.dni }}</span>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Assigned Staff -->
+                                    <div v-else class="flex flex-col gap-1.5">
+                                        <div class="group relative flex items-center justify-between gap-3 rounded-lg border border-gray-100 bg-white p-2.5 shadow-sm transition-all hover:border-gray-300">
+                                            <div class="flex flex-col overflow-hidden">
+                                                <span class="truncate text-sm font-semibold text-gray-900">{{ role.staff.name }}</span>
+                                                <span class="text-[10px] text-gray-400 uppercase tracking-tight">Titular</span>
+                                            </div>
+                                            <div class="flex shrink-0 gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button v-if="!role.replacement" @click="openReplacementModal(role)" title="Asignar Reemplazo" class="p-1.5 rounded-md text-blue-500 hover:bg-blue-50">
+                                                    <UserPlus :size="14" />
+                                                </button>
+                                                <button @click="unassignStaff(role)" title="Quitar titular" class="p-1.5 rounded-md text-red-400 hover:bg-red-50">
+                                                    <Trash :size="14" />
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <!-- Replacement Indicator & Name -->
+                                        <div v-if="role.replacement" class="flex items-center gap-2 px-1 py-1">
+                                            <ArrowRight class="text-gray-300 ml-2" :size="14" />
+                                            <div class="group relative flex flex-1 items-center justify-between gap-2 rounded-lg border border-blue-100 bg-blue-50/50 p-2 transition-all hover:bg-blue-50">
+                                                <div class="flex flex-col overflow-hidden">
+                                                    <span class="truncate text-sm font-bold text-blue-700">{{ role.replacement.name }}</span>
+                                                    <span class="text-[10px] text-blue-500 uppercase tracking-tight">Reemplazo activo</span>
+                                                </div>
+                                                <button @click="unassignReplacement(role)" title="Quitar reemplazo" class="p-1.5 rounded-md text-blue-400 hover:bg-blue-100 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <Trash :size="12" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Observation Field -->
+                                <div class="mt-1 space-y-1">
+                                    <div class="flex items-center gap-1.5 px-0.5">
+                                        <Info :size="10" class="text-gray-400" />
+                                        <span class="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Observaciones</span>
+                                    </div>
+                                    <textarea 
+                                        v-model="role.observation" 
+                                        class="w-full rounded-md border border-gray-100 bg-gray-50/50 px-2.5 py-2 text-xs transition-all focus:outline-none focus:border-gray-300 focus:bg-white resize-none shadow-inner"
+                                        placeholder="Escribe una nota aquí..."
+                                        rows="2"
+                                        @blur="updateObservation(role)"
+                                    ></textarea>
+                                </div>
+                            </div>
+                        </TableCell>
+                        <TableCell v-for="period in filteredPeriods" :key="period.id" class="p-2 text-center border-l border-gray-50">
                             <Select
-                                :model-value="getCurrentStatusId(role.staff, period)"
-                                @update:model-value="(val) => updateUserStatus(val, role.staff.id, period.id)"
+                                :model-value="getCurrentStatusId(role, period)"
+                                @update:model-value="(val) => updateUserStatusWithRole(val, role, period.id)"
                             >
-                                <SelectTrigger class="flex h-auto w-full justify-center border-0 bg-transparent p-0 shadow-none focus:ring-0">
+                                <SelectTrigger class="flex h-10 w-full justify-center border-0 bg-transparent p-0 shadow-none focus:ring-0">
                                     <Badge
                                         class="cursor-pointer border-0 px-3 py-1 text-white shadow-sm transition-all hover:scale-105"
-                                        :class="getStatusDetails(getCurrentStatusId(role.staff, period)).color"
+                                        :class="getStatusDetails(getCurrentStatusId(role, period)).color"
                                     >
-                                        {{ getStatusDetails(getCurrentStatusId(role.staff, period)).label }}
+                                        {{ getStatusDetails(getCurrentStatusId(role, period)).label }}
                                     </Badge>
-                                    <span class="sr-only">Toggle menu</span>
                                 </SelectTrigger>
 
                                 <SelectContent>
@@ -231,7 +700,56 @@ const updateUserStatus = (newStatus: string, userId: number, periodId: number) =
                         </TableCell>
                     </TableRow>
                 </template>
+                <TableRow v-if="filteredGuards.length === 0">
+                    <TableCell :colspan="filteredPeriods.length + 2" class="h-24 text-center text-gray-500">
+                        No se encontraron resultados para los filtros aplicados.
+                    </TableCell>
+                </TableRow>
             </TableBody>
         </Table>
+
+        <Dialog v-model:open="isReplacementModalOpen">
+            <DialogContent class="sm:max-w-[425px]">
+                <DialogHeader>
+                    <DialogTitle>Asignar Reemplazo</DialogTitle>
+                    <DialogDescription>
+                        Seleccione un personal para reemplazar a la persona actual en el rol: 
+                        <span class="font-bold text-black" v-if="selectedRoleForReplacement">
+                            {{ selectedRoleForReplacement.role.name }}
+                        </span>
+                    </DialogDescription>
+                </DialogHeader>
+                <div class="grid gap-4 py-4">
+                    <div class="flex flex-col gap-2">
+                        <Input 
+                            v-model="replacementSearchQuery" 
+                            placeholder="Buscar personal..." 
+                            class="w-full"
+                        />
+                    </div>
+                    <div class="max-h-[300px] overflow-y-auto border rounded-md">
+                        <ul class="divide-y divide-gray-100">
+                            <li 
+                                v-for="user in filteredReplacementUsers()" 
+                                :key="user.id" 
+                                @click="assignReplacement(user)"
+                                class="cursor-pointer px-4 py-3 hover:bg-gray-50 transition-colors flex items-center justify-between"
+                            >
+                                <span class="text-sm font-medium">{{ user.name }}</span>
+                                <UserPlus class="text-gray-400" :size="16" />
+                            </li>
+                            <li v-if="filteredReplacementUsers().length === 0" class="p-4 text-center text-sm text-gray-500">
+                                No se encontraron resultados
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" @click="isReplacementModalOpen = false">
+                        Cancelar
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </div>
 </template>

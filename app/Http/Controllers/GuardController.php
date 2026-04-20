@@ -115,4 +115,27 @@ class GuardController extends Controller
     {
         DB::table('guard_roles')->where('staff_id', $id)->update(['staff_id' => null]);
     }
+
+    public function updateObservation(Request $request)
+    {
+        DB::table('guard_roles')
+            ->where('id', $request->guard_role_id)
+            ->update(['observation' => $request->observation]);
+
+        return response()->json(['message' => 'Observación actualizada.']);
+    }
+
+    public function assignReplacement(Request $request)
+    {
+        DB::table('guard_roles')
+            ->where('id', $request->guard_role_id)
+            ->update(['replacement_id' => $request->user_id]);
+
+        return response()->json(['message' => 'Reemplazo asignado.']);
+    }
+
+    public function deleteReplacement($id)
+    {
+        DB::table('guard_roles')->where('id', $id)->update(['replacement_id' => null]);
+    }
 }

@@ -96,6 +96,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('roles/{id}', [GuardController::class, 'deleteGuardRoles'])->name('roles.destroy');
         Route::post('roles/user', [GuardController::class, 'insertGuardRolesUser'])->name('roles.user.store');
         Route::delete('roles/user/{id}', [GuardController::class, 'deleteGuardRolesUser'])->name('roles.user.destroy');
+        Route::put('roles/observation', [GuardController::class, 'updateObservation'])->name('roles.observation.update');
+        Route::post('roles/replacement', [GuardController::class, 'assignReplacement'])->name('roles.replacement.store');
+        Route::delete('roles/replacement/{id}', [GuardController::class, 'deleteReplacement'])->name('roles.replacement.destroy');
         Route::delete('{id}', [GuardController::class, 'destroy'])->name('destroy');
     });
 
