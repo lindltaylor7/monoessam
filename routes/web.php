@@ -114,6 +114,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/update-status', [StaffController::class, 'updateStatusStaff'])->name('update-status');
         Route::post('/upload-file', [StaffController::class, 'uploadFile'])->name('upload-file');
         Route::post('/upload-filedate', [StaffController::class, 'uploadFileDate'])->name('update-filedate');
+        Route::post('/update-file-status', [StaffController::class, 'updateFileStatus'])->name('update-file-status');
         Route::delete('/delete-file/{id}', [StaffController::class, 'deleteFile'])->name('delete-file');
         Route::post('/mass-upload-sctr', [StaffController::class, 'massUploadSctr'])->name('mass-upload-sctr');
     });
@@ -204,6 +205,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('search/{word?}', [IngredientController::class, 'search'])->name('search');
         Route::post('import', [IngredientController::class, 'import'])->name('import');
         Route::post('import-energy', [IngredientController::class, 'importEnergy'])->name('import-energy');
+        Route::post('import-dosifications', [IngredientController::class, 'importDosifications'])->name('import-dosifications');
     });
 
     Route::prefix('ingredient-categories')->name('ingredient-categories.')->group(function () {

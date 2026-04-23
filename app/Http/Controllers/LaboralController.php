@@ -22,11 +22,11 @@ class LaboralController extends Controller
                 'role',
                 'staffable' => function ($query) {
                     $query->morphWith([
-                        Cafe::class => ['unit'], 
-                        Area::class => ['headquarters'], 
+                        Cafe::class => ['unit'],
+                        Area::class => ['headquarters'],
                     ]);
                 }
-            ])->orderBy('id', 'desc')->get(),
+            ])->where('status', 2)->orderBy('id', 'desc')->get(),
         ]);
     }
 }

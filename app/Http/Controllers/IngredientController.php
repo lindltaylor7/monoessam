@@ -145,4 +145,15 @@ class IngredientController extends Controller
         Excel::import(new \App\Imports\IngredientsEnergyImport, $file);
         return redirect()->back()->with('success', 'Energía de ingredientes actualizada correctamente');
     }
+
+    public function importDosifications(Request $request)
+    {
+        $request->validate([
+            'excel_file' => 'required|file|mimes:xlsx,xls,csv'
+        ]);
+
+        $file = $request->file('excel_file');
+        Excel::import(new \App\Imports\DosificationsImport, $file);
+        return redirect()->back()->with('success', 'Dosificaciones importadas correctamente');
+    }
 }

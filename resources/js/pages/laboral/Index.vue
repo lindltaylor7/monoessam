@@ -8,6 +8,7 @@ import { ref, computed } from 'vue';
 import { Staff } from '@/types';
 import * as XLSX from 'xlsx';
 import FilesModal from '@/pages/staff/FilesModal.vue';
+import ContractsModal from '@/pages/staff/ContractsModal.vue';
 import StatusBadge from '@/components/shared/StatusBadge.vue';
 import { getStatusColor, getStatusLabel } from '@/composables/useStaffConstants';
 
@@ -42,6 +43,40 @@ const formatDate = (dateString?: string) => {
 
 const getStartDate = (staff: any) => {
     return staff.startDate || staff.start_date || staff.created_at;
+};
+
+const getEndDate = (staff: any) => {
+    const contracts = staff.staff_files?.filter((f: any) => f.file_type === 'Contratos Laborales') || [];
+    if (contracts.length === 0) return null;
+    
+    // Sort by created_at descending
+    const sorted = [...contracts].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return sorted[0].expiration_date;
+};
+
+const getContractStatus = (staff: any) => {
+    const contracts = staff.staff_files?.filter((f: any) => f.file_type === 'Contratos Laborales') || [];
+    if (contracts.length === 0) return 'Sin contrato';
+    
+    const sorted = [...contracts].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return sorted[0].status || 'Realizado';
+};
+
+const isExpired = (expirationDate: string | null) => {
+    if (!expirationDate) return false;
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return new Date(expirationDate) < now;
+};
+
+const isNearExpiry = (expirationDate: string | null) => {
+    if (!expirationDate) return false;
+    const expiry = new Date(expirationDate);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const diffTime = expiry.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 && diffDays <= 30;
 };
 
 const filteredStaff = computed(() => {
@@ -105,6 +140,8 @@ const exportToExcel = () => {
             'Comedor/Unidad': location,
             'Sueldo': staff.staff_financial?.salary || '0.00',
             'Fecha de Inicio': formatDate(getStartDate(staff)),
+            'Fecha de Término': formatDate(getEndDate(staff)),
+            'Estado de Contrato': getContractStatus(staff),
             'Estado': getStatusLabel(staff.status)
         };
     });
@@ -114,7 +151,7 @@ const exportToExcel = () => {
     XLSX.utils.book_append_sheet(workbook, worksheet, "Expedientes");
 
     const wscols = [
-        {wch: 35}, {wch: 12}, {wch: 25}, {wch: 35}, {wch: 10}, {wch: 15}, {wch: 15}
+        {wch: 35}, {wch: 12}, {wch: 25}, {wch: 35}, {wch: 10}, {wch: 15}, {wch: 15}, {wch: 15}, {wch: 15}
     ];
     worksheet['!cols'] = wscols;
 
@@ -205,6 +242,8 @@ const exportToExcel = () => {
                                 <th class="p-4 text-left text-sm font-bold text-zinc-700">Comedor/Unidad</th>
                                 <th class="p-4 text-left text-sm font-bold text-zinc-700">Sueldo</th>
                                 <th class="p-4 text-left text-sm font-bold text-zinc-700">Fecha de Inicio</th>
+                                <th class="p-4 text-left text-sm font-bold text-zinc-700">Fecha de Término</th>
+                                <th class="p-4 text-left text-sm font-bold text-zinc-700">Estado de Contrato</th>
                                 <th class="p-4 text-left text-sm font-bold text-zinc-700">Estado</th>
                                 <th class="p-4 text-center text-sm font-bold text-zinc-700">Expediente Digital</th>
                             </tr>
@@ -237,6 +276,32 @@ const exportToExcel = () => {
                                     </div>
                                 </td>
                                 <td class="p-4">
+                                    <div class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border" 
+                                        :class="getEndDate(staff) ? (
+                                            isExpired(getEndDate(staff)) 
+                                            ? 'bg-red-50 text-red-700 border-red-200' 
+                                            : (isNearExpiry(getEndDate(staff)) 
+                                                ? 'bg-amber-50 text-amber-700 border-amber-200' 
+                                                : 'bg-emerald-50 text-emerald-700 border-emerald-200')
+                                        ) : 'bg-zinc-50 text-zinc-500 border-zinc-200'"
+                                    >
+                                        <!-- Alerta Icon -->
+                                        <svg v-if="getEndDate(staff) && (isExpired(getEndDate(staff)) || isNearExpiry(getEndDate(staff)))" class="w-3.5 h-3.5" :class="isExpired(getEndDate(staff)) ? 'text-red-500' : 'text-amber-500'" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                        {{ formatDate(getEndDate(staff)) }}
+                                    </div>
+                                </td>
+                                <td class="p-4">
+                                    <div class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold"
+                                        :class="{
+                                            'bg-blue-50 text-blue-700': getContractStatus(staff) === 'Enviado',
+                                            'bg-green-50 text-green-700': getContractStatus(staff) === 'Firmado',
+                                            'bg-zinc-100 text-zinc-600': getContractStatus(staff) === 'Realizado' || getContractStatus(staff) === 'Sin contrato'
+                                        }"
+                                    >
+                                        {{ getContractStatus(staff) }}
+                                    </div>
+                                </td>
+                                <td class="p-4">
                                     <StatusBadge 
                                         :label="getStatusLabel(staff.status)" 
                                         :color-class="getStatusColor(staff.status)" 
@@ -244,6 +309,8 @@ const exportToExcel = () => {
                                 </td>
                                 <td class="p-4 text-center">
                                     <div class="flex items-center justify-center gap-2">
+                                        <!-- Modal exclusivo de Contratos -->
+                                        <ContractsModal :staff="(staff as any)" />
                                         <!-- Botón de expediente digital utilizando FilesModal de Staff -->
                                         <FilesModal :staff="(staff as any)" />
                                     </div>

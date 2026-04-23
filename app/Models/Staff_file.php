@@ -10,5 +10,5 @@ class Staff_file extends Model
     /** @use HasFactory<\Database\Factories\StaffFileFactory> */
     use HasFactory;
 
-    protected $fillable = ['staff_id', 'file_type', 'file_path', 'expiration_date'];
+    protected $fillable = ['staff_id', 'file_type', 'file_path', 'expiration_date', 'status'];
 }

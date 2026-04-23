@@ -414,6 +414,45 @@ const uploadEnergyFile = () => {
         }
     });
 };
+// Import Dosification
+const dosificationInput = ref<HTMLInputElement | null>(null);
+const dosificationImportForm = useForm({
+    excel_file: null as File | null,
+});
+
+const triggerDosificationImport = () => {
+    dosificationInput.value?.click();
+};
+
+const handleDosificationFileSelect = (event: Event) => {
+    const input = event.target as HTMLInputElement;
+    if (input.files && input.files.length > 0) {
+        dosificationImportForm.excel_file = input.files[0];
+        uploadDosificationFile();
+    }
+};
+
+const uploadDosificationFile = () => {
+    dosificationImportForm.post(route('ingredients.import-dosifications'), {
+        onSuccess: () => {
+            Swal.fire({
+                title: '¡Actualizado!',
+                text: 'La dosificación de los ingredientes ha sido actualizada.',
+                icon: 'success',
+                timer: 2000,
+                showConfirmButton: false
+            });
+            dosificationImportForm.reset();
+        },
+        onError: () => {
+            Swal.fire({
+                title: 'Error',
+                text: 'Hubo un error al intentar importar las dosificaciones.',
+                icon: 'error'
+            });
+        }
+    });
+};
 </script>
 
 <template>
@@ -474,10 +513,35 @@ const uploadEnergyFile = () => {
                         </template>
                     </Button>
 
+                    <input 
+                        type="file" 
+                        ref="dosificationInput" 
+                        class="hidden" 
+                        accept=".xlsx, .xls, .csv"
+                        @change="handleDosificationFileSelect"
+                    >
+                    <Button 
+                        variant="outline" 
+                        @click="triggerDosificationImport" 
+                        :disabled="dosificationImportForm.processing"
+                        class="w-full md:w-auto shadow-sm border-zinc-200 hover:bg-emerald-50 font-semibold text-emerald-700"
+                    >
+                        <template v-if="dosificationImportForm.processing">
+                            <Loader2 class="mr-2 h-4 w-4 animate-spin text-emerald-600" />
+                            Importando...
+                        </template>
+                        <template v-else>
+                            <Calculator class="mr-2 h-4 w-4 text-emerald-600" />
+                            Importar Valores
+                        </template>
+                    </Button>
+
                     <Button @click="openCreateDialog" class="w-full md:w-auto shadow-lg transition-all hover:scale-105">
                         <Plus class="mr-2 h-4 w-4" />
                         Nuevo Ingrediente
                     </Button>
+
+                    
                 </div>
             </div>
 
