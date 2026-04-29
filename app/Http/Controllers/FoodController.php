@@ -21,18 +21,15 @@ class FoodController extends Controller
             'dish_categories',
             'recipes.ingredients.assignments.provider',
             'recipes.ingredients.assignments.city',
-            'recipes.levels'
+            'recipes.ingredients.nutritionalFactors',
+            'recipes.ingredients.dosification',
+            'recipes.level'
         ])->take(50)->get();
 
         foreach ($dishes as $dish) {
-            $recipe = $dish->recipes->first();
-            if ($recipe) {
-                // Set mesearument_unit to the first level ID for backward compatibility in some views
-                $dish->mesearument_unit = $recipe->levels->first()?->id;
-                $dish->levels = $recipe->levels; // Pass the whole collection
-
-                // Map ingredients with their pivot data
-                $dish->ingredients = $recipe->ingredients->map(function ($ingredient) {
+            $dish->mesearument_unit = $dish->recipes->pluck('level_id')->toArray();
+            foreach ($dish->recipes as $recipe) {
+                $recipe->ingredients = $recipe->ingredients->map(function ($ingredient) {
                     $ingredient->gross_weight = $ingredient->pivot->gross_weight;
                     $ingredient->solid_waste = $ingredient->pivot->solid_waste;
                     $ingredient->liquid_waste = $ingredient->pivot->liquid_waste;
@@ -42,9 +39,6 @@ class FoodController extends Controller
                     $ingredient->final_product = $ingredient->pivot->net_weight;
                     return $ingredient;
                 });
-            } else {
-                $dish->ingredients = [];
-                $dish->levels = [];
             }
         }
 
@@ -52,7 +46,7 @@ class FoodController extends Controller
             'dishes' => $dishes,
             'ingredient_categories' => Ingredient_category::all(),
             'dish_categories' => Dish_category::all(),
-            'ingredients' => Ingredient::with(['assignments.provider', 'assignments.city'])
+            'ingredients' => Ingredient::with(['assignments.provider', 'assignments.city', 'nutritionalFactors', 'dosification'])
                 ->orderBy('name')
                 ->take(300)
                 ->get()
@@ -62,7 +56,7 @@ class FoodController extends Controller
     public function searchIngredients($query)
     {
         return Ingredient::where('name', 'like', "%$query%")
-            ->with(['assignments.provider', 'assignments.city', 'dosification'])
+            ->with(['assignments.provider', 'assignments.city', 'dosification', 'nutritionalFactors'])
             ->take(20)
             ->get();
     }

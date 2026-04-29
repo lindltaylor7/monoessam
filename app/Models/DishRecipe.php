@@ -20,6 +20,7 @@ class DishRecipe extends Model
         'total_calories',
         'total_cost',
         'total_net_weight',
+        'level_id',
     ];
 
     public function dish(): BelongsTo
@@ -43,9 +44,8 @@ class DishRecipe extends Model
             ->withTimestamps();
     }
 
-    public function levels(): BelongsToMany
+    public function level(): BelongsTo
     {
-        return $this->belongsToMany(Level::class, 'dish_recipe_levels')
-            ->withTimestamps();
+        return $this->belongsTo(Level::class, 'level_id');
     }
 }

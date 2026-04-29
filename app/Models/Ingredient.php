@@ -49,4 +49,8 @@ class Ingredient extends Model
     {
         return $this->hasMany(Ingredient_city_provider::class, 'ingredient_id');
     }
+    public function nutritionalFactors(): HasMany
+    {
+        return $this->hasMany(NutritionalFactor::class);
+    }
 }

@@ -18,7 +18,7 @@ class IngredientController extends Controller
     public function index()
     {
         return Inertia::render('food/Inputs', [
-            'ingredients' => Ingredient::with(['ingredient_category', 'dosification'])->get(),
+            'ingredients' => Ingredient::with(['ingredient_category', 'dosification', 'nutritionalFactors'])->get(),
             'categories' => \App\Models\Ingredient_category::all(),
         ]);
     }
@@ -122,6 +122,44 @@ class IngredientController extends Controller
             ->get();
 
         return response()->json($ingredients);
+    }
+
+    public function substitutes($id)
+    {
+        $ingredient = Ingredient::findOrFail($id);
+        
+        $words = explode(' ', trim($ingredient->name));
+        $firstWord = $words[0] ?? '';
+        
+        // Convert to singular form for better matching (simple Spanish stemmer)
+        // Convert to uppercase so the suffix check works regardless of case
+        $baseWord = mb_strtoupper($firstWord);
+        if (mb_strlen($baseWord) > 4 && mb_substr($baseWord, -2) === 'ES') {
+            $baseWord = mb_substr($baseWord, 0, -2);
+        } elseif (mb_strlen($baseWord) > 3 && mb_substr($baseWord, -1) === 'S') {
+            $baseWord = mb_substr($baseWord, 0, -1);
+        }
+        
+        if (mb_strlen($baseWord) < 3) {
+            $baseWord = mb_strtoupper(implode(' ', array_slice($words, 0, 2)));
+        }
+
+        $substitutes = Ingredient::where('name', 'like', $baseWord . '%')
+            ->where('id', '!=', $ingredient->id)
+            ->with(['assignments.provider', 'assignments.city'])
+            ->whereHas('assignments')
+            ->take(15)
+            ->get();
+
+        $assignments = collect();
+        foreach ($substitutes as $substitute) {
+            foreach ($substitute->assignments as $assignment) {
+                $assignment->ingredient_name = $substitute->name;
+                $assignments->push($assignment);
+            }
+        }
+
+        return response()->json($assignments);
     }
 
     public function import(Request $request)

@@ -8,6 +8,7 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Ingredient, Provider } from '@/types';
 import { ref, watch, computed } from 'vue';
+import axios from 'axios';
 import { 
     Settings2, 
     Truck, 
@@ -43,6 +44,8 @@ const baseCost = ref(0.0);
 const baseCostPercentage = ref(0.0);
 const finalProduct = ref(0.0);
 const finalProductPercentage = ref(0.0);
+const substitutes = ref<any[]>([]);
+const loadingSubstitutes = ref(false);
 
 const recalculateAndEmit = () => {
     const val = parseFloat(ingredientSelected.value.input_quantity) || 0;
@@ -84,7 +87,10 @@ watch(providerSelected, (newId) => {
         priceSelected.value = 0;
         priceUeGr.value = 0;
     } else {
-        const assignment = ingredientSelected.value.assignments?.find((a: any) => a.id === Number(newId));
+        let assignment = ingredientSelected.value.assignments?.find((a: any) => a.id === Number(newId));
+        if (!assignment) {
+            assignment = substitutes.value.find((a: any) => a.id === Number(newId));
+        }
         if (assignment) {
             priceSelected.value = parseFloat(assignment.cost_price) || 0;
             priceUeGr.value = priceSelected.value / 1000;
@@ -100,10 +106,24 @@ watch(props, (newValue) => {
     baseCostPercentage.value = (baseCost.value / (props.totalCost || 1)) * 100;
     finalProductPercentage.value = (finalProduct.value / (props.totalfinalProduct || 1)) * 100;
 });
+
+const loadSubstitutes = async (isOpen: boolean) => {
+    if (isOpen && substitutes.value.length === 0 && ingredientSelected.value?.id) {
+        loadingSubstitutes.value = true;
+        try {
+            const response = await axios.get(route('ingredients.substitutes', ingredientSelected.value.id));
+            substitutes.value = response.data;
+        } catch (error) {
+            console.error('Error loading substitutes:', error);
+        } finally {
+            loadingSubstitutes.value = false;
+        }
+    }
+};
 </script>
 
 <template>
-    <Popover>
+    <Popover @update:open="loadSubstitutes">
         <PopoverTrigger as-child>
             <Button variant="ghost" size="icon" class="h-8 w-8 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
                 <Calculator class="h-4 w-4 text-zinc-500 hover:text-primary transition-colors" />
@@ -160,6 +180,36 @@ watch(props, (newValue) => {
                                         </div>
                                     </div>
                                 </SelectItem>
+
+                                <template v-if="loadingSubstitutes">
+                                    <div class="py-3 text-center text-xs text-zinc-400">Buscando sugerencias...</div>
+                                </template>
+                                
+                                <template v-if="!loadingSubstitutes && substitutes.length > 0">
+                                    <SelectLabel class="text-[10px] font-bold tracking-wider text-zinc-500 bg-zinc-50/50 py-1.5 px-2 mt-2 border-y border-zinc-100 uppercase">Sugerencias de sustitutos</SelectLabel>
+                                    <SelectItem
+                                        v-for="assignment in substitutes"
+                                        :key="'sub_' + assignment.id"
+                                        :value="String(assignment.id)"
+                                        class="py-2.5"
+                                    >
+                                        <div class="flex flex-col gap-0.5" v-if="assignment.provider">
+                                            <div class="flex items-center gap-1.5">
+                                                <span class="font-medium text-zinc-700">{{ assignment.provider.name }}</span>
+                                                <Badge v-if="assignment.cost_price" variant="outline" class="text-[9px] py-0 px-1 bg-blue-50 text-blue-700 border-blue-100">
+                                                    S/. {{ assignment.cost_price }}
+                                                </Badge>
+                                            </div>
+                                            <div class="flex items-center justify-between mt-0.5 text-[10px] text-zinc-400">
+                                                <div class="flex items-center gap-1" v-if="assignment.city">
+                                                    <MapPin class="h-3 w-3" />
+                                                    <span>{{ assignment.city.name }}</span>
+                                                </div>
+                                                <span class="italic text-zinc-400 truncate max-w-[120px]" :title="assignment.ingredient_name">De: {{ assignment.ingredient_name }}</span>
+                                            </div>
+                                        </div>
+                                    </SelectItem>
+                                </template>
                             </SelectGroup>
                         </SelectContent>
                     </Select>

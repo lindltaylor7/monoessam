@@ -15,6 +15,7 @@ use App\Http\Controllers\IngredientCategoryController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\LaboralController;
 use App\Http\Controllers\IngredientController;
+use App\Http\Controllers\NutritionalFactorController;
 use App\Http\Controllers\LogisticController;
 use App\Http\Controllers\ManagementController;
 use App\Http\Controllers\MineController;
@@ -203,6 +204,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('{id}', [IngredientController::class, 'destroy'])->name('destroy');
         Route::post('{id}/dosification', [IngredientController::class, 'updateDosification'])->name('dosification.update');
         Route::get('search/{word?}', [IngredientController::class, 'search'])->name('search');
+        Route::get('{id}/substitutes', [IngredientController::class, 'substitutes'])->name('substitutes');
         Route::post('import', [IngredientController::class, 'import'])->name('import');
         Route::post('import-energy', [IngredientController::class, 'importEnergy'])->name('import-energy');
         Route::post('import-dosifications', [IngredientController::class, 'importDosifications'])->name('import-dosifications');
@@ -211,6 +213,14 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('ingredient-categories')->name('ingredient-categories.')->group(function () {
         Route::post('/', [IngredientCategoryController::class, 'store'])->name('store');
         Route::delete('{id}', [IngredientCategoryController::class, 'destroy'])->name('destroy');
+    });
+
+    Route::prefix('nutritional')->name('nutritional.')->group(function () {
+        Route::get('/', [NutritionalFactorController::class, 'index'])->name('index');
+        Route::post('/', [NutritionalFactorController::class, 'store'])->name('store');
+        Route::post('import', [NutritionalFactorController::class, 'import'])->name('import');
+        Route::put('{nutritional_factor}', [NutritionalFactorController::class, 'update'])->name('update');
+        Route::delete('{nutritional_factor}', [NutritionalFactorController::class, 'destroy'])->name('destroy');
     });
 
     // ========================================================================
@@ -283,7 +293,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('/quantity/{id}', [ClothController::class, 'updateQuantity'])->name('update-quantity');
         Route::post('/staff-size', [ClothController::class, 'updateStaffSize'])->name('staff-size');
         Route::post('/status', [ClothController::class, 'updateStatus'])->name('status');
-        
+
         // EPP Manage Routes
         Route::post('/assign-epp-role', [ClothController::class, 'assignEppRole'])->name('assign-epp-role');
         Route::delete('/epps/{id}', [ClothController::class, 'destroyEpp'])->name('epps.destroy');
@@ -314,8 +324,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // EPP Sizes
         Route::post('/epp-sizes', [InventoryController::class, 'storeEppSize'])->name('epp-sizes.store');
         Route::delete('/epp-sizes/{id}', [InventoryController::class, 'destroyEppSize'])->name('epp-sizes.destroy');
-        
-        
+
+
         // Stock details
         Route::get('/stock/{id}/sizes', [InventoryController::class, 'getStockSizes'])->name('stock.sizes');
 
@@ -337,7 +347,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
 
     // ========================================================================
-    // PLANIFICACIÓN Y QUEBRADOS (TIBURCIO)
+    // PLANIFICACIÓN Y QUEBRADOS
     // ========================================================================
     Route::prefix('planning')->name('planning.')->group(function () {
         Route::get('/', [\App\Http\Controllers\PlanningController::class, 'index'])->name('index');

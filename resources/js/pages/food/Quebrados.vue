@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 import { Dish, Ingredient } from '@/types';
 import Button from '@/components/ui/button/Button.vue';
@@ -19,15 +19,17 @@ const props = defineProps<{
 // State
 const searchQuery = ref('');
 const dishesSearched = ref<Dish[]>(props.dishes || []);
+
+watch(() => props.dishes, (newVal) => {
+    if (!searchQuery.value) {
+        dishesSearched.value = newVal || [];
+    }
+}, { deep: true });
 const ingredientsFounded = ref<Ingredient[]>([]);
 const isCreating = ref(false);
+const activeLevelTab = ref<number | null>(null);
 
 // Form State
-const totalGrossWeight = ref(0.0);
-const totalWasteWeight = ref(0.0);
-const totalCalories = ref(0.0);
-const totalCost = ref(0.0);
-const totalfinalProduct = ref(0.0);
 const fileInput = ref<HTMLInputElement | null>(null);
 
 const handleFileUpload = (event: Event) => {
@@ -64,12 +66,14 @@ const form = useForm({
     name: '',
     description: '',
     mesearument_unit: [] as number[],
-    ingredients: [] as any[],
-    total_gross_weight: 0,
-    total_waste_weight: 0,
-    total_calories: 0,
-    total_cost: 0,
-    total_net_weight: 0,
+    recipes: {} as Record<number, {
+        ingredients: any[],
+        total_gross_weight: number,
+        total_waste_weight: number,
+        total_calories: number,
+        total_cost: number,
+        total_net_weight: number,
+    }>
 });
 
 const levels = [
@@ -83,8 +87,21 @@ const toggleLevel = (id: number) => {
     const index = form.mesearument_unit.indexOf(id);
     if (index === -1) {
         form.mesearument_unit.push(id);
+        form.recipes[id] = {
+            ingredients: [],
+            total_gross_weight: 0,
+            total_waste_weight: 0,
+            total_calories: 0,
+            total_cost: 0,
+            total_net_weight: 0,
+        };
+        activeLevelTab.value = id;
     } else {
         form.mesearument_unit.splice(index, 1);
+        delete form.recipes[id];
+        if (activeLevelTab.value === id) {
+            activeLevelTab.value = form.mesearument_unit.length ? form.mesearument_unit[0] : null;
+        }
     }
 };
 
@@ -105,107 +122,171 @@ const searchDish = (e: Event) => {
         });
 };
 
+const calculateIngredientCalories = (ingredient: any) => {
+    const factors = ingredient?.nutritional_factors || ingredient?.nutritionalFactors;
+    if (factors && factors.length > 0) {
+        return factors.reduce((sum: number, factor: any) => {
+            const nfactor = parseFloat(factor.nfactorcal) || 0;
+            const comp = parseFloat(factor.composition) || 0;
+            return sum + (nfactor * comp);
+        }, 0);
+    }
+    return ingredient?.dosification?.energy || ingredient?.energy || 0;
+};
+
+const getDishIngredientsCount = (dish: any) => {
+    if (!dish.recipes || dish.recipes.length === 0) return 0;
+    const ingredientIds = new Set();
+    dish.recipes.forEach((recipe: any) => {
+        if (recipe.ingredients) {
+            recipe.ingredients.forEach((ing: any) => ingredientIds.add(ing.id));
+        }
+    });
+    return ingredientIds.size;
+};
+
+const copyIngredientsFromMaster = () => {
+    if (!activeLevelTab.value) return;
+    if (form.mesearument_unit.length <= 1) return;
+    
+    // Find Master (level 1) or the first available level that has ingredients
+    const sourceLevelId = form.recipes[1] && form.recipes[1].ingredients.length > 0 
+        ? 1 
+        : form.mesearument_unit.find(id => form.recipes[id] && form.recipes[id].ingredients.length > 0);
+    
+    if (sourceLevelId && sourceLevelId !== activeLevelTab.value) {
+        const sourceRecipe = form.recipes[sourceLevelId];
+        form.recipes[activeLevelTab.value] = JSON.parse(JSON.stringify(sourceRecipe));
+        
+        Swal.fire({
+            title: 'Ingredientes Duplicados',
+            text: 'Se copiaron los ingredientes correctamente.',
+            icon: 'success',
+            timer: 1500,
+            showConfirmButton: false
+        });
+    } else {
+        Swal.fire({
+            title: 'Atención',
+            text: 'No hay ingredientes en otros niveles para duplicar.',
+            icon: 'info'
+        });
+    }
+};
+
 const editDish = (dish: Dish) => {
     form.clearErrors();
-    resetTotals();
     isCreating.value = false;
     
     form.id = dish.id;
     form.name = dish.name;
     form.description = dish.description || '';
     
-    // Handle recipe totals if available
-    const mainRecipe = (dish as any).recipes?.[0];
-    if (mainRecipe) {
-        form.total_gross_weight = mainRecipe.total_gross_weight || 0;
-        form.total_waste_weight = mainRecipe.total_waste_weight || 0;
-        form.total_calories = mainRecipe.total_calories || 0;
-        form.total_cost = mainRecipe.total_cost || 0;
-        form.total_net_weight = mainRecipe.total_net_weight || 0;
-    }
+    form.mesearument_unit = [];
+    form.recipes = {};
     
-    // Handle levels: might be a single value from old data or array from new structure
-    if (Array.isArray((dish as any).levels)) {
-        form.mesearument_unit = (dish as any).levels.map((l: any) => l.id);
-    } else if (dish.mesearument_unit) {
-        form.mesearument_unit = [Number(dish.mesearument_unit)];
+    if (dish.recipes && dish.recipes.length > 0) {
+        dish.recipes.forEach((recipe: any) => {
+            const levelId = recipe.level_id;
+            if (!levelId) return;
+            if (form.mesearument_unit.includes(levelId)) return;
+            form.mesearument_unit.push(levelId);
+            
+            form.recipes[levelId] = {
+                total_gross_weight: recipe.total_gross_weight || 0,
+                total_waste_weight: recipe.total_waste_weight || 0,
+                total_calories: recipe.total_calories || 0,
+                total_cost: recipe.total_cost || 0,
+                total_net_weight: recipe.total_net_weight || 0,
+                ingredients: (recipe.ingredients || []).map((ing: any) => {
+                    const fullIng = props.ingredients?.find(i => i.id === ing.id);
+                    const newIng = {
+                        ...ing,
+                        gross_weight: parseFloat(ing.gross_weight) || 0,
+                        solid_waste: parseFloat(ing.solid_waste) || 0,
+                        liquid_waste: parseFloat(ing.liquid_waste) || 0,
+                        calories: parseFloat(ing.calories) || 0,
+                        cost: parseFloat(ing.cost) || 0,
+                        final_product: parseFloat(ing.final_product) || 0,
+                        unit_price: parseFloat(ing.unit_price) || 0,
+                        selected_unit: 'g',
+                        input_quantity: parseFloat(ing.gross_weight) || 0,
+                        originalValues: {
+                            waste: ing.waste || fullIng?.waste || 0,
+                            calories: calculateIngredientCalories(fullIng || ing),
+                        },
+                    };
+                    newIng.calories = (newIng.gross_weight * newIng.originalValues.calories) / 100;
+                    return newIng;
+                })
+            };
+        });
+        activeLevelTab.value = form.mesearument_unit[0];
     } else {
-        form.mesearument_unit = [];
+        activeLevelTab.value = null;
     }
-    
-    // Initialize ingredients with properties for calculation
-    form.ingredients = dish.ingredients?.map((ing: any) => {
-        // Find the full ingredient from props to get dosification/waste if not present
-        const fullIng = props.ingredients?.find(i => i.id === ing.id);
-        
-        return {
-            ...ing,
-            gross_weight: parseFloat(ing.gross_weight) || 0,
-            solid_waste: parseFloat(ing.solid_waste) || 0,
-            liquid_waste: parseFloat(ing.liquid_waste) || 0,
-            calories: parseFloat(ing.calories) || 0,
-            cost: parseFloat(ing.cost) || 0,
-            final_product: parseFloat(ing.final_product) || 0,
-            unit_price: parseFloat(ing.unit_price) || 0,
-            selected_unit: 'g', // Default to grams for loaded items to avoid calculation confusion
-            input_quantity: parseFloat(ing.gross_weight) || 0,
-            originalValues: {
-                waste: ing.waste || fullIng?.waste || 0,
-                calories: ing.dosification?.energy || ing.energy || fullIng?.dosification?.energy || fullIng?.energy || 0,
-            },
-        };
-    }) || [];
-    recalculateTotals();
 };
 
 const duplicateDish = (dish: Dish) => {
     form.clearErrors();
-    resetTotals();
     isCreating.value = true;
     
     form.id = null;
-    form.name = `${dish.name} (Copia)`;
+    form.name = dish.name + ' (Copia)';
     form.description = dish.description || '';
     
-    // Handle levels
-    if (Array.isArray((dish as any).levels)) {
-        form.mesearument_unit = (dish as any).levels.map((l: any) => l.id);
-    } else if (dish.mesearument_unit) {
-        form.mesearument_unit = [Number(dish.mesearument_unit)];
-    } else {
-        form.mesearument_unit = [];
-    }
+    form.mesearument_unit = [];
+    form.recipes = {};
     
-    // Initialize ingredients copying values (mirroring editDish structure)
-    form.ingredients = dish.ingredients?.map((ing: any) => {
-        const fullIng = props.ingredients?.find(i => i.id === ing.id);
-        
-        return {
-            ...ing,
-            gross_weight: parseFloat(ing.gross_weight) || 0,
-            solid_waste: parseFloat(ing.solid_waste) || 0,
-            liquid_waste: parseFloat(ing.liquid_waste) || 0,
-            calories: parseFloat(ing.calories) || 0,
-            cost: parseFloat(ing.cost) || 0,
-            final_product: parseFloat(ing.final_product) || 0,
-            unit_price: parseFloat(ing.unit_price) || 0,
-            selected_unit: 'g',
-            input_quantity: parseFloat(ing.gross_weight) || 0,
-            originalValues: {
-                waste: ing.waste || fullIng?.waste || 0,
-                calories: ing.dosification?.energy || ing.energy || fullIng?.dosification?.energy || fullIng?.energy || 0,
-            },
-        };
-    }) || [];
-    recalculateTotals();
+    if (dish.recipes && dish.recipes.length > 0) {
+        dish.recipes.forEach((recipe: any) => {
+            const levelId = recipe.level_id;
+            if (!levelId) return;
+            if (form.mesearument_unit.includes(levelId)) return;
+            form.mesearument_unit.push(levelId);
+            
+            form.recipes[levelId] = {
+                total_gross_weight: recipe.total_gross_weight || 0,
+                total_waste_weight: recipe.total_waste_weight || 0,
+                total_calories: recipe.total_calories || 0,
+                total_cost: recipe.total_cost || 0,
+                total_net_weight: recipe.total_net_weight || 0,
+                ingredients: (recipe.ingredients || []).map((ing: any) => {
+                    const fullIng = props.ingredients?.find(i => i.id === ing.id);
+                    const newIng = {
+                        ...ing,
+                        gross_weight: parseFloat(ing.gross_weight) || 0,
+                        solid_waste: parseFloat(ing.solid_waste) || 0,
+                        liquid_waste: parseFloat(ing.liquid_waste) || 0,
+                        calories: parseFloat(ing.calories) || 0,
+                        cost: parseFloat(ing.cost) || 0,
+                        final_product: parseFloat(ing.final_product) || 0,
+                        unit_price: parseFloat(ing.unit_price) || 0,
+                        selected_unit: 'g',
+                        input_quantity: parseFloat(ing.gross_weight) || 0,
+                        originalValues: {
+                            waste: ing.waste || fullIng?.waste || 0,
+                            calories: calculateIngredientCalories(fullIng || ing),
+                        },
+                    };
+                    newIng.calories = (newIng.gross_weight * newIng.originalValues.calories) / 100;
+                    return newIng;
+                })
+            };
+        });
+        activeLevelTab.value = form.mesearument_unit[0];
+    } else {
+        activeLevelTab.value = null;
+    }
 };
 
 const createDish = () => {
     form.clearErrors();
     form.reset();
     form.id = null;
-    form.ingredients = [];
-    resetTotals();
+    form.mesearument_unit = [];
+    form.recipes = {};
+    activeLevelTab.value = null;
     isCreating.value = true;
 };
 
@@ -239,33 +320,17 @@ const deleteDish = (id: number) => {
 };
 
 // Form Logic
-const resetTotals = () => {
-    totalGrossWeight.value = 0.0;
-    totalWasteWeight.value = 0.0;
-    totalCalories.value = 0.0;
-    totalCost.value = 0.0;
-    totalfinalProduct.value = 0.0;
-
-    form.total_gross_weight = 0;
-    form.total_waste_weight = 0;
-    form.total_calories = 0;
-    form.total_cost = 0;
-    form.total_net_weight = 0;
-};
 
 const recalculateTotals = () => {
-    form.total_gross_weight = form.ingredients.reduce((sum, i) => sum + (parseFloat(i.gross_weight) || 0), 0);
-    form.total_waste_weight = form.ingredients.reduce((sum, i) => sum + (parseFloat(i.solid_waste) || 0), 0);
-    form.total_calories = form.ingredients.reduce((sum, i) => sum + (parseFloat(i.calories) || 0), 0);
-    form.total_cost = form.ingredients.reduce((sum, i) => sum + (parseFloat(i.cost) || 0), 0);
-    form.total_net_weight = form.ingredients.reduce((sum, i) => sum + (parseFloat(i.final_product) || 0), 0);
-
-    // Sync with display refs
-    totalGrossWeight.value = form.total_gross_weight;
-    totalWasteWeight.value = form.total_waste_weight;
-    totalCalories.value = form.total_calories;
-    totalCost.value = form.total_cost;
-    totalfinalProduct.value = form.total_net_weight;
+    if (!activeLevelTab.value) return;
+    const recipe = form.recipes[activeLevelTab.value];
+    if (!recipe) return;
+    
+    recipe.total_gross_weight = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.gross_weight) || 0), 0);
+    recipe.total_waste_weight = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.solid_waste) || 0), 0);
+    recipe.total_calories = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.calories) || 0), 0);
+    recipe.total_cost = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.cost) || 0), 0);
+    recipe.total_net_weight = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.final_product) || 0), 0);
 };
 
 const searchIngredients = (e: Event) => {
@@ -285,11 +350,22 @@ const searchIngredients = (e: Event) => {
 };
 
 const selectIngredient = (ingredient: Ingredient) => {
+    if (!activeLevelTab.value) {
+        Swal.fire({ title: 'Error', text: 'Seleccione un nivel de aplicación primero.', icon: 'error' });
+        return;
+    }
+    const recipe = form.recipes[activeLevelTab.value];
+    
+    if (recipe.ingredients.some((ing: any) => ing.id === ingredient.id)) {
+        Swal.fire({ title: 'Atención', text: 'El ingrediente ya está en la lista de este nivel.', icon: 'warning' });
+        return;
+    }
+
     const newIng = {
         ...ingredient,
         originalValues: {
             waste: ingredient.waste || 0,
-            calories: ingredient.dosification?.energy || ingredient.energy || 0,
+            calories: calculateIngredientCalories(ingredient),
         },
         selected_unit: 'Kg', 
         input_quantity: 0,   
@@ -300,24 +376,29 @@ const selectIngredient = (ingredient: Ingredient) => {
         final_product: 0,
         unit_price: 0,
     };
-    form.ingredients.push(newIng);
+    recipe.ingredients.push(newIng);
     ingredientsFounded.value = []; 
+    recalculateTotals();
 };
 
 const removeIngredientFromForm = (id: number) => {
-    form.ingredients = form.ingredients.filter((ing) => ing.id !== id);
+    if (!activeLevelTab.value) return;
+    const recipe = form.recipes[activeLevelTab.value];
+    recipe.ingredients = recipe.ingredients.filter((ing) => ing.id !== id);
     recalculateTotals();
 };
 
 const calcMassiveProperties = (id: number, calcArray: number[]) => {
-    const ingredientIndex = form.ingredients.findIndex((ing) => ing.id == id);
+    if (!activeLevelTab.value) return;
+    const recipe = form.recipes[activeLevelTab.value];
+    const ingredientIndex = recipe.ingredients.findIndex((ing) => ing.id == id);
     if (ingredientIndex !== -1) {
-        form.ingredients[ingredientIndex].gross_weight = calcArray[0];
-        form.ingredients[ingredientIndex].solid_waste = calcArray[1];
-        form.ingredients[ingredientIndex].calories = calcArray[2];
-        form.ingredients[ingredientIndex].cost = calcArray[3];
-        form.ingredients[ingredientIndex].final_product = calcArray[4];
-        form.ingredients[ingredientIndex].unit_price = calcArray[5];
+        recipe.ingredients[ingredientIndex].gross_weight = calcArray[0];
+        recipe.ingredients[ingredientIndex].solid_waste = calcArray[1];
+        recipe.ingredients[ingredientIndex].calories = calcArray[2];
+        recipe.ingredients[ingredientIndex].cost = calcArray[3];
+        recipe.ingredients[ingredientIndex].final_product = calcArray[4];
+        recipe.ingredients[ingredientIndex].unit_price = calcArray[5];
         recalculateTotals();
     }
 };
@@ -326,7 +407,7 @@ const onWeightInput = (ingredient: any) => {
     const inputVal = parseFloat(ingredient.input_quantity) || 0;
     
     // Convertir a gramos para cálculos internos
-    const weightInGrams = ingredient.selected_unit === 'Kg' ? inputVal * 1000 : inputVal;
+    const weightInGrams = (ingredient.selected_unit === 'Kg' || ingredient.selected_unit === 'kg') ? inputVal * 1000 : inputVal;
     ingredient.gross_weight = weightInGrams;
 
     const origWaste = parseFloat(ingredient.originalValues?.waste) || 0;
@@ -338,14 +419,12 @@ const onWeightInput = (ingredient: any) => {
     // Recalcular Producto Final
     ingredient.final_product = weightInGrams - ingredient.solid_waste;
 
-    // Recalcular Calorías (basado en producto final y energía cada 100g)
-    ingredient.calories = (ingredient.final_product * origCalories) / 100;
+    // Recalcular Calorías
+    ingredient.calories = (ingredient.gross_weight * origCalories) / 100;
     
-    // Recalcular Costo si existe precio unitario (asumimos precio por Kg/Unidad)
+    // Recalcular Costo si existe precio unitario
     if (ingredient.unit_price) {
-        // Si la unidad es Kg, el costo es directo: precio * cantidad_en_kg
-        // Si la unidad es g, el costo es: (precio / 1000) * cantidad_en_g
-        ingredient.cost = ingredient.selected_unit === 'Kg' 
+        ingredient.cost = (ingredient.selected_unit === 'Kg' || ingredient.selected_unit === 'kg')
             ? inputVal * ingredient.unit_price 
             : (inputVal / 1000) * ingredient.unit_price;
     }
@@ -358,12 +437,26 @@ const submit = () => {
         form.put(route('dishes.update', form.id), {
             onSuccess: () => {
                 resetView();
+                Swal.fire({
+                    title: '¡Actualizado!',
+                    text: 'El quebrado se ha guardado exitosamente.',
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
             },
         });
     } else {
         form.post(route('dishes.store'), {
             onSuccess: () => {
                 resetView();
+                Swal.fire({
+                    title: '¡Creado!',
+                    text: 'El quebrado se ha creado exitosamente.',
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
             },
         });
     }
@@ -414,10 +507,10 @@ const submit = () => {
                     <div class="text-xs text-muted-foreground line-clamp-2 mt-1">{{ dish.description }}</div>
                     <div class="flex flex-wrap gap-1 mt-2">
                         <div class="text-[10px] px-1.5 py-0.5 rounded-full bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
-                            {{ dish.ingredients?.length || 0 }} Ingredientes
+                            {{ getDishIngredientsCount(dish) }} Ingredientes
                         </div>
-                        <span v-for="level in (dish as any).levels" :key="level.id" class="text-[9px] px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold border border-blue-100 dark:border-blue-800/50">
-                            {{ level.name }}
+                        <span v-for="recipe in dish.recipes" :key="recipe.id" class="text-[9px] px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold border border-blue-100 dark:border-blue-800/50">
+                            {{ recipe.level?.name }}
                         </span>
                     </div>
                     
@@ -492,29 +585,47 @@ const submit = () => {
                         </div>
                     </div>
                     
+                    <!-- Tabs de Niveles -->
+                    <div v-if="form.mesearument_unit.length > 0" class="mt-4 border-b">
+                        <div class="flex gap-2 -mb-px overflow-x-auto pb-1 scrollbar-none">
+                            <button 
+                                v-for="levelId in form.mesearument_unit" 
+                                :key="levelId"
+                                type="button"
+                                @click="activeLevelTab = levelId"
+                                class="px-4 py-2 text-xs font-bold transition-all border-b-2 whitespace-nowrap"
+                                :class="activeLevelTab === levelId 
+                                    ? 'border-primary text-primary' 
+                                    : 'border-transparent text-zinc-400 hover:text-zinc-600'"
+                            >
+                                {{ levels.find(l => l.id === levelId)?.name }}
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Ingredients & Calculator -->
-                    <div class="space-y-3">
+                    <div v-if="activeLevelTab && form.recipes[activeLevelTab]" class="space-y-3 pt-2">
                         <div class="flex items-center justify-between">
-                            <h4 class="font-semibold text-sm">Ingredientes y Calculadora</h4>
+                            <h4 class="font-semibold text-sm">Ingredientes - {{ levels.find(l => l.id === activeLevelTab)?.name }}</h4>
                             <div class="relative w-full max-w-xs">
                                     <Search class="absolute left-2 top-2 h-3.5 w-3.5 text-zinc-400" />
                                     <Input placeholder="Buscar ingrediente..." @keyup="searchIngredients" class="h-8 pl-8 text-xs" />
                                     <!-- Dropdown Results -->
                                     <div v-if="ingredientsFounded.length > 0" class="absolute top-full left-0 right-0 mt-1 p-1 bg-white dark:bg-zinc-900 border rounded-md shadow-lg z-50 max-h-48 overflow-y-auto">
-                                    <div
-                                        v-for="ingredient in ingredientsFounded"
-                                        :key="ingredient.id"
-                                        @click="selectIngredient(ingredient)"
-                                        class="flex items-center gap-2 p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-sm cursor-pointer text-sm"
-                                    >
-                                        <Plus class="w-3 h-3 text-primary" />
-                                        <span>{{ ingredient.name }}</span>
-                                    </div>
+                                        <div
+                                            v-for="ingredient in ingredientsFounded"
+                                            :key="ingredient.id"
+                                            @click="selectIngredient(ingredient)"
+                                            class="flex items-center gap-2 p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-sm cursor-pointer text-sm"
+                                        >
+                                            <Plus class="w-3 h-3 text-primary" />
+                                            <span>{{ ingredient.name }}</span>
+                                        </div>
                                     </div>
                             </div>
                         </div>
 
-                        <div class="border rounded-md overflow-hidden">
+                        <div class="border rounded-md overflow-hidden bg-white dark:bg-zinc-950">
                             <Table>
                                 <TableHeader class="bg-zinc-50 dark:bg-zinc-900 sticky top-0 z-20">
                                     <TableRow class="hover:bg-transparent border-none">
@@ -533,7 +644,7 @@ const submit = () => {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    <TableRow v-for="ingredient in form.ingredients" :key="ingredient.id" class="hover:bg-zinc-50/50 dark:hover:bg-zinc-900/50 transition-colors border-b border-zinc-200">
+                                    <TableRow v-for="ingredient in form.recipes[activeLevelTab].ingredients" :key="ingredient.id" class="hover:bg-zinc-50/50 dark:hover:bg-zinc-900/50 transition-colors border-b border-zinc-200">
                                         <!-- Insumo -->
                                         <TableCell class="py-1 px-2 border-r border-zinc-100">
                                             <div class="font-bold text-[11px] text-blue-800 leading-tight uppercase">{{ ingredient.name }}</div>
@@ -555,7 +666,7 @@ const submit = () => {
                                                 type="number" 
                                                 v-model="ingredient.input_quantity" 
                                                 @input="onWeightInput(ingredient)"
-                                                class="h-7 w-16 text-center border border-red-800 rounded-none font-bold text-xs shadow-inner"
+                                                class="h-7 w-16 text-center border border-red-800 rounded-none font-bold text-xs shadow-inner focus:outline-none"
                                             />
                                         </TableCell>
 
@@ -600,11 +711,11 @@ const submit = () => {
                                         <TableCell class="py-1 px-1 text-center align-middle">
                                             <CalcPopover
                                                 :ingredient="ingredient"
-                                                :totalMateriaPrima="totalGrossWeight"
-                                                :totalWasteWeight="totalWasteWeight"
-                                                :totalCalories="totalCalories"
-                                                :totalCost="totalCost"
-                                                :totalfinalProduct="totalfinalProduct"
+                                                :totalMateriaPrima="form.recipes[activeLevelTab].total_gross_weight"
+                                                :totalWasteWeight="form.recipes[activeLevelTab].total_waste_weight"
+                                                :totalCalories="form.recipes[activeLevelTab].total_calories"
+                                                :totalCost="form.recipes[activeLevelTab].total_cost"
+                                                :totalfinalProduct="form.recipes[activeLevelTab].total_net_weight"
                                                 @calcMassiveProperties="calcMassiveProperties"
                                             />
                                         </TableCell>
@@ -615,43 +726,65 @@ const submit = () => {
                                             </Button>
                                         </TableCell>
                                     </TableRow>
-                                    <TableRow v-if="form.ingredients.length === 0">
+                                    <TableRow v-if="form.recipes[activeLevelTab].ingredients.length === 0">
                                         <TableCell colspan="12" class="h-32 text-center text-muted-foreground text-sm border-dashed">
                                             <div class="flex flex-col items-center gap-2">
                                                 <div class="p-2 rounded-full bg-zinc-50 dark:bg-zinc-900">
                                                     <Plus class="w-4 h-4 text-zinc-400" />
                                                 </div>
                                                 <span>Seleccione ingredientes en el buscador superior para comenzar.</span>
+                                                <Button 
+                                                    v-if="form.mesearument_unit.length > 1" 
+                                                    type="button" 
+                                                    @click="copyIngredientsFromMaster" 
+                                                    variant="outline" 
+                                                    size="sm" 
+                                                    class="mt-2 text-xs border-blue-200 text-blue-600 hover:bg-blue-50 dark:border-blue-900/50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+                                                >
+                                                    <Copy class="w-3 h-3 mr-2" />
+                                                    Duplicar ingredientes (Master)
+                                                </Button>
                                             </div>
                                         </TableCell>
                                     </TableRow>
                                 </TableBody>
                             </Table>
                         </div>
+
+                        <!-- Totals Footer -->
+                        <div class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-5 gap-2 pt-4 border-t sticky bottom-0 bg-white dark:bg-zinc-950 pb-2">
+                            <div class="p-2 bg-zinc-50 dark:bg-zinc-900 rounded border text-center">
+                                <div class="text-[10px] uppercase text-muted-foreground font-bold mb-1">P. Bruto</div>
+                                <div class="font-mono font-bold text-sm">{{ Number(form.recipes[activeLevelTab].total_gross_weight).toFixed(2) }}</div>
+                            </div>
+                            <div class="p-2 bg-zinc-50 dark:bg-zinc-900 rounded border text-center">
+                                <div class="text-[10px] uppercase text-muted-foreground font-bold mb-1">Mermas Tot.</div>
+                                <div class="font-mono font-bold text-amber-600 text-sm">{{ Number(form.recipes[activeLevelTab].total_waste_weight).toFixed(2) }}</div>
+                            </div>
+                            <div class="p-2 bg-zinc-50 dark:bg-zinc-900 rounded border text-center">
+                                <div class="text-[10px] uppercase text-muted-foreground font-bold mb-1">Calorías</div>
+                                <div class="font-mono font-bold text-rose-600 text-sm">{{ Number(form.recipes[activeLevelTab].total_calories).toFixed(2) }}</div>
+                            </div>
+                            <div class="p-2 bg-zinc-50 dark:bg-zinc-900 rounded border text-center">
+                                <div class="text-[10px] uppercase text-muted-foreground font-bold mb-1">Costo</div>
+                                <div class="font-mono font-bold text-emerald-600 text-sm">S/. {{ Number(form.recipes[activeLevelTab].total_cost).toFixed(2) }}</div>
+                            </div>
+                            <div class="p-2 bg-zinc-50 dark:bg-zinc-900 rounded border text-center">
+                                <div class="text-[10px] uppercase text-muted-foreground font-bold mb-1">P. Final</div>
+                                <div class="font-mono font-bold text-indigo-600 text-sm">{{ Number(form.recipes[activeLevelTab].total_net_weight).toFixed(2) }}</div>
+                            </div>
+                        </div>
                     </div>
 
-                    <!-- Totals Footer -->
-                    <div class="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-5 gap-2 pt-4 border-t sticky bottom-0 bg-white dark:bg-zinc-950 pb-2">
-                        <div class="p-2 bg-zinc-50 dark:bg-zinc-900 rounded border text-center">
-                            <div class="text-[10px] uppercase text-muted-foreground font-bold mb-1">P. Bruto</div>
-                            <div class="font-mono font-bold text-sm">{{ Number(totalGrossWeight).toFixed(2) }}</div>
-                        </div>
-                        <div class="p-2 bg-zinc-50 dark:bg-zinc-900 rounded border text-center">
-                            <div class="text-[10px] uppercase text-muted-foreground font-bold mb-1">Mermas Tot.</div>
-                            <div class="font-mono font-bold text-amber-600 text-sm">{{ Number(totalWasteWeight).toFixed(2) }}</div>
-                        </div>
-                        <div class="p-2 bg-zinc-50 dark:bg-zinc-900 rounded border text-center">
-                            <div class="text-[10px] uppercase text-muted-foreground font-bold mb-1">Calorías</div>
-                            <div class="font-mono font-bold text-rose-600 text-sm">{{ Number(totalCalories).toFixed(2) }}</div>
-                        </div>
-                        <div class="p-2 bg-zinc-50 dark:bg-zinc-900 rounded border text-center">
-                            <div class="text-[10px] uppercase text-muted-foreground font-bold mb-1">Costo</div>
-                            <div class="font-mono font-bold text-emerald-600 text-sm">S/. {{ Number(totalCost).toFixed(2) }}</div>
-                        </div>
-                        <div class="p-2 bg-zinc-50 dark:bg-zinc-900 rounded border text-center">
-                            <div class="text-[10px] uppercase text-muted-foreground font-bold mb-1">P. Final</div>
-                            <div class="font-mono font-bold text-indigo-600 text-sm">{{ Number(totalfinalProduct).toFixed(2) }}</div>
-                        </div>
+                    <!-- Empty State for Recipes -->
+                    <div v-else-if="form.mesearument_unit.length > 0" class="flex flex-col items-center justify-center h-48 text-muted-foreground">
+                        <Plus class="w-8 h-8 opacity-20 mb-2" />
+                        <p class="text-sm">Seleccione un nivel de aplicación arriba para ver su receta.</p>
+                    </div>
+
+                    <!-- No Levels Selected -->
+                    <div v-else class="flex flex-col items-center justify-center h-48 text-muted-foreground border border-dashed rounded-lg">
+                        <p class="text-sm">Debe seleccionar al menos un nivel de aplicación para configurar recetas.</p>
                     </div>
                 </div>
             </div>

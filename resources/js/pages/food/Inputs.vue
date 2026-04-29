@@ -58,7 +58,8 @@ import {
     Microscope,
     FlaskConical,
     Upload,
-    Loader2
+    Loader2,
+    Activity
 } from 'lucide-vue-next';
 import { watch } from 'vue';
 
@@ -77,6 +78,7 @@ interface Ingredient {
         name: string;
     };
     dosification?: Dosification | null;
+    nutritional_factors?: any[];
 }
 
 interface Dosification {
@@ -121,6 +123,45 @@ const props = defineProps<{
     categories: Category[];
 }>();
 
+const isDosificationModalOpen = ref(false);
+const isNutritionalModalOpen = ref(false);
+const activeIngredientForNutritional = ref<any>(null);
+
+const nutritionalForm = useForm({
+    ingredient_id: '',
+    nfactorcal: '',
+    composition: '',
+});
+
+const openNutritionalModal = (ingredient: any) => {
+    activeIngredientForNutritional.value = ingredient;
+    nutritionalForm.reset();
+    nutritionalForm.clearErrors();
+    isNutritionalModalOpen.value = true;
+};
+
+const saveNutritionalFactor = () => {
+    nutritionalForm.ingredient_id = activeIngredientForNutritional.value.id;
+    nutritionalForm.post(route('nutritional.store'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            nutritionalForm.reset('nfactorcal', 'composition');
+            activeIngredientForNutritional.value = props.ingredients.find(i => i.id === activeIngredientForNutritional.value.id) || activeIngredientForNutritional.value;
+        }
+    });
+};
+
+const deleteNutritionalFactor = (id: number) => {
+    if (confirm('¿Eliminar factor nutricional?')) {
+        router.delete(route('nutritional.destroy', id), {
+            preserveScroll: true,
+            onSuccess: () => {
+                activeIngredientForNutritional.value = props.ingredients.find(i => i.id === activeIngredientForNutritional.value.id) || activeIngredientForNutritional.value;
+            }
+        });
+    }
+};
+
 const searchQuery = ref('');
 const isDialogOpen = ref(false);
 const editingIngredient = ref<Ingredient | null>(null);
@@ -134,7 +175,6 @@ const form = useForm({
     ingredient_category_id: null as number | null,
 });
 
-const isDosificationModalOpen = ref(false);
 const selectedIngredientForDosification = ref<Ingredient | null>(null);
 
 const dosificationForm = useForm({
@@ -597,6 +637,9 @@ const uploadDosificationFile = () => {
                                     </TableCell>
                                     <TableCell class="text-right">
                                         <div class="flex justify-end gap-1">
+                                            <Button variant="ghost" size="icon" @click="openNutritionalModal(ingredient)" class="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50" title="Factores Nutricionales">
+                                                <Activity class="h-4 w-4" />
+                                            </Button>
                                             <Button variant="ghost" size="icon" @click="openDosificationModal(ingredient)" class="h-8 w-8 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50" title="Dosificación">
                                                 <Calculator class="h-4 w-4" />
                                             </Button>
@@ -1007,6 +1050,79 @@ const uploadDosificationFile = () => {
                         </Button>
                     </DialogFooter>
                 </form>
+            </DialogContent>
+        </Dialog>
+        <!-- Modal de Factores Nutricionales -->
+        <Dialog :open="isNutritionalModalOpen" @update:open="isNutritionalModalOpen = $event">
+            <DialogContent class="sm:max-w-[500px] p-0 overflow-hidden bg-white rounded-xl border-0 shadow-2xl">
+                <div class="bg-gradient-to-r from-amber-500 to-amber-600 p-6">
+                    <DialogHeader>
+                        <DialogTitle class="text-xl text-white font-bold flex items-center gap-2">
+                            <Activity class="h-5 w-5" />
+                            Factores Nutricionales
+                        </DialogTitle>
+                        <DialogDescription class="text-amber-100 mt-1">
+                            {{ activeIngredientForNutritional?.name }}
+                        </DialogDescription>
+                    </DialogHeader>
+                </div>
+
+                <div class="p-6">
+                    <!-- Lista de Factores -->
+                    <div class="mb-6 border rounded-lg overflow-hidden">
+                        <table class="w-full text-sm">
+                            <thead class="bg-zinc-50 border-b">
+                                <tr>
+                                    <th class="px-4 py-2 text-left font-semibold text-zinc-600">NFactorCal</th>
+                                    <th class="px-4 py-2 text-left font-semibold text-zinc-600">Composición</th>
+                                    <th class="px-4 py-2 text-right font-semibold text-zinc-600">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y">
+                                <tr v-for="factor in activeIngredientForNutritional?.nutritional_factors" :key="factor.id" class="hover:bg-zinc-50">
+                                    <td class="px-4 py-2 text-zinc-700 font-medium">{{ Number(factor.nfactorcal).toFixed(2) }}</td>
+                                    <td class="px-4 py-2 text-zinc-700 font-medium">{{ Number(factor.composition).toFixed(2) }}</td>
+                                    <td class="px-4 py-2 text-right">
+                                        <button @click="deleteNutritionalFactor(factor.id)" class="text-red-500 hover:text-red-700 transition-colors p-1" title="Eliminar">
+                                            <Trash2 class="h-4 w-4" />
+                                        </button>
+                                    </td>
+                                </tr>
+                                <tr v-if="!activeIngredientForNutritional?.nutritional_factors?.length">
+                                    <td colspan="3" class="px-4 py-6 text-center text-zinc-400">
+                                        No hay factores nutricionales registrados.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Formulario Nuevo Factor -->
+                    <div class="bg-zinc-50 p-4 rounded-lg border">
+                        <h4 class="text-sm font-semibold text-zinc-700 mb-3">Añadir Nuevo Factor</h4>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <Label class="text-xs text-zinc-500">NFactorCal</Label>
+                                <Input type="number" step="0.01" v-model="nutritionalForm.nfactorcal" class="mt-1 h-9" placeholder="Ej. 4.00" />
+                                <span v-if="nutritionalForm.errors.nfactorcal" class="text-xs text-red-500 mt-1 block">{{ nutritionalForm.errors.nfactorcal }}</span>
+                            </div>
+                            <div>
+                                <Label class="text-xs text-zinc-500">Composición</Label>
+                                <Input type="number" step="0.01" v-model="nutritionalForm.composition" class="mt-1 h-9" placeholder="Ej. 2.20" />
+                                <span v-if="nutritionalForm.errors.composition" class="text-xs text-red-500 mt-1 block">{{ nutritionalForm.errors.composition }}</span>
+                            </div>
+                        </div>
+                        <div class="mt-4 flex justify-end">
+                            <Button @click="saveNutritionalFactor" :disabled="nutritionalForm.processing || !nutritionalForm.nfactorcal || !nutritionalForm.composition" class="bg-amber-600 hover:bg-amber-700 text-white font-bold h-9">
+                                Guardar Factor
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-zinc-50 px-6 py-4 border-t flex justify-end">
+                    <Button type="button" variant="ghost" @click="isNutritionalModalOpen = false">Cerrar</Button>
+                </div>
             </DialogContent>
         </Dialog>
     </AppLayout>
