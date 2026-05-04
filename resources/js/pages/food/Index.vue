@@ -25,22 +25,6 @@ defineProps<Props>();
                 <div class="border-sidebar-border/70 dark:border-sidebar-border relative h-[800px] overflow-hidden rounded-xl border">
                     <Quebrados :dishes="dishes" :ingredients="ingredients" />
                 </div>
-            <!-- <div class="grid auto-rows-min gap-4 md:grid-cols-2">
-                <div
-                    class="border-sidebar-border/70 dark:border-sidebar-border relative aspect-video overflow-hidden overflow-y-auto rounded-xl border"
-                >
-                    <h6 class="text-center font-bold">Categoría de Platos</h6>
-                    <DishCategoriesModal /> 
-                    <MenuTable :dishCategories="dish_categories" />
-                </div>
-                <div
-                    class="border-sidebar-border/70 dark:border-sidebar-border relative aspect-video overflow-hidden overflow-y-auto rounded-xl border"
-                >
-                    <h6 class="text-center font-bold">Categoría de Ingredientes</h6>
-                    <IngredientCategoriesModal />
-                    <IngredientCategoriesTable :ingredientCategories="ingredient_categories" />
-                </div>
-            </div> -->
         </div>
     </AppLayout>
 </template>
