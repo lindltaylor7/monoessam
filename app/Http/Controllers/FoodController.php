@@ -109,7 +109,50 @@ class FoodController extends Controller
     public function structure()
     {
         return Inertia::render('structure-menu/Index', [
-            'categories' => Dish_category::all()
+            'categories' => Dish_category::all(),
+            'mines' => \App\Models\Mine::with(['units', 'units.cafes'])->get(),
+            'structures' => \App\Models\Structure::with('costs')->get()
         ]);
+    }
+
+    public function storeStructure(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255|unique:structures,name',
+            'cafe_id' => 'required|exists:cafes,id',
+            'categories' => 'required|array'
+        ], [
+            'name.unique' => 'Ya existe una estructura guardada con ese nombre. Por favor, elige otro.',
+            'cafe_id.required' => 'Debe seleccionar un comedor antes de guardar la estructura.'
+        ]);
+
+        $structure = \App\Models\Structure::create([
+            'name' => $request->name,
+            'cafe_id' => $request->cafe_id
+        ]);
+
+        foreach ($request->categories as $category) {
+            \App\Models\StructureCost::create([
+                'structure_id' => $structure->id,
+                'dish_category_id' => $category['id'] ?? null,
+                'name' => $category['name'] ?? null,
+                'order' => $category['order'] ?? 0,
+                'reference_volume' => $category['reference_volume'] ?? null,
+                'measurement_unit' => $category['measurement_unit'] ?? $category['mesearument_unit'] ?? null,
+                'ration' => $category['ration'] ?? null,
+                'unit_cost' => $category['unit_cost'] ?? null,
+                'total_cost' => $category['total_cost'] ?? null,
+            ]);
+        }
+
+        return back()->with('success', 'Estructura guardada exitosamente.');
+    }
+
+    public function destroyStructure($id)
+    {
+        $structure = \App\Models\Structure::findOrFail($id);
+        $structure->delete();
+        
+        return back()->with('success', 'Estructura eliminada exitosamente.');
     }
 }

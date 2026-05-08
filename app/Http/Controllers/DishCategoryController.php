@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Dish_category;
 use Illuminate\Http\Request;
+use App\Imports\DishCategoriesImport;
+use App\Imports\DishCategoryDishImport;
+use Maatwebsite\Excel\Facades\Excel;
 
 class DishCategoryController extends Controller
 {
@@ -66,5 +69,27 @@ class DishCategoryController extends Controller
         $dish_category->delete();
 
         return route('food');
+    }
+
+    public function import(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|mimes:xlsx,xls,csv',
+        ]);
+
+        Excel::import(new DishCategoriesImport, $request->file('file'));
+
+        return back()->with('success', 'Categorías importadas correctamente.');
+    }
+
+    public function importRelationships(Request $request)
+    {
+        $request->validate([
+            'file' => 'required|mimes:xlsx,xls,csv',
+        ]);
+
+        Excel::import(new DishCategoryDishImport, $request->file('file'));
+
+        return back()->with('success', 'Relaciones plato-categoría importadas correctamente.');
     }
 }

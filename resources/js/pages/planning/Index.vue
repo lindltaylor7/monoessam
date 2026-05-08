@@ -29,6 +29,7 @@ const startDate = ref(dayjs().startOf('week').add(1, 'day').format('YYYY-MM-DD')
 // Local reactive state for the grid to avoid find() in template
 const portionsGrid = ref<Record<string, number>>({});
 const itemsGrid = ref<Record<string, string>>({});
+const localMenuStructure = ref<MenuStructure[]>(JSON.parse(JSON.stringify(props.menu_structure)));
 
 const form = useForm({
     cafe_id: '',
@@ -52,9 +53,9 @@ const initializeGrid = () => {
             const portKey = `${date}_${meal}`;
             portionsGrid.value[portKey] = 0;
             
-            const structureForMeal = props.menu_structure.filter(s => s.meal_type === meal);
+            const structureForMeal = localMenuStructure.value.filter(s => s.meal_type === meal);
             structureForMeal.forEach(s => {
-                const itemKey = `${date}_${meal}_${s.dish_category_id}`;
+                const itemKey = `${date}_${meal}_${s.id}`;
                 itemsGrid.value[itemKey] = '';
             });
         });
@@ -84,18 +85,66 @@ const submit = () => {
     }
 
     for (const [key, val] of Object.entries(itemsGrid.value)) {
-        const [date, meal, catId] = key.split('_');
-        // Only push if a dish is selected OR we want to send the requirement anyway
-        // For now, let's keep all entries but send null/nullish if empty
+        const [date, meal, structId] = key.split('_');
+        const struct = localMenuStructure.value.find(s => s.id === parseInt(structId));
+        
         form.items.push({
             date,
             meal_type: meal as MealType,
-            dish_category_id: parseInt(catId),
+            dish_category_id: struct ? struct.dish_category_id : null,
             dish_id: val || null
         });
     }
 
     form.post(route('planning.store'));
+};
+
+const importForm = useForm({
+    file: null as File | null,
+});
+
+const fileInput = ref<HTMLInputElement | null>(null);
+
+const triggerImport = () => {
+    fileInput.value?.click();
+};
+
+const handleFileImport = (event: Event) => {
+    const target = event.target as HTMLInputElement;
+    const file = target.files?.[0];
+    if (file) {
+        importForm.file = file;
+        importForm.post(route('dish-categories.import'), {
+            onSuccess: () => {
+                importForm.reset();
+                if (fileInput.value) fileInput.value.value = '';
+            },
+        });
+    }
+};
+
+const relForm = useForm({
+    file: null as File | null,
+});
+
+const relFileInput = ref<HTMLInputElement | null>(null);
+
+const triggerRelImport = () => {
+    relFileInput.value?.click();
+};
+
+const handleRelFileImport = (event: Event) => {
+    const target = event.target as HTMLInputElement;
+    const file = target.files?.[0];
+    if (file) {
+        relForm.file = file;
+        relForm.post(route('dish-categories.import-relationships'), {
+            onSuccess: () => {
+                relForm.reset();
+                if (relFileInput.value) relFileInput.value.value = '';
+            },
+        });
+    }
 };
 
 const getDishesByCategory = (categoryId: number) => {
@@ -140,9 +189,49 @@ const getDishesByCategory = (categoryId: number) => {
                             <label class="text-sm font-medium">Fecha de Inicio</label>
                             <Input type="date" v-model="form.start_date" @change="handleDateChange" class="rounded-xl" />
                         </div>
-                        <div class="flex items-end">
+                        <div class="flex items-end gap-2">
                             <Button @click="submit" :disabled="form.processing" class="w-full rounded-xl bg-primary text-primary-foreground">
                                 Guardar Planificación
+                            </Button>
+                            
+                            <input
+                                type="file"
+                                ref="fileInput"
+                                class="hidden"
+                                accept=".xlsx,.xls,.csv"
+                                @change="handleFileImport"
+                            />
+                            
+                            <Button 
+                                type="button" 
+                                variant="outline" 
+                                @click="triggerImport" 
+                                :disabled="importForm.processing"
+                                class="rounded-xl border-dashed"
+                                title="Importar Categorías de Platos"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                                {{ importForm.processing ? 'Importando...' : 'Importar Categorías' }}
+                            </Button>
+
+                            <input
+                                type="file"
+                                ref="relFileInput"
+                                class="hidden"
+                                accept=".xlsx,.xls,.csv"
+                                @change="handleRelFileImport"
+                            />
+                            
+                            <Button 
+                                type="button" 
+                                variant="outline" 
+                                @click="triggerRelImport" 
+                                :disabled="relForm.processing"
+                                class="rounded-xl border-dashed"
+                                title="Importar Relación Platos-Categorías"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>
+                                {{ relForm.processing ? 'Importando...' : 'Importar Relación Platos' }}
                             </Button>
                         </div>
                     </div>
@@ -175,12 +264,21 @@ const getDishesByCategory = (categoryId: number) => {
                                     </div>
                                 </TableCell>
                             </TableRow>
-                            <TableRow v-for="struct in menu_structure.filter(s => s.meal_type === meal)" :key="struct.id">
-                                <TableCell class="pl-6 text-sm italic text-muted-foreground">
-                                    {{ struct.dish_category?.name || 'Categoría' }}
+                            <TableRow v-for="struct in localMenuStructure.filter(s => s.meal_type === meal)" :key="struct.id">
+                                <TableCell class="pl-6">
+                                    <Select v-model="struct.dish_category_id">
+                                        <SelectTrigger class="h-8 border-none bg-transparent p-0 text-sm italic text-muted-foreground shadow-none focus:ring-0">
+                                            <SelectValue :placeholder="struct.dish_category?.name || 'Categoría'" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem v-for="cat in dish_categories" :key="cat.id" :value="cat.id">
+                                                {{ cat.name }}
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                 </TableCell>
                                 <TableCell v-for="date in dates" :key="date">
-                                    <Select v-model="itemsGrid[`${date}_${meal}_${struct.dish_category_id}`]">
+                                    <Select v-model="itemsGrid[`${date}_${meal}_${struct.id}`]">
                                         <SelectTrigger class="h-9 rounded-xl text-xs">
                                             <SelectValue placeholder="Elegir plato" />
                                         </SelectTrigger>

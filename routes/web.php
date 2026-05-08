@@ -181,6 +181,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('food')->name('food.')->group(function () {
         Route::get('/', [FoodController::class, 'index'])->name('index');
         Route::get('structure-menu', [FoodController::class, 'structure'])->name('structure');
+        Route::post('structure-menu', [FoodController::class, 'storeStructure'])->name('structure.store');
+        Route::delete('structure-menu/{id}', [FoodController::class, 'destroyStructure'])->name('structure.destroy');
     });
 
     Route::prefix('dishes')->name('dishes.')->group(function () {
@@ -195,6 +197,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('dish-categories')->name('dish-categories.')->group(function () {
         Route::post('/', [DishCategoryController::class, 'store'])->name('store');
         Route::delete('{id}', [DishCategoryController::class, 'destroy'])->name('destroy');
+        Route::post('import', [DishCategoryController::class, 'import'])->name('import');
+        Route::post('import-relationships', [DishCategoryController::class, 'importRelationships'])->name('import-relationships');
     });
 
     Route::prefix('ingredients')->name('ingredients.')->group(function () {
