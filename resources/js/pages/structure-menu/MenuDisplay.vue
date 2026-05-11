@@ -11,13 +11,13 @@ interface Props {
 const props = defineProps<Props>();
 
 const emit = defineEmits<{
-    (e: 'update:cafe', value: string | null): void;
+    (e: 'update:serviceable', value: string | null): void;
 }>();
 
-const { selectedOptions, selectedUnits, selectedCafes } = useHeadcountSelection(props.mines);
+const { selectedOptions, selectedUnits, selectedCafes, selectedServices } = useHeadcountSelection(props.mines);
 
-watch(() => selectedOptions.value.cafe, (newVal) => {
-    emit('update:cafe', newVal);
+watch(() => selectedOptions.value.service, (newVal) => {
+    emit('update:serviceable', newVal);
 });
 </script>
 
@@ -62,6 +62,20 @@ watch(() => selectedOptions.value.cafe, (newVal) => {
                         <SelectLabel>Comedores</SelectLabel>
                         <SelectItem v-for="cafe in selectedCafes" :value="String(cafe.id)" :key="cafe.id"> 
                             {{ cafe.name }} 
+                        </SelectItem>
+                    </SelectGroup>
+                </SelectContent>
+            </Select>
+
+            <Select class="w-full" v-model="selectedOptions.service">
+                <SelectTrigger class="w-full">
+                    <SelectValue placeholder="Selecciona un servicio" />
+                </SelectTrigger>
+                <SelectContent>
+                    <SelectGroup>
+                        <SelectLabel>Servicios</SelectLabel>
+                        <SelectItem v-for="service in selectedServices" :value="String(service.pivot.id)" :key="service.pivot.id"> 
+                            {{ service.name }} 
                         </SelectItem>
                     </SelectGroup>
                 </SelectContent>

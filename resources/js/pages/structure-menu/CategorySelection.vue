@@ -11,7 +11,7 @@ import { router } from '@inertiajs/vue3';
 const props = defineProps<{
     categories?: any[];
     structures?: any[];
-    cafeId?: string | null;
+    serviceableId?: string | null;
 }>();
 
 const categoriesSelected = ref<any[]>([]);
@@ -32,8 +32,8 @@ const filteredCategories = computed(() => {
 
 const filteredStructures = computed(() => {
     if (!props.structures) return [];
-    if (!props.cafeId) return [];
-    return props.structures.filter((s: any) => String(s.cafe_id) === String(props.cafeId));
+    if (!props.serviceableId) return [];
+    return props.structures.filter((s: any) => String(s.serviceable_id) === String(props.serviceableId));
 });
 
 const totalBaseCost = computed(() => {
@@ -108,10 +108,10 @@ const deleteStructure = (id: number) => {
 };
 
 const saveStructure = () => {
-    if (!props.cafeId) {
+    if (!props.serviceableId) {
         Swal.fire({
             title: 'Atención',
-            text: 'Debe seleccionar un comedor primero.',
+            text: 'Debe seleccionar un servicio primero.',
             icon: 'warning',
             confirmButtonText: 'Entendido'
         });
@@ -130,7 +130,7 @@ const saveStructure = () => {
 
     router.post(route('food.structure.store'), {
         name: structureName.value,
-        cafe_id: props.cafeId,
+        serviceable_id: props.serviceableId,
         categories: categoriesToSave
     }, {
         onError: (errors) => {

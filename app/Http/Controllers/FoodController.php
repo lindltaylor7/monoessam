@@ -110,7 +110,7 @@ class FoodController extends Controller
     {
         return Inertia::render('structure-menu/Index', [
             'categories' => Dish_category::all(),
-            'mines' => \App\Models\Mine::with(['units', 'units.cafes'])->get(),
+            'mines' => \App\Models\Mine::with(['units', 'units.cafes', 'units.cafes.services'])->get(),
             'structures' => \App\Models\Structure::with('costs')->get()
         ]);
     }
@@ -119,16 +119,16 @@ class FoodController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255|unique:structures,name',
-            'cafe_id' => 'required|exists:cafes,id',
+            'serviceable_id' => 'required|exists:serviceables,id',
             'categories' => 'required|array'
         ], [
             'name.unique' => 'Ya existe una estructura guardada con ese nombre. Por favor, elige otro.',
-            'cafe_id.required' => 'Debe seleccionar un comedor antes de guardar la estructura.'
+            'serviceable_id.required' => 'Debe seleccionar un servicio antes de guardar la estructura.'
         ]);
 
         $structure = \App\Models\Structure::create([
             'name' => $request->name,
-            'cafe_id' => $request->cafe_id
+            'serviceable_id' => $request->serviceable_id
         ]);
 
         foreach ($request->categories as $category) {

@@ -16,7 +16,7 @@ interface Props {
 
 defineProps<Props>();
 
-const selectedCafeId = ref<string | null>(null);
+const selectedServiceableId = ref<string | null>(null);
 </script>
 
 <template>
@@ -24,11 +24,8 @@ const selectedCafeId = ref<string | null>(null);
     <AppLayout>
         <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
             <div class="grid auto-rows-min gap-4 md:grid-cols-3">
-                <MenuDisplay :mines="mines" @update:cafe="selectedCafeId = $event" />
-                <CategorySelection :categories="categories" :structures="structures" :cafe-id="selectedCafeId" />
-
-                <!-- <MealSchedule /> -->
-                <!-- <DishSearch /> -->
+                <MenuDisplay :mines="mines" @update:serviceable="selectedServiceableId = $event" />
+                <CategorySelection :categories="categories" :structures="structures" :serviceable-id="selectedServiceableId" />
             </div>
         </div>
     </AppLayout>

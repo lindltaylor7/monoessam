@@ -65,6 +65,7 @@ const form = useForm({
     id: null as number | null,
     name: '',
     description: '',
+    dish_categories: [] as any[],
     mesearument_unit: [] as number[],
     recipes: {} as Record<number, {
         ingredients: any[],
@@ -76,12 +77,63 @@ const form = useForm({
     }>
 });
 
-const levels = [
-    { id: 1, name: 'Master' },
-    { id: 2, name: 'Staff' },
-    { id: 3, name: 'Empleado' },
-    { id: 4, name: 'Obrero' },
-];
+const levels = ref([
+    { id: 1, name: 'Base(Master)' },
+    { id: 2, name: 'Base (E)' },
+    { id: 3, name: 'Base (J)' },
+    { id: 4, name: 'Base (S)' },
+    { id: 5, name: 'Base (GOLD) - STAFF' },
+    { id: 6, name: 'Base (PLATINUM) - EMPLEADOS' },
+    { id: 7, name: 'Base (QUANTUM) - OBREROS' },
+]);
+
+const addNewLevel = async () => {
+    const { value: name } = await Swal.fire({
+        title: 'Nuevo Nivel de Aplicación',
+        input: 'text',
+        inputLabel: 'Nombre del nivel',
+        inputPlaceholder: 'Ej: VIP, Especial, etc.',
+        showCancelButton: true,
+        confirmButtonColor: '#18181b',
+    });
+
+    if (name) {
+        const newId = levels.value.length > 0 ? Math.max(...levels.value.map(l => l.id)) + 1 : 1;
+        levels.value.push({ id: newId, name });
+        Swal.fire({
+            title: '¡Añadido!',
+            text: `Nivel "${name}" añadido correctamente.`,
+            icon: 'success',
+            timer: 1500,
+            showConfirmButton: false
+        });
+    }
+};
+
+const deleteLevelFromList = (levelId: number) => {
+    const level = levels.value.find(l => l.id === levelId);
+    Swal.fire({
+        title: '¿Eliminar nivel?',
+        text: `Se quitará "${level?.name}" de la lista global de niveles.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            levels.value = levels.value.filter(l => l.id !== levelId);
+            const index = form.mesearument_unit.indexOf(levelId);
+            if (index !== -1) {
+                form.mesearument_unit.splice(index, 1);
+                delete form.recipes[levelId];
+                if (activeLevelTab.value === levelId) {
+                    activeLevelTab.value = form.mesearument_unit.length ? form.mesearument_unit[0] : null;
+                }
+            }
+        }
+    });
+};
 
 const toggleLevel = (id: number) => {
     const index = form.mesearument_unit.indexOf(id);
@@ -181,6 +233,8 @@ const editDish = (dish: Dish) => {
     form.id = dish.id;
     form.name = dish.name;
     form.description = dish.description || '';
+    // @ts-ignore
+    form.dish_categories = dish.dish_categories || [];
     
     form.mesearument_unit = [];
     form.recipes = {};
@@ -234,6 +288,8 @@ const duplicateDish = (dish: Dish) => {
     form.id = null;
     form.name = dish.name + ' (Copia)';
     form.description = dish.description || '';
+    // @ts-ignore
+    form.dish_categories = dish.dish_categories || [];
     
     form.mesearument_unit = [];
     form.recipes = {};
@@ -284,6 +340,7 @@ const createDish = () => {
     form.clearErrors();
     form.reset();
     form.id = null;
+    form.dish_categories = [];
     form.mesearument_unit = [];
     form.recipes = {};
     activeLevelTab.value = null;
@@ -509,6 +566,9 @@ const submit = () => {
                         <div class="text-[10px] px-1.5 py-0.5 rounded-full bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
                             {{ getDishIngredientsCount(dish) }} Ingredientes
                         </div>
+                        <span v-for="cat in dish.dish_categories" :key="cat.id" class="text-[9px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 font-medium">
+                            {{ cat.name }}
+                        </span>
                         <span v-for="recipe in dish.recipes" :key="recipe.id" class="text-[9px] px-1.5 py-0.5 rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold border border-blue-100 dark:border-blue-800/50">
                             {{ recipe.level?.name }}
                         </span>
@@ -565,21 +625,43 @@ const submit = () => {
                             <label class="text-xs font-semibold uppercase text-zinc-500">Descripción</label>
                             <Input v-model="form.description" placeholder="Descripción breve" class="h-9" />
                         </div>
+                        <div class="space-y-1.5">
+                            <label class="text-xs font-semibold uppercase text-zinc-500">Categoría</label>
+                            <div class="flex flex-wrap gap-1 mt-1">
+                                <span v-for="cat in form.dish_categories" :key="cat.id" class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 font-medium">
+                                    {{ cat.name }}
+                                </span>
+                                <span v-if="!form.dish_categories?.length" class="text-[10px] text-zinc-400 italic">Sin categoría</span>
+                            </div>
+                        </div>
                         <div class="space-y-1.5 col-span-1 md:col-span-3">
-                            <label class="text-xs font-semibold uppercase text-zinc-500">Niveles de Aplicación</label>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="text-xs font-semibold uppercase text-zinc-500">Niveles de Aplicación</label>
+                                <button type="button" @click="addNewLevel" class="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 flex items-center gap-1 transition-colors">
+                                    <Plus class="w-3 h-3" /> Añadir Nivel
+                                </button>
+                            </div>
                             <div class="flex flex-wrap gap-2 pt-1">
-                                <button 
+                                <div 
                                     v-for="level in levels" 
                                     :key="level.id"
-                                    type="button"
-                                    @click="toggleLevel(level.id)"
-                                    class="px-3 py-1.5 rounded-full text-xs font-bold transition-all border"
-                                    :class="form.mesearument_unit.includes(level.id) 
-                                        ? 'bg-zinc-900 border-zinc-900 text-white shadow-sm' 
-                                        : 'bg-zinc-50 border-zinc-200 text-zinc-600 hover:bg-zinc-100'"
+                                    class="relative group"
                                 >
-                                    {{ level.name }}
-                                </button>
+                                    <button 
+                                        type="button"
+                                        @click="toggleLevel(level.id)"
+                                        class="px-3 py-1.5 rounded-full text-xs font-bold transition-all border flex items-center gap-2"
+                                        :class="form.mesearument_unit.includes(level.id) 
+                                            ? 'bg-zinc-900 border-zinc-900 text-white shadow-sm' 
+                                            : 'bg-zinc-50 border-zinc-200 text-zinc-600 hover:bg-zinc-100'"
+                                    >
+                                        {{ level.name }}
+                                        <Trash 
+                                            @click.stop="deleteLevelFromList(level.id)" 
+                                            class="w-3 h-3 opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-red-500 transition-all ml-1"
+                                        />
+                                    </button>
+                                </div>
                             </div>
                             <p v-if="form.errors.mesearument_unit" class="text-[10px] text-red-500 font-medium">{{ form.errors.mesearument_unit }}</p>
                         </div>

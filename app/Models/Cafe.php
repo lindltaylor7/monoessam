@@ -26,7 +26,7 @@ class Cafe extends Model
     }
     public function services(): MorphToMany
     {
-        return $this->morphToMany(Service::class, 'serviceable')->withPivot('price');
+        return $this->morphToMany(Service::class, 'serviceable')->withPivot('id', 'price');
     }
     public function users(): BelongsToMany
     {

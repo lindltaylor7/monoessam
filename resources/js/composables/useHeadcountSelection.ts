@@ -6,14 +6,17 @@ export function useHeadcountSelection(mines: Mine[]) {
         mine: string | null;
         unit: string | null;
         cafe: string | null;
+        service: string | null;
     }>({
         mine: null,
         unit: null,
         cafe: null,
+        service: null,
     });
 
     const selectedUnits = ref<Unit[]>([]);
     const selectedCafes = ref<Cafe[]>([]);
+    const selectedServices = ref<any[]>([]);
 
     watch(
         selectedOptions,
@@ -35,6 +38,15 @@ export function useHeadcountSelection(mines: Mine[]) {
             } else {
                 selectedCafes.value = [];
             }
+
+            // Cambió el comedor
+            if (newVal.cafe) {
+                const cafeSelected = selectedCafes.value.find((cafe) => String(cafe.id) === String(newVal.cafe));
+                // @ts-ignore - The structure of cafe might include services
+                selectedServices.value = cafeSelected ? (cafeSelected as any).services || [] : [];
+            } else {
+                selectedServices.value = [];
+            }
         },
         { deep: true }
     );
@@ -43,5 +55,6 @@ export function useHeadcountSelection(mines: Mine[]) {
         selectedOptions,
         selectedUnits,
         selectedCafes,
+        selectedServices,
     };
 }
