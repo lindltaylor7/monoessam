@@ -17,8 +17,25 @@ const props = defineProps<{
 const categoriesSelected = ref<any[]>([]);
 const searchQuery = ref('');
 const open = ref(false);
-const openStructureSearch = ref(false);
 const structureName = ref('');
+const sellingPrice = ref<number | null>(null);
+
+watch(() => props.serviceableId, (newId) => {
+    if (newId) {
+        const structure = props.structures?.find(s => String(s.serviceable_id) === String(newId));
+        if (structure) {
+            loadStructure(structure);
+        } else {
+            categoriesSelected.value = [];
+            structureName.value = '';
+            sellingPrice.value = null;
+        }
+    } else {
+        categoriesSelected.value = [];
+        structureName.value = '';
+        sellingPrice.value = null;
+    }
+}, { immediate: true });
 
 const filteredCategories = computed(() => {
     const categories = props.categories;
@@ -28,12 +45,6 @@ const filteredCategories = computed(() => {
     return categories.filter((cat: any) => 
         cat && cat.name && cat.name.toLowerCase().includes(query)
     );
-});
-
-const filteredStructures = computed(() => {
-    if (!props.structures) return [];
-    if (!props.serviceableId) return [];
-    return props.structures.filter((s: any) => String(s.serviceable_id) === String(props.serviceableId));
 });
 
 const totalBaseCost = computed(() => {
@@ -47,8 +58,6 @@ const totalSuperiorCost = computed(() => {
         return acc + (parseFloat(cat.total_cost_superior) || 0);
     }, 0).toFixed(2);
 });
-
-const sellingPrice = ref<number | null>(null);
 
 const costMargin = computed(() => {
     const price = parseFloat(String(sellingPrice.value)) || 0;
@@ -130,7 +139,6 @@ const loadStructure = (struct: any) => {
         unit_cost_superior: cost.unit_cost_superior,
         total_cost_superior: cost.total_cost_superior
     }));
-    openStructureSearch.value = false;
 };
 
 const deleteStructure = (id: number) => {
@@ -211,36 +219,11 @@ const saveStructure = () => {
     <div class="border-sidebar-border/70 dark:border-sidebar-border relative col-span-2 aspect-video overflow-hidden rounded-xl border flex flex-col p-4 gap-4">
         <div class="flex flex-wrap items-center justify-between gap-4 w-full bg-slate-50/50 dark:bg-slate-900/20 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
             <div class="flex flex-wrap items-center gap-3">
-                <Popover v-model:open="openStructureSearch">
-                    <PopoverTrigger as-child>
-                        <Button variant="outline" class="h-10 justify-between text-indigo-600 border-indigo-200 bg-white hover:bg-indigo-50 dark:bg-slate-950 dark:border-indigo-900 shadow-sm">
-                            <Search class="h-4 w-4 mr-2 opacity-70" />
-                            Estructuras Guardadas
-                            <ChevronDown class="h-4 w-4 ml-2 opacity-50" />
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent class="w-[250px] p-0 shadow-xl border-indigo-100">
-                        <div class="max-h-[300px] overflow-y-auto p-1">
-                            <div v-for="struct in (filteredStructures || [])" :key="struct.id"
-                                @click="loadStructure(struct)"
-                                class="relative flex cursor-default select-none items-center justify-between rounded-sm px-2 py-2 text-sm outline-none hover:bg-indigo-50 hover:text-indigo-900 dark:hover:bg-indigo-900/50 dark:hover:text-indigo-100 cursor-pointer group transition-colors">
-                                <span class="truncate pr-2 font-medium">{{ struct.name }}</span>
-                                <Button variant="ghost" size="icon" class="h-7 w-7 opacity-0 group-hover:opacity-100 text-rose-500 hover:text-rose-700 hover:bg-rose-100 transition-opacity" @click.stop="deleteStructure(struct.id)">
-                                    <Trash class="h-3.5 w-3.5" />
-                                </Button>
-                            </div>
-                            <div v-if="!filteredStructures || filteredStructures.length === 0" class="py-8 text-center text-sm text-muted-foreground italic">
-                                No hay estructuras.
-                            </div>
-                        </div>
-                    </PopoverContent>
-                </Popover>
-
                 <Popover v-model:open="open">
                     <PopoverTrigger as-child>
-                        <Button variant="outline" class="h-10 justify-between border-slate-200 bg-white shadow-sm hover:border-indigo-300 transition-all">
+                        <Button variant="outline" class="h-10 justify-between border-slate-200 bg-white shadow-sm hover:border-indigo-300 transition-all font-semibold">
                             <ChevronDown class="h-4 w-4 mr-2 opacity-50" />
-                            Seleccionar Categoría
+                            Añadir Categoría a Estructura
                         </Button>
                     </PopoverTrigger>
                     <PopoverContent class="w-[300px] p-0 shadow-xl">
