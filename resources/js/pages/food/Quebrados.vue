@@ -6,14 +6,17 @@ import Button from '@/components/ui/button/Button.vue';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Trash, Search, Copy, FileUp } from 'lucide-vue-next';
+import { Plus, Trash, Search, Copy, FileUp, Check, ChevronDown } from 'lucide-vue-next';
 import CalcPopover from './CalcPopover.vue';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Badge } from '@/components/ui/badge';
 import Swal from 'sweetalert2';
 import axios from 'axios';
 
 const props = defineProps<{
     dishes: Dish[];
     ingredients: Ingredient[];
+    dishCategories: any[];
 }>();
 
 // State
@@ -108,6 +111,19 @@ const addNewLevel = async () => {
             showConfirmButton: false
         });
     }
+};
+
+const toggleCategory = (category: any) => {
+    const index = form.dish_categories.findIndex(c => c.id === category.id);
+    if (index === -1) {
+        form.dish_categories.push(category);
+    } else {
+        form.dish_categories.splice(index, 1);
+    }
+};
+
+const isCategorySelected = (categoryId: number) => {
+    return form.dish_categories.some(c => c.id === categoryId);
 };
 
 const deleteLevelFromList = (levelId: number) => {
@@ -490,8 +506,13 @@ const onWeightInput = (ingredient: any) => {
 };
 
 const submit = () => {
+    const data = {
+        ...form.data(),
+        dish_categories: form.dish_categories.map(c => c.id)
+    };
+
     if (form.id) {
-        form.put(route('dishes.update', form.id), {
+        router.put(route('dishes.update', form.id), data as any, {
             onSuccess: () => {
                 resetView();
                 Swal.fire({
@@ -504,7 +525,7 @@ const submit = () => {
             },
         });
     } else {
-        form.post(route('dishes.store'), {
+        router.post(route('dishes.store'), data as any, {
             onSuccess: () => {
                 resetView();
                 Swal.fire({
@@ -626,12 +647,46 @@ const submit = () => {
                             <Input v-model="form.description" placeholder="Descripción breve" class="h-9" />
                         </div>
                         <div class="space-y-1.5">
-                            <label class="text-xs font-semibold uppercase text-zinc-500">Categoría</label>
+                            <div class="flex items-center justify-between">
+                                <label class="text-xs font-semibold uppercase text-zinc-500">Categorías</label>
+                                <Popover>
+                                    <PopoverTrigger as-child>
+                                        <Button variant="ghost" size="sm" class="h-6 px-2 text-[10px] font-bold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 gap-1 transition-all">
+                                            Gestionar <ChevronDown class="w-3 h-3" />
+                                        </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent class="w-64 p-0" align="start">
+                                        <div class="p-2 border-b">
+                                            <h4 class="text-xs font-bold uppercase text-zinc-500 px-2 py-1">Seleccionar Categorías</h4>
+                                        </div>
+                                        <div class="max-h-60 overflow-y-auto p-1">
+                                            <div 
+                                                v-for="cat in dishCategories" 
+                                                :key="cat.id"
+                                                @click="toggleCategory(cat)"
+                                                class="flex items-center gap-2 p-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
+                                            >
+                                                <div class="w-4 h-4 border rounded flex items-center justify-center transition-colors"
+                                                    :class="isCategorySelected(cat.id) ? 'bg-indigo-600 border-indigo-600' : 'border-zinc-300'"
+                                                >
+                                                    <Check v-if="isCategorySelected(cat.id)" class="w-3 h-3 text-white" />
+                                                </div>
+                                                <span class="text-xs font-medium" :class="isCategorySelected(cat.id) ? 'text-indigo-600' : 'text-zinc-600'">
+                                                    {{ cat.name }}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
                             <div class="flex flex-wrap gap-1 mt-1">
-                                <span v-for="cat in form.dish_categories" :key="cat.id" class="text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100 font-medium">
+                                <Badge v-for="cat in form.dish_categories" :key="cat.id" variant="secondary" class="text-[10px] bg-indigo-50 text-indigo-600 border-indigo-100 font-medium px-2 py-0">
                                     {{ cat.name }}
-                                </span>
-                                <span v-if="!form.dish_categories?.length" class="text-[10px] text-zinc-400 italic">Sin categoría</span>
+                                    <button @click.stop="toggleCategory(cat)" class="ml-1 hover:text-indigo-800">
+                                        <Trash class="w-2.5 h-2.5" />
+                                    </button>
+                                </Badge>
+                                <span v-if="!form.dish_categories?.length" class="text-[10px] text-zinc-400 italic">Sin categorías seleccionadas</span>
                             </div>
                         </div>
                         <div class="space-y-1.5 col-span-1 md:col-span-3">

@@ -24,7 +24,7 @@ watch(() => selectedOptions.value.service, (newVal) => {
 <template>
     <div class="border-sidebar-border/70 dark:border-sidebar-border relative col-span-1 p-4 overflow-hidden rounded-xl border flex flex-col gap-4">
         <p>Seleccione una mina, unidad y comedor</p>
-        <div class="flex flex-col gap-2">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Select class="w-full" v-model="selectedOptions.mine">
                 <SelectTrigger class="w-full">
                     <SelectValue placeholder="Selecciona una mina" />

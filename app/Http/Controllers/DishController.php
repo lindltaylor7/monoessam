@@ -36,6 +36,7 @@ class DishController extends Controller
             'description' => 'nullable|string',
             'mesearument_unit' => 'required',
             'recipes' => 'required|array',
+            'dish_categories' => 'nullable|array',
         ]);
 
         try {
@@ -45,6 +46,10 @@ class DishController extends Controller
                 'name' => $validated['name'],
                 'description' => $validated['description'],
             ]);
+
+            if (isset($validated['dish_categories'])) {
+                $dish->dish_categories()->sync($validated['dish_categories']);
+            }
 
             $levelIds = is_array($validated['mesearument_unit'])
                 ? $validated['mesearument_unit']
@@ -115,6 +120,7 @@ class DishController extends Controller
             'description' => 'nullable|string',
             'mesearument_unit' => 'required',
             'recipes' => 'required|array',
+            'dish_categories' => 'nullable|array',
         ]);
 
         try {
@@ -125,6 +131,10 @@ class DishController extends Controller
                 'name' => $validated['name'],
                 'description' => $validated['description'],
             ]);
+
+            if (isset($validated['dish_categories'])) {
+                $dish->dish_categories()->sync($validated['dish_categories']);
+            }
 
             $levelIds = is_array($validated['mesearument_unit'])
                 ? $validated['mesearument_unit']
