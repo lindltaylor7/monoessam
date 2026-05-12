@@ -120,7 +120,8 @@ class FoodController extends Controller
         $request->validate([
             'name' => 'required|string|max:255|unique:structures,name',
             'serviceable_id' => 'required|exists:serviceables,id',
-            'categories' => 'required|array'
+            'categories' => 'required|array',
+            'selling_price' => 'nullable|numeric'
         ], [
             'name.unique' => 'Ya existe una estructura guardada con ese nombre. Por favor, elige otro.',
             'serviceable_id.required' => 'Debe seleccionar un servicio antes de guardar la estructura.'
@@ -128,7 +129,8 @@ class FoodController extends Controller
 
         $structure = \App\Models\Structure::create([
             'name' => $request->name,
-            'serviceable_id' => $request->serviceable_id
+            'serviceable_id' => $request->serviceable_id,
+            'selling_price' => $request->selling_price
         ]);
 
         foreach ($request->categories as $category) {
@@ -142,6 +144,8 @@ class FoodController extends Controller
                 'ration' => $category['ration'] ?? null,
                 'unit_cost' => $category['unit_cost'] ?? null,
                 'total_cost' => $category['total_cost'] ?? null,
+                'unit_cost_superior' => $category['unit_cost_superior'] ?? null,
+                'total_cost_superior' => $category['total_cost_superior'] ?? null,
             ]);
         }
 
