@@ -374,6 +374,21 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     // ========================================================================
+    // CICLOS
+    // ========================================================================
+    Route::prefix('cycles')->name('cycles.')->group(function () {
+        Route::get('/', function () {
+            return \Inertia\Inertia::render('cycles/Index', [
+                'mines' => \App\Models\Mine::with(['units', 'units.cafes', 'units.cafes.services'])->get(),
+                'structures' => \App\Models\Structure::with('costs')->get(),
+                'savedCycles' => \App\Models\MenuCycle::all(),
+            ]);
+        })->name('index');
+        Route::post('/', [\App\Http\Controllers\MenuCycleController::class, 'store'])->name('store');
+        Route::get('/export/{serviceable_id}', [\App\Http\Controllers\MenuCycleController::class, 'export'])->name('export');
+    });
+
+    // ========================================================================
     // OTRAS PÁGINAS
     // ========================================================================
     Route::get('management', [ManagementController::class, 'index'])->name('management');
