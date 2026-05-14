@@ -201,6 +201,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('import-relationships', [DishCategoryController::class, 'importRelationships'])->name('import-relationships');
     });
 
+    Route::prefix('levels')->name('levels.')->group(function () {
+        Route::post('/', [\App\Http\Controllers\LevelController::class, 'store'])->name('store');
+        Route::delete('{id}', [\App\Http\Controllers\LevelController::class, 'destroy'])->name('destroy');
+    });
+
     Route::prefix('ingredients')->name('ingredients.')->group(function () {
         Route::get('/', [IngredientController::class, 'index'])->name('index');
         Route::post('/', [IngredientController::class, 'store'])->name('store');

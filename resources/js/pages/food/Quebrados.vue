@@ -17,6 +17,7 @@ const props = defineProps<{
     dishes: Dish[];
     ingredients: Ingredient[];
     dishCategories: any[];
+    levels: any[];
 }>();
 
 // State
@@ -80,15 +81,7 @@ const form = useForm({
     }>
 });
 
-const levels = ref([
-    { id: 1, name: 'Base(Master)' },
-    { id: 2, name: 'Base (E)' },
-    { id: 3, name: 'Base (J)' },
-    { id: 4, name: 'Base (S)' },
-    { id: 5, name: 'Base (GOLD) - STAFF' },
-    { id: 6, name: 'Base (PLATINUM) - EMPLEADOS' },
-    { id: 7, name: 'Base (QUANTUM) - OBREROS' },
-]);
+const localLevels = ref([...props.levels]);
 
 const addNewLevel = async () => {
     const { value: name } = await Swal.fire({
@@ -101,15 +94,23 @@ const addNewLevel = async () => {
     });
 
     if (name) {
-        const newId = levels.value.length > 0 ? Math.max(...levels.value.map(l => l.id)) + 1 : 1;
-        levels.value.push({ id: newId, name });
-        Swal.fire({
-            title: '¡Añadido!',
-            text: `Nivel "${name}" añadido correctamente.`,
-            icon: 'success',
-            timer: 1500,
-            showConfirmButton: false
-        });
+        try {
+            const response = await axios.post(route('levels.store'), { name });
+            localLevels.value.push(response.data);
+            Swal.fire({
+                title: '¡Añadido!',
+                text: `Nivel "${name}" añadido correctamente.`,
+                icon: 'success',
+                timer: 1500,
+                showConfirmButton: false
+            });
+        } catch (error: any) {
+            Swal.fire({
+                title: 'Error',
+                text: error.response?.data?.message || 'No se pudo crear el nivel.',
+                icon: 'error'
+            });
+        }
     }
 };
 
@@ -127,10 +128,10 @@ const isCategorySelected = (categoryId: number) => {
 };
 
 const deleteLevelFromList = (levelId: number) => {
-    const level = levels.value.find(l => l.id === levelId);
+    const level = localLevels.value.find(l => l.id === levelId);
     Swal.fire({
         title: '¿Eliminar nivel?',
-        text: `Se quitará "${level?.name}" de la lista global de niveles.`,
+        text: `Se quitará "${level?.name}" de la base de datos. Esta acción puede afectar a otros platos.`,
         icon: 'warning',
         showCancelButton: true,
         confirmButtonColor: '#ef4444',
@@ -138,15 +139,25 @@ const deleteLevelFromList = (levelId: number) => {
         cancelButtonText: 'Cancelar'
     }).then((result) => {
         if (result.isConfirmed) {
-            levels.value = levels.value.filter(l => l.id !== levelId);
-            const index = form.mesearument_unit.indexOf(levelId);
-            if (index !== -1) {
-                form.mesearument_unit.splice(index, 1);
-                delete form.recipes[levelId];
-                if (activeLevelTab.value === levelId) {
-                    activeLevelTab.value = form.mesearument_unit.length ? form.mesearument_unit[0] : null;
-                }
-            }
+            axios.delete(route('levels.destroy', levelId))
+                .then(() => {
+                    localLevels.value = localLevels.value.filter(l => l.id !== levelId);
+                    const index = form.mesearument_unit.indexOf(levelId);
+                    if (index !== -1) {
+                        form.mesearument_unit.splice(index, 1);
+                        delete form.recipes[levelId];
+                        if (activeLevelTab.value === levelId) {
+                            activeLevelTab.value = form.mesearument_unit.length ? form.mesearument_unit[0] : null;
+                        }
+                    }
+                })
+                .catch(error => {
+                    Swal.fire({
+                        title: 'Error',
+                        text: 'No se pudo eliminar el nivel. Es posible que esté en uso.',
+                        icon: 'error'
+                    });
+                });
         }
     });
 };
@@ -511,32 +522,35 @@ const submit = () => {
         dish_categories: form.dish_categories.map(c => c.id)
     };
 
+    const options = {
+        onSuccess: () => {
+            resetView();
+            Swal.fire({
+                title: form.id ? '¡Actualizado!' : '¡Creado!',
+                text: `El quebrado se ha ${form.id ? 'guardado' : 'creado'} exitosamente.`,
+                icon: 'success',
+                timer: 2000,
+                showConfirmButton: false
+            });
+        },
+        onError: (errors) => {
+            let errorMsg = 'Hubo un problema al procesar la solicitud.';
+            if (errors) {
+                errorMsg = Object.values(errors).flat().join('\n');
+            }
+            Swal.fire({
+                title: 'Error de Validación',
+                text: errorMsg,
+                icon: 'error',
+                confirmButtonColor: '#ef4444'
+            });
+        }
+    };
+
     if (form.id) {
-        router.put(route('dishes.update', form.id), data as any, {
-            onSuccess: () => {
-                resetView();
-                Swal.fire({
-                    title: '¡Actualizado!',
-                    text: 'El quebrado se ha guardado exitosamente.',
-                    icon: 'success',
-                    timer: 2000,
-                    showConfirmButton: false
-                });
-            },
-        });
+        router.put(route('dishes.update', form.id), data as any, options);
     } else {
-        router.post(route('dishes.store'), data as any, {
-            onSuccess: () => {
-                resetView();
-                Swal.fire({
-                    title: '¡Creado!',
-                    text: 'El quebrado se ha creado exitosamente.',
-                    icon: 'success',
-                    timer: 2000,
-                    showConfirmButton: false
-                });
-            },
-        });
+        router.post(route('dishes.store'), data as any, options);
     }
 };
 </script>
@@ -698,7 +712,7 @@ const submit = () => {
                             </div>
                             <div class="flex flex-wrap gap-2 pt-1">
                                 <div 
-                                    v-for="level in levels" 
+                                    v-for="level in localLevels" 
                                     :key="level.id"
                                     class="relative group"
                                 >
@@ -735,7 +749,7 @@ const submit = () => {
                                     ? 'border-primary text-primary' 
                                     : 'border-transparent text-zinc-400 hover:text-zinc-600'"
                             >
-                                {{ levels.find(l => l.id === levelId)?.name }}
+                                {{ localLevels.find(l => l.id === levelId)?.name }}
                             </button>
                         </div>
                     </div>
@@ -743,7 +757,7 @@ const submit = () => {
                     <!-- Ingredients & Calculator -->
                     <div v-if="activeLevelTab && form.recipes[activeLevelTab]" class="space-y-3 pt-2">
                         <div class="flex items-center justify-between">
-                            <h4 class="font-semibold text-sm">Ingredientes - {{ levels.find(l => l.id === activeLevelTab)?.name }}</h4>
+                            <h4 class="font-semibold text-sm">Ingredientes - {{ localLevels.find(l => l.id === activeLevelTab)?.name }}</h4>
                             <div class="relative w-full max-w-xs">
                                     <Search class="absolute left-2 top-2 h-3.5 w-3.5 text-zinc-400" />
                                     <Input placeholder="Buscar ingrediente..." @keyup="searchIngredients" class="h-8 pl-8 text-xs" />

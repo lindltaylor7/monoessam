@@ -34,8 +34,8 @@ class DishController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'mesearument_unit' => 'required',
-            'recipes' => 'required|array',
+            'mesearument_unit' => 'nullable',
+            'recipes' => 'nullable|array',
             'dish_categories' => 'nullable|array',
         ]);
 
@@ -45,15 +45,17 @@ class DishController extends Controller
             $dish = Dish::create([
                 'name' => $validated['name'],
                 'description' => $validated['description'],
+                'user_id' => auth()->id(),
             ]);
 
             if (isset($validated['dish_categories'])) {
                 $dish->dish_categories()->sync($validated['dish_categories']);
             }
 
-            $levelIds = is_array($validated['mesearument_unit'])
-                ? $validated['mesearument_unit']
-                : [$validated['mesearument_unit']];
+            $levelIds = $request->input('mesearument_unit', []);
+            if (!is_array($levelIds)) {
+                $levelIds = [$levelIds];
+            }
 
             $recipesData = $request->input('recipes', []);
 
@@ -118,8 +120,8 @@ class DishController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'mesearument_unit' => 'required',
-            'recipes' => 'required|array',
+            'mesearument_unit' => 'nullable',
+            'recipes' => 'nullable|array',
             'dish_categories' => 'nullable|array',
         ]);
 
@@ -136,49 +138,53 @@ class DishController extends Controller
                 $dish->dish_categories()->sync($validated['dish_categories']);
             }
 
-            $levelIds = is_array($validated['mesearument_unit'])
-                ? $validated['mesearument_unit']
-                : [$validated['mesearument_unit']];
+            $levelIds = $request->input('mesearument_unit', []);
+            if (!is_array($levelIds)) {
+                $levelIds = [$levelIds];
+            }
 
             $recipesData = $request->input('recipes', []);
             
-            $dish->recipes()->whereNotIn('level_id', $levelIds)->delete();
+            // Solo procesar recetas si se enviaron niveles
+            if (!empty($levelIds)) {
+                $dish->recipes()->whereNotIn('level_id', $levelIds)->delete();
 
-            foreach ($levelIds as $levelId) {
-                $levelRecipe = $recipesData[$levelId] ?? [];
-                
-                $recipe = $dish->recipes()->where('level_id', $levelId)->first();
-                if (!$recipe) {
-                    $recipe = DishRecipe::create([
-                        'dish_id' => $dish->id,
-                        'level_id' => $levelId,
-                        'name' => 'Receta ' . $dish->name . ' - Nivel ' . $levelId,
-                    ]);
-                }
-                
-                $recipe->update([
-                    'total_gross_weight' => $levelRecipe['total_gross_weight'] ?? 0,
-                    'total_waste_weight' => $levelRecipe['total_waste_weight'] ?? 0,
-                    'total_calories' => $levelRecipe['total_calories'] ?? 0,
-                    'total_cost' => $levelRecipe['total_cost'] ?? 0,
-                    'total_net_weight' => $levelRecipe['total_net_weight'] ?? 0,
-                ]);
-
-                $ingredientsSync = [];
-                if (!empty($levelRecipe['ingredients'])) {
-                    foreach ($levelRecipe['ingredients'] as $ingredientData) {
-                        $ingredientsSync[$ingredientData['id']] = [
-                            'gross_weight'  => $ingredientData['gross_weight'] ?? 0,
-                            'solid_waste'   => $ingredientData['solid_waste'] ?? 0,
-                            'liquid_waste'  => $ingredientData['liquid_waste'] ?? 0,
-                            'calories'      => $ingredientData['calories'] ?? 0,
-                            'cost'          => $ingredientData['cost'] ?? 0,
-                            'unit_price'    => $ingredientData['unit_price'] ?? 0,
-                            'net_weight'    => $ingredientData['final_product'] ?? 0,
-                        ];
+                foreach ($levelIds as $levelId) {
+                    $levelRecipe = $recipesData[$levelId] ?? [];
+                    
+                    $recipe = $dish->recipes()->where('level_id', $levelId)->first();
+                    if (!$recipe) {
+                        $recipe = DishRecipe::create([
+                            'dish_id' => $dish->id,
+                            'level_id' => $levelId,
+                            'name' => 'Receta ' . $dish->name . ' - Nivel ' . $levelId,
+                        ]);
                     }
+                    
+                    $recipe->update([
+                        'total_gross_weight' => $levelRecipe['total_gross_weight'] ?? 0,
+                        'total_waste_weight' => $levelRecipe['total_waste_weight'] ?? 0,
+                        'total_calories' => $levelRecipe['total_calories'] ?? 0,
+                        'total_cost' => $levelRecipe['total_cost'] ?? 0,
+                        'total_net_weight' => $levelRecipe['total_net_weight'] ?? 0,
+                    ]);
+
+                    $ingredientsSync = [];
+                    if (!empty($levelRecipe['ingredients'])) {
+                        foreach ($levelRecipe['ingredients'] as $ingredientData) {
+                            $ingredientsSync[$ingredientData['id']] = [
+                                'gross_weight'  => $ingredientData['gross_weight'] ?? 0,
+                                'solid_waste'   => $ingredientData['solid_waste'] ?? 0,
+                                'liquid_waste'  => $ingredientData['liquid_waste'] ?? 0,
+                                'calories'      => $ingredientData['calories'] ?? 0,
+                                'cost'          => $ingredientData['cost'] ?? 0,
+                                'unit_price'    => $ingredientData['unit_price'] ?? 0,
+                                'net_weight'    => $ingredientData['final_product'] ?? 0,
+                            ];
+                        }
+                    }
+                    $recipe->ingredients()->sync($ingredientsSync);
                 }
-                $recipe->ingredients()->sync($ingredientsSync);
             }
 
             DB::commit();

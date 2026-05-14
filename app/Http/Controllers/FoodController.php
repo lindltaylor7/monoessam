@@ -46,6 +46,7 @@ class FoodController extends Controller
             'dishes' => $dishes,
             'ingredient_categories' => Ingredient_category::all(),
             'dish_categories' => Dish_category::all(),
+            'levels' => \App\Models\Level::all(),
             'ingredients' => Ingredient::with(['assignments.provider', 'assignments.city', 'nutritionalFactors', 'dosification'])
                 ->orderBy('name')
                 ->take(300)

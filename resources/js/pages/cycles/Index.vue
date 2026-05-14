@@ -505,7 +505,7 @@ const exportCycle = () => {
                                         </div>
                                         <div class="flex items-center gap-2 shrink-0">
                                             <Button size="sm" variant="outline" class="text-slate-600 border-slate-200 hover:bg-slate-100" @click="assignDish(dish, recipe, 'all')">
-                                                Replicar
+                                                Replicar para todos los días
                                             </Button>
                                             <Button size="sm" class="bg-[#FF5A1F] hover:bg-[#e04a17] text-white" @click="assignDish(dish, recipe, 'single')">
                                                 Asignar
@@ -527,7 +527,7 @@ const exportCycle = () => {
                                         </div>
                                         <div class="flex items-center gap-2 shrink-0">
                                             <Button size="sm" variant="outline" class="text-slate-600 border-slate-200 hover:bg-slate-100" @click="assignDish(dish, {}, 'all')">
-                                                Replicar
+                                                Replicar para todos los días
                                             </Button>
                                             <Button size="sm" class="bg-[#FF5A1F] hover:bg-[#e04a17] text-white" @click="assignDish(dish, {}, 'single')">
                                                 Asignar
