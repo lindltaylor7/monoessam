@@ -203,10 +203,38 @@ class DishController extends Controller
         }
     }
 
-    public function search(string $word)
+    public function search(Request $request, ?string $word = null)
     {
-        $dishes = Dish::where('name', 'like', '%' . $word . '%')
-            ->with([
+        $categoryId = $request->query('category_id');
+        $levelId = $request->query('level_id');
+
+        $query = Dish::query();
+
+        if ($word) {
+            $query->where(function ($q) use ($word) {
+                $q->where('name', 'like', '%' . $word . '%')
+                    ->orWhereHas('dish_categories', function ($q2) use ($word) {
+                        $q2->where('name', 'like', '%' . $word . '%');
+                    })
+                    ->orWhereHas('recipes.level', function ($q2) use ($word) {
+                        $q2->where('name', 'like', '%' . $word . '%');
+                    });
+            });
+        }
+
+        if ($categoryId) {
+            $query->whereHas('dish_categories', function ($q) use ($categoryId) {
+                $q->where('dish_categories.id', $categoryId);
+            });
+        }
+
+        if ($levelId) {
+            $query->whereHas('recipes', function ($q) use ($levelId) {
+                $q->where('level_id', $levelId);
+            });
+        }
+
+        $dishes = $query->with([
                 'dish_categories',
                 'recipes.ingredients.assignments.provider',
                 'recipes.ingredients.assignments.city',

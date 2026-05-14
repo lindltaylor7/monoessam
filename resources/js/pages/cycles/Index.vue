@@ -11,8 +11,9 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import {    Search, 
-    Settings2, 
+import {
+    Search,
+    Settings2,
     Save,
     CalendarDays,
     Download
@@ -22,6 +23,8 @@ interface Props {
     mines?: Mine[];
     structures?: any[];
     savedCycles?: any[];
+    dishCategories?: any[];
+    levels?: any[];
 }
 
 const props = defineProps<Props>();
@@ -165,23 +168,33 @@ watch(selectedServiceableId, (newId) => {
 // Search Dialog State
 const isSearchModalOpen = ref(false);
 const searchQuery = ref('');
+const searchCategory = ref('');
+const searchLevel = ref('');
 const searchResults = ref<any[]>([]);
 const currentSearchTarget = ref<{rowIndex: number, dayIndex: number, categoryId: any}>({ rowIndex: -1, dayIndex: -1, categoryId: null });
 
 const openSearchModal = (rowIndex: number, dayIndex: number, categoryId: any) => {
     currentSearchTarget.value = { rowIndex, dayIndex, categoryId };
     searchQuery.value = '';
+    searchCategory.value = categoryId || '';
+    searchLevel.value = '';
     searchResults.value = [];
     isSearchModalOpen.value = true;
 };
 
 const searchDish = async () => {
-    if (!searchQuery.value) {
+    if (!searchQuery.value && !searchCategory.value && !searchLevel.value) {
         searchResults.value = [];
         return;
     }
     try {
-        const response = await axios.get(`/dishes/search/${searchQuery.value}`);
+        const queryPath = searchQuery.value ? `/${encodeURIComponent(searchQuery.value)}` : '';
+        const response = await axios.get(`/dishes/search${queryPath}`, {
+            params: {
+                category_id: searchCategory.value || null,
+                level_id: searchLevel.value || null
+            }
+        });
         searchResults.value = response.data;
     } catch (err) {
         console.error("Error searching dish", err);
@@ -349,7 +362,7 @@ const exportCycle = () => {
                     </div>
                 </div>
 
-                <div class="flex-1 overflow-auto w-full scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent pb-4 relative">
+                <div class="flex-1 overflow-auto w-full scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent pb-4 relative isolate">
                     <Table class="w-full border-collapse">
                         <TableHeader>
                             <TableRow class="bg-slate-50/80 border-b-slate-200">
@@ -439,7 +452,7 @@ const exportCycle = () => {
 
         <!-- Search Modal -->
         <Dialog :open="isSearchModalOpen" @update:open="isSearchModalOpen = $event">
-            <DialogContent class="sm:max-w-[700px] p-0 border-0 shadow-2xl rounded-xl bg-white overflow-hidden">
+            <DialogContent class="sm:max-w-[850px] p-0 border-0 shadow-2xl rounded-xl bg-white overflow-hidden">
                 <DialogHeader class="p-6 pb-4 border-b border-slate-100 bg-white">
                     <DialogTitle class="text-xl font-bold text-slate-800 flex items-center gap-2">
                         <Search class="w-5 h-5 text-[#FF5A1F]" />
@@ -447,20 +460,30 @@ const exportCycle = () => {
                     </DialogTitle>
                 </DialogHeader>
                 <div class="p-6 pt-2">
-                    <div class="relative flex items-center mb-6 mt-4">
-                        <input 
-                            ref="searchInputRef"
-                            v-model="searchQuery"
-                            type="text"
-                            placeholder="Ej. Lomo saltado, Pollo al horno..."
-                            class="w-full pl-4 pr-12 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#FF5A1F] focus:border-[#FF5A1F] text-slate-800 placeholder:text-slate-400 font-medium shadow-sm transition-all"
-                            @keyup.enter="searchDish"
-                        />
+                    <div class="flex flex-col sm:flex-row gap-3 mb-6 mt-4">
+                        <div class="relative flex-[2] min-w-0">
+                            <input 
+                                ref="searchInputRef"
+                                v-model="searchQuery"
+                                type="text"
+                                placeholder="Ej. Lomo saltado, arroz..."
+                                class="w-full pl-4 pr-4 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#FF5A1F] focus:border-[#FF5A1F] text-slate-800 placeholder:text-slate-400 font-medium shadow-sm transition-all"
+                                @keyup.enter="searchDish"
+                            />
+                        </div>
+                        <select v-model="searchCategory" class="flex-1 min-w-0 px-3 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#FF5A1F] text-slate-800 font-medium shadow-sm bg-white truncate" @change="searchDish">
+                            <option value="">Todas las Categorías</option>
+                            <option v-for="cat in props.dishCategories" :key="cat.id" :value="cat.id">{{ cat.name }}</option>
+                        </select>
+                        <select v-model="searchLevel" class="flex-1 min-w-0 px-3 py-3 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#FF5A1F] text-slate-800 font-medium shadow-sm bg-white truncate" @change="searchDish">
+                            <option value="">Todos los Niveles</option>
+                            <option v-for="level in props.levels" :key="level.id" :value="level.id">{{ level.name }}</option>
+                        </select>
                         <button 
-                            class="absolute right-2 p-2 bg-[#FF5A1F] hover:bg-[#e04a17] text-white rounded-md transition-colors"
+                            class="p-3 bg-[#FF5A1F] hover:bg-[#e04a17] text-white rounded-lg shadow-sm transition-colors flex items-center justify-center shrink-0"
                             @click="searchDish"
                         >
-                            <Search class="w-4 h-4" />
+                            <Search class="w-5 h-5" />
                         </button>
                     </div>
 
@@ -472,6 +495,10 @@ const exportCycle = () => {
                                         class="p-4 hover:bg-orange-50/50 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 transition-colors">
                                         <div>
                                             <p class="font-bold text-slate-800 text-sm">{{ dish.name }}</p>
+                                            <p class="text-[11px] text-slate-600 mt-1">
+                                                Categoría: <span class="font-medium text-slate-800">{{ dish.dish_categories?.[0]?.name || 'Sin Categoría' }}</span>
+                                                &bull; Nivel: <span class="font-medium text-slate-800">{{ recipe.level?.name || 'Sin Nivel' }}</span>
+                                            </p>
                                             <p class="text-[11px] text-slate-500 mt-1">
                                                 Costo: S/ {{ Number(recipe.total_cost || 0).toFixed(2) }} &bull; Calorías: {{ recipe.total_calories || 0 }} kcal
                                             </p>

@@ -186,7 +186,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     });
 
     Route::prefix('dishes')->name('dishes.')->group(function () {
-        Route::get('search/{query}', [DishController::class, 'search'])->name('search');
+        Route::get('search/{query?}', [DishController::class, 'search'])->name('search');
         Route::get('search-ingredients/{query}', [FoodController::class, 'searchIngredients'])->name('search-ingredients');
         Route::post('/', [DishController::class, 'store'])->name('store');
         Route::put('{id}', [DishController::class, 'update'])->name('update');
@@ -382,6 +382,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
                 'mines' => \App\Models\Mine::with(['units', 'units.cafes', 'units.cafes.services'])->get(),
                 'structures' => \App\Models\Structure::with('costs')->get(),
                 'savedCycles' => \App\Models\MenuCycle::all(),
+                'dishCategories' => \App\Models\Dish_category::all(),
+                'levels' => \App\Models\Level::all(),
             ]);
         })->name('index');
         Route::post('/', [\App\Http\Controllers\MenuCycleController::class, 'store'])->name('store');
