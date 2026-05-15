@@ -386,7 +386,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
             return \Inertia\Inertia::render('cycles/Index', [
                 'mines' => \App\Models\Mine::with(['units', 'units.cafes', 'units.cafes.services'])->get(),
                 'structures' => \App\Models\Structure::with('costs')->get(),
-                'savedCycles' => \App\Models\MenuCycle::all(),
+                'savedCycles' => \App\Models\MenuCycle::orderBy('id', 'desc')->get(),
                 'dishCategories' => \App\Models\Dish_category::all(),
                 'levels' => \App\Models\Level::all(),
             ]);

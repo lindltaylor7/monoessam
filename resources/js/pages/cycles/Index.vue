@@ -16,7 +16,8 @@ import {
     Settings2,
     Save,
     CalendarDays,
-    Download
+    Download,
+    Plus
 } from 'lucide-vue-next';
 
 interface Props {
@@ -30,6 +31,10 @@ interface Props {
 const props = defineProps<Props>();
 
 const selectedServiceableId = ref<string | null>(null);
+const activeCycleId = ref<number | null>(null);
+const activeCycleName = ref<string>('');
+const isServiceCyclesModalOpen = ref(false);
+const serviceCyclesToSelect = ref<any[]>([]);
 
 // Table configuration state
 const inputDays = ref<number>(7);
@@ -72,11 +77,14 @@ const isRepeated = (rowId: any, dayIndex: number) => {
 };
 
 const copyCycle = (cycle: any) => {
+    activeCycleId.value = cycle.id;
+    activeCycleName.value = cycle.name || '';
     inputDays.value = cycle.days;
     generatedDays.value = cycle.days;
     menuStructureData.value = JSON.parse(JSON.stringify(cycle.cycle_data));
     repeatedDishes.value = [];
     isSavedCyclesModalOpen.value = false;
+    isServiceCyclesModalOpen.value = false;
     Swal.fire({
         icon: 'success',
         title: 'Ciclo copiado',
@@ -134,10 +142,13 @@ watch(selectedServiceableId, (newId) => {
         return;
     }
 
-    // Check if we have a saved cycle for this service
-    const savedCycle = props.savedCycles?.find(c => String(c.serviceable_id) === String(newId));
+    // Check if we have saved cycles for this service
+    const serviceCycles = props.savedCycles?.filter(c => String(c.serviceable_id) === String(newId)) || [];
 
-    if (savedCycle) {
+    if (serviceCycles.length === 1) {
+        const savedCycle = serviceCycles[0];
+        activeCycleId.value = savedCycle.id;
+        activeCycleName.value = savedCycle.name || '';
         inputDays.value = savedCycle.days;
         generatedDays.value = savedCycle.days;
         
@@ -151,7 +162,15 @@ watch(selectedServiceableId, (newId) => {
             };
         });
     } else {
-        // Populate the table with the structure costs
+        activeCycleId.value = null;
+        activeCycleName.value = '';
+
+        if (serviceCycles.length > 1) {
+            serviceCyclesToSelect.value = serviceCycles;
+            isServiceCyclesModalOpen.value = true;
+        }
+
+        // Populate the table with the structure costs defaults
         menuStructureData.value = (structure.costs || []).map((cost: any) => {
             return {
                 id: cost.id,
@@ -264,7 +283,7 @@ const getRowStatus = (row: any) => {
     }
 };
 
-const saveCycle = () => {
+const saveCycle = async () => {
     if (!selectedServiceableId.value) {
         Swal.fire('Atención', 'Seleccione un servicio primero', 'warning');
         return;
@@ -275,39 +294,97 @@ const saveCycle = () => {
         return;
     }
 
-    router.post('/cycles', {
-        serviceable_id: selectedServiceableId.value,
-        days: generatedDays.value,
-        cycle_data: menuStructureData.value
-    }, {
-        preserveScroll: true,
-        onSuccess: () => {
-            Swal.fire({
-                icon: 'success',
-                title: '¡Guardado!',
-                text: 'El ciclo de menú se ha guardado correctamente.',
-                timer: 2000,
-                showConfirmButton: false
-            });
-        },
-        onError: (errors) => {
-            console.error(errors);
-            Swal.fire('Error', 'Hubo un problema al guardar el ciclo', 'error');
+    const { value: formValues } = await Swal.fire({
+        title: 'Guardar Ciclo',
+        html:
+            `<input id="swal-name" class="swal2-input" placeholder="Nombre del Ciclo" value="${activeCycleName.value || ''}">` +
+            (activeCycleId.value ? 
+                `<div class="mt-4 flex items-center justify-center gap-2">
+                    <input type="checkbox" id="swal-as-new" class="w-4 h-4 text-orange-500 border-gray-300 rounded focus:ring-orange-500">
+                    <label for="swal-as-new" class="text-sm text-gray-700">Guardar como nuevo ciclo (Copia)</label>
+                </div>` : ''
+            ),
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Guardar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#FF5A1F',
+        preConfirm: () => {
+            const name = (document.getElementById('swal-name') as HTMLInputElement).value;
+            const asNew = activeCycleId.value ? (document.getElementById('swal-as-new') as HTMLInputElement).checked : true;
+            if (!name) {
+                Swal.showValidationMessage('El nombre es obligatorio');
+                return false;
+            }
+            return { name, asNew };
         }
     });
+
+    if (formValues) {
+        const { name, asNew } = formValues;
+        
+        router.post('/cycles', {
+            id: asNew ? null : activeCycleId.value,
+            serviceable_id: selectedServiceableId.value,
+            name: name,
+            days: generatedDays.value,
+            cycle_data: menuStructureData.value
+        }, {
+            preserveScroll: true,
+            onSuccess: (page) => {
+                activeCycleName.value = name;
+                // If it was saved as new, we should update the activeCycleId with the new one
+                // This might require the backend to return the new ID or we find it in props
+                Swal.fire({
+                    icon: 'success',
+                    title: '¡Guardado!',
+                    text: 'El ciclo de menú se ha guardado correctamente.',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+            },
+            onError: (errors) => {
+                console.error(errors);
+                Swal.fire('Error', 'Hubo un problema al guardar el ciclo', 'error');
+            }
+        });
+    }
 };
 
 const exportCycle = () => {
+    if (!activeCycleId.value) {
+        Swal.fire('Atención', 'Primero guarde o cargue un ciclo para exportar.', 'warning');
+        return;
+    }
+    window.location.href = `/cycles/export/${activeCycleId.value}`;
+};
+
+const resetToNew = () => {
     if (!selectedServiceableId.value) {
-        Swal.fire('Atención', 'Seleccione un servicio para exportar.', 'warning');
+        Swal.fire('Atención', 'Seleccione un servicio primero', 'warning');
         return;
     }
-    const hasSavedCycle = props.savedCycles?.some(c => String(c.serviceable_id) === String(selectedServiceableId.value));
-    if (!hasSavedCycle) {
-        Swal.fire('Atención', 'No hay un ciclo guardado en base de datos para este servicio. Guárdalo primero.', 'warning');
-        return;
-    }
-    window.location.href = `/cycles/export/${selectedServiceableId.value}`;
+    const structure = props.structures?.find(s => String(s.serviceable_id) === String(selectedServiceableId.value));
+    if (!structure) return;
+
+    activeCycleId.value = null;
+    activeCycleName.value = '';
+    menuStructureData.value = (structure.costs || []).map((cost: any) => ({
+        id: cost.id,
+        category: cost.name || 'Categoría',
+        dishCategoryId: cost.dish_category_id,
+        costValue: parseFloat(cost.total_cost || 0),
+        costValueMax: parseFloat(cost.total_cost_superior || 0),
+        days: {}
+    }));
+    
+    Swal.fire({
+        icon: 'success',
+        title: 'Nuevo Ciclo',
+        text: 'Se ha preparado una estructura vacía para un nuevo ciclo.',
+        timer: 1500,
+        showConfirmButton: false
+    });
 };
 </script>
 
@@ -324,6 +401,10 @@ const exportCycle = () => {
                     <Button variant="outline" class="flex items-center gap-2 bg-white text-green-700 border-green-200 hover:bg-green-50" @click="exportCycle">
                         <Download class="h-4 w-4" />
                         Exportar Excel
+                    </Button>
+                    <Button variant="outline" class="flex items-center gap-2 bg-white text-blue-600 border-blue-200 hover:bg-blue-50" @click="resetToNew">
+                        <Plus class="h-4 w-4" />
+                        Nuevo Ciclo
                     </Button>
                     <Button variant="outline" class="flex items-center gap-2 bg-white" @click="isSavedCyclesModalOpen = true">
                         <Settings2 class="h-4 w-4" />
@@ -561,7 +642,8 @@ const exportCycle = () => {
                     <ul class="divide-y divide-slate-200/60" v-if="props.savedCycles && props.savedCycles.length > 0">
                         <li v-for="cycle in props.savedCycles" :key="cycle.id" class="py-4 px-2 hover:bg-white rounded transition-colors flex items-center justify-between gap-4">
                             <div>
-                                <p class="text-[13px] font-bold text-slate-800 leading-snug">{{ getServiceName(cycle.serviceable_id) }}</p>
+                                <p class="text-[13px] font-bold text-slate-800 leading-snug">{{ cycle.name || 'Ciclo sin nombre' }} - ID: {{ cycle.id }} </p>
+                                <p class="text-[11px] text-slate-400 italic mb-1">{{ getServiceName(cycle.serviceable_id) }}</p>
                                 <p class="text-xs text-slate-500 mt-1">
                                     <span class="font-medium">Días generados:</span> {{ cycle.days }} 
                                     <span class="mx-1">&bull;</span>
@@ -581,6 +663,42 @@ const exportCycle = () => {
                     <div v-else class="text-center text-slate-500 py-8">
                         No hay ciclos guardados en la base de datos aún.
                     </div>
+                </div>
+            </DialogContent>
+        </Dialog>
+
+        <!-- Multiple Cycles Selection Modal (Auto-opens when multiple cycles are detected for a service) -->
+        <Dialog :open="isServiceCyclesModalOpen" @update:open="isServiceCyclesModalOpen = $event">
+            <DialogContent class="sm:max-w-[600px] p-0 border-0 shadow-2xl rounded-xl bg-white overflow-hidden">
+                <DialogHeader class="p-6 pb-4 border-b border-slate-100 bg-white">
+                    <DialogTitle class="text-xl font-bold text-slate-800 flex items-center gap-2">
+                        <CalendarDays class="w-5 h-5 text-blue-600" />
+                        Seleccionar Ciclo
+                    </DialogTitle>
+                    <p class="text-sm text-slate-500 mt-1">Se han encontrado múltiples ciclos para este servicio. Por favor, seleccione cuál desea cargar.</p>
+                </DialogHeader>
+                <div class="p-6 max-h-[400px] overflow-y-auto bg-slate-50/30">
+                    <ul class="divide-y divide-slate-200/60">
+                        <li v-for="cycle in serviceCyclesToSelect" :key="cycle.id" 
+                            class="py-4 px-4 hover:bg-white rounded-lg cursor-pointer transition-all border border-transparent hover:border-blue-100 hover:shadow-sm flex items-center justify-between gap-4 mb-2 bg-white/50"
+                            @click="copyCycle(cycle)"
+                        >
+                            <div class="flex items-center gap-4">
+                                <div class="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 shrink-0">
+                                    <CalendarDays class="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <p class="text-sm font-bold text-slate-800">{{ cycle.name || 'Ciclo sin nombre' }}</p>
+                                    <p class="text-[11px] text-slate-500 mt-0.5">
+                                        ID: {{ cycle.id }} &bull; {{ cycle.days }} días &bull; Actualizado: {{ new Date(cycle.updated_at).toLocaleDateString() }}
+                                    </p>
+                                </div>
+                            </div>
+                            <Button size="sm" variant="ghost" class="text-blue-600 hover:text-blue-700 hover:bg-blue-50 font-bold uppercase text-[10px] tracking-wider">
+                                Cargar
+                            </Button>
+                        </li>
+                    </ul>
                 </div>
             </DialogContent>
         </Dialog>

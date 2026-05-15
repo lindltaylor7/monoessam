@@ -11,7 +11,9 @@ class MenuCycleController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'serviceable_id' => 'required', // Assuming serviceables table is where the id comes from
+            'id' => 'nullable|exists:menu_cycles,id',
+            'serviceable_id' => 'required',
+            'name' => 'nullable|string|max:255',
             'days' => 'required|integer|min:1|max:31',
             'cycle_data' => 'required|array',
         ]);
@@ -19,13 +21,22 @@ class MenuCycleController extends Controller
         try {
             DB::beginTransaction();
 
-            $menuCycle = MenuCycle::updateOrCreate(
-                ['serviceable_id' => $validated['serviceable_id']],
-                [
+            if ($request->id) {
+                $menuCycle = MenuCycle::findOrFail($request->id);
+                $menuCycle->update([
+                    'serviceable_id' => $validated['serviceable_id'],
+                    'name' => $validated['name'],
                     'days' => $validated['days'],
                     'cycle_data' => $validated['cycle_data'],
-                ]
-            );
+                ]);
+            } else {
+                $menuCycle = MenuCycle::create([
+                    'serviceable_id' => $validated['serviceable_id'],
+                    'name' => $validated['name'],
+                    'days' => $validated['days'],
+                    'cycle_data' => $validated['cycle_data'],
+                ]);
+            }
 
             DB::commit();
 
@@ -36,9 +47,9 @@ class MenuCycleController extends Controller
         }
     }
 
-    public function export($serviceable_id)
+    public function export($id)
     {
-        $cycle = MenuCycle::where('serviceable_id', $serviceable_id)->firstOrFail();
-        return \Maatwebsite\Excel\Facades\Excel::download(new \App\Exports\CycleExport($cycle), 'Ciclo_Servicio_' . $serviceable_id . '.xlsx');
+        $cycle = MenuCycle::findOrFail($id);
+        return \Maatwebsite\Excel\Facades\Excel::download(new \App\Exports\CycleExport($cycle), 'Ciclo_' . $cycle->name . '.xlsx');
     }
 }

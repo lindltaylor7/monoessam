@@ -25,6 +25,8 @@ import {
     MapPin
 } from 'lucide-vue-next';
 
+const isOpen = ref(false);
+
 const props = defineProps<{
     ingredient: any; // Using any to avoid TS errors with dynamic properties like gross_weight
     totalMateriaPrima: number;
@@ -123,7 +125,7 @@ const loadSubstitutes = async (isOpen: boolean) => {
 </script>
 
 <template>
-    <Popover @update:open="loadSubstitutes">
+    <Popover v-model:open="isOpen" @update:open="loadSubstitutes">
         <PopoverTrigger as-child>
             <Button variant="ghost" size="icon" class="h-8 w-8 rounded-full hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
                 <Calculator class="h-4 w-4 text-zinc-500 hover:text-primary transition-colors" />
@@ -316,8 +318,8 @@ const loadSubstitutes = async (isOpen: boolean) => {
                     Restablecer
                 </Button>
                 <div class="flex gap-2">
-                    <Button variant="ghost" size="sm" class="h-8 rounded-lg text-zinc-500 font-medium">Cerrar</Button>
-                    <Button size="sm" class="h-8 px-5 rounded-lg shadow-sm font-bold bg-zinc-900 hover:bg-zinc-800 text-[11px] uppercase tracking-wider">
+                    <Button variant="ghost" size="sm" class="h-8 rounded-lg text-zinc-500 font-medium" @click="isOpen = false">Cerrar</Button>
+                    <Button size="sm" class="h-8 px-5 rounded-lg shadow-sm font-bold bg-zinc-900 hover:bg-zinc-800 text-[11px] uppercase tracking-wider" @click="isOpen = false">
                         Aplicar
                     </Button>
                 </div>

@@ -11,6 +11,7 @@ class MenuCycle extends Model
 
     protected $fillable = [
         'serviceable_id',
+        'name',
         'days',
         'cycle_data',
     ];
