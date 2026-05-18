@@ -16,10 +16,12 @@ use PhpOffice\PhpSpreadsheet\Style\Alignment;
 class CycleExport implements FromArray, ShouldAutoSize, WithStyles, WithDrawings
 {
     protected $menuCycle;
+    protected $hideKcal;
 
-    public function __construct(MenuCycle $menuCycle)
+    public function __construct(MenuCycle $menuCycle, bool $hideKcal = false)
     {
         $this->menuCycle = $menuCycle;
+        $this->hideKcal = $hideKcal;
     }
 
     public function drawings()
@@ -35,7 +37,7 @@ class CycleExport implements FromArray, ShouldAutoSize, WithStyles, WithDrawings
             $drawing->setHeight(80);
             $drawing->setCoordinates('A1'); // Lo colocaremos en A1 para que encaje bien
             $drawing->setOffsetX(10);
-            $drawing->setOffsetY(10);
+            $drawing->setOffsetY(40);
         }
 
         return $drawing;
@@ -85,7 +87,8 @@ class CycleExport implements FromArray, ShouldAutoSize, WithStyles, WithDrawings
         }
 
         // Filas 1 a 4: Espacio para Logo y Metadata
-        $totalCols = 2 + ($this->menuCycle->days * 3);
+        $colsPerDay = $this->hideKcal ? 1 : 2;
+        $totalCols = 2 + ($this->menuCycle->days * $colsPerDay);
         $rows[] = array_pad([], $totalCols, ''); // Fila 1
 
         // Fila 2: Etiquetas Superiores
@@ -103,8 +106,9 @@ class CycleExport implements FromArray, ShouldAutoSize, WithStyles, WithDrawings
         $row6 = ['', ''];
         for ($i = 1; $i <= $this->menuCycle->days; $i++) {
             $row6[] = str_pad($i, 2, '0', STR_PAD_LEFT);
-            $row6[] = '';
-            $row6[] = '';
+            if (!$this->hideKcal) {
+                $row6[] = '';
+            }
         }
         $rows[] = $row6;
 
@@ -112,8 +116,9 @@ class CycleExport implements FromArray, ShouldAutoSize, WithStyles, WithDrawings
         $row7 = ['N°', 'OPCIÓN'];
         for ($i = 1; $i <= $this->menuCycle->days; $i++) {
             $row7[] = "Día $i";
-            $row7[] = 'COSTO';
-            $row7[] = 'KCAL';
+            if (!$this->hideKcal) {
+                $row7[] = 'KCAL';
+            }
         }
         $rows[] = $row7;
 
@@ -128,12 +133,14 @@ class CycleExport implements FromArray, ShouldAutoSize, WithStyles, WithDrawings
                 $dayData = $dataRow['days'][$i] ?? null;
                 if ($dayData) {
                     $r[] = $dayData['dish_name'];
-                    $r[] = number_format(floatval($dayData['price'] ?? 0), 2);
-                    $r[] = number_format(floatval($dayData['calories'] ?? 0), 2);
+                    if (!$this->hideKcal) {
+                        $r[] = number_format(floatval($dayData['calories'] ?? 0), 2);
+                    }
                 } else {
                     $r[] = '';
-                    $r[] = '0.00';
-                    $r[] = '0.00';
+                    if (!$this->hideKcal) {
+                        $r[] = '0.00';
+                    }
                 }
             }
             $rows[] = $r;
@@ -144,7 +151,8 @@ class CycleExport implements FromArray, ShouldAutoSize, WithStyles, WithDrawings
 
     public function styles(Worksheet $sheet)
     {
-        $lastColIndex = 2 + ($this->menuCycle->days * 3);
+        $colsPerDay = $this->hideKcal ? 1 : 2;
+        $lastColIndex = 2 + ($this->menuCycle->days * $colsPerDay);
         $lastCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($lastColIndex);
         $lastRow = $sheet->getHighestRow();
 
@@ -203,11 +211,15 @@ class CycleExport implements FromArray, ShouldAutoSize, WithStyles, WithDrawings
         $sheet->mergeCells('H2:H3');
 
         // 4. Fila 6 Styling (Day Groupings)
+        $colsPerDay = $this->hideKcal ? 1 : 2;
         for ($i = 1; $i <= $this->menuCycle->days; $i++) {
-            $startColIdx = 3 + ($i - 1) * 3;
+            $startColIdx = 3 + ($i - 1) * $colsPerDay;
             $startCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($startColIdx);
-            $endCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($startColIdx + 2);
-            $sheet->mergeCells($startCol . '6:' . $endCol . '6');
+            $endCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($startColIdx + ($colsPerDay - 1));
+
+            if ($colsPerDay > 1) {
+                $sheet->mergeCells($startCol . '6:' . $endCol . '6');
+            }
 
             $sheet->getStyle($startCol . '6')->applyFromArray([
                 'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
@@ -242,15 +254,11 @@ class CycleExport implements FromArray, ShouldAutoSize, WithStyles, WithDrawings
                 'alignment' => ['wrapText' => true]
             ]);
 
-            // Dishes, Cost, Kcal
+            // Dishes, Kcal
+            $colsPerDay = $this->hideKcal ? 1 : 2;
             for ($i = 1; $i <= $this->menuCycle->days; $i++) {
-                $dishColIdx = 3 + ($i - 1) * 3;
-                $costColIdx = 4 + ($i - 1) * 3;
-                $kcalColIdx = 5 + ($i - 1) * 3;
-
+                $dishColIdx = 3 + ($i - 1) * $colsPerDay;
                 $dishCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($dishColIdx);
-                $costCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($costColIdx);
-                $kcalCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($kcalColIdx);
 
                 // Dish Name
                 $sheet->getStyle($dishCol . $row)->applyFromArray([
@@ -259,17 +267,16 @@ class CycleExport implements FromArray, ShouldAutoSize, WithStyles, WithDrawings
                 ]);
                 $sheet->getColumnDimension($dishCol)->setWidth(25); // Fijar ancho para texto
 
-                // Costo
-                $sheet->getStyle($costCol . $row)->applyFromArray([
-                    'font' => ['bold' => true, 'color' => ['rgb' => '3E5276']], // Color 2
-                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
-                ]);
+                if (!$this->hideKcal) {
+                    $kcalColIdx = 4 + ($i - 1) * $colsPerDay;
+                    $kcalCol = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($kcalColIdx);
 
-                // Kcal
-                $sheet->getStyle($kcalCol . $row)->applyFromArray([
-                    'font' => ['bold' => true, 'color' => ['rgb' => '698BBA']], // Color 3
-                    'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
-                ]);
+                    // Kcal
+                    $sheet->getStyle($kcalCol . $row)->applyFromArray([
+                        'font' => ['bold' => true, 'color' => ['rgb' => '698BBA']], // Color 3
+                        'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER]
+                    ]);
+                }
             }
         }
 

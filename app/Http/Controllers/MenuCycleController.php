@@ -47,9 +47,10 @@ class MenuCycleController extends Controller
         }
     }
 
-    public function export($id)
+    public function export(Request $request, $id)
     {
         $cycle = MenuCycle::findOrFail($id);
-        return \Maatwebsite\Excel\Facades\Excel::download(new \App\Exports\CycleExport($cycle), 'Ciclo_' . $cycle->name . '.xlsx');
+        $hideKcal = $request->query('hide_kcal') === 'true' || $request->query('hide_kcal') === '1';
+        return \Maatwebsite\Excel\Facades\Excel::download(new \App\Exports\CycleExport($cycle, $hideKcal), 'Ciclo_' . $cycle->name . '.xlsx');
     }
 }

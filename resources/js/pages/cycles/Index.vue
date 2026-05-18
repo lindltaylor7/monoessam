@@ -359,6 +359,14 @@ const exportCycle = () => {
     window.location.href = `/cycles/export/${activeCycleId.value}`;
 };
 
+const exportCycleWithoutKcal = () => {
+    if (!activeCycleId.value) {
+        Swal.fire('Atención', 'Primero guarde o cargue un ciclo para exportar.', 'warning');
+        return;
+    }
+    window.location.href = `/cycles/export/${activeCycleId.value}?hide_kcal=true`;
+};
+
 const resetToNew = () => {
     if (!selectedServiceableId.value) {
         Swal.fire('Atención', 'Seleccione un servicio primero', 'warning');
@@ -400,7 +408,11 @@ const resetToNew = () => {
                 <div class="flex items-center gap-3">
                     <Button variant="outline" class="flex items-center gap-2 bg-white text-green-700 border-green-200 hover:bg-green-50" @click="exportCycle">
                         <Download class="h-4 w-4" />
-                        Exportar Excel
+                        Exportar Excel (Kcal)
+                    </Button>
+                    <Button variant="outline" class="flex items-center gap-2 bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50" @click="exportCycleWithoutKcal">
+                        <Download class="h-4 w-4" />
+                        Exportar Excel (Sin Kcal)
                     </Button>
                     <Button variant="outline" class="flex items-center gap-2 bg-white text-blue-600 border-blue-200 hover:bg-blue-50" @click="resetToNew">
                         <Plus class="h-4 w-4" />
