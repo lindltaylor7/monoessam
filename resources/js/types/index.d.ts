@@ -147,8 +147,6 @@ export interface Subdealership {
     legal_address?: string;
     phone?: string;
     email?: string;
-    dealership_id: number;
-    dealership?: Dealership;
     dinners?: Dinner[];
     units?: Unit[];
     mines?: Mine[];
@@ -220,6 +218,8 @@ export interface Service {
     code: string;
     name: string;
     description: string;
+    type?: string;
+    pivot?: { price: number | null };
 }
 
 export interface IngredientCategory {

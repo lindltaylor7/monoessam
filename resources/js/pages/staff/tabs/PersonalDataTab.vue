@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Area, Business, Guard, Role, Staff, Unit } from '@/types';
+import { Business, Role, Staff, Unit } from '@/types';
 import { Cake, Calendar, Globe, Heart, IdCard, Mail, PersonStanding, Phone, User, UserRound } from 'lucide-vue-next';
 import EmergencyContactSection from '../sections/EmergencyContactSection.vue';
 import PhotoUploadSection from '../sections/PhotoUploadSection.vue';
@@ -29,11 +29,9 @@ interface Emits {
 defineProps<Props>();
 const emit = defineEmits<Emits>();
 
-
 const guardSelected = (newValue: string | number) => {
     emit('select-guard', newValue);
-}
-
+};
 </script>
 
 <template>

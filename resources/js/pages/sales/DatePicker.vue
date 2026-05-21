@@ -29,7 +29,12 @@ watch(value, (dateValue) => {
         <PopoverTrigger as-child>
             <Button
                 variant="outline"
-                :class="cn('w-full h-11 justify-start text-left font-bold text-xs rounded-xl border-slate-200 hover:bg-slate-50 transition-all', !value && 'text-slate-400')"
+                :class="
+                    cn(
+                        'h-11 w-full justify-start rounded-xl border-slate-200 text-left text-xs font-bold transition-all hover:bg-slate-50',
+                        !value && 'text-slate-400',
+                    )
+                "
             >
                 <CalendarIcon class="mr-2 h-4 w-4 text-blue-500" />
                 {{ value ? df.format(value.toDate(getLocalTimeZone())) : 'Selecciona fecha' }}

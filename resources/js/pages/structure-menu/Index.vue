@@ -1,12 +1,10 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head } from '@inertiajs/vue3';
-import CategorySelection from './CategorySelection.vue';
-import DishSearch from './DishSearch.vue';
-import MealSchedule from './MealSchedule.vue';
-import MenuDisplay from './MenuDisplay.vue';
 import { Mine } from '@/types';
+import { Head } from '@inertiajs/vue3';
 import { ref } from 'vue';
+import CategorySelection from './CategorySelection.vue';
+import MenuDisplay from './MenuDisplay.vue';
 
 interface Props {
     categories: [];

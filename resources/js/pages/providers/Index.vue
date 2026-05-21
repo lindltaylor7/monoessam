@@ -1,52 +1,18 @@
 <script lang="ts" setup>
-import AppLayout from '@/layouts/AppLayout.vue';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogFooter,
-} from '@/components/ui/dialog';
+import { Card, CardContent } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from '@/components/ui/select';
-import { useForm } from '@inertiajs/vue3';
-import { 
-    Building2, 
-    PackagePlus, 
-    Pencil, 
-    Plus, 
-    Trash2, 
-    Search, 
-    Loader2, 
-    Upload, 
-    MapPin, 
-    ChevronLeft, 
-    ChevronRight,
-    Filter,
-    ArrowUpDown
-} from 'lucide-vue-next';
-import { 
-    Table, 
-    TableBody, 
-    TableCell, 
-    TableHead, 
-    TableHeader, 
-    TableRow 
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { computed, ref, inject, watch } from 'vue';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import AppLayout from '@/layouts/AppLayout.vue';
+import { Head, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
-import { Head } from '@inertiajs/vue3';
+import { Building2, ChevronLeft, ChevronRight, Filter, Loader2, MapPin, PackagePlus, Pencil, Plus, Search, Trash2, Upload } from 'lucide-vue-next';
+import { computed, inject, ref, watch } from 'vue';
 
 const swal: any = inject('$swal');
 
@@ -120,16 +86,16 @@ const currentPage = ref(1);
 const itemsPerPage = 15;
 
 const filteredAssignments = computed(() => {
-    return props.ingredient_city_providers.filter(item => {
+    return props.ingredient_city_providers.filter((item) => {
         if (!item.ingredient || !item.provider || !item.city) return false;
-        
+
         const matchesSearch = `${item.ingredient.name} ${item.provider.name} ${item.city.name}`
             .toLowerCase()
             .includes(globalSearch.value.toLowerCase());
-            
+
         const matchesCity = selectedCityId.value === 'all' || item.city_id.toString() === selectedCityId.value;
         const matchesProvider = selectedProviderId.value === 'all' || item.provider_id.toString() === selectedProviderId.value;
-        
+
         return matchesSearch && matchesCity && matchesProvider;
     });
 });
@@ -248,7 +214,7 @@ const searchIngredients = async (query: string) => {
 
 watch(ingredientSearch, (newVal) => {
     if (newVal === selectedIngredientName.value) return;
-    
+
     clearTimeout(searchTimeout);
     searchTimeout = setTimeout(() => {
         searchIngredients(newVal);
@@ -325,7 +291,7 @@ const onFileChange = (e: any) => {
             onError: (err) => {
                 console.error(err);
                 swal.fire('Error', 'Hubo un problema al importar el archivo.', 'error');
-            }
+            },
         });
     }
 };
@@ -347,7 +313,7 @@ const onFileIdsChange = (e: any) => {
             onError: (err) => {
                 console.error(err);
                 swal.fire('Error', 'Hubo un problema al importar con IDs.', 'error');
-            }
+            },
         });
     }
 };
@@ -373,7 +339,11 @@ const onFileIdsChange = (e: any) => {
                         Importar Excel (Nombres)
                     </Button>
                     <input type="file" ref="fileInputIds" class="hidden" @change="onFileIdsChange" accept=".xlsx, .xls, .csv" />
-                    <Button @click="triggerImportIds" variant="outline" class="flex gap-2 bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100">
+                    <Button
+                        @click="triggerImportIds"
+                        variant="outline"
+                        class="flex gap-2 border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+                    >
                         <Upload class="h-4 w-4" />
                         Importar Excel (IDs)
                     </Button>
@@ -384,26 +354,32 @@ const onFileIdsChange = (e: any) => {
                 </div>
             </div>
 
-            <div class="mb-6 flex flex-col xl:flex-row gap-4 items-center bg-white/80 backdrop-blur-sm p-4 rounded-2xl border border-gray-200 shadow-sm">
+            <div
+                class="mb-6 flex flex-col items-center gap-4 rounded-2xl border border-gray-200 bg-white/80 p-4 shadow-sm backdrop-blur-sm xl:flex-row"
+            >
                 <!-- Barra de Búsqueda -->
-                <div class="relative w-full xl:max-w-md group">
-                    <Search class="absolute left-3.5 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
-                    <Input 
-                        v-model="globalSearch" 
-                        placeholder="Buscar ingredientes, proveedores..." 
-                        class="pl-11 h-11 bg-gray-50/50 border-gray-200 focus:bg-white transition-all rounded-xl focus:ring-4 focus:ring-blue-500/10"
+                <div class="group relative w-full xl:max-w-md">
+                    <Search
+                        class="absolute top-1/2 left-3.5 h-4.5 w-4.5 -translate-y-1/2 text-gray-400 transition-colors group-focus-within:text-blue-500"
+                    />
+                    <Input
+                        v-model="globalSearch"
+                        placeholder="Buscar ingredientes, proveedores..."
+                        class="h-11 rounded-xl border-gray-200 bg-gray-50/50 pl-11 transition-all focus:bg-white focus:ring-4 focus:ring-blue-500/10"
                     />
                 </div>
-                
+
                 <!-- Filtros Selectores -->
-                <div class="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+                <div class="flex w-full flex-wrap items-center gap-3 xl:w-auto">
                     <!-- Filtro Ciudad -->
-                    <div class="flex items-center gap-2.5 bg-gray-50/50 border border-gray-200 rounded-xl px-3 hover:bg-white hover:border-blue-300 transition-all focus-within:ring-4 focus-within:ring-blue-500/10">
-                        <MapPin class="h-4 w-4 text-blue-500 shrink-0" />
-                        <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Ciudad</span>
+                    <div
+                        class="flex items-center gap-2.5 rounded-xl border border-gray-200 bg-gray-50/50 px-3 transition-all focus-within:ring-4 focus-within:ring-blue-500/10 hover:border-blue-300 hover:bg-white"
+                    >
+                        <MapPin class="h-4 w-4 shrink-0 text-blue-500" />
+                        <span class="text-xs font-semibold tracking-wider text-gray-400 uppercase">Ciudad</span>
                         <Separator orientation="vertical" class="h-4 bg-gray-200" />
                         <Select v-model="selectedCityId">
-                            <SelectTrigger class="border-0 bg-transparent shadow-none focus:ring-0 p-0 h-10 w-[140px] text-gray-700 font-medium">
+                            <SelectTrigger class="h-10 w-[140px] border-0 bg-transparent p-0 font-medium text-gray-700 shadow-none focus:ring-0">
                                 <SelectValue placeholder="Seleccionar" />
                             </SelectTrigger>
                             <SelectContent class="rounded-xl border-gray-200 shadow-xl">
@@ -417,12 +393,14 @@ const onFileIdsChange = (e: any) => {
                     </div>
 
                     <!-- Filtro Proveedor -->
-                    <div class="flex items-center gap-2.5 bg-gray-50/50 border border-gray-200 rounded-xl px-3 hover:bg-white hover:border-indigo-300 transition-all focus-within:ring-4 focus-within:ring-indigo-500/10">
-                        <Building2 class="h-4 w-4 text-indigo-500 shrink-0" />
-                        <span class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Prov</span>
+                    <div
+                        class="flex items-center gap-2.5 rounded-xl border border-gray-200 bg-gray-50/50 px-3 transition-all focus-within:ring-4 focus-within:ring-indigo-500/10 hover:border-indigo-300 hover:bg-white"
+                    >
+                        <Building2 class="h-4 w-4 shrink-0 text-indigo-500" />
+                        <span class="text-xs font-semibold tracking-wider text-gray-400 uppercase">Prov</span>
                         <Separator orientation="vertical" class="h-4 bg-gray-200" />
                         <Select v-model="selectedProviderId">
-                            <SelectTrigger class="border-0 bg-transparent shadow-none focus:ring-0 p-0 h-10 w-[160px] text-gray-700 font-medium">
+                            <SelectTrigger class="h-10 w-[160px] border-0 bg-transparent p-0 font-medium text-gray-700 shadow-none focus:ring-0">
                                 <SelectValue placeholder="Seleccionar" />
                             </SelectTrigger>
                             <SelectContent class="rounded-xl border-gray-200 shadow-xl">
@@ -436,81 +414,87 @@ const onFileIdsChange = (e: any) => {
                     </div>
 
                     <!-- Botón Limpiar Filtros -->
-                    <Button 
+                    <Button
                         v-if="selectedCityId !== 'all' || selectedProviderId !== 'all' || globalSearch"
-                        variant="ghost" 
+                        variant="ghost"
                         size="sm"
-                        @click="() => { globalSearch = ''; selectedCityId = 'all'; selectedProviderId = 'all'; }"
-                        class="text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg text-xs"
+                        @click="
+                            () => {
+                                globalSearch = '';
+                                selectedCityId = 'all';
+                                selectedProviderId = 'all';
+                            }
+                        "
+                        class="rounded-lg text-xs text-gray-400 hover:bg-red-50 hover:text-red-500"
                     >
                         Limpiar filtros
                     </Button>
                 </div>
 
-                <div class="flex-1 hidden xl:block"></div>
+                <div class="hidden flex-1 xl:block"></div>
 
-                <div class="flex items-center gap-3 px-4 py-2 bg-blue-50/50 rounded-xl border border-blue-100 whitespace-nowrap">
+                <div class="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/50 px-4 py-2 whitespace-nowrap">
                     <Filter class="h-4 w-4 text-blue-500" />
                     <span class="text-sm font-semibold text-blue-700">{{ filteredAssignments.length }}</span>
-                    <span class="text-xs text-blue-600/70 font-medium uppercase tracking-tighter">Resultados</span>
+                    <span class="text-xs font-medium tracking-tighter text-blue-600/70 uppercase">Resultados</span>
                 </div>
             </div>
 
             <Card class="overflow-hidden border-gray-200 shadow-xl">
                 <CardContent class="p-0">
                     <Table>
-                        <TableHeader class="bg-gray-50 border-b border-gray-200">
+                        <TableHeader class="border-b border-gray-200 bg-gray-50">
                             <TableRow>
                                 <TableHead class="font-bold text-gray-700">Ingrediente</TableHead>
                                 <TableHead class="font-bold text-gray-700">Proveedor</TableHead>
                                 <TableHead class="font-bold text-gray-700">Ciudad</TableHead>
-                                <TableHead class="font-bold text-gray-700 text-center">UM</TableHead>
-                                <TableHead class="font-bold text-gray-700 text-right">Precio Costo</TableHead>
-                                <TableHead class="font-bold text-gray-700 text-right">Acciones</TableHead>
+                                <TableHead class="text-center font-bold text-gray-700">UM</TableHead>
+                                <TableHead class="text-right font-bold text-gray-700">Precio Costo</TableHead>
+                                <TableHead class="text-right font-bold text-gray-700">Acciones</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            <TableRow v-for="item in paginatedAssignments" :key="item.id" class="hover:bg-blue-50/30 transition-colors group">
+                            <TableRow v-for="item in paginatedAssignments" :key="item.id" class="group transition-colors hover:bg-blue-50/30">
                                 <TableCell>
                                     <div class="flex flex-col">
                                         <span class="font-bold text-gray-900">{{ item.ingredient.name }}</span>
-                                        <span class="text-xs text-gray-500 truncate max-w-[200px]">{{ item.ingredient.description }}</span>
+                                        <span class="max-w-[200px] truncate text-xs text-gray-500">{{ item.ingredient.description }}</span>
                                     </div>
                                 </TableCell>
                                 <TableCell>
                                     <div class="flex items-center gap-2">
-                                        <Badge variant="outline" class="bg-slate-100 text-slate-700 font-medium">
+                                        <Badge variant="outline" class="bg-slate-100 font-medium text-slate-700">
                                             {{ item.provider.name }}
                                         </Badge>
                                     </div>
                                 </TableCell>
                                 <TableCell>
-                                    <div class="flex items-center gap-1.5 text-gray-600 font-medium">
+                                    <div class="flex items-center gap-1.5 font-medium text-gray-600">
                                         <MapPin class="h-3.5 w-3.5 text-blue-500" />
                                         {{ item.city.name }}
                                     </div>
                                 </TableCell>
                                 <TableCell class="text-center">
                                     <Badge variant="secondary" class="bg-gray-100 text-gray-600">
-                                        {{ item.measurement_unit ? item.measurement_unit.name : (item.ingredient.measurement_unit || '-') }}
+                                        {{ item.measurement_unit ? item.measurement_unit.name : item.ingredient.measurement_unit || '-' }}
                                     </Badge>
                                 </TableCell>
                                 <TableCell class="text-right">
                                     <span class="text-lg font-black text-blue-600">S/ {{ parseFloat(item.cost_price).toFixed(2) }}</span>
                                 </TableCell>
                                 <TableCell class="text-right">
-                                    <div class="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <Button 
-                                            variant="ghost" 
-                                            size="icon" 
+                                    <div class="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
                                             @click="openEditAssignmentModal(item, item.provider_id, item.city_id)"
                                             class="h-8 w-8 text-blue-600 hover:bg-blue-50"
                                         >
                                             <Pencil class="h-4 w-4" />
                                         </Button>
-                                        <Button 
-                                            variant="ghost" 
-                                            size="icon" 
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
                                             @click="deleteAssignment(item.id)"
                                             class="h-8 w-8 text-red-600 hover:bg-red-50"
                                         >
@@ -522,7 +506,7 @@ const onFileIdsChange = (e: any) => {
                             <TableRow v-if="filteredAssignments.length === 0">
                                 <TableCell colspan="6" class="h-64 text-center">
                                     <div class="flex flex-col items-center justify-center text-gray-400">
-                                        <Search class="h-12 w-12 mb-2 opacity-20" />
+                                        <Search class="mb-2 h-12 w-12 opacity-20" />
                                         <p class="text-lg font-medium">No se encontraron resultados</p>
                                         <p class="text-sm">Intenta ajustar tu búsqueda o filtros</p>
                                     </div>
@@ -534,42 +518,30 @@ const onFileIdsChange = (e: any) => {
             </Card>
 
             <!-- Pagination -->
-            <div v-if="totalPages > 1" class="mt-6 flex items-center justify-between p-4 bg-white rounded-xl border border-gray-200">
+            <div v-if="totalPages > 1" class="mt-6 flex items-center justify-between rounded-xl border border-gray-200 bg-white p-4">
                 <div class="text-sm text-gray-500">
-                    Mostrando <span class="font-bold text-gray-900">{{ (currentPage - 1) * itemsPerPage + 1 }}</span> a 
-                    <span class="font-bold text-gray-900">{{ Math.min(currentPage * itemsPerPage, filteredAssignments.length) }}</span> de 
+                    Mostrando <span class="font-bold text-gray-900">{{ (currentPage - 1) * itemsPerPage + 1 }}</span> a
+                    <span class="font-bold text-gray-900">{{ Math.min(currentPage * itemsPerPage, filteredAssignments.length) }}</span> de
                     <span class="font-bold text-gray-900">{{ filteredAssignments.length }}</span> registros
                 </div>
                 <div class="flex gap-2">
-                    <Button 
-                        variant="outline" 
-                        size="sm" 
-                        :disabled="currentPage === 1" 
-                        @click="currentPage--"
-                        class="gap-1 rounded-lg"
-                    >
+                    <Button variant="outline" size="sm" :disabled="currentPage === 1" @click="currentPage--" class="gap-1 rounded-lg">
                         <ChevronLeft class="h-4 w-4" /> Anterior
                     </Button>
-                    <div class="flex items-center gap-1 mx-2">
-                        <Button 
-                            v-for="page in totalPages" 
+                    <div class="mx-2 flex items-center gap-1">
+                        <Button
+                            v-for="page in totalPages"
                             :key="page"
                             v-show="page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1)"
                             size="sm"
                             :variant="currentPage === page ? 'default' : 'ghost'"
                             @click="currentPage = page"
-                            class="h-8 w-8 p-0 rounded-md"
+                            class="h-8 w-8 rounded-md p-0"
                         >
                             {{ page }}
                         </Button>
                     </div>
-                    <Button 
-                        variant="outline" 
-                        size="sm" 
-                        :disabled="currentPage === totalPages" 
-                        @click="currentPage++"
-                        class="gap-1 rounded-lg"
-                    >
+                    <Button variant="outline" size="sm" :disabled="currentPage === totalPages" @click="currentPage++" class="gap-1 rounded-lg">
                         Siguiente <ChevronRight class="h-4 w-4" />
                     </Button>
                 </div>
@@ -662,20 +634,18 @@ const onFileIdsChange = (e: any) => {
                             <Label>Ingrediente / Producto</Label>
                             <div class="relative">
                                 <Search class="absolute top-2.5 left-2.5 h-4 w-4 text-gray-400" />
-                                <Input 
-                                    v-model="ingredientSearch" 
-                                    placeholder="Buscar ingrediente..." 
-                                    class="pl-9"
-                                    autocomplete="off"
-                                />
+                                <Input v-model="ingredientSearch" placeholder="Buscar ingrediente..." class="pl-9" autocomplete="off" />
                                 <Loader2 v-if="isSearching" class="absolute top-2.5 right-2.5 h-4 w-4 animate-spin text-gray-400" />
                             </div>
-                            
+
                             <!-- Search Results -->
-                            <div v-if="searchedIngredients.length > 0" class="absolute top-full z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-white shadow-lg">
-                                <div 
-                                    v-for="ing in searchedIngredients" 
-                                    :key="ing.id" 
+                            <div
+                                v-if="searchedIngredients.length > 0"
+                                class="absolute top-full z-50 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-white shadow-lg"
+                            >
+                                <div
+                                    v-for="ing in searchedIngredients"
+                                    :key="ing.id"
                                     @click="selectIngredient(ing)"
                                     class="cursor-pointer px-4 py-2 text-sm hover:bg-slate-100"
                                 >
@@ -684,7 +654,9 @@ const onFileIdsChange = (e: any) => {
                                 </div>
                             </div>
 
-                            <span v-if="assignmentForm.errors.ingredient_id" class="text-xs text-red-500">{{ assignmentForm.errors.ingredient_id }}</span>
+                            <span v-if="assignmentForm.errors.ingredient_id" class="text-xs text-red-500">{{
+                                assignmentForm.errors.ingredient_id
+                            }}</span>
                         </div>
                     </div>
 
@@ -706,7 +678,9 @@ const onFileIdsChange = (e: any) => {
                                     </SelectItem>
                                 </SelectContent>
                             </Select>
-                            <span v-if="assignmentForm.errors.measurement_unit_id" class="text-xs text-red-500">{{ assignmentForm.errors.measurement_unit_id }}</span>
+                            <span v-if="assignmentForm.errors.measurement_unit_id" class="text-xs text-red-500">{{
+                                assignmentForm.errors.measurement_unit_id
+                            }}</span>
                         </div>
                     </div>
                 </div>
@@ -739,8 +713,9 @@ const onFileIdsChange = (e: any) => {
                             </SelectContent>
                         </Select>
                     </div>
-                    <p class="text-xs text-muted-foreground">
-                        Nota: El Excel debe contener en las primeras 4 columnas los nombres de proveedores, la 5ta el ingrediente y los precios en las últimas 4 columnas (si no hay precio, la fila se ignora).
+                    <p class="text-muted-foreground text-xs">
+                        Nota: El Excel debe contener en las primeras 4 columnas los nombres de proveedores, la 5ta el ingrediente y los precios en las
+                        últimas 4 columnas (si no hay precio, la fila se ignora).
                     </p>
                 </div>
                 <DialogFooter>
@@ -750,14 +725,10 @@ const onFileIdsChange = (e: any) => {
                             <Loader2 class="mr-2 h-4 w-4 animate-spin" />
                             Importando...
                         </template>
-                        <template v-else>
-                            Seleccionar Archivo
-                        </template>
+                        <template v-else> Seleccionar Archivo </template>
                     </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
     </AppLayout>
 </template>
-
-

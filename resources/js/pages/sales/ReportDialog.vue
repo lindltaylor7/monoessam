@@ -75,7 +75,10 @@ const exportToExcel = () => {
 <template>
     <Dialog v-model:open="open">
         <DialogTrigger as-child>
-            <Button title="Generar reporte" class="w-full h-11 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl shadow-md shadow-slate-200 transition-all flex items-center justify-center gap-2">
+            <Button
+                title="Generar reporte"
+                class="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-800 text-xs font-bold text-white shadow-md shadow-slate-200 transition-all hover:bg-slate-900"
+            >
                 <FileChartColumn class="h-4 w-4 text-emerald-400" />
                 <span>Reporte de Ventas</span>
             </Button>

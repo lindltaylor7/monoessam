@@ -1,12 +1,12 @@
 <script setup lang="ts">
+import StatusBadge from '@/components/shared/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import StatusBadge from '@/components/shared/StatusBadge.vue';
-import { Staff, Cafe, Role, Unit, Business } from '@/types';
+import { getStatusColor, getStatusLabel } from '@/composables/useStaffConstants';
+import { Business, Cafe, Role, Staff, Unit } from '@/types';
 import { Trash2 } from 'lucide-vue-next';
 import ChangeStatusModal from '../ChangeStatusModal.vue';
 import StaffRegistrationDialog from '../StaffRegistrationDialog.vue';
-import { getStatusColor, getStatusLabel } from '@/composables/useStaffConstants';
 
 interface Props {
     staff: Staff;
@@ -31,8 +31,8 @@ const onChangeStatus = () => {
         <div class="mb-3 flex items-start justify-between border-b pb-3">
             <div class="flex-1">
                 <h3 class="mb-1 text-base font-semibold">{{ staff.name }}</h3>
-                <StatusBadge 
-                    :label="getStatusLabel(staff.status)" 
+                <StatusBadge
+                    :label="getStatusLabel(staff.status)"
                     :color-class="getStatusColor(staff.status)"
                     class="text-xs"
                     @click="onChangeStatus"
@@ -76,9 +76,7 @@ const onChangeStatus = () => {
                             </TooltipContent>
                         </Tooltip>
                     </TooltipProvider>
-                    <span v-if="!staff.staff_files || staff.staff_files.length === 0" class="text-muted-foreground text-sm">
-                        Sin documentos
-                    </span>
+                    <span v-if="!staff.staff_files || staff.staff_files.length === 0" class="text-muted-foreground text-sm"> Sin documentos </span>
                 </div>
             </div>
         </div>

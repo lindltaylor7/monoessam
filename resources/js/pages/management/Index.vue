@@ -11,7 +11,7 @@ import UnitSelector from './UnitSelector.vue'; // Nuevo componente
 interface Props {
     // Es CRUCIAL que las relaciones estén precargadas (eager loaded)
     mines: (Mine & { units: Unit[] })[];
-    units: Unit[]; 
+    units: Unit[];
     services: Service[];
     businesses: Business[];
     roles: any[];

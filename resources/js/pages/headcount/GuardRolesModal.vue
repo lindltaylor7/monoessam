@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Badge } from '@/components/ui/badge';
 import Button from '@/components/ui/button/Button.vue';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -90,13 +89,13 @@ watch(searchTerm, async (newVal, oldVal) => {
 
 // Agregar rol
 const addRole = (role: Role) => {
-    const existing = selectedRoles.value.find(r => r.role.id === role.id);
+    const existing = selectedRoles.value.find((r) => r.role.id === role.id);
     if (existing) {
         existing.quantity++;
     } else {
         selectedRoles.value.push({ role, quantity: 1 });
     }
-    
+
     searchTerm.value = '';
     isDropdownVisible.value = false;
 
@@ -107,12 +106,12 @@ const addRole = (role: Role) => {
 };
 
 const increaseQuantity = (roleId: number) => {
-    const roleGroup = selectedRoles.value.find(r => r.role.id === roleId);
+    const roleGroup = selectedRoles.value.find((r) => r.role.id === roleId);
     if (roleGroup) roleGroup.quantity++;
 };
 
 const decreaseQuantity = (roleId: number) => {
-    const index = selectedRoles.value.findIndex(r => r.role.id === roleId);
+    const index = selectedRoles.value.findIndex((r) => r.role.id === roleId);
     if (index !== -1) {
         if (selectedRoles.value[index].quantity > 1) {
             selectedRoles.value[index].quantity--;
@@ -126,8 +125,8 @@ const validateQuantity = (roleId: number, e: Event) => {
     const val = (e.target as HTMLInputElement).value;
     let num = parseInt(val, 10);
     if (isNaN(num) || num < 1) num = 1;
-    
-    const roleGroup = selectedRoles.value.find(r => r.role.id === roleId);
+
+    const roleGroup = selectedRoles.value.find((r) => r.role.id === roleId);
     if (roleGroup) roleGroup.quantity = num;
 };
 
@@ -176,12 +175,12 @@ const submit = async () => {
     }
 
     form.roles_ids = [];
-    selectedRoles.value.forEach(group => {
+    selectedRoles.value.forEach((group) => {
         for (let i = 0; i < group.quantity; i++) {
             form.roles_ids.push(group.role.id);
         }
     });
-    
+
     form.guard_id = props.guard.id;
 
     isSubmitting.value = true;
@@ -192,15 +191,15 @@ const submit = async () => {
         showSuccess.value = true;
         setTimeout(() => {
             open.value = false;
-            
+
             const flatInstanceArray: any[] = [];
-            selectedRoles.value.forEach(group => {
+            selectedRoles.value.forEach((group) => {
                 for (let i = 0; i < group.quantity; i++) {
                     flatInstanceArray.push({ ...group.role, instanceId: Math.random() });
                 }
             });
             emit('asignRoles', flatInstanceArray);
-            
+
             form.reset();
             selectedRoles.value = [];
             showSuccess.value = false;
@@ -364,28 +363,38 @@ watch(open, (isOpen) => {
                             <div
                                 v-for="group in selectedRoles"
                                 :key="group.role.id"
-                                class="flex items-center justify-between rounded bg-white px-3 py-2 shadow-sm border border-green-200"
+                                class="flex items-center justify-between rounded border border-green-200 bg-white px-3 py-2 shadow-sm"
                             >
                                 <span class="font-medium text-gray-800">{{ group.role.name }}</span>
-                                
+
                                 <div class="flex items-center gap-3">
-                                    <div class="flex items-center rounded border border-gray-300 bg-gray-50 overflow-hidden">
-                                        <button @click="decreaseQuantity(group.role.id)" class="px-2 py-1 text-gray-600 hover:bg-gray-200 hover:text-gray-900 focus:outline-none transition-colors">
+                                    <div class="flex items-center overflow-hidden rounded border border-gray-300 bg-gray-50">
+                                        <button
+                                            @click="decreaseQuantity(group.role.id)"
+                                            class="px-2 py-1 text-gray-600 transition-colors hover:bg-gray-200 hover:text-gray-900 focus:outline-none"
+                                        >
                                             -
                                         </button>
-                                        <input 
-                                            type="number" 
+                                        <input
+                                            type="number"
                                             :value="group.quantity"
                                             @change="(e) => validateQuantity(group.role.id, e)"
                                             min="1"
                                             class="w-12 border-x border-gray-300 bg-white py-1 text-center text-sm focus:outline-none"
                                         />
-                                        <button @click="increaseQuantity(group.role.id)" class="px-2 py-1 text-gray-600 hover:bg-gray-200 hover:text-gray-900 focus:outline-none transition-colors">
+                                        <button
+                                            @click="increaseQuantity(group.role.id)"
+                                            class="px-2 py-1 text-gray-600 transition-colors hover:bg-gray-200 hover:text-gray-900 focus:outline-none"
+                                        >
                                             +
                                         </button>
                                     </div>
 
-                                    <button @click="removeRole(group.role.id)" class="text-red-400 hover:text-red-600 transition-colors" title="Remover rol">
+                                    <button
+                                        @click="removeRole(group.role.id)"
+                                        class="text-red-400 transition-colors hover:text-red-600"
+                                        title="Remover rol"
+                                    >
                                         <X :size="18" />
                                     </button>
                                 </div>
@@ -396,9 +405,7 @@ watch(open, (isOpen) => {
 
                 <!-- Contador y estadísticas -->
                 <div class="flex items-center justify-between text-sm text-gray-500">
-                    <span>
-                        {{ totalSelectedQuantity }} rol{{ totalSelectedQuantity !== 1 ? 'es' : '' }} en total
-                    </span>
+                    <span> {{ totalSelectedQuantity }} rol{{ totalSelectedQuantity !== 1 ? 'es' : '' }} en total </span>
                     <span v-if="selectedRoles.length > 0" class="font-medium text-green-600"> Listo para asignar </span>
                 </div>
             </div>
@@ -461,12 +468,12 @@ watch(open, (isOpen) => {
 }
 
 /* Ocultar flechas del input number nativo */
-input[type=number]::-webkit-inner-spin-button, 
-input[type=number]::-webkit-outer-spin-button { 
-  -webkit-appearance: none; 
-  margin: 0; 
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
 }
-input[type=number] {
-  -moz-appearance: textfield;
+input[type='number'] {
+    -moz-appearance: textfield;
 }
 </style>

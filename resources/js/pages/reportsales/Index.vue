@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, router } from '@inertiajs/vue3';
-import { ref, watch } from 'vue';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import Icon from '@/components/Icon.vue';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import Icon from '@/components/Icon.vue';
-import SalesReportTable from './SalesReportTable.vue';
-import { Badge } from '@/components/ui/badge';
+import AppLayout from '@/layouts/AppLayout.vue';
+import { Head, router } from '@inertiajs/vue3';
 import { ChartBar } from 'lucide-vue-next';
+import { ref } from 'vue';
+import SalesReportTable from './SalesReportTable.vue';
 
 interface Cafe {
     id: number;
@@ -64,14 +64,18 @@ const selectedCafe = ref<string>(props.filters.cafe_id?.toString() || 'all');
 
 // Aplicar filtros
 const applyFilters = () => {
-    router.get(route('reportsales.index'), {
-        start_date: startDate.value,
-        end_date: endDate.value,
-        cafe_id: selectedCafe.value !== 'all' ? selectedCafe.value : null,
-    }, {
-        preserveState: true,
-        preserveScroll: true,
-    });
+    router.get(
+        route('reportsales.index'),
+        {
+            start_date: startDate.value,
+            end_date: endDate.value,
+            cafe_id: selectedCafe.value !== 'all' ? selectedCafe.value : null,
+        },
+        {
+            preserveState: true,
+            preserveScroll: true,
+        },
+    );
 };
 
 // Resetear filtros
@@ -106,8 +110,10 @@ const exportToExcel = () => {
             <!-- Header -->
             <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div class="flex items-center gap-3">
-                    <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/30">
-                        <ChartBar class="text-white"/>
+                    <div
+                        class="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/30"
+                    >
+                        <ChartBar class="text-white" />
                     </div>
                     <div>
                         <h1 class="text-2xl font-bold tracking-tight text-slate-900">Reporte de Ventas</h1>
@@ -124,21 +130,19 @@ const exportToExcel = () => {
             <div class="grid gap-4 md:grid-cols-3">
                 <Card class="border-slate-200 bg-gradient-to-br from-white to-slate-50">
                     <CardHeader class="pb-3">
-                        <CardDescription class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                        <CardDescription class="flex items-center gap-2 text-xs font-semibold tracking-wider text-slate-500 uppercase">
                             <Icon name="currency-dollar" size="14" />
                             Total Vendido
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div class="text-3xl font-black text-emerald-600">
-                            S/{{ Number(statistics.total_amount).toFixed(2) }}
-                        </div>
+                        <div class="text-3xl font-black text-emerald-600">S/{{ Number(statistics.total_amount).toFixed(2) }}</div>
                     </CardContent>
                 </Card>
 
                 <Card class="border-slate-200 bg-gradient-to-br from-white to-slate-50">
                     <CardHeader class="pb-3">
-                        <CardDescription class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                        <CardDescription class="flex items-center gap-2 text-xs font-semibold tracking-wider text-slate-500 uppercase">
                             <Icon name="shopping-cart" size="14" />
                             Total de Ventas
                         </CardDescription>
@@ -152,15 +156,13 @@ const exportToExcel = () => {
 
                 <Card class="border-slate-200 bg-gradient-to-br from-white to-slate-50">
                     <CardHeader class="pb-3">
-                        <CardDescription class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                        <CardDescription class="flex items-center gap-2 text-xs font-semibold tracking-wider text-slate-500 uppercase">
                             <Icon name="chart-line" size="14" />
                             Promedio por Venta
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div class="text-3xl font-black text-purple-600">
-                            S/{{ Number(statistics.average_sale).toFixed(2) }}
-                        </div>
+                        <div class="text-3xl font-black text-purple-600">S/{{ Number(statistics.average_sale).toFixed(2) }}</div>
                     </CardContent>
                 </Card>
             </div>
@@ -176,44 +178,24 @@ const exportToExcel = () => {
                 <CardContent>
                     <div class="grid gap-4 md:grid-cols-4">
                         <div class="space-y-2">
-                            <Label for="start-date" class="text-xs font-bold uppercase tracking-wider text-slate-600">
-                                Fecha Inicio
-                            </Label>
-                            <Input
-                                id="start-date"
-                                v-model="startDate"
-                                type="date"
-                                class="border-slate-300"
-                            />
+                            <Label for="start-date" class="text-xs font-bold tracking-wider text-slate-600 uppercase"> Fecha Inicio </Label>
+                            <Input id="start-date" v-model="startDate" type="date" class="border-slate-300" />
                         </div>
 
                         <div class="space-y-2">
-                            <Label for="end-date" class="text-xs font-bold uppercase tracking-wider text-slate-600">
-                                Fecha Fin
-                            </Label>
-                            <Input
-                                id="end-date"
-                                v-model="endDate"
-                                type="date"
-                                class="border-slate-300"
-                            />
+                            <Label for="end-date" class="text-xs font-bold tracking-wider text-slate-600 uppercase"> Fecha Fin </Label>
+                            <Input id="end-date" v-model="endDate" type="date" class="border-slate-300" />
                         </div>
 
                         <div class="space-y-2">
-                            <Label for="cafe" class="text-xs font-bold uppercase tracking-wider text-slate-600">
-                                Cafetería
-                            </Label>
+                            <Label for="cafe" class="text-xs font-bold tracking-wider text-slate-600 uppercase"> Cafetería </Label>
                             <Select v-model="selectedCafe">
                                 <SelectTrigger id="cafe" class="border-slate-300">
                                     <SelectValue placeholder="Todas las cafeterías" />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">Todas las cafeterías</SelectItem>
-                                    <SelectItem
-                                        v-for="cafe in cafes"
-                                        :key="cafe.id"
-                                        :value="cafe.id.toString()"
-                                    >
+                                    <SelectItem v-for="cafe in cafes" :key="cafe.id" :value="cafe.id.toString()">
                                         {{ cafe.name }} {{ cafe.unit ? `- ${cafe.unit.name}` : '' }}
                                     </SelectItem>
                                 </SelectContent>
@@ -241,17 +223,11 @@ const exportToExcel = () => {
                             <Icon name="table" size="18" />
                             Ventas Registradas
                         </CardTitle>
-                        <Badge variant="secondary" class="font-bold">
-                            {{ sales.total }} resultados
-                        </Badge>
+                        <Badge variant="secondary" class="font-bold"> {{ sales.total }} resultados </Badge>
                     </div>
                 </CardHeader>
                 <CardContent class="p-0">
-                    <SalesReportTable
-                        :sales="sales.data"
-                        :paginate-data="sales"
-                        @delete-sale="deleteSale"
-                    />
+                    <SalesReportTable :sales="sales.data" :paginate-data="sales" @delete-sale="deleteSale" />
                 </CardContent>
             </Card>
         </div>

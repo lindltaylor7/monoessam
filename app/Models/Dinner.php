@@ -11,18 +11,16 @@ class Dinner extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['name', 'dni', 'phone','subdealership_id','cafe_id'];
-    /**
-     * Get the subdealership that owns the dinner.
-     */
+    protected $fillable = ['name', 'dni', 'phone', 'subdealership_id', 'mine_id'];
+
     public function subdealership(): BelongsTo
     {
         return $this->belongsTo(Subdealership::class);
     }
-    
-    public function cafe(): BelongsTo
+
+    public function mine(): BelongsTo
     {
-        return $this->belongsTo(Cafe::class);
+        return $this->belongsTo(Mine::class);
     }
     public function sales(): HasMany
     {

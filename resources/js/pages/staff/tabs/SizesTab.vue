@@ -45,8 +45,17 @@ defineProps<Props>();
                         </Select>
 
                         <!-- Selects para tallas estándar (Ropa) -->
-                        <Select v-else-if="['Polo', 'Cafarena', 'Overall', 'Casaca', 'Chaleco', 'Chaqueta', 'Camisa', 'Blusa', 'Guardapolvo'].some(s => prenda.label.includes(s))" v-model="prenda.talla">
-                            <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"><SelectValue placeholder="Talla" /></SelectTrigger>
+                        <Select
+                            v-else-if="
+                                ['Polo', 'Cafarena', 'Overall', 'Casaca', 'Chaleco', 'Chaqueta', 'Camisa', 'Blusa', 'Guardapolvo'].some((s) =>
+                                    prenda.label.includes(s),
+                                )
+                            "
+                            v-model="prenda.talla"
+                        >
+                            <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"
+                                ><SelectValue placeholder="Talla"
+                            /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="s">S</SelectItem>
                                 <SelectItem value="m">M</SelectItem>
@@ -58,7 +67,9 @@ defineProps<Props>();
 
                         <!-- Select especial para Guantes -->
                         <Select v-else-if="prenda.label.toLowerCase().includes('guante')" v-model="prenda.talla">
-                            <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"><SelectValue placeholder="Talla" /></SelectTrigger>
+                            <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"
+                                ><SelectValue placeholder="Talla"
+                            /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="8">8</SelectItem>
                                 <SelectItem value="9">9</SelectItem>
@@ -66,11 +77,16 @@ defineProps<Props>();
                             </SelectContent>
                         </Select>
 
-                         <!-- Select para Calzado -->
-                         <Select v-else-if="prenda.label.toLowerCase().includes('zapatos') || prenda.label.toLowerCase().includes('botas')" v-model="prenda.talla">
-                            <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"><SelectValue placeholder="Talla" /></SelectTrigger>
+                        <!-- Select para Calzado -->
+                        <Select
+                            v-else-if="prenda.label.toLowerCase().includes('zapatos') || prenda.label.toLowerCase().includes('botas')"
+                            v-model="prenda.talla"
+                        >
+                            <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"
+                                ><SelectValue placeholder="Talla"
+                            /></SelectTrigger>
                             <SelectContent>
-                                <SelectItem v-for="size in [35,36,37,38,39,40,41,42,43,44,45]" :key="size" :value="String(size)">
+                                <SelectItem v-for="size in [35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45]" :key="size" :value="String(size)">
                                     {{ size }}
                                 </SelectItem>
                             </SelectContent>
@@ -78,7 +94,9 @@ defineProps<Props>();
 
                         <!-- Select para Lentes -->
                         <Select v-else-if="prenda.label.toLowerCase().includes('lentes')" v-model="prenda.talla">
-                            <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"><SelectValue placeholder="Tipo" /></SelectTrigger>
+                            <SelectTrigger class="h-9 transition-all focus:ring-2 focus:ring-blue-100"
+                                ><SelectValue placeholder="Tipo"
+                            /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="Lentes">Lentes</SelectItem>
                                 <SelectItem value="Sobrelentes">Sobrelentes</SelectItem>

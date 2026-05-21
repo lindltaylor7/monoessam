@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import Button from '@/components/ui/button/Button.vue';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import Input from '@/components/ui/input/Input.vue';
-import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
-import { Trash, ChevronDown, ChevronUp, Search, Save } from 'lucide-vue-next';
-import { ref, computed, watch } from 'vue';
-import Swal from 'sweetalert2';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { router } from '@inertiajs/vue3';
+import { ChevronDown, ChevronUp, Save, Search, Trash } from 'lucide-vue-next';
+import Swal from 'sweetalert2';
+import { computed, ref, watch } from 'vue';
 
 const props = defineProps<{
     categories?: any[];
@@ -20,43 +20,49 @@ const open = ref(false);
 const structureName = ref('');
 const sellingPrice = ref<number | null>(null);
 
-watch(() => props.serviceableId, (newId) => {
-    if (newId) {
-        const structure = props.structures?.find(s => String(s.serviceable_id) === String(newId));
-        if (structure) {
-            loadStructure(structure);
+watch(
+    () => props.serviceableId,
+    (newId) => {
+        if (newId) {
+            const structure = props.structures?.find((s) => String(s.serviceable_id) === String(newId));
+            if (structure) {
+                loadStructure(structure);
+            } else {
+                categoriesSelected.value = [];
+                structureName.value = '';
+                sellingPrice.value = null;
+            }
         } else {
             categoriesSelected.value = [];
             structureName.value = '';
             sellingPrice.value = null;
         }
-    } else {
-        categoriesSelected.value = [];
-        structureName.value = '';
-        sellingPrice.value = null;
-    }
-}, { immediate: true });
+    },
+    { immediate: true },
+);
 
 const filteredCategories = computed(() => {
     const categories = props.categories;
     if (!categories || !Array.isArray(categories)) return [];
     if (!searchQuery.value) return categories;
     const query = searchQuery.value.toLowerCase();
-    return categories.filter((cat: any) => 
-        cat && cat.name && cat.name.toLowerCase().includes(query)
-    );
+    return categories.filter((cat: any) => cat && cat.name && cat.name.toLowerCase().includes(query));
 });
 
 const totalBaseCost = computed(() => {
-    return categoriesSelected.value.reduce((acc, cat) => {
-        return acc + (parseFloat(cat.total_cost) || 0);
-    }, 0).toFixed(2);
+    return categoriesSelected.value
+        .reduce((acc, cat) => {
+            return acc + (parseFloat(cat.total_cost) || 0);
+        }, 0)
+        .toFixed(2);
 });
 
 const totalSuperiorCost = computed(() => {
-    return categoriesSelected.value.reduce((acc, cat) => {
-        return acc + (parseFloat(cat.total_cost_superior) || 0);
-    }, 0).toFixed(2);
+    return categoriesSelected.value
+        .reduce((acc, cat) => {
+            return acc + (parseFloat(cat.total_cost_superior) || 0);
+        }, 0)
+        .toFixed(2);
 });
 
 const costMargin = computed(() => {
@@ -65,36 +71,40 @@ const costMargin = computed(() => {
     if (price <= 0) return '0.00';
     return ((cost / price) * 100).toFixed(2);
 });
-watch(categoriesSelected, (newVal) => {
-    newVal.forEach(category => {
-        const ration = parseFloat(category.ration) || 0;
-        const unitCost = parseFloat(category.unit_cost) || 0;
-        
-        // Función para truncar a dos decimales sin redondear
-        const truncate = (num: number) => (Math.floor(num * 100) / 100).toFixed(2);
-        
-        // Función para redondear a dos decimales
-        const round = (num: number) => (Math.round(num * 100) / 100).toFixed(2);
+watch(
+    categoriesSelected,
+    (newVal) => {
+        newVal.forEach((category) => {
+            const ration = parseFloat(category.ration) || 0;
+            const unitCost = parseFloat(category.unit_cost) || 0;
 
-        // T.Inferior (Costo Total)
-        const total = truncate(ration * unitCost / 100);
-        if (category.total_cost !== total) {
-            category.total_cost = total;
-        }
+            // Función para truncar a dos decimales sin redondear
+            const truncate = (num: number) => (Math.floor(num * 100) / 100).toFixed(2);
 
-        // L.Superior = L.Inferior * 1.03 (Redondeado a 2 decimales)
-        const unitCostSuperior = round(unitCost * 1.03);
-        if (category.unit_cost_superior !== unitCostSuperior) {
-            category.unit_cost_superior = unitCostSuperior;
-        }
+            // Función para redondear a dos decimales
+            const round = (num: number) => (Math.round(num * 100) / 100).toFixed(2);
 
-        // T.Superior = L.Superior * % Ración / 100 (Truncado a 2 decimales)
-        const totalSuperior = truncate(parseFloat(unitCostSuperior) * ration / 100);
-        if (category.total_cost_superior !== totalSuperior) {
-            category.total_cost_superior = totalSuperior;
-        }
-    });
-}, { deep: true });
+            // T.Inferior (Costo Total)
+            const total = truncate((ration * unitCost) / 100);
+            if (category.total_cost !== total) {
+                category.total_cost = total;
+            }
+
+            // L.Superior = L.Inferior * 1.03 (Redondeado a 2 decimales)
+            const unitCostSuperior = round(unitCost * 1.03);
+            if (category.unit_cost_superior !== unitCostSuperior) {
+                category.unit_cost_superior = unitCostSuperior;
+            }
+
+            // T.Superior = L.Superior * % Ración / 100 (Truncado a 2 decimales)
+            const totalSuperior = truncate((parseFloat(unitCostSuperior) * ration) / 100);
+            if (category.total_cost_superior !== totalSuperior) {
+                category.total_cost_superior = totalSuperior;
+            }
+        });
+    },
+    { deep: true },
+);
 
 const selectCategory = (category: any) => {
     console.log(category);
@@ -137,7 +147,7 @@ const loadStructure = (struct: any) => {
         unit_cost: cost.unit_cost,
         total_cost: cost.total_cost,
         unit_cost_superior: cost.unit_cost_superior,
-        total_cost_superior: cost.total_cost_superior
+        total_cost_superior: cost.total_cost_superior,
     }));
 };
 
@@ -150,14 +160,14 @@ const deleteStructure = (id: number) => {
         confirmButtonColor: '#ef4444',
         cancelButtonColor: '#94a3b8',
         confirmButtonText: 'Sí, eliminar',
-        cancelButtonText: 'Cancelar'
+        cancelButtonText: 'Cancelar',
     }).then((result) => {
         if (result.isConfirmed) {
             router.delete(route('food.structure.destroy', id), {
                 preserveScroll: true,
                 onSuccess: () => {
                     Swal.fire('¡Eliminado!', 'La estructura ha sido eliminada.', 'success');
-                }
+                },
             });
         }
     });
@@ -169,7 +179,7 @@ const saveStructure = () => {
             title: 'Atención',
             text: 'Debe seleccionar un servicio primero.',
             icon: 'warning',
-            confirmButtonText: 'Entendido'
+            confirmButtonText: 'Entendido',
         });
         return;
     }
@@ -181,94 +191,119 @@ const saveStructure = () => {
 
     const categoriesToSave = categoriesSelected.value.map((cat, index) => ({
         ...cat,
-        order: index + 1
+        order: index + 1,
     }));
 
-    router.post(route('food.structure.store'), {
-        name: structureName.value,
-        serviceable_id: props.serviceableId,
-        selling_price: sellingPrice.value,
-        categories: categoriesToSave
-    }, {
-        onError: (errors) => {
-            if (errors.name) {
-                Swal.fire({
-                    title: 'Error de validación',
-                    text: errors.name,
-                    icon: 'error',
-                    confirmButtonText: 'Entendido'
-                });
-            }
+    router.post(
+        route('food.structure.store'),
+        {
+            name: structureName.value,
+            serviceable_id: props.serviceableId,
+            selling_price: sellingPrice.value,
+            categories: categoriesToSave,
         },
-        onSuccess: () => {
-            structureName.value = '';
-            sellingPrice.value = null;
-            categoriesSelected.value = [];
-            Swal.fire({
-                title: '¡Éxito!',
-                text: 'Estructura guardada correctamente',
-                icon: 'success',
-                confirmButtonText: 'Aceptar'
-            });
-        }
-    });
+        {
+            onError: (errors) => {
+                if (errors.name) {
+                    Swal.fire({
+                        title: 'Error de validación',
+                        text: errors.name,
+                        icon: 'error',
+                        confirmButtonText: 'Entendido',
+                    });
+                }
+            },
+            onSuccess: () => {
+                structureName.value = '';
+                sellingPrice.value = null;
+                categoriesSelected.value = [];
+                Swal.fire({
+                    title: '¡Éxito!',
+                    text: 'Estructura guardada correctamente',
+                    icon: 'success',
+                    confirmButtonText: 'Aceptar',
+                });
+            },
+        },
+    );
 };
 </script>
 
 <template>
-    <div class="border-sidebar-border/70 dark:border-sidebar-border relative col-span-2 aspect-video overflow-hidden rounded-xl border flex flex-col p-4 gap-4">
-        <div class="flex flex-wrap items-center justify-between gap-4 w-full bg-slate-50/50 dark:bg-slate-900/20 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
+    <div
+        class="border-sidebar-border/70 dark:border-sidebar-border relative col-span-2 flex aspect-video flex-col gap-4 overflow-hidden rounded-xl border p-4"
+    >
+        <div
+            class="flex w-full flex-wrap items-center justify-between gap-4 rounded-lg border border-slate-200 bg-slate-50/50 p-3 dark:border-slate-800 dark:bg-slate-900/20"
+        >
             <div class="flex flex-wrap items-center gap-3">
                 <Popover v-model:open="open">
                     <PopoverTrigger as-child>
-                        <Button variant="outline" class="h-10 justify-between border-slate-200 bg-white shadow-sm hover:border-indigo-300 transition-all font-semibold">
-                            <ChevronDown class="h-4 w-4 mr-2 opacity-50" />
+                        <Button
+                            variant="outline"
+                            class="h-10 justify-between border-slate-200 bg-white font-semibold shadow-sm transition-all hover:border-indigo-300"
+                        >
+                            <ChevronDown class="mr-2 h-4 w-4 opacity-50" />
                             Añadir Categoría a Estructura
                         </Button>
                     </PopoverTrigger>
                     <PopoverContent class="w-[300px] p-0 shadow-xl">
-                        <div class="flex items-center border-b px-3 bg-slate-50/50">
-                            <Search class="mr-2 h-4 w-4 shrink-0 opacity-50 text-indigo-600" />
-                            <Input 
-                                v-model="searchQuery" 
-                                placeholder="Buscar categoría..." 
-                                class="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground border-0 focus-visible:ring-0" 
+                        <div class="flex items-center border-b bg-slate-50/50 px-3">
+                            <Search class="mr-2 h-4 w-4 shrink-0 text-indigo-600 opacity-50" />
+                            <Input
+                                v-model="searchQuery"
+                                placeholder="Buscar categoría..."
+                                class="placeholder:text-muted-foreground flex h-11 w-full rounded-md border-0 bg-transparent py-3 text-sm outline-none focus-visible:ring-0"
                             />
                         </div>
                         <div class="max-h-[300px] overflow-y-auto p-1">
-                            <div 
-                                v-for="category in (filteredCategories || [])" 
+                            <div
+                                v-for="category in filteredCategories || []"
                                 :key="category?.id"
-                                class="relative flex cursor-default select-none items-center rounded-sm px-3 py-2.5 text-sm hover:bg-indigo-50 hover:text-indigo-900 cursor-pointer transition-colors"
+                                class="relative flex cursor-default cursor-pointer items-center rounded-sm px-3 py-2.5 text-sm transition-colors select-none hover:bg-indigo-50 hover:text-indigo-900"
                                 @click="selectCategory(category)"
                             >
                                 {{ category?.name }}
                             </div>
-                            <div v-if="filteredCategories?.length === 0" class="py-10 text-center text-sm text-muted-foreground italic">
+                            <div v-if="filteredCategories?.length === 0" class="text-muted-foreground py-10 text-center text-sm italic">
                                 No se encontraron resultados.
                             </div>
                         </div>
                     </PopoverContent>
                 </Popover>
 
-                <div class="flex items-center gap-3 h-10 px-3 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-md shadow-sm">
-                    <div class="flex items-center gap-2 border-r pr-3 border-slate-100 dark:border-slate-800">
-                        <span class="text-[10px] font-bold uppercase text-slate-500 whitespace-nowrap">Precio Venta</span>
-                        <Input type="number" v-model="sellingPrice" class="w-20 h-7 text-xs font-bold border-none bg-slate-50/50 focus-visible:ring-0 text-center" placeholder="0.00" />
+                <div
+                    class="flex h-10 items-center gap-3 rounded-md border border-slate-200 bg-white px-3 shadow-sm dark:border-slate-800 dark:bg-slate-950"
+                >
+                    <div class="flex items-center gap-2 border-r border-slate-100 pr-3 dark:border-slate-800">
+                        <span class="text-[10px] font-bold whitespace-nowrap text-slate-500 uppercase">Precio Venta</span>
+                        <Input
+                            type="number"
+                            v-model="sellingPrice"
+                            class="h-7 w-20 border-none bg-slate-50/50 text-center text-xs font-bold focus-visible:ring-0"
+                            placeholder="0.00"
+                        />
                     </div>
                     <div class="flex items-center gap-2">
-                        <span class="text-[10px] font-bold uppercase text-indigo-600 dark:text-indigo-400">Margen</span>
+                        <span class="text-[10px] font-bold text-indigo-600 uppercase dark:text-indigo-400">Margen</span>
                         <span class="text-sm font-black text-slate-900 dark:text-white">{{ costMargin }}%</span>
                     </div>
                 </div>
             </div>
 
             <div class="flex items-center gap-2">
-                <div class="relative group">
-                    <Input v-model="structureName" placeholder="Nombre de estructura..." class="h-10 w-[200px] border-slate-200 focus:border-indigo-400 transition-all pl-9" />
-                    <Save class="absolute left-3 top-3 h-4 w-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                <div class="group relative">
+                    <Input
+                        v-model="structureName"
+                        placeholder="Nombre de estructura..."
+                        class="h-10 w-[200px] border-slate-200 pl-9 transition-all focus:border-indigo-400"
+                    />
+                    <Save class="absolute top-3 left-3 h-4 w-4 text-slate-400 transition-colors group-focus-within:text-indigo-500" />
                 </div>
-                <Button @click="saveStructure" class="h-10 px-4 bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200 dark:shadow-none transition-all flex items-center gap-2 font-semibold">
+                <Button
+                    @click="saveStructure"
+                    class="flex h-10 items-center gap-2 bg-indigo-600 px-4 font-semibold text-white shadow-md shadow-indigo-200 transition-all hover:bg-indigo-700 dark:shadow-none"
+                >
                     Guardar Estructura
                 </Button>
             </div>
@@ -288,14 +323,30 @@ const saveStructure = () => {
                 </TableRow>
             </TableHeader>
             <TableBody>
-                <TableRow v-for="(category, index) in (categoriesSelected || [])" :key="category?.id" class="odd:bg-muted/30 even:bg-transparent hover:bg-muted/50 transition-colors">
+                <TableRow
+                    v-for="(category, index) in categoriesSelected || []"
+                    :key="category?.id"
+                    class="odd:bg-muted/30 hover:bg-muted/50 transition-colors even:bg-transparent"
+                >
                     <TableCell class="w-[105px]">
                         <div class="flex items-center justify-center gap-1">
-                            <Button variant="outline" size="icon" class="h-7 w-7 text-muted-foreground hover:text-foreground" :disabled="index === 0" @click="moveCategoryUp(index)">
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                class="text-muted-foreground hover:text-foreground h-7 w-7"
+                                :disabled="index === 0"
+                                @click="moveCategoryUp(index)"
+                            >
                                 <ChevronUp class="h-4 w-4" />
                             </Button>
-                            <span class="font-bold w-6 text-center text-sm">{{ index + 1 }}</span>
-                            <Button variant="outline" size="icon" class="h-7 w-7 text-muted-foreground hover:text-foreground" :disabled="index === (categoriesSelected?.length || 0) - 1" @click="moveCategoryDown(index)">
+                            <span class="w-6 text-center text-sm font-bold">{{ index + 1 }}</span>
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                class="text-muted-foreground hover:text-foreground h-7 w-7"
+                                :disabled="index === (categoriesSelected?.length || 0) - 1"
+                                @click="moveCategoryDown(index)"
+                            >
                                 <ChevronDown class="h-4 w-4" />
                             </Button>
                         </div>
@@ -303,50 +354,88 @@ const saveStructure = () => {
                     <TableCell class="font-medium text-indigo-600 dark:text-indigo-400">
                         {{ category?.name }}
                     </TableCell>
-                    <TableCell class="text-right"> 
+                    <TableCell class="text-right">
                         <div class="flex items-center justify-end gap-2">
-                            <Input type="number" v-model="category.reference_volume" class="h-9 w-full rounded-md border border-indigo-200 bg-indigo-50/30 text-center font-medium text-indigo-600 shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-indigo-400 dark:border-indigo-900/50 dark:bg-indigo-900/10 dark:text-indigo-400" />
-                            <span class="text-xs font-semibold text-muted-foreground uppercase w-16 text-left">{{ category?.measurement_unit || category?.mesearument_unit || 'UNID' }}</span>
+                            <Input
+                                type="number"
+                                v-model="category.reference_volume"
+                                class="h-9 w-full rounded-md border border-indigo-200 bg-indigo-50/30 text-center font-medium text-indigo-600 shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-indigo-400 dark:border-indigo-900/50 dark:bg-indigo-900/10 dark:text-indigo-400"
+                            />
+                            <span class="text-muted-foreground w-16 text-left text-xs font-semibold uppercase">{{
+                                category?.measurement_unit || category?.mesearument_unit || 'UNID'
+                            }}</span>
                         </div>
                     </TableCell>
                     <TableCell class="text-right">
-                        <Input type="number" v-model="category.ration" class="h-9 rounded-md border border-sky-200 bg-sky-50/30 text-center font-medium text-sky-600 shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-sky-400 dark:border-sky-900/50 dark:bg-sky-900/10 dark:text-sky-400" />
-                    </TableCell>
-                    <TableCell class="text-right"> 
-                        <Input type="number" v-model="category.unit_cost" class="h-9 rounded-md border border-emerald-200 bg-emerald-50/30 text-center font-medium text-emerald-600 shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-emerald-400 dark:border-emerald-900/50 dark:bg-emerald-900/10 dark:text-emerald-400" />
-                    </TableCell>
-                    <TableCell class="text-right"> 
-                        <Input type="number" v-model="category.total_cost" readonly class="h-9 rounded-md border border-rose-200 bg-rose-100 text-center font-semibold text-rose-700 shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-rose-400 dark:border-rose-900/50 dark:bg-rose-900/30 dark:text-rose-400" />
-                    </TableCell>
-                    <TableCell class="text-right"> 
-                        <Input type="number" v-model="category.unit_cost_superior" readonly class="h-9 rounded-md border border-amber-200 bg-amber-50 text-center font-medium text-amber-600 shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-amber-400 dark:border-amber-900/50 dark:bg-amber-900/30 dark:text-amber-400" />
-                    </TableCell>
-                    <TableCell class="text-right"> 
-                        <Input type="number" v-model="category.total_cost_superior" readonly class="h-9 rounded-md border border-orange-200 bg-orange-100 text-center font-semibold text-orange-700 shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-orange-400 dark:border-orange-900/50 dark:bg-orange-900/30 dark:text-orange-400" />
+                        <Input
+                            type="number"
+                            v-model="category.ration"
+                            class="h-9 rounded-md border border-sky-200 bg-sky-50/30 text-center font-medium text-sky-600 shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-sky-400 dark:border-sky-900/50 dark:bg-sky-900/10 dark:text-sky-400"
+                        />
                     </TableCell>
                     <TableCell class="text-right">
-                        <Button variant="ghost" size="icon" class="h-8 w-8 text-muted-foreground hover:text-destructive" @click="deleteCategory(index)">
+                        <Input
+                            type="number"
+                            v-model="category.unit_cost"
+                            class="h-9 rounded-md border border-emerald-200 bg-emerald-50/30 text-center font-medium text-emerald-600 shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-emerald-400 dark:border-emerald-900/50 dark:bg-emerald-900/10 dark:text-emerald-400"
+                        />
+                    </TableCell>
+                    <TableCell class="text-right">
+                        <Input
+                            type="number"
+                            v-model="category.total_cost"
+                            readonly
+                            class="h-9 rounded-md border border-rose-200 bg-rose-100 text-center font-semibold text-rose-700 shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-rose-400 dark:border-rose-900/50 dark:bg-rose-900/30 dark:text-rose-400"
+                        />
+                    </TableCell>
+                    <TableCell class="text-right">
+                        <Input
+                            type="number"
+                            v-model="category.unit_cost_superior"
+                            readonly
+                            class="h-9 rounded-md border border-amber-200 bg-amber-50 text-center font-medium text-amber-600 shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-amber-400 dark:border-amber-900/50 dark:bg-amber-900/30 dark:text-amber-400"
+                        />
+                    </TableCell>
+                    <TableCell class="text-right">
+                        <Input
+                            type="number"
+                            v-model="category.total_cost_superior"
+                            readonly
+                            class="h-9 rounded-md border border-orange-200 bg-orange-100 text-center font-semibold text-orange-700 shadow-sm transition-colors focus-visible:ring-1 focus-visible:ring-orange-400 dark:border-orange-900/50 dark:bg-orange-900/30 dark:text-orange-400"
+                        />
+                    </TableCell>
+                    <TableCell class="text-right">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            class="text-muted-foreground hover:text-destructive h-8 w-8"
+                            @click="deleteCategory(index)"
+                        >
                             <Trash class="h-4 w-4" />
                         </Button>
                     </TableCell>
                 </TableRow>
             </TableBody>
             <TableFooter v-if="(categoriesSelected?.length || 0) > 0">
-                <TableRow class="hover:bg-transparent bg-slate-50/50 dark:bg-slate-900/10">
-                    <TableCell colspan="5" class="text-right font-bold text-xs uppercase text-slate-500 pr-4">Resumen de Costos:</TableCell>
-                    <TableCell class="text-right p-2">
+                <TableRow class="bg-slate-50/50 hover:bg-transparent dark:bg-slate-900/10">
+                    <TableCell colspan="5" class="pr-4 text-right text-xs font-bold text-slate-500 uppercase">Resumen de Costos:</TableCell>
+                    <TableCell class="p-2 text-right">
                         <div class="flex flex-col items-center">
-                            <span class="text-[9px] font-black uppercase text-rose-600 mb-0.5">Costo Inferior</span>
-                            <div class="h-8 w-full rounded border-2 border-rose-200 bg-rose-50 text-center font-bold text-rose-700 shadow-sm flex items-center justify-center dark:border-rose-900/50 dark:bg-rose-900/30 dark:text-rose-400 text-sm">
+                            <span class="mb-0.5 text-[9px] font-black text-rose-600 uppercase">Costo Inferior</span>
+                            <div
+                                class="flex h-8 w-full items-center justify-center rounded border-2 border-rose-200 bg-rose-50 text-center text-sm font-bold text-rose-700 shadow-sm dark:border-rose-900/50 dark:bg-rose-900/30 dark:text-rose-400"
+                            >
                                 {{ totalBaseCost }}
                             </div>
                         </div>
                     </TableCell>
                     <TableCell class="text-right"></TableCell>
-                    <TableCell class="text-right p-2">
+                    <TableCell class="p-2 text-right">
                         <div class="flex flex-col items-center">
-                            <span class="text-[9px] font-black uppercase text-amber-600 mb-0.5">Costo Superior</span>
-                            <div class="h-8 w-full rounded border-2 border-amber-200 bg-amber-50 text-center font-bold text-amber-700 shadow-sm flex items-center justify-center dark:border-amber-900/50 dark:bg-amber-900/30 dark:text-amber-400 text-sm">
+                            <span class="mb-0.5 text-[9px] font-black text-amber-600 uppercase">Costo Superior</span>
+                            <div
+                                class="flex h-8 w-full items-center justify-center rounded border-2 border-amber-200 bg-amber-50 text-center text-sm font-bold text-amber-700 shadow-sm dark:border-amber-900/50 dark:bg-amber-900/30 dark:text-amber-400"
+                            >
                                 {{ totalSuperiorCost }}
                             </div>
                         </div>

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, Link } from '@inertiajs/vue3';
-import { PurchaseOrder } from '@/types';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import AppLayout from '@/layouts/AppLayout.vue';
+import { PurchaseOrder } from '@/types';
+import { Head, Link } from '@inertiajs/vue3';
 import dayjs from 'dayjs';
 
 interface Props {
@@ -46,12 +46,13 @@ defineProps<Props>();
                                 <TableCell class="font-medium">#{{ order.id }}</TableCell>
                                 <TableCell>{{ order.program?.cafe?.name }}</TableCell>
                                 <TableCell>
-                                    {{ dayjs(order.program?.start_date).format('DD/MM/YYYY') }} - 
+                                    {{ dayjs(order.program?.start_date).format('DD/MM/YYYY') }} -
                                     {{ dayjs(order.program?.end_date).format('DD/MM/YYYY') }}
                                 </TableCell>
                                 <TableCell>{{ dayjs(order.created_at).format('DD/MM/YYYY HH:mm') }}</TableCell>
                                 <TableCell>
-                                    <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize"
+                                    <span
+                                        class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold capitalize"
                                         :class="order.status === 'pendiente' ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'"
                                     >
                                         {{ order.status }}
@@ -64,7 +65,7 @@ defineProps<Props>();
                                 </TableCell>
                             </TableRow>
                             <TableRow v-if="orders.length === 0">
-                                <TableCell colspan="6" class="py-10 text-center text-muted-foreground">
+                                <TableCell colspan="6" class="text-muted-foreground py-10 text-center">
                                     No se han generado órdenes de compra todavía.
                                 </TableCell>
                             </TableRow>

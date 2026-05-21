@@ -31,8 +31,20 @@ const isOpen = ref(false);
 const isEditMode = computed(() => !!props.staff);
 
 // Composables
-const { form, errorsSend, showErrors, prendasFijas, cafesUnitSelected, handleSubmit, updateStaff, selectCafe, selectRole, selectUnit, selectArea, selectGuard } =
-    useStaffForm();
+const {
+    form,
+    errorsSend,
+    showErrors,
+    prendasFijas,
+    cafesUnitSelected,
+    handleSubmit,
+    updateStaff,
+    selectCafe,
+    selectRole,
+    selectUnit,
+    selectArea,
+    selectGuard,
+} = useStaffForm();
 
 const { fileInput, imagePreview, triggerFileInput, handleImageUpload, removeImage, selectedFile } = useImageUpload();
 
@@ -47,20 +59,24 @@ watch(selectedFile, (newFile) => {
 });
 
 const updateAvailableClothes = (initialStaffClothes?: any[]) => {
-    prendasFijas.value.forEach(p => {
+    prendasFijas.value.forEach((p) => {
         let talla = '';
         if (initialStaffClothes) {
-            const match = initialStaffClothes.find(sc => sc.clothe_name === p.label);
+            const match = initialStaffClothes.find((sc) => sc.clothe_name === p.label);
             if (match) talla = match.clothing_size;
         }
         p.talla = talla;
     });
 };
 
-watch(() => props.staff, (newStaff) => {
-    initializeStaffData(newStaff, props.units);
-    updateAvailableClothes(newStaff?.staff_clothes);
-}, { immediate: true });
+watch(
+    () => props.staff,
+    (newStaff) => {
+        initializeStaffData(newStaff, props.units);
+        updateAvailableClothes(newStaff?.staff_clothes);
+    },
+    { immediate: true },
+);
 
 // Handlers
 const onSubmit = () => {

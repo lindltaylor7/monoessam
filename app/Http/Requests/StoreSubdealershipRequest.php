@@ -28,7 +28,6 @@ class StoreSubdealershipRequest extends FormRequest
             'legal_address' => 'nullable|string|max:500',
             'phone' => 'nullable|string|max:20',
             'email' => 'nullable|email|max:255|unique:subdealerships,email',
-            'dealership_id' => 'required|exists:dealerships,id',
         ];
     }
 }

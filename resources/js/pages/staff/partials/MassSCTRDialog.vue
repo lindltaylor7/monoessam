@@ -1,20 +1,12 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useForm } from '@inertiajs/vue3';
 import { Button } from '@/components/ui/button';
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { FileUp, Loader2, CheckCircle2 } from 'lucide-vue-next';
+import { useForm } from '@inertiajs/vue3';
+import { CheckCircle2, FileUp, Loader2 } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
+import { ref } from 'vue';
 
 const props = defineProps<{
     selectedIds: number[];
@@ -43,7 +35,7 @@ const handleFileChange = (e: Event, field: 'sctr_vida_ley' | 'sctr_pension_salud
 
 const onSubmit = () => {
     form.staffIds = props.selectedIds;
-    
+
     form.post(route('staff.mass-upload-sctr'), {
         onSuccess: () => {
             Swal.fire({
@@ -51,7 +43,7 @@ const onSubmit = () => {
                 title: 'Éxito',
                 text: 'Documentos cargados exitosamente',
                 timer: 2000,
-                showConfirmButton: false
+                showConfirmButton: false,
             });
             open.value = false;
             form.reset();
@@ -63,7 +55,7 @@ const onSubmit = () => {
                 title: 'Error',
                 text: 'Ocurrió un error al cargar los documentos',
             });
-        }
+        },
     });
 };
 </script>
@@ -71,7 +63,7 @@ const onSubmit = () => {
 <template>
     <Dialog v-model:open="open">
         <DialogTrigger as-child>
-            <Button size="sm" class="bg-blue-600 hover:bg-blue-700 text-white flex gap-2">
+            <Button size="sm" class="flex gap-2 bg-blue-600 text-white hover:bg-blue-700">
                 <FileUp class="h-4 w-4" />
                 Asignar SCTR (Masivo)
             </Button>
@@ -79,50 +71,46 @@ const onSubmit = () => {
         <DialogContent class="sm:max-w-[500px]">
             <DialogHeader>
                 <DialogTitle>Carga Masiva de SCTR</DialogTitle>
-                <DialogDescription>
-                    Se asignarán estos documentos a los {{ selectedIds.length }} colaboradores seleccionados.
-                </DialogDescription>
+                <DialogDescription> Se asignarán estos documentos a los {{ selectedIds.length }} colaboradores seleccionados. </DialogDescription>
             </DialogHeader>
 
             <div class="grid gap-6 py-4">
-                <div class="space-y-4 rounded-lg border p-3 bg-zinc-50/50">
+                <div class="space-y-4 rounded-lg border bg-zinc-50/50 p-3">
                     <div class="grid gap-2">
                         <Label for="vida_ley" class="text-sm font-semibold">SCTR Vida Ley (PDF)</Label>
                         <Input id="vida_ley" type="file" accept=".pdf" @change="handleFileChange($event, 'sctr_vida_ley')" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="vida_ley_exp" class="text-xs text-muted-foreground">Fecha Expiración Vida Ley</Label>
+                        <Label for="vida_ley_exp" class="text-muted-foreground text-xs">Fecha Expiración Vida Ley</Label>
                         <Input id="vida_ley_exp" type="date" v-model="form.sctr_vida_ley_exp" />
                     </div>
                 </div>
 
-                <div class="space-y-4 rounded-lg border p-3 bg-zinc-50/50">
+                <div class="space-y-4 rounded-lg border bg-zinc-50/50 p-3">
                     <div class="grid gap-2">
                         <Label for="pension_salud" class="text-sm font-semibold">SCTR Pensión y Salud (PDF)</Label>
                         <Input id="pension_salud" type="file" accept=".pdf" @change="handleFileChange($event, 'sctr_pension_salud')" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="pension_salud_exp" class="text-xs text-muted-foreground">Fecha Expiración Pensión y Salud</Label>
+                        <Label for="pension_salud_exp" class="text-muted-foreground text-xs">Fecha Expiración Pensión y Salud</Label>
                         <Input id="pension_salud_exp" type="date" v-model="form.sctr_pension_salud_exp" />
                     </div>
                 </div>
 
-                <div class="space-y-4 rounded-lg border p-3 bg-zinc-50/50">
+                <div class="space-y-4 rounded-lg border bg-zinc-50/50 p-3">
                     <div class="grid gap-2">
                         <Label for="socavon" class="text-sm font-semibold">SCTR Socavón (PDF)</Label>
                         <Input id="socavon" type="file" accept=".pdf" @change="handleFileChange($event, 'sctr_socavon')" />
                     </div>
                     <div class="grid gap-2">
-                        <Label for="socavon_exp" class="text-xs text-muted-foreground">Fecha Expiración Socavón</Label>
+                        <Label for="socavon_exp" class="text-muted-foreground text-xs">Fecha Expiración Socavón</Label>
                         <Input id="socavon_exp" type="date" v-model="form.sctr_socavon_exp" />
                     </div>
                 </div>
             </div>
 
             <DialogFooter>
-                <Button variant="outline" @click="open = false" :disabled="form.processing">
-                    Cancelar
-                </Button>
+                <Button variant="outline" @click="open = false" :disabled="form.processing"> Cancelar </Button>
                 <Button @click="onSubmit" :disabled="form.processing" class="bg-blue-600 hover:bg-blue-700">
                     <Loader2 v-if="form.processing" class="mr-2 h-4 w-4 animate-spin" />
                     <CheckCircle2 v-else class="mr-2 h-4 w-4" />

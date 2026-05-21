@@ -48,7 +48,7 @@ class SaleController extends Controller
             ->paginate(10);
 
         return Inertia::render('sales/Index', [
-            'dinners' => Dinner::with('cafe')->get(),
+            'dinners' => Dinner::with(['subdealership', 'mine'])->get(),
             'services' => Service::all(),
             'units' => $user->units()->with('cafes')->get(),
             'cafes' => $cafes,
@@ -73,9 +73,164 @@ class SaleController extends Controller
      */
     public function store(Request $request)
     {
-        $dinner = Dinner::create($request->all());
+        $services = json_decode($request->services, true) ?? [];
 
-        return redirect()->back();
+        $dinner = Dinner::where('dni', $request->dni)
+            ->with(['mine', 'subdealership'])
+            ->first();
+
+        if (!$dinner) {
+            return response()->json([
+                'message' => 'No se encontró un comensal con ese DNI.',
+            ], 404);
+        }
+
+        // Validate mine and subdealership access
+        $user       = Auth::user();
+        $userMineId = $user->mine_id;
+
+        if ($userMineId) {
+            if ($dinner->mine_id && $dinner->mine_id !== $userMineId) {
+                return response()->json([
+                    'message' => 'Este comensal pertenece a otra mina y no puede ser atendido en esta instalación.',
+                    'dinner'  => $dinner->only(['id', 'name', 'dni']),
+                ], 403);
+            }
+
+            if ($dinner->subdealership_id) {
+                $linked = \Illuminate\Support\Facades\DB::table('mine_subdealerships')
+                    ->where('mine_id', $userMineId)
+                    ->where('subdealership_id', $dinner->subdealership_id)
+                    ->exists();
+
+                if (!$linked) {
+                    return response()->json([
+                        'message' => 'La subconcesionaria de este comensal no está asociada a la mina en la que usted opera.',
+                        'dinner'  => $dinner->only(['id', 'name', 'dni']),
+                    ], 403);
+                }
+            }
+        }
+
+        $cafe = Cafe::with('businesses')->find($request->cafe_id);
+
+        if (!$cafe) {
+            return response()->json([
+                'message' => 'Cafetería no encontrada.',
+            ], 404);
+        }
+
+        // Duplicate service check — must run before Sale::create (bypass with force=true)
+        if (!$request->boolean('force')) {
+            $newCodes = collect($services)->pluck('code')->toArray();
+
+            $conflicts = Sale::with('cafe')
+                ->where('dinner_id', $dinner->id)
+                ->where('date', $request->date)
+                ->whereHas('tickets.ticket_details', fn($q) => $q->whereIn('code', $newCodes))
+                ->with(['tickets' => fn($q) => $q->with(['ticket_details' => fn($q2) => $q2->whereIn('code', $newCodes)])])
+                ->get()
+                ->flatMap(fn($s) => $s->tickets->flatMap(
+                    fn($ticket) => $ticket->ticket_details->map(fn($td) => [
+                        'service_name' => $td->service_name,
+                        'service_code' => $td->code,
+                        'cafe_name'    => $s->cafe?->name ?? 'Cafetería desconocida',
+                    ])
+                ))
+                ->unique(fn($c) => $c['service_code'] . '|' . $c['cafe_name'])
+                ->values();
+
+            if ($conflicts->isNotEmpty()) {
+                return response()->json([
+                    'duplicate' => true,
+                    'message'   => 'Este comensal ya consumió uno o más de estos servicios hoy.',
+                    'dinner'    => $dinner->only(['id', 'name', 'dni']),
+                    'conflicts' => $conflicts,
+                ], 409);
+            }
+        }
+
+        $total = array_reduce($services, function ($carry, $service) {
+            return $carry + ($service['price'] ?? 0);
+        }, 0);
+
+        if ($request->double_price === 'true') {
+            $total *= 2;
+        }
+
+        $sale = Sale::create([
+            'dinner_id'                    => $dinner->id,
+            'cafe_id'                      => $cafe->id,
+            'date'                         => $request->date,
+            'serial_number'                => 'F00',
+            'sale_type_id'                 => $request->sale_type_id,
+            'payment_method_id'            => null,
+            'business_id'                  => $cafe->businesses->first()?->id,
+            'total_discounts'              => 0.0,
+            'total_non_taxable_operations' => 0.0,
+            'total_taxable_operations'     => 0.0,
+            'total_unaffected_operations'  => 0.0,
+            'total_exonerated_operations'  => 0.0,
+            'total_exported_operations'    => 0.0,
+            'total_igv'                    => $total * 0.18,
+            'total_icsc'                   => 0.0,
+            'total_other_taxes'            => 0.0,
+            'total_other_charges'          => 0.0,
+            'total'                        => $total,
+            'status'                       => 1,
+        ]);
+
+        $ticket = null;
+
+        if ($request->receipt_type == 1) {
+            $subdealership = $dinner->subdealership;
+
+            $ticket = Ticket::create([
+                'sale_id'            => $sale->id,
+                'dinner_id'          => $dinner->id,
+                'dinner_name'        => $dinner->name,
+                'dni'                => $request->dni,
+                'subdealership_name' => $subdealership?->name ?? '',
+                'serial_number'      => 'T00',
+                'subdealership_ruc'  => $subdealership?->ruc ?? '',
+                'price_value'        => $sale->total,
+                'igv'                => $sale->total_igv,
+                'status'             => 1,
+            ]);
+
+            foreach ($services as $service) {
+                Ticket_detail::create([
+                    'ticket_id'    => $ticket->id,
+                    'service_id'   => $service['serviceID'],
+                    'code'         => $service['code'],
+                    'service_name' => $service['name'],
+                    'amount'       => $service['quantity'] ?? 1,
+                    'um'           => 'UNI',
+                    'service_type' => $service['serviceID'],
+                    'description'  => '',
+                    'unit_value'   => $service['price'],
+                    'unit_price'   => $service['unit_price'] ?? $service['price'],
+                    'sale_value'   => $service['price'],
+                    'igv'          => $service['price'] * 0.18,
+                    'total'        => $service['price'],
+                ]);
+            }
+
+            $ticket->load('ticket_details');
+        }
+
+        $recentSales = Sale::with(['tickets', 'tickets.ticket_details', 'tickets.dinner', 'sale_details'])
+            ->where('cafe_id', $cafe->id)
+            ->where('date', $sale->date)
+            ->orderBy('id', 'desc')
+            ->get();
+
+        return response()->json([
+            'dinner'  => $dinner,
+            'ticket'  => $ticket,
+            'message' => 'Venta registrada correctamente.',
+            'sales'   => $recentSales,
+        ], 200);
     }
 
     /**

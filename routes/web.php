@@ -170,6 +170,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('subdealerships')->name('subdealerships.')->group(function () {
         Route::get('/', [SubdealershipController::class, 'index'])->name('index');
         Route::post('/', [SubdealershipController::class, 'store'])->name('store');
+        Route::get('/search', [SubdealershipController::class, 'search'])->name('search');
+        Route::post('/{subdealership}/attach', [SubdealershipController::class, 'attachToMine'])->name('attach');
         Route::get('/{subdealership}', [SubdealershipController::class, 'show'])->name('show');
         Route::put('/{subdealership}', [SubdealershipController::class, 'update'])->name('update');
         Route::delete('/{id}', [SubdealershipController::class, 'destroy'])->name('destroy');
@@ -236,8 +238,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // CENAS Y COMIDAS
     // ========================================================================
     Route::prefix('dinners')->name('dinners.')->group(function () {
-        // Route::get('/', [DinnerController::class, 'index'])->name('index');
         Route::get('/', [DinnerController::class, 'index'])->name('index');
+        Route::get('/check-dni', [DinnerController::class, 'checkDni'])->name('check-dni');
+        Route::post('/save', [DinnerController::class, 'save'])->name('save');
+        Route::put('/{dinner}', [DinnerController::class, 'update'])->name('update');
+        Route::delete('/{dinner}', [DinnerController::class, 'destroy'])->name('destroy');
         Route::post('/', [DinnerController::class, 'store'])->name('store');
         Route::get('pagination/{offset}', [DinnerController::class, 'pagination'])->name('pagination');
         Route::get('report/{dateInitial}/{datFinal}', [DinnerController::class, 'report'])->name('report');
@@ -250,6 +255,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('services')->name('services.')->group(function () {
         Route::get('/', [ServiceController::class, 'index'])->name('index');
         Route::get('list', [ServiceController::class, 'list'])->name('list');
+        Route::get('cafes-data', [ServiceController::class, 'cafesData'])->name('cafes-data');
+        Route::post('cafes/{cafe}/sync', [ServiceController::class, 'syncCafeServices'])->name('sync-cafe');
         Route::post('/', [ServiceController::class, 'store'])->name('store');
         Route::delete('{id}', [ServiceController::class, 'destroy'])->name('destroy');
         Route::put('prices', [ServiceController::class, 'updatePrices'])->name('update-prices');

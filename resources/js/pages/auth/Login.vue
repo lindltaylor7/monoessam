@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import InputError from '@/components/InputError.vue';
-import TextLink from '@/components/TextLink.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -88,7 +87,7 @@ const submit = () => {
                         >
                             Contraseña
                         </Label>
-                       <!--  <TextLink
+                        <!--  <TextLink
                             v-if="canResetPassword"
                             :href="route('password.request')"
                             class="group/link relative text-sm font-medium text-gray-600 transition-colors duration-200 hover:text-red-600"

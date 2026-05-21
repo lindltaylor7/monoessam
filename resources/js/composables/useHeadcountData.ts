@@ -1,6 +1,6 @@
 import { Cafe, Role, User } from '@/types';
 import axios from 'axios';
-import { ref, Ref } from 'vue';
+import { ref } from 'vue';
 
 export function useHeadcountData() {
     const guardsSelected = ref<Cafe[]>([]);
@@ -42,13 +42,13 @@ export function useHeadcountData() {
         // Esta lógica dependía de `selectedCafes` en el componente original para encontrar al usuario completo.
         // Simplificaremos asumiendo que el compoente hijo pasa el usuario o recargamos datos.
         // Por ahora mantenemos la lógica de UI: mover a unassigned.
-        
+
         // NOTA: La lógica original era un poco confusa buscando en `selectedCafes.staffs`.
         // Para refactorizar limpiamente, idealmente el backend debería manejar esto o deberíamos
         // tener todos los usuarios disponibles.
         // Por ahora, recargar los datos del café podría ser lo más seguro para consistencia.
         if (currentCafeId) {
-             fetchCafeData(currentCafeId);
+            fetchCafeData(currentCafeId);
         }
     };
 
@@ -59,7 +59,7 @@ export function useHeadcountData() {
             if (!guard.assigned_roles) {
                 guard.assigned_roles = [];
             }
-            
+
             roles.forEach((role) => {
                 const newRole = {
                     role: {
@@ -78,7 +78,7 @@ export function useHeadcountData() {
     const deleteGuardRole = (guardId: number, roleId: number) => {
         const guard = guardsSelected.value.find((g) => g.id === guardId);
         if (guard) {
-             // @ts-ignore
+            // @ts-ignore
             guard.assigned_roles = guard.assigned_roles.filter((role: any) => role.id !== roleId);
         }
     };

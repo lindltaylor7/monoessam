@@ -1,5 +1,5 @@
-import { Mine, Unit, Cafe } from '@/types';
-import { ref, watch, Ref } from 'vue';
+import { Cafe, Mine, Unit } from '@/types';
+import { ref, watch } from 'vue';
 
 export function useHeadcountSelection(mines: Mine[]) {
     const selectedOptions = ref<{
@@ -48,7 +48,7 @@ export function useHeadcountSelection(mines: Mine[]) {
                 selectedServices.value = [];
             }
         },
-        { deep: true }
+        { deep: true },
     );
 
     return {

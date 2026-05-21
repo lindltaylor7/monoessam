@@ -7,6 +7,7 @@ use App\Models\Area;
 use App\Models\Cafe;
 use App\Models\Dealership;
 use App\Models\Dinner;
+use App\Models\Mine;
 use App\Models\Receipt_type;
 use App\Models\Sale;
 use App\Models\Sale_type;
@@ -29,12 +30,14 @@ class DinnerController extends Controller
     public function index(Request $request)
     {
         $user = Auth::user();
-        $units = $user->units;
-        $cafes = Cafe::whereIn('unit_id', $units->pluck('id'))->get();
+        $mineId = $user->mine_id;
 
-        $query = Dinner::whereIn('cafe_id', $cafes->pluck('id'))->with(['subdealership', 'cafe']);
+        $query = Dinner::with(['subdealership', 'mine']);
 
-        // Aplicar filtros
+        if ($mineId) {
+            $query->where('mine_id', $mineId);
+        }
+
         if ($request->has('search')) {
             $search = $request->get('search');
             $query->where(function ($q) use ($search) {
@@ -44,20 +47,49 @@ class DinnerController extends Controller
             });
         }
 
-        if ($request->has('cafe_id') && $request->cafe_id != 'all') {
-            $query->where('cafe_id', $request->cafe_id);
+        $subdealershipsQuery = Subdealership::query();
+        if ($mineId) {
+            $subdealershipsQuery->whereHas('mines', fn($q) => $q->where('mines.id', $mineId));
         }
 
-        /*    if ($request->has('subdealership_id') && $request->subdealership_id != 'all') {
-            $query->where('subdealership_id', $request->subdealership_id);
-        } */
-
         return Inertia::render('dinners/Index', [
-            'dinners' => $query->paginate(20)->withQueryString(),
-            'cafes' => $cafes,
-            'subdealerships' => Subdealership::all(),
-            'filters' => $request->only(['search', 'cafe_id', 'subdealership_id'])
+            'dinners'        => $query->paginate(20)->withQueryString(),
+            'subdealerships' => $subdealershipsQuery->orderBy('name')->get(['id', 'name']),
+            'filters'        => $request->only(['search']),
         ]);
+    }
+
+    public function checkDni(Request $request)
+    {
+        $dni       = $request->get('dni', '');
+        $excludeId = $request->get('exclude_id');
+
+        $query = Dinner::where('dni', $dni);
+        if ($excludeId) {
+            $query->where('id', '!=', $excludeId);
+        }
+
+        return response()->json(['exists' => $query->exists()]);
+    }
+
+    public function save(Request $request)
+    {
+        $request->validate([
+            'name'             => 'required|string|max:255',
+            'dni'              => 'required|string|max:8|unique:dinners,dni',
+            'phone'            => 'nullable|string|max:20',
+            'subdealership_id' => 'nullable|exists:subdealerships,id',
+        ]);
+
+        Dinner::create([
+            'name'             => $request->name,
+            'dni'              => $request->dni,
+            'phone'            => $request->phone,
+            'subdealership_id' => $request->subdealership_id ?: null,
+            'mine_id'          => Auth::user()->mine_id,
+        ]);
+
+        return redirect()->back()->with('success', 'Comensal registrado correctamente.');
     }
 
 
@@ -133,27 +165,17 @@ class DinnerController extends Controller
     public function store(Request $request)
     {
         $services = json_decode($request->services, true);
-        $dinner = Dinner::where('dni', $request->dni)->with(['cafe', 'cafe.unit', 'subdealership', 'cafe.businesses'])->first();
+        $dinner = Dinner::where('dni', $request->dni)->with(['mine', 'subdealership'])->first();
 
         $boolValue = filter_var($request->double_price, FILTER_VALIDATE_BOOLEAN);
 
-        if ($request->sale_type_id == 1) {
-            if (!$boolValue) {
-                if ($request->cafe_id != $dinner->cafe->id) {
-                    return response()->json([
-                        'message' => 'El usuario pertenece a otra cafetería: ' . $dinner->cafe->name,
-                        'otherCafe' => true
-                    ]);
-                }
-            }
-
-            /* if ($this->verifySale($request->cafe_id, $dinner->id, $services)) {
+        /* if ($request->sale_type_id == 1) {
+            if ($this->verifySale($request->cafe_id, $dinner->id, $services)) {
                 return response()->json([
                     'message' => 'Venta ya registrada a este usuario.',
-                    'verification' => $this->verifySale($request->cafe_id, $dinner->id, $services)
                 ], 404);
-            } */
-        }
+            }
+        } */
 
         $cafe = Cafe::find($request->cafe_id);
         $cafe->load(['businesses']);
@@ -262,20 +284,31 @@ class DinnerController extends Controller
         //
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, string $id)
+    public function update(Request $request, Dinner $dinner)
     {
-        //
+        $request->validate([
+            'name'             => 'required|string|max:255',
+            'dni'              => 'required|string|max:8|unique:dinners,dni,' . $dinner->id,
+            'phone'            => 'nullable|string|max:20',
+            'subdealership_id' => 'nullable|exists:subdealerships,id',
+        ]);
+
+        $dinner->update([
+            'name'             => $request->name,
+            'dni'              => $request->dni,
+            'phone'            => $request->phone,
+            'subdealership_id' => $request->subdealership_id ?: null,
+            'mine_id'          => Auth::user()->mine_id,
+        ]);
+
+        return redirect()->back()->with('success', 'Comensal actualizado correctamente.');
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(string $id)
+    public function destroy(Dinner $dinner)
     {
-        //
+        $dinner->delete();
+
+        return redirect()->back()->with('success', 'Comensal eliminado correctamente.');
     }
 
 

@@ -3,10 +3,10 @@ import Button from '@/components/ui/button/Button.vue';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Permission } from '@/types';
 import { useForm } from '@inertiajs/vue3';
 import { ListCheck, Pencil } from 'lucide-vue-next';
 import { ref, watch } from 'vue';
-import { Permission } from '@/types';
 
 const props = defineProps<{
     permission?: Permission;
@@ -22,14 +22,18 @@ const form = useForm({
 });
 
 // Update form when prop changes (for editing)
-watch(() => props.permission, (newPermission) => {
-    if (newPermission) {
-        form.name = newPermission.name;
-        form.sidebar_name = newPermission.sidebar_name ?? '';
-        form.route_name = newPermission.route_name ?? '';
-        form.icon_class = newPermission.icon_class ?? '';
-    }
-}, { immediate: true });
+watch(
+    () => props.permission,
+    (newPermission) => {
+        if (newPermission) {
+            form.name = newPermission.name;
+            form.sidebar_name = newPermission.sidebar_name ?? '';
+            form.route_name = newPermission.route_name ?? '';
+            form.icon_class = newPermission.icon_class ?? '';
+        }
+    },
+    { immediate: true },
+);
 
 const submit = () => {
     if (props.permission) {

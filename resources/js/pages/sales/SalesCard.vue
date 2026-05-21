@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { Card, CardContent } from '@/components/ui/card';
-import Input from '@/components/ui/input/Input.vue';
-import { ref } from 'vue';
 import Icon from '@/components/Icon.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { UserCheck } from 'lucide-vue-next';
+import { ref } from 'vue';
 
 const props = defineProps({
     services: {
@@ -63,33 +62,36 @@ defineExpose({
 </script>
 
 <template>
-    <Card class="border-none shadow-sm bg-white overflow-hidden py-0">
-        <div class="bg-primary px-6 py-6 text-primary-foreground relative overflow-hidden">
-            <div class="absolute top-0 right-0 -mr-4 -mt-4 h-24 w-24 rounded-full bg-white/10 blur-xl"></div>
+    <Card class="overflow-hidden border-none bg-white py-0 shadow-sm">
+        <div class="bg-primary text-primary-foreground relative overflow-hidden px-6 py-6">
+            <div class="absolute top-0 right-0 -mt-4 -mr-4 h-24 w-24 rounded-full bg-white/10 blur-xl"></div>
             <div class="relative z-10 space-y-4">
                 <div class="flex items-center gap-3">
-                    <div class="h-10 w-10 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-md">
+                    <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 backdrop-blur-md">
                         <UserCheck />
                     </div>
                     <div>
-                        <h3 class="text-xl font-black uppercase tracking-tight leading-none">Identificación</h3>
-                        <p class="text-[10px] font-bold text-white/70 uppercase tracking-widest mt-1">Escanee o ingrese el DNI del comensal</p>
+                        <h3 class="text-xl leading-none font-black tracking-tight uppercase">Identificación</h3>
+                        <p class="mt-1 text-[10px] font-bold tracking-widest text-white/70 uppercase">Escanee o ingrese el DNI del comensal</p>
                     </div>
                 </div>
 
                 <div class="flex gap-2">
                     <div class="relative flex-1">
-                        <Icon name="id-card" class="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-primary" />
+                        <Icon name="id-card" class="text-primary absolute top-1/2 left-4 h-5 w-5 -translate-y-1/2" />
                         <input
                             v-model="dni"
                             type="text"
                             placeholder="Ingrese DNI (8 dígitos)..."
-                            class="w-full h-14 pl-12 pr-4 bg-white text-slate-900 font-black text-xl placeholder:text-slate-300 placeholder:text-sm placeholder:font-bold rounded-2xl border-none focus:ring-4 focus:ring-white/20 transition-all shadow-inner"
+                            class="h-14 w-full rounded-2xl border-none bg-white pr-4 pl-12 text-xl font-black text-slate-900 shadow-inner transition-all placeholder:text-sm placeholder:font-bold placeholder:text-slate-300 focus:ring-4 focus:ring-white/20"
                             @keyup.enter="triggerSearch"
                             maxlength="8"
                         />
                     </div>
-                    <Button @click="triggerSearch" class="h-14 w-14 rounded-2xl bg-white text-primary hover:bg-slate-50 transition-all shadow-lg active:scale-95">
+                    <Button
+                        @click="triggerSearch"
+                        class="text-primary h-14 w-14 rounded-2xl bg-white shadow-lg transition-all hover:bg-slate-50 active:scale-95"
+                    >
                         <Icon name="search" size="24" />
                     </Button>
                 </div>
@@ -97,26 +99,33 @@ defineExpose({
         </div>
 
         <CardContent class="p-6">
-            <div v-if="dinnerFound && dinnerFound.id" class="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div
+                v-if="dinnerFound && dinnerFound.id"
+                class="animate-in fade-in slide-in-from-bottom-4 grid grid-cols-1 gap-6 duration-500 md:grid-cols-2"
+            >
                 <!-- Comensal Info -->
                 <div class="space-y-4">
                     <div class="flex items-center gap-2">
-                        <div class="h-1 w-8 bg-emerald-500 rounded-full"></div>
-                        <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Datos del Comensal</span>
+                        <div class="h-1 w-8 rounded-full bg-emerald-500"></div>
+                        <span class="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">Datos del Comensal</span>
                     </div>
-                    
-                    <div class="bg-slate-50 rounded-2xl p-4 border border-slate-100 flex items-start gap-4 transition-all hover:bg-white hover:shadow-md hover:border-emerald-200 group">
-                        <div class="h-14 w-14 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-600 transition-colors group-hover:bg-emerald-500 group-hover:text-white">
+
+                    <div
+                        class="group flex items-start gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 transition-all hover:border-emerald-200 hover:bg-white hover:shadow-md"
+                    >
+                        <div
+                            class="flex h-14 w-14 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 transition-colors group-hover:bg-emerald-500 group-hover:text-white"
+                        >
                             <Icon name="user" size="24" />
                         </div>
                         <div class="flex-1 space-y-1">
-                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nombre Completo</p>
-                            <p class="text-base font-black text-slate-900 leading-tight uppercase">{{ dinnerFound.name }}</p>
-                            <div class="flex items-center gap-3 mt-2">
-                                <Badge variant="secondary" class="bg-emerald-100 text-emerald-700 font-bold text-[10px]">
+                            <p class="text-[10px] font-bold tracking-widest text-slate-400 uppercase">Nombre Completo</p>
+                            <p class="text-base leading-tight font-black text-slate-900 uppercase">{{ dinnerFound.name }}</p>
+                            <div class="mt-2 flex items-center gap-3">
+                                <Badge variant="secondary" class="bg-emerald-100 text-[10px] font-bold text-emerald-700">
                                     <Icon name="id-card" size="10" class="mr-1" /> {{ dinnerFound.dni }}
                                 </Badge>
-                                <Badge v-if="dinnerFound.phone" variant="secondary" class="bg-slate-200 text-slate-600 font-bold text-[10px]">
+                                <Badge v-if="dinnerFound.phone" variant="secondary" class="bg-slate-200 text-[10px] font-bold text-slate-600">
                                     <Icon name="phone" size="10" class="mr-1" /> {{ dinnerFound.phone }}
                                 </Badge>
                             </div>
@@ -127,22 +136,26 @@ defineExpose({
                 <!-- Subdealership Info -->
                 <div class="space-y-4">
                     <div class="flex items-center gap-2">
-                        <div class="h-1 w-8 bg-blue-500 rounded-full"></div>
-                        <span class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Empresa / Concesionaria</span>
+                        <div class="h-1 w-8 rounded-full bg-blue-500"></div>
+                        <span class="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">Empresa / Concesionaria</span>
                     </div>
-                    
-                    <div class="bg-slate-50 rounded-2xl p-4 border border-slate-100 flex items-start gap-4 transition-all hover:bg-white hover:shadow-md hover:border-blue-200 group">
-                        <div class="h-14 w-14 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 transition-colors group-hover:bg-blue-500 group-hover:text-white">
+
+                    <div
+                        class="group flex items-start gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 transition-all hover:border-blue-200 hover:bg-white hover:shadow-md"
+                    >
+                        <div
+                            class="flex h-14 w-14 items-center justify-center rounded-xl bg-blue-100 text-blue-600 transition-colors group-hover:bg-blue-500 group-hover:text-white"
+                        >
                             <Icon name="building" size="24" />
                         </div>
                         <div class="flex-1 space-y-1">
-                            <p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Razón Social</p>
-                            <p class="text-base font-black text-slate-900 leading-tight uppercase">{{ subdealership.name }}</p>
-                            <div class="flex items-center gap-3 mt-2">
-                                <Badge variant="secondary" class="bg-blue-100 text-blue-700 font-bold text-[10px]">
+                            <p class="text-[10px] font-bold tracking-widest text-slate-400 uppercase">Razón Social</p>
+                            <p class="text-base leading-tight font-black text-slate-900 uppercase">{{ subdealership.name }}</p>
+                            <div class="mt-2 flex items-center gap-3">
+                                <Badge variant="secondary" class="bg-blue-100 text-[10px] font-bold text-blue-700">
                                     <Icon name="hash" size="10" class="mr-1" /> RUC {{ subdealership.ruc }}
                                 </Badge>
-                                <Badge v-if="subdealership.phone" variant="secondary" class="bg-slate-200 text-slate-600 font-bold text-[10px]">
+                                <Badge v-if="subdealership.phone" variant="secondary" class="bg-slate-200 text-[10px] font-bold text-slate-600">
                                     <Icon name="phone" size="10" class="mr-1" /> {{ subdealership.phone }}
                                 </Badge>
                             </div>
@@ -152,13 +165,13 @@ defineExpose({
             </div>
 
             <!-- Empty State -->
-            <div v-else class="flex flex-col items-center justify-center py-12 text-center space-y-4">
-                <div class="h-20 w-20 rounded-full bg-slate-50 flex items-center justify-center text-slate-200">
+            <div v-else class="flex flex-col items-center justify-center space-y-4 py-12 text-center">
+                <div class="flex h-20 w-20 items-center justify-center rounded-full bg-slate-50 text-slate-200">
                     <Icon name="user-check" size="48" stroke-width="1.5" />
                 </div>
                 <div class="space-y-1">
                     <p class="text-lg font-bold text-slate-900 uppercase">Esperando Identificación</p>
-                    <p class="text-sm text-slate-500 max-w-[280px]">Ingrese el DNI para verificar los datos del comensal y registrar el servicio.</p>
+                    <p class="max-w-[280px] text-sm text-slate-500">Ingrese el DNI para verificar los datos del comensal y registrar el servicio.</p>
                 </div>
             </div>
         </CardContent>

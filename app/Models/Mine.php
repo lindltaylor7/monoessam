@@ -29,12 +29,22 @@ class Mine extends Model
     {
         return $this->morphToMany(Business::class, 'businessable');
     }
-    public function dealership()
+    public function dealership(): BelongsTo
     {
         return $this->belongsTo(Dealership::class);
     }
     public function subdealerships(): BelongsToMany
     {
         return $this->BelongsToMany(Subdealership::class, 'mine_subdealerships', 'mine_id', 'subdealership_id');
+    }
+
+    public function users(): HasMany
+    {
+        return $this->hasMany(User::class);
+    }
+
+    public function dinners(): HasMany
+    {
+        return $this->hasMany(Dinner::class);
     }
 }
