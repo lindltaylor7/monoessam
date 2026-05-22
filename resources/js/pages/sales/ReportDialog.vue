@@ -2,73 +2,72 @@
 import Button from '@/components/ui/button/Button.vue';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import Input from '@/components/ui/input/Input.vue';
-import { useForm } from '@inertiajs/vue3';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Unit } from '@/types';
+import { usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import { FileChartColumn, Loader2 } from 'lucide-vue-next';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { utils, writeFile } from 'xlsx';
+
+const props = defineProps<{ units: Unit[]; sale_types: any[] }>();
+
+const page = usePage<any>();
+const userMineId = computed(() => page.props.auth.user?.mine_id as number | null);
+
+const availableCafes = computed(() => {
+    const mineId = userMineId.value;
+    const filtered = mineId ? props.units.filter((u) => u.mine_id === mineId) : props.units;
+    return filtered.flatMap((u) => u.cafes.map((c) => ({ ...c, unitName: u.name })));
+});
 
 const open = ref(false);
 const isLoading = ref(false);
-
-const form = useForm({
-    file: null,
-});
-
-const resultsReport = ref<any[]>([]);
+const cafeId = ref('');
+const saleTypeId = ref('');
 const dateInitial = ref('');
 const dateFinal = ref('');
+const resultsReport = ref<any[]>([]);
 
-const handleFileChange = async () => {
-    if (!dateInitial.value || !dateFinal.value) {
-        alert('Por favor selecciona ambas fechas');
-        return;
-    }
+const fetchReport = async () => {
+    if (!dateInitial.value || !dateFinal.value) return;
 
     isLoading.value = true;
     try {
-        const response = await axios.get(`/sales/report/${dateInitial.value}/${dateFinal.value}`);
+        const params: Record<string, string> = {};
+        if (cafeId.value && cafeId.value !== '0') params.cafe_id = cafeId.value;
+        if (saleTypeId.value && saleTypeId.value !== '0') params.sale_type_id = saleTypeId.value;
+
+        const response = await axios.get(`/sales/report/${dateInitial.value}/${dateFinal.value}`, { params });
         resultsReport.value = response.data;
     } catch (error) {
         console.error('Error al obtener el reporte:', error);
-        alert('Error al generar el reporte');
     } finally {
         isLoading.value = false;
     }
 };
 
 const exportToExcel = () => {
-    if (resultsReport.value.length === 0) {
-        alert('No hay datos para exportar');
-        return;
-    }
+    if (resultsReport.value.length === 0) return;
 
-    // Preparar los datos para Excel
     const dataToExport = resultsReport.value.map((item) => ({
-        Sucursal: item.dinner.subdealership.name,
+        Sucursal: item.dinner?.subdealership?.name ?? '',
         Fecha: new Date(item.date + 'T00:00:00').toLocaleDateString('es-PE', {
             year: 'numeric',
             month: '2-digit',
             day: '2-digit',
             timeZone: 'America/Lima',
         }),
-        DNI: item.dinner.dni,
-        Nombre: item.dinner.name,
-        Tipo: item.tickets[0].ticket_details[0].service_name,
+        DNI: item.dinner?.dni ?? '',
+        Nombre: item.dinner?.name ?? '',
+        Tipo: item.tickets?.[0]?.ticket_details?.[0]?.service_name ?? '',
         Total: `S./${parseFloat(item.total).toFixed(2)}`,
     }));
 
-    // Crear hoja de trabajo
     const worksheet = utils.json_to_sheet(dataToExport);
-
-    // Crear libro de trabajo
     const workbook = utils.book_new();
     utils.book_append_sheet(workbook, worksheet, 'Reporte de Ventas');
-
-    // Generar archivo Excel
-    writeFile(workbook, `Reporte_Ventas_${dateInitial.value}_a_${dateFinal.value}.xlsx`, {
-        compression: true,
-    });
+    writeFile(workbook, `Reporte_Ventas_${dateInitial.value}_a_${dateFinal.value}.xlsx`, { compression: true });
 };
 </script>
 
@@ -93,17 +92,47 @@ const exportToExcel = () => {
                 <!-- Panel de controles -->
                 <div class="space-y-4">
                     <div class="space-y-2">
+                        <label class="block text-sm font-medium text-gray-700">Cafetería</label>
+                        <Select v-model="cafeId">
+                            <SelectTrigger class="w-full">
+                                <SelectValue placeholder="Todas las cafeterías" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="0">Todas las cafeterías</SelectItem>
+                                <SelectItem v-for="cafe in availableCafes" :key="cafe.id" :value="cafe.id.toString()">
+                                    {{ cafe.unitName }} — {{ cafe.name }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div class="space-y-2">
+                        <label class="block text-sm font-medium text-gray-700">Tipo de venta</label>
+                        <Select v-model="saleTypeId">
+                            <SelectTrigger class="w-full">
+                                <SelectValue placeholder="Todos los tipos" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="0">Todos los tipos</SelectItem>
+                                <SelectItem v-for="type in sale_types" :key="type.id" :value="type.id.toString()">
+                                    {{ type.name }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div class="space-y-2">
                         <label class="block text-sm font-medium text-gray-700">Fecha inicial</label>
-                        <Input type="date" v-model="dateInitial" class="w-full" @change="handleFileChange" />
+                        <Input type="date" v-model="dateInitial" class="w-full" />
                     </div>
 
                     <div class="space-y-2">
                         <label class="block text-sm font-medium text-gray-700">Fecha final</label>
-                        <Input type="date" v-model="dateFinal" class="w-full" @change="handleFileChange" :min="dateInitial" />
+                        <Input type="date" v-model="dateFinal" class="w-full" :min="dateInitial" />
                     </div>
 
-                    <div class="pt-4">
-                        <Button @click="handleFileChange" class="w-full bg-blue-600 hover:bg-blue-700" :disabled="isLoading">
+                    <div class="pt-2">
+                        <Button @click="fetchReport" class="w-full bg-blue-600 hover:bg-blue-700" :disabled="isLoading || !dateInitial || !dateFinal">
                             <Loader2 v-if="isLoading" class="mr-2 h-4 w-4 animate-spin" />
                             {{ isLoading ? 'Generando...' : 'Actualizar Vista Previa' }}
                         </Button>

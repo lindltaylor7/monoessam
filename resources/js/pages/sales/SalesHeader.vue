@@ -181,7 +181,7 @@ const addServiceSelected = (service: Service) => {
         <!-- Quick Actions -->
         <div class="grid grid-cols-2 gap-4">
             <!-- <ExcelDialog class="w-full" /> -->
-            <ReportDialog class="w-full" />
+            <ReportDialog class="w-full" :units="units" :sale_types="sale_types" />
         </div>
     </div>
 </template>

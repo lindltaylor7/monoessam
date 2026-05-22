@@ -58,6 +58,11 @@ interface Unit {
     name: string;
 }
 
+interface Business {
+    id: number;
+    name: string;
+}
+
 interface Permission {
     id: number;
     name: string;
@@ -70,6 +75,7 @@ const props = defineProps<{
     areas: Area[];
     units: Unit[];
     mines: Mine[];
+    businesses: Business[];
     permissions: Permission[];
 }>();
 
@@ -259,7 +265,7 @@ const deleteUser = (id: number) => {
             </div>
         </div>
 
-        <UserModal v-model:open="isModalOpen" :user="editingUser" :roles="roles" :areas="areas" :units="units" :mines="mines" />
+        <UserModal v-model:open="isModalOpen" :user="editingUser" :roles="roles" :areas="areas" :units="units" :mines="mines" :businesses="businesses" />
 
         <PermissionModal v-model:open="isPermissionModalOpen" :user="editingUser" :permissions="permissions" />
     </AppLayout>

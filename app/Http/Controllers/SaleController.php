@@ -87,6 +87,7 @@ class SaleController extends Controller
 
         // Validate mine and subdealership access
         $user       = Auth::user();
+        $user->loadMissing('business');
         $userMineId = $user->mine_id;
 
         if ($userMineId) {
@@ -112,7 +113,7 @@ class SaleController extends Controller
             }
         }
 
-        $cafe = Cafe::with('businesses')->find($request->cafe_id);
+        $cafe = Cafe::find($request->cafe_id);
 
         if (!$cafe) {
             return response()->json([
@@ -162,10 +163,12 @@ class SaleController extends Controller
             'dinner_id'                    => $dinner->id,
             'cafe_id'                      => $cafe->id,
             'date'                         => $request->date,
-            'serial_number'                => 'F00',
             'sale_type_id'                 => $request->sale_type_id,
             'payment_method_id'            => null,
-            'business_id'                  => $cafe->businesses->first()?->id,
+            'business_id'                  => $user->business_id,
+            'business_name'                => $user->business?->name,
+            'cafe_name'                    => $cafe->name,
+            'user_id'                      => $user->id,
             'total_discounts'              => 0.0,
             'total_non_taxable_operations' => 0.0,
             'total_taxable_operations'     => 0.0,
@@ -278,6 +281,25 @@ class SaleController extends Controller
         $dinner->delete();
 
         return redirect()->back();
+    }
+
+    public function report(Request $request, string $startDate, string $endDate)
+    {
+        $user = Auth::user();
+        $user->load(['units.cafes']);
+        $cafeIds = $user->units->flatMap->cafes->pluck('id');
+
+        $sales = Sale::whereIn('cafe_id', $cafeIds)
+            ->whereBetween('date', [$startDate, $endDate])
+            ->when($user->business_id, fn($q) => $q->where('business_id', $user->business_id))
+            ->when($request->filled('cafe_id'), fn($q) => $q->where('cafe_id', $request->cafe_id))
+            ->when($request->filled('sale_type_id'), fn($q) => $q->where('sale_type_id', $request->sale_type_id))
+            ->with(['dinner.subdealership', 'tickets.ticket_details'])
+            ->orderBy('date', 'desc')
+            ->orderBy('id', 'desc')
+            ->get();
+
+        return response()->json($sales);
     }
 
     public function search(string $word, string $id)

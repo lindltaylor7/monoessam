@@ -31,6 +31,7 @@ class User extends Authenticatable
         'unit_id',
         'user_id',
         'mine_id',
+        'business_id',
     ];
 
     /**
@@ -87,5 +88,10 @@ class User extends Authenticatable
     public function mine(): BelongsTo
     {
         return $this->belongsTo(Mine::class);
+    }
+
+    public function business(): BelongsTo
+    {
+        return $this->belongsTo(Business::class);
     }
 }

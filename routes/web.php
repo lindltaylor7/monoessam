@@ -295,6 +295,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('{id}', [SaleController::class, 'destroy'])->name('destroy');
         Route::post('excel', [SaleController::class, 'excel'])->name('excel');
         Route::get('search/{word}/{id}', [SaleController::class, 'search'])->name('search');
+        Route::get('report/{startDate}/{endDate}', [SaleController::class, 'report'])->name('report');
     });
 
     // ========================================================================

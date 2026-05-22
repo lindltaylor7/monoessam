@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Events\SessionEnded;
 use App\Models\Area;
+use App\Models\Business;
 use App\Models\Cafe;
 use App\Models\Guard_role;
 use App\Models\Headquarter;
@@ -29,6 +30,7 @@ class UsersController extends Controller
             'areas' => Area::all(),
             'units' => Unit::all(),
             'mines' => Mine::all(),
+            'businesses' => Business::all(),
             'permissions' => Permission::all(),
         ]);
     }
@@ -56,6 +58,7 @@ class UsersController extends Controller
             'email' => $request->email,
             'password' => Hash::make($request->password),
             'mine_id' => $request->mine_id ?: null,
+            'business_id' => $request->business_id ?: null,
         ]);
 
         $role = Role::find($request->role_id);
@@ -107,6 +110,7 @@ class UsersController extends Controller
             'name' => $request->name,
             'email' => $request->email,
             'mine_id' => $request->mine_id ?: null,
+            'business_id' => $request->business_id ?: null,
         ]);
 
         if ($request->filled('password')) {

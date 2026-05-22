@@ -8,7 +8,6 @@ import axios from 'axios';
 import { ShoppingCart } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
 import { computed, ref } from 'vue';
-import SubdealershipsDialog from '../businesses/SubdealershipsDialog.vue';
 import DuplicateServiceModal from './DuplicateServiceModal.vue';
 import OtherUnitDialog from './OtherUnitDialog.vue';
 import SalesCard from './SalesCard.vue';
@@ -31,6 +30,7 @@ interface Props {
 
 const page = usePage<any>();
 const permissions = page.props.auth.permissions;
+const user = computed(() => page.props.auth.user as any);
 const props = defineProps<Props>();
 
 const servicesSelectedToSale = ref<any[]>([]);
@@ -68,11 +68,18 @@ const dateSelected = ref<string>('');
 const showOtherUnitDialog = ref(false);
 const doublePrice = ref(false);
 
-const showError = (message: string) =>
-    Swal.fire({ icon: 'error', title: 'Error', text: message, confirmButtonColor: '#ef4444' });
+const showError = (message: string) => Swal.fire({ icon: 'error', title: 'Error', text: message, confirmButtonColor: '#ef4444' });
 
 const showSuccess = (message: string) =>
-    Swal.fire({ icon: 'success', title: '¡Éxito!', text: message, confirmButtonColor: '#6366f1', timer: 3000, timerProgressBar: true, showConfirmButton: false });
+    Swal.fire({
+        icon: 'success',
+        title: '¡Éxito!',
+        text: message,
+        confirmButtonColor: '#6366f1',
+        timer: 3000,
+        timerProgressBar: true,
+        showConfirmButton: false,
+    });
 
 const dniDinnerSearched = ref('');
 
@@ -204,7 +211,7 @@ const todayTotal = computed(() => {
                         <ShoppingCart />
                     </div>
                     <div>
-                        <h1 class="text-3xl font-extrabold tracking-tight text-slate-900 uppercase">Punto de Venta</h1>
+                        <h1 class="text-3xl font-extrabold tracking-tight text-slate-900 uppercase">Punto de Venta - {{ user?.business?.name }}</h1>
                         <p class="flex items-center gap-2 text-sm font-medium text-slate-500">
                             <span class="flex h-2 w-2 animate-pulse rounded-full bg-emerald-500"></span>
                             Sistema de Registro de Servicios en Tiempo Real
@@ -224,7 +231,6 @@ const todayTotal = computed(() => {
                             <span class="text-primary text-2xl leading-none font-black">S/ {{ todayTotal.toFixed(2) }}</span>
                         </div>
                     </Card>
-                    <SubdealershipsDialog :dealerships="dealerships" v-if="permissions.find((p: any) => p.id == 14)" />
                 </div>
             </div>
 

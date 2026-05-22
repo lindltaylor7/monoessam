@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm } from '@inertiajs/vue3';
-import { watch } from 'vue';
+import { computed, watch } from 'vue';
 
 interface User {
     id: number;
@@ -32,9 +32,15 @@ interface Area {
 interface Unit {
     id: number;
     name: string;
+    mine_id: number | null;
 }
 
 interface Mine {
+    id: number;
+    name: string;
+}
+
+interface Business {
     id: number;
     name: string;
 }
@@ -46,6 +52,7 @@ const props = defineProps<{
     areas: Area[];
     units: Unit[];
     mines: Mine[];
+    businesses: Business[];
 }>();
 
 const emit = defineEmits(['update:open', 'success']);
@@ -57,6 +64,7 @@ const form = useForm({
     role_id: '',
     area_id: '',
     mine_id: '',
+    business_id: '',
     unit_ids: [] as number[],
 });
 
@@ -74,6 +82,7 @@ watch(
                 form.role_id = props.user.roles[0]?.id.toString() || '';
                 form.area_id = props.user.areas[0]?.id.toString() || '';
                 form.mine_id = props.user.mine?.id.toString() || '';
+                form.business_id = (props.user as any).business_id?.toString() || '';
                 form.unit_ids = props.user.units.map((u) => u.id);
             } else {
                 form.reset();
@@ -100,6 +109,19 @@ const submit = () => {
         });
     }
 };
+
+const filteredUnits = computed(() => {
+    if (!form.mine_id) return props.units;
+    return props.units.filter((u) => u.mine_id === Number(form.mine_id));
+});
+
+watch(
+    () => form.mine_id,
+    () => {
+        const validIds = filteredUnits.value.map((u) => u.id);
+        form.unit_ids = form.unit_ids.filter((id) => validIds.includes(id));
+    },
+);
 
 const toggleUnit = (unitId: number) => {
     console.log('calling unit');
@@ -220,30 +242,52 @@ const toggleUnit = (unitId: number) => {
                         </div>
                     </div>
 
-                    <div class="grid gap-2">
-                        <Label for="mine_id" class="text-muted-foreground text-xs font-bold tracking-wider uppercase">Mina Asignada</Label>
-                        <Select v-model="form.mine_id">
-                            <SelectTrigger
-                                :class="{ 'border-destructive shadow-sm': form.errors.mine_id }"
-                                class="border-muted-foreground/20 focus:ring-primary h-10"
-                            >
-                                <SelectValue placeholder="Seleccionar mina" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem v-for="mine in mines" :key="mine.id" :value="mine.id.toString()">
-                                    {{ mine.name }}
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <p v-if="form.errors.mine_id" class="text-destructive text-[0.7rem] font-semibold tracking-tight uppercase">
-                            {{ form.errors.mine_id }}
-                        </p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="grid gap-2">
+                            <Label for="mine_id" class="text-muted-foreground text-xs font-bold tracking-wider uppercase">Mina Asignada</Label>
+                            <Select v-model="form.mine_id">
+                                <SelectTrigger
+                                    :class="{ 'border-destructive shadow-sm': form.errors.mine_id }"
+                                    class="border-muted-foreground/20 focus:ring-primary h-10"
+                                >
+                                    <SelectValue placeholder="Seleccionar mina" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem v-for="mine in mines" :key="mine.id" :value="mine.id.toString()">
+                                        {{ mine.name }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <p v-if="form.errors.mine_id" class="text-destructive text-[0.7rem] font-semibold tracking-tight uppercase">
+                                {{ form.errors.mine_id }}
+                            </p>
+                        </div>
+
+                        <div class="grid gap-2">
+                            <Label for="business_id" class="text-muted-foreground text-xs font-bold tracking-wider uppercase">Empresa</Label>
+                            <Select v-model="form.business_id">
+                                <SelectTrigger
+                                    :class="{ 'border-destructive shadow-sm': form.errors.business_id }"
+                                    class="border-muted-foreground/20 focus:ring-primary h-10"
+                                >
+                                    <SelectValue placeholder="Seleccionar empresa" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem v-for="business in businesses" :key="business.id" :value="business.id.toString()">
+                                        {{ business.name }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <p v-if="form.errors.business_id" class="text-destructive text-[0.7rem] font-semibold tracking-tight uppercase">
+                                {{ form.errors.business_id }}
+                            </p>
+                        </div>
                     </div>
 
                     <div class="grid gap-3 pt-2">
                         <Label class="text-muted-foreground text-xs font-bold tracking-wider uppercase">Unidades de Acceso</Label>
                         <div class="bg-muted/5 grid grid-cols-2 gap-3 rounded-lg border p-3">
-                            <div v-for="unit in units" :key="unit.id" class="flex items-center space-x-2">
+                            <div v-for="unit in filteredUnits" :key="unit.id" class="flex items-center space-x-2">
                                 <Checkbox :id="'unit-' + unit.id" :checked="form.unit_ids.includes(unit.id)" @click="toggleUnit(unit.id)" />
                                 <label
                                     :for="'unit-' + unit.id"
@@ -253,7 +297,9 @@ const toggleUnit = (unitId: number) => {
                                 </label>
                             </div>
                         </div>
-                        <p v-if="units.length === 0" class="text-muted-foreground text-xs italic">No hay unidades disponibles.</p>
+                        <p v-if="filteredUnits.length === 0" class="text-muted-foreground text-xs italic">
+                            {{ form.mine_id ? 'No hay unidades para esta mina.' : 'Selecciona una mina para ver sus unidades.' }}
+                        </p>
                     </div>
                 </div>
 
