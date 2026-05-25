@@ -7,6 +7,12 @@ import { Link as InertiaLink } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 import SaleDetailsPopover from './SaleDetailsPopover.vue';
 
+const formatTime = (createdAt: string) => {
+    if (!createdAt) return '--:--';
+    const d = new Date(createdAt);
+    return d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false });
+};
+
 const props = defineProps({
     sales: {
         type: Array as () => any[],
@@ -63,7 +69,7 @@ const translatePaginationLabel = (label: string) => {
                 >
                     <TableCell class="py-3">
                         <div class="flex flex-col">
-                            <span class="text-[13px] font-bold text-slate-900">{{ sale.date }}</span>
+                            <span class="text-[13px] font-bold text-slate-900">{{ formatTime(sale.created_at) }} · {{ sale.date }}</span>
                             <span class="text-[10px] font-medium tracking-tight text-slate-400 uppercase">Registro #{{ sale.id }}</span>
                         </div>
                     </TableCell>

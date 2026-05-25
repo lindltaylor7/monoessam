@@ -81,7 +81,7 @@ const showServicesFromCafeSelected = (services: any[], cafeId?: number) => {
     if (dateSelected.value) {
         fetchSalesByDate(dateSelected.value, cafeId);
     } else {
-        localSales.value = allSalesData.value.filter((sale: any) => sale.cafe_id == cafeId);
+        localSales.value = [];
     }
 };
 
@@ -218,8 +218,18 @@ const confirmForceSale = () => {
     saveSale(dniDinnerSearched.value, true);
 };
 
+const displayedSales = computed(() => {
+    if (!dateSelected.value || servicesSelectedToSale.value.length === 0) return [];
+    const selectedCodes = servicesSelectedToSale.value.map((s: any) => s.code);
+    return localSales.value.filter((sale: any) =>
+        sale.tickets?.some((ticket: any) =>
+            ticket.ticket_details?.some((detail: any) => selectedCodes.includes(detail.code)),
+        ),
+    );
+});
+
 const todayTotal = computed(() => {
-    return localSales.value.reduce((acc, sale) => acc + parseFloat(sale.total || 0), 0);
+    return displayedSales.value.reduce((acc, sale) => acc + parseFloat(sale.total || 0), 0);
 });
 </script>
 
@@ -248,7 +258,7 @@ const todayTotal = computed(() => {
                     <Card class="flex h-16 items-center gap-8 border-none bg-white px-6 py-3 shadow-sm">
                         <div class="flex flex-col items-end">
                             <span class="mb-1 text-[10px] leading-none font-bold tracking-widest text-slate-400 uppercase">Atendidos</span>
-                            <span class="text-2xl leading-none font-black text-slate-700">{{ localSales.length }}</span>
+                            <span class="text-2xl leading-none font-black text-slate-700">{{ displayedSales.length }}</span>
                         </div>
                         <div class="h-8 w-px bg-slate-100"></div>
                         <div class="flex flex-col items-end">
@@ -302,9 +312,9 @@ const todayTotal = computed(() => {
                                     <Icon name="history" class="text-slate-400" />
                                     <h3 class="font-bold text-slate-700">Ventas Recientes</h3>
                                 </div>
-                                <Badge variant="outline" class="bg-white text-xs font-bold">{{ localSales.length }} registros</Badge>
+                                <Badge variant="outline" class="bg-white text-xs font-bold">{{ displayedSales.length }} registros</Badge>
                             </div>
-                            <SalesTable :sales="localSales" :paginateData="props.todaySales" :cafeId="cafeSelected" />
+                            <SalesTable :sales="displayedSales" :paginateData="props.todaySales" :cafeId="cafeSelected" />
                         </div>
                     </div>
                 </div>
