@@ -56,13 +56,18 @@ const addServiceSelected = (service: any) => {
     });
 };
 
-const showServicesFromCafeSelected = (services: any[], cafeId: number) => {
+const allSalesData = ref<any[]>([...(props.todaySales?.data || [])]);
+
+const showServicesFromCafeSelected = (services: any[], cafeId?: number) => {
     servicesSelected.value = services;
-    const salesByCafe = props.todaySales.data.filter((sale: any) => sale.cafe_id == cafeId);
-    localSales.value = salesByCafe;
+    if (!cafeId) {
+        localSales.value = [];
+        return;
+    }
+    localSales.value = allSalesData.value.filter((sale: any) => sale.cafe_id == cafeId);
 };
 
-const localSales = ref<any[]>([...(props.todaySales?.data || [])]);
+const localSales = ref<any[]>([]);
 const servicesSelected = ref<any[]>([]);
 const dateSelected = ref<string>('');
 const showOtherUnitDialog = ref(false);
@@ -155,7 +160,12 @@ const saveSale = (dni: string, force = false) => {
                 subdealership.value = response.data.dinner.subdealership;
                 showSuccess(response.data.message || 'Venta registrada exitosamente.');
                 salesCardRef.value?.cleanInput();
-                localSales.value = response.data.sales || [];
+                const newSales = response.data.sales || [];
+                localSales.value = newSales;
+                allSalesData.value = [
+                    ...allSalesData.value.filter((sale: any) => sale.cafe_id != cafeSelected.value),
+                    ...newSales,
+                ];
             }
 
             if (response.data.otherCafe) {
