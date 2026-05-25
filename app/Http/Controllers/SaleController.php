@@ -283,6 +283,17 @@ class SaleController extends Controller
         return redirect()->back();
     }
 
+    public function byDate(Request $request)
+    {
+        $sales = Sale::with(['tickets', 'tickets.ticket_details', 'tickets.dinner'])
+            ->where('cafe_id', $request->cafe_id)
+            ->where('date', $request->date)
+            ->orderBy('id', 'desc')
+            ->get();
+
+        return response()->json($sales);
+    }
+
     public function report(Request $request, string $startDate, string $endDate)
     {
         $user = Auth::user();

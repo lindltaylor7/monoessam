@@ -294,6 +294,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('{id}', [SaleController::class, 'update'])->name('update');
         Route::delete('{id}', [SaleController::class, 'destroy'])->name('destroy');
         Route::post('excel', [SaleController::class, 'excel'])->name('excel');
+        Route::get('by-date', [SaleController::class, 'byDate'])->name('byDate');
         Route::get('search/{word}/{id}', [SaleController::class, 'search'])->name('search');
         Route::get('report/{startDate}/{endDate}', [SaleController::class, 'report'])->name('report');
     });

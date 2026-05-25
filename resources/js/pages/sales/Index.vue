@@ -58,20 +58,32 @@ const addServiceSelected = (service: any) => {
 
 const allSalesData = ref<any[]>([...(props.todaySales?.data || [])]);
 
+const localSales = ref<any[]>([]);
+const servicesSelected = ref<any[]>([]);
+const dateSelected = ref<string>('');
+const showOtherUnitDialog = ref(false);
+const doublePrice = ref(false);
+
+const fetchSalesByDate = (date: string, cafeId: number) => {
+    axios.get('/sales/by-date', { params: { date, cafe_id: cafeId } }).then((response) => {
+        const sales = response.data || [];
+        localSales.value = sales;
+        allSalesData.value = [...allSalesData.value.filter((s: any) => s.cafe_id != cafeId), ...sales];
+    });
+};
+
 const showServicesFromCafeSelected = (services: any[], cafeId?: number) => {
     servicesSelected.value = services;
     if (!cafeId) {
         localSales.value = [];
         return;
     }
-    localSales.value = allSalesData.value.filter((sale: any) => sale.cafe_id == cafeId);
+    if (dateSelected.value) {
+        fetchSalesByDate(dateSelected.value, cafeId);
+    } else {
+        localSales.value = allSalesData.value.filter((sale: any) => sale.cafe_id == cafeId);
+    }
 };
-
-const localSales = ref<any[]>([]);
-const servicesSelected = ref<any[]>([]);
-const dateSelected = ref<string>('');
-const showOtherUnitDialog = ref(false);
-const doublePrice = ref(false);
 
 const showError = (message: string) => Swal.fire({ icon: 'error', title: 'Error', text: message, confirmButtonColor: '#ef4444' });
 
@@ -101,6 +113,9 @@ const hideDialog = () => {
 
 const updateDate = (date: string) => {
     dateSelected.value = date;
+    if (cafeSelected.value) {
+        fetchSalesByDate(date, cafeSelected.value);
+    }
 };
 
 const handleDniUpdate = (dni: string) => {
