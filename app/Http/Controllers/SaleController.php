@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Business;
 use App\Models\Cafe;
+use App\Models\Mine;
 use App\Models\Dealership;
 use App\Models\Dinner;
 use App\Models\Receipt_type;
@@ -52,11 +53,13 @@ class SaleController extends Controller
             'services' => Service::all(),
             'units' => $user->units()->with('cafes')->get(),
             'cafes' => $cafes,
-            'todaySales' => $todaySales, // Esto incluirá los links de paginación
+            'todaySales' => $todaySales,
             'sale_types' => Sale_type::all(),
             'receipt_types' => Receipt_type::all(),
             'subdealerships' => Subdealership::all(),
-            'dealerships' => Dealership::all()
+            'dealerships' => Dealership::all(),
+            'mines' => Mine::all(),
+            'businesses' => Business::all(),
         ]);
     }
 
@@ -281,6 +284,79 @@ class SaleController extends Controller
         $dinner->delete();
 
         return redirect()->back();
+    }
+
+    public function storeVisitor(Request $request)
+    {
+        $cafe = Cafe::find($request->cafe_id);
+        if (!$cafe) {
+            return response()->json(['message' => 'Cafetería no encontrada.'], 404);
+        }
+
+        $service = Service::find($request->service_id);
+        if (!$service) {
+            return response()->json(['message' => 'Servicio no encontrado.'], 404);
+        }
+
+        $user     = Auth::user();
+        $price    = floatval($request->price);
+        $business = Business::find($request->business_id);
+
+        $sale = Sale::create([
+            'dinner_id'    => null,
+            'cafe_id'      => $cafe->id,
+            'date'         => $request->date,
+            'sale_type_id' => $request->sale_type_id,
+            'business_id'  => $request->business_id,
+            'business_name' => $business?->name,
+            'cafe_name'    => $cafe->name,
+            'user_id'      => $user->id,
+            'mine_id'      => $request->mine_id ?: null,
+            'is_visitor'   => true,
+            'total_igv'    => $price * 0.18,
+            'total'        => $price,
+            'status'       => 1,
+        ]);
+
+        $ticket = Ticket::create([
+            'sale_id'            => $sale->id,
+            'dinner_id'          => null,
+            'dinner_name'        => $request->name,
+            'dni'                => $request->dni,
+            'subdealership_name' => '',
+            'serial_number'      => 'T00-VIS',
+            'subdealership_ruc'  => '',
+            'price_value'        => $price,
+            'igv'                => $price * 0.18,
+            'status'             => 1,
+        ]);
+
+        Ticket_detail::create([
+            'ticket_id'    => $ticket->id,
+            'service_id'   => $service->id,
+            'code'         => $service->code,
+            'service_name' => $service->name,
+            'amount'       => 1,
+            'um'           => 'UNI',
+            'service_type' => $service->id,
+            'description'  => '',
+            'unit_value'   => $price,
+            'unit_price'   => $price,
+            'sale_value'   => $price,
+            'igv'          => $price * 0.18,
+            'total'        => $price,
+        ]);
+
+        $recentSales = Sale::with(['tickets', 'tickets.ticket_details', 'tickets.dinner'])
+            ->where('cafe_id', $cafe->id)
+            ->where('date', $sale->date)
+            ->orderBy('id', 'desc')
+            ->get();
+
+        return response()->json([
+            'message' => 'Venta de visitante registrada correctamente.',
+            'sales'   => $recentSales,
+        ], 200);
     }
 
     public function byDate(Request $request)

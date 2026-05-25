@@ -1,7 +1,6 @@
 <script lang="ts" setup>
 import Icon from '@/components/Icon.vue';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -139,173 +138,184 @@ const toggleUnit = (unitId: number) => {
 
 <template>
     <Dialog :open="open" @update:open="$emit('update:open', $event)">
-        <DialogContent class="gap-0 overflow-hidden border-none p-0 shadow-2xl sm:max-w-[500px]">
-            <div class="bg-primary text-primary-foreground relative px-6 py-8">
+        <DialogContent class="gap-0 overflow-hidden border-none p-0 shadow-2xl sm:max-w-[580px]">
+            <!-- Header -->
+            <div class="bg-primary text-primary-foreground relative px-6 py-7">
                 <DialogHeader>
-                    <DialogTitle class="text-2xl font-bold">{{ user ? 'Editar Usuario' : 'Crear Usuario' }}</DialogTitle>
-                    <DialogDescription class="text-primary-foreground/70">
-                        {{ user ? 'Actualiza la información y permisos del usuario.' : 'Ingresa los datos del nuevo usuario para el sistema.' }}
+                    <DialogTitle class="text-xl font-bold">{{ user ? 'Editar Usuario' : 'Crear Usuario' }}</DialogTitle>
+                    <DialogDescription class="text-primary-foreground/70 text-sm">
+                        {{ user ? 'Actualiza la información y permisos del usuario.' : 'Ingresa los datos del nuevo usuario.' }}
                     </DialogDescription>
                 </DialogHeader>
-                <div class="bg-background absolute right-6 -bottom-6 flex h-12 w-12 items-center justify-center rounded-full border shadow-lg">
-                    <Icon :name="user ? 'user-cog' : 'user-plus'" class="text-primary h-6 w-6" />
+                <div class="bg-background absolute right-6 -bottom-5 flex h-10 w-10 items-center justify-center rounded-full border shadow-md">
+                    <Icon :name="user ? 'user-cog' : 'user-plus'" class="text-primary h-5 w-5" />
                 </div>
             </div>
 
-            <form @submit.prevent="submit" class="bg-background px-6 pt-10 pb-6">
-                <div class="custom-scrollbar max-h-[60vh] space-y-4 overflow-y-auto pr-2">
-                    <div class="grid gap-2">
-                        <Label for="name" class="text-muted-foreground text-xs font-bold tracking-wider uppercase">Nombre Completo</Label>
-                        <Input
-                            id="name"
-                            v-model="form.name"
-                            placeholder="Ej. Juan Pérez"
-                            :class="{ 'border-destructive shadow-sm': form.errors.name }"
-                            class="border-muted-foreground/20 focus-visible:ring-primary h-10"
-                        />
-                        <p v-if="form.errors.name" class="text-destructive text-[0.7rem] font-semibold tracking-tight uppercase">
-                            {{ form.errors.name }}
-                        </p>
-                    </div>
+            <form @submit.prevent="submit" class="bg-background px-6 pt-8 pb-5">
+                <div class="custom-scrollbar max-h-[65vh] space-y-5 overflow-y-auto pr-1">
 
-                    <div class="grid gap-2">
-                        <Label for="email" class="text-muted-foreground text-xs font-bold tracking-wider uppercase">Correo Electrónico</Label>
-                        <Input
-                            id="email"
-                            type="email"
-                            v-model="form.email"
-                            placeholder="juan@empresa.com"
-                            :class="{ 'border-destructive shadow-sm': form.errors.email }"
-                            class="border-muted-foreground/20 focus-visible:ring-primary h-10"
-                        />
-                        <p v-if="form.errors.email" class="text-destructive text-[0.7rem] font-semibold tracking-tight uppercase">
-                            {{ form.errors.email }}
-                        </p>
-                    </div>
+                    <!-- Datos personales -->
+                    <div class="space-y-3">
+                        <p class="text-[10px] font-black tracking-widest text-slate-400 uppercase">Datos personales</p>
 
-                    <div class="grid gap-2">
-                        <Label for="password" class="text-muted-foreground text-xs font-bold tracking-wider uppercase">
-                            Contraseña
-                            <span v-if="user" class="text-muted-foreground/60 font-normal lowercase">(Dejar en blanco para no cambiar)</span>
-                        </Label>
-                        <Input
-                            id="password"
-                            type="password"
-                            v-model="form.password"
-                            :class="{ 'border-destructive shadow-sm': form.errors.password }"
-                            class="border-muted-foreground/20 focus-visible:ring-primary h-10"
-                        />
-                        <p v-if="form.errors.password" class="text-destructive text-[0.7rem] font-semibold tracking-tight uppercase">
-                            {{ form.errors.password }}
-                        </p>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="grid gap-2">
-                            <Label for="role_id" class="text-muted-foreground text-xs font-bold tracking-wider uppercase">Rol Asignado</Label>
-                            <Select v-model="form.role_id">
-                                <SelectTrigger
-                                    :class="{ 'border-destructive shadow-sm': form.errors.role_id }"
-                                    class="border-muted-foreground/20 focus:ring-primary h-10"
-                                >
-                                    <SelectValue placeholder="Seleccionar" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem v-for="role in roles" :key="role.id" :value="role.id.toString()">
-                                        {{ role.name }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <p v-if="form.errors.role_id" class="text-destructive text-[0.7rem] font-semibold tracking-tight uppercase">
-                                {{ form.errors.role_id }}
-                            </p>
+                        <div class="grid gap-1.5">
+                            <Label for="name" class="text-muted-foreground text-[11px] font-bold tracking-wider uppercase">Nombre completo</Label>
+                            <Input
+                                id="name"
+                                v-model="form.name"
+                                placeholder="Ej. Juan Pérez"
+                                :class="{ 'border-destructive': form.errors.name }"
+                                class="border-slate-200 focus-visible:ring-primary h-10 text-sm"
+                            />
+                            <p v-if="form.errors.name" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">{{ form.errors.name }}</p>
                         </div>
 
-                        <div class="grid gap-2">
-                            <Label for="area_id" class="text-muted-foreground text-xs font-bold tracking-wider uppercase">Área Principal</Label>
-                            <Select v-model="form.area_id">
-                                <SelectTrigger
-                                    :class="{ 'border-destructive shadow-sm': form.errors.area_id }"
-                                    class="border-muted-foreground/20 focus:ring-primary h-10"
-                                >
-                                    <SelectValue placeholder="Seleccionar" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem v-for="area in areas" :key="area.id" :value="area.id.toString()">
-                                        {{ area.name }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <p v-if="form.errors.area_id" class="text-destructive text-[0.7rem] font-semibold tracking-tight uppercase">
-                                {{ form.errors.area_id }}
-                            </p>
-                        </div>
-                    </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="grid gap-1.5">
+                                <Label for="email" class="text-muted-foreground text-[11px] font-bold tracking-wider uppercase">Correo electrónico</Label>
+                                <Input
+                                    id="email"
+                                    type="email"
+                                    v-model="form.email"
+                                    placeholder="juan@empresa.com"
+                                    :class="{ 'border-destructive': form.errors.email }"
+                                    class="border-slate-200 focus-visible:ring-primary h-10 text-sm"
+                                />
+                                <p v-if="form.errors.email" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">{{ form.errors.email }}</p>
+                            </div>
 
-                    <div class="grid grid-cols-2 gap-4">
-                        <div class="grid gap-2">
-                            <Label for="mine_id" class="text-muted-foreground text-xs font-bold tracking-wider uppercase">Mina Asignada</Label>
-                            <Select v-model="form.mine_id">
-                                <SelectTrigger
-                                    :class="{ 'border-destructive shadow-sm': form.errors.mine_id }"
-                                    class="border-muted-foreground/20 focus:ring-primary h-10"
-                                >
-                                    <SelectValue placeholder="Seleccionar mina" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem v-for="mine in mines" :key="mine.id" :value="mine.id.toString()">
-                                        {{ mine.name }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <p v-if="form.errors.mine_id" class="text-destructive text-[0.7rem] font-semibold tracking-tight uppercase">
-                                {{ form.errors.mine_id }}
-                            </p>
-                        </div>
-
-                        <div class="grid gap-2">
-                            <Label for="business_id" class="text-muted-foreground text-xs font-bold tracking-wider uppercase">Empresa</Label>
-                            <Select v-model="form.business_id">
-                                <SelectTrigger
-                                    :class="{ 'border-destructive shadow-sm': form.errors.business_id }"
-                                    class="border-muted-foreground/20 focus:ring-primary h-10"
-                                >
-                                    <SelectValue placeholder="Seleccionar empresa" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem v-for="business in businesses" :key="business.id" :value="business.id.toString()">
-                                        {{ business.name }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <p v-if="form.errors.business_id" class="text-destructive text-[0.7rem] font-semibold tracking-tight uppercase">
-                                {{ form.errors.business_id }}
-                            </p>
-                        </div>
-                    </div>
-
-                    <div class="grid gap-3 pt-2">
-                        <Label class="text-muted-foreground text-xs font-bold tracking-wider uppercase">Unidades de Acceso</Label>
-                        <div class="bg-muted/5 grid grid-cols-2 gap-3 rounded-lg border p-3">
-                            <div v-for="unit in filteredUnits" :key="unit.id" class="flex items-center space-x-2">
-                                <Checkbox :id="'unit-' + unit.id" :checked="form.unit_ids.includes(unit.id)" @click="toggleUnit(unit.id)" />
-                                <label
-                                    :for="'unit-' + unit.id"
-                                    class="cursor-pointer text-sm leading-none font-medium peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                                >
-                                    {{ unit.name }}
-                                </label>
+                            <div class="grid gap-1.5">
+                                <Label for="password" class="text-muted-foreground text-[11px] font-bold tracking-wider uppercase">
+                                    Contraseña
+                                    <span v-if="user" class="text-muted-foreground/50 ml-1 font-normal normal-case">(opcional)</span>
+                                </Label>
+                                <Input
+                                    id="password"
+                                    type="password"
+                                    v-model="form.password"
+                                    :class="{ 'border-destructive': form.errors.password }"
+                                    class="border-slate-200 focus-visible:ring-primary h-10 text-sm"
+                                />
+                                <p v-if="form.errors.password" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">{{ form.errors.password }}</p>
                             </div>
                         </div>
-                        <p v-if="filteredUnits.length === 0" class="text-muted-foreground text-xs italic">
-                            {{ form.mine_id ? 'No hay unidades para esta mina.' : 'Selecciona una mina para ver sus unidades.' }}
-                        </p>
+                    </div>
+
+                    <div class="border-t border-slate-100"></div>
+
+                    <!-- Rol y área -->
+                    <div class="space-y-3">
+                        <p class="text-[10px] font-black tracking-widest text-slate-400 uppercase">Permisos y acceso</p>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="grid gap-1.5">
+                                <Label for="role_id" class="text-muted-foreground text-[11px] font-bold tracking-wider uppercase">Rol asignado</Label>
+                                <Select v-model="form.role_id">
+                                    <SelectTrigger :class="{ 'border-destructive': form.errors.role_id }" class="border-slate-200 focus:ring-primary h-10 text-sm">
+                                        <SelectValue placeholder="Seleccionar" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem v-for="role in roles" :key="role.id" :value="role.id.toString()">{{ role.name }}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p v-if="form.errors.role_id" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">{{ form.errors.role_id }}</p>
+                            </div>
+
+                            <div class="grid gap-1.5">
+                                <Label for="area_id" class="text-muted-foreground text-[11px] font-bold tracking-wider uppercase">Área principal</Label>
+                                <Select v-model="form.area_id">
+                                    <SelectTrigger :class="{ 'border-destructive': form.errors.area_id }" class="border-slate-200 focus:ring-primary h-10 text-sm">
+                                        <SelectValue placeholder="Seleccionar" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem v-for="area in areas" :key="area.id" :value="area.id.toString()">{{ area.name }}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p v-if="form.errors.area_id" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">{{ form.errors.area_id }}</p>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="grid gap-1.5">
+                                <Label for="mine_id" class="text-muted-foreground text-[11px] font-bold tracking-wider uppercase">Mina asignada</Label>
+                                <Select v-model="form.mine_id">
+                                    <SelectTrigger :class="{ 'border-destructive': form.errors.mine_id }" class="border-slate-200 focus:ring-primary h-10 text-sm">
+                                        <SelectValue placeholder="Seleccionar mina" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem v-for="mine in mines" :key="mine.id" :value="mine.id.toString()">{{ mine.name }}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p v-if="form.errors.mine_id" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">{{ form.errors.mine_id }}</p>
+                            </div>
+
+                            <div class="grid gap-1.5">
+                                <Label for="business_id" class="text-muted-foreground text-[11px] font-bold tracking-wider uppercase">Empresa</Label>
+                                <Select v-model="form.business_id">
+                                    <SelectTrigger :class="{ 'border-destructive': form.errors.business_id }" class="border-slate-200 focus:ring-primary h-10 text-sm">
+                                        <SelectValue placeholder="Seleccionar empresa" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem v-for="business in businesses" :key="business.id" :value="business.id.toString()">{{ business.name }}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p v-if="form.errors.business_id" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">{{ form.errors.business_id }}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="border-t border-slate-100"></div>
+
+                    <!-- Unidades de acceso -->
+                    <div class="space-y-2.5">
+                        <div class="flex items-center justify-between">
+                            <p class="text-[10px] font-black tracking-widest text-slate-400 uppercase">Unidades de acceso</p>
+                            <span
+                                v-if="form.unit_ids.length > 0"
+                                class="bg-primary/10 text-primary rounded-full px-2.5 py-0.5 text-[10px] font-bold"
+                            >
+                                {{ form.unit_ids.length }} seleccionada{{ form.unit_ids.length !== 1 ? 's' : '' }}
+                            </span>
+                        </div>
+
+                        <div v-if="filteredUnits.length > 0" class="custom-scrollbar max-h-[150px] overflow-y-auto rounded-xl border border-slate-200 p-2">
+                            <div class="grid grid-cols-2 gap-2">
+                                <button
+                                    v-for="unit in filteredUnits"
+                                    :key="unit.id"
+                                    type="button"
+                                    @click="toggleUnit(unit.id)"
+                                    class="group flex items-center justify-between rounded-lg border px-3 py-2.5 text-left text-xs font-bold transition-all"
+                                    :class="
+                                        form.unit_ids.includes(unit.id)
+                                            ? 'border-primary bg-primary text-white shadow-sm'
+                                            : 'border-slate-200 bg-white text-slate-600 hover:border-primary/40 hover:bg-primary/5'
+                                    "
+                                >
+                                    <span class="truncate">{{ unit.name }}</span>
+                                    <Icon
+                                        :name="form.unit_ids.includes(unit.id) ? 'check-circle' : 'circle'"
+                                        size="14"
+                                        class="ml-1 shrink-0 transition-opacity"
+                                        :class="form.unit_ids.includes(unit.id) ? 'opacity-100' : 'opacity-30 group-hover:opacity-60'"
+                                    />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div v-else class="flex items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-4 py-4">
+                            <Icon name="info" size="14" class="shrink-0 text-slate-300" />
+                            <p class="text-xs text-slate-400 italic">
+                                {{ form.mine_id ? 'No hay unidades disponibles para esta mina.' : 'Selecciona una mina para ver sus unidades.' }}
+                            </p>
+                        </div>
                     </div>
                 </div>
 
-                <DialogFooter class="flex gap-2 pt-8">
-                    <Button type="button" variant="ghost" @click="$emit('update:open', false)" class="border">Cancelar</Button>
-                    <Button type="submit" :disabled="form.processing" class="bg-primary hover:bg-primary/90 flex-1 shadow-md">
+                <DialogFooter class="mt-6 flex gap-2 border-t border-slate-100 pt-5">
+                    <Button type="button" variant="ghost" @click="$emit('update:open', false)" class="border border-slate-200">Cancelar</Button>
+                    <Button type="submit" :disabled="form.processing" class="bg-primary hover:bg-primary/90 flex-1 shadow-sm">
                         <Icon v-if="form.processing" name="loader-2" class="mr-2 h-4 w-4 animate-spin" />
                         {{ user ? 'Guardar Cambios' : 'Crear Usuario' }}
                     </Button>

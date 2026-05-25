@@ -32,6 +32,7 @@ class ReportSalesController extends Controller
         $salesQuery = Sale::query()
             ->whereIn('cafe_id', $cafeIds)
             ->whereBetween('date', [$startDate, $endDate])
+            ->when($user->business_id, fn($q) => $q->where('business_id', $user->business_id))
             ->with(['tickets.dinner', 'cafe', 'cafe.unit'])
             ->orderBy('date', 'desc')
             ->orderBy('id', 'desc');
@@ -48,12 +49,14 @@ class ReportSalesController extends Controller
         $totalAmount = Sale::query()
             ->whereIn('cafe_id', $cafeIds)
             ->whereBetween('date', [$startDate, $endDate])
+            ->when($user->business_id, fn($q) => $q->where('business_id', $user->business_id))
             ->when($cafeFilter, fn($q) => $q->where('cafe_id', $cafeFilter))
             ->sum('total');
 
         $totalSales = Sale::query()
             ->whereIn('cafe_id', $cafeIds)
             ->whereBetween('date', [$startDate, $endDate])
+            ->when($user->business_id, fn($q) => $q->where('business_id', $user->business_id))
             ->when($cafeFilter, fn($q) => $q->where('cafe_id', $cafeFilter))
             ->count();
 

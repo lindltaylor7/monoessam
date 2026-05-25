@@ -173,7 +173,7 @@ const addServiceSelected = (service: Service) => {
                     servicesSelected.length
                 }}</Badge>
             </div>
-            <CardContent class="p-0">
+            <CardContent class="max-h-[320px] p-0">
                 <DinnersTable :services="servicesSelected" @addServiceSelected="addServiceSelected" />
             </CardContent>
         </Card>

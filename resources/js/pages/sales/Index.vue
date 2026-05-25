@@ -13,6 +13,7 @@ import OtherUnitDialog from './OtherUnitDialog.vue';
 import SalesCard from './SalesCard.vue';
 import SalesHeader from './SalesHeader.vue';
 import SalesTable from './SalesTable.vue';
+import VisitorSaleModal from './VisitorSaleModal.vue';
 
 const salesCardRef = ref<InstanceType<typeof SalesCard> | null>(null);
 
@@ -26,6 +27,8 @@ interface Props {
     todaySales: any;
     subdealerships: any[];
     dealerships: any[];
+    mines: any[];
+    businesses: any[];
 }
 
 const page = usePage<any>();
@@ -102,6 +105,15 @@ const dniDinnerSearched = ref('');
 
 const showDuplicateModal = ref(false);
 const duplicateData = ref<any>(null);
+const showVisitorModal = ref(false);
+
+const handleVisitorSuccess = (sales: any[]) => {
+    localSales.value = sales;
+    allSalesData.value = [
+        ...allSalesData.value.filter((s: any) => s.cafe_id != cafeSelected.value),
+        ...sales,
+    ];
+};
 
 const showDialog = () => {
     showOtherUnitDialog.value = true;
@@ -255,6 +267,13 @@ const todayTotal = computed(() => {
                 </div>
 
                 <div class="flex items-center gap-4">
+                    <button
+                        @click="showVisitorModal = true"
+                        class="flex items-center gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-5 py-3 text-sm font-bold text-violet-700 transition-all hover:bg-violet-100 hover:shadow-sm active:scale-95"
+                    >
+                        <Icon name="user-round-plus" class="h-4 w-4" />
+                        Venta Visitante
+                    </button>
                     <Card class="flex h-16 items-center gap-8 border-none bg-white px-6 py-3 shadow-sm">
                         <div class="flex flex-col items-end">
                             <span class="mb-1 text-[10px] leading-none font-bold tracking-widest text-slate-400 uppercase">Atendidos</span>
@@ -319,6 +338,18 @@ const todayTotal = computed(() => {
                     </div>
                 </div>
             </div>
+
+            <VisitorSaleModal
+                v-model:open="showVisitorModal"
+                :mines="props.mines"
+                :businesses="props.businesses"
+                :services="servicesSelected"
+                :cafeId="cafeSelected"
+                :saletypeId="saletypeSelected"
+                :receiptType="receiptType"
+                :date="dateSelected"
+                @success="handleVisitorSuccess"
+            />
 
             <OtherUnitDialog :showOtherUnitDialog="showOtherUnitDialog" @hideDialog="hideDialog" @handleDoublePriceSave="handleDoublePriceSave" />
 

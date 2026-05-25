@@ -13,19 +13,20 @@ const df = new DateFormatter('es-ES', {
 });
 
 const value = ref<DateValue>();
+const open = ref(false);
 
 const emit = defineEmits(['updateDate']);
 
 watch(value, (dateValue) => {
     if (!dateValue) return;
     const formattedDate = `${dateValue.year}-${String(dateValue.month).padStart(2, '0')}-${String(dateValue.day).padStart(2, '0')}`;
-
     emit('updateDate', formattedDate);
+    open.value = false;
 });
 </script>
 
 <template>
-    <Popover>
+    <Popover v-model:open="open">
         <PopoverTrigger as-child>
             <Button
                 variant="outline"
