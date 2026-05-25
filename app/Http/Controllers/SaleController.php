@@ -186,44 +186,40 @@ class SaleController extends Controller
             'status'                       => 1,
         ]);
 
-        $ticket = null;
+        $subdealership = $dinner->subdealership;
 
-        if ($request->receipt_type == 1) {
-            $subdealership = $dinner->subdealership;
+        $ticket = Ticket::create([
+            'sale_id'            => $sale->id,
+            'dinner_id'          => $dinner->id,
+            'dinner_name'        => $dinner->name,
+            'dni'                => $dinner->dni,
+            'subdealership_name' => $subdealership?->name ?? '',
+            'serial_number'      => 'T00',
+            'subdealership_ruc'  => $subdealership?->ruc ?? '',
+            'price_value'        => $sale->total,
+            'igv'                => $sale->total_igv,
+            'status'             => 1,
+        ]);
 
-            $ticket = Ticket::create([
-                'sale_id'            => $sale->id,
-                'dinner_id'          => $dinner->id,
-                'dinner_name'        => $dinner->name,
-                'dni'                => $request->dni,
-                'subdealership_name' => $subdealership?->name ?? '',
-                'serial_number'      => 'T00',
-                'subdealership_ruc'  => $subdealership?->ruc ?? '',
-                'price_value'        => $sale->total,
-                'igv'                => $sale->total_igv,
-                'status'             => 1,
+        foreach ($services as $service) {
+            Ticket_detail::create([
+                'ticket_id'    => $ticket->id,
+                'service_id'   => $service['serviceID'],
+                'code'         => $service['code'],
+                'service_name' => $service['name'],
+                'amount'       => $service['quantity'] ?? 1,
+                'um'           => 'UNI',
+                'service_type' => $service['serviceID'],
+                'description'  => '',
+                'unit_value'   => $service['price'],
+                'unit_price'   => $service['unit_price'] ?? $service['price'],
+                'sale_value'   => $service['price'],
+                'igv'          => $service['price'] * 0.18,
+                'total'        => $service['price'],
             ]);
-
-            foreach ($services as $service) {
-                Ticket_detail::create([
-                    'ticket_id'    => $ticket->id,
-                    'service_id'   => $service['serviceID'],
-                    'code'         => $service['code'],
-                    'service_name' => $service['name'],
-                    'amount'       => $service['quantity'] ?? 1,
-                    'um'           => 'UNI',
-                    'service_type' => $service['serviceID'],
-                    'description'  => '',
-                    'unit_value'   => $service['price'],
-                    'unit_price'   => $service['unit_price'] ?? $service['price'],
-                    'sale_value'   => $service['price'],
-                    'igv'          => $service['price'] * 0.18,
-                    'total'        => $service['price'],
-                ]);
-            }
-
-            $ticket->load('ticket_details');
         }
+
+        $ticket->load('ticket_details');
 
         $recentSales = Sale::with(['tickets', 'tickets.ticket_details', 'tickets.dinner', 'sale_details'])
             ->where('cafe_id', $cafe->id)

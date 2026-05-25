@@ -6,17 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import axios from 'axios';
+import { usePage } from '@inertiajs/vue3';
 import { UserRoundPlus } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
-interface Mine     { id: number; name: string }
-interface Business { id: number; name: string }
 interface Service  { id: number; name: string; code: string; pivot?: { price: number } }
 
 const props = defineProps<{
     open: boolean;
-    mines: Mine[];
-    businesses: Business[];
     services: Service[];
     cafeId: number;
     saletypeId: number;
@@ -29,13 +26,13 @@ const emit = defineEmits<{
     (e: 'success', sales: any[]): void;
 }>();
 
+const currentUser = computed(() => (usePage<any>().props.auth.user as any));
+
 const form = ref({
-    name:        '',
-    dni:         '',
-    mine_id:     '' as string | number,
-    business_id: '' as string | number,
-    service_id:  '' as string | number,
-    price:       '' as string | number,
+    name:       '',
+    dni:        '',
+    service_id: '' as string | number,
+    price:      '' as string | number,
 });
 const errors = ref<Record<string, string>>({});
 const processing = ref(false);
@@ -50,20 +47,19 @@ watch(selectedService, (s) => {
 
 watch(() => props.open, (v) => {
     if (v) {
-        form.value = { name: '', dni: '', mine_id: '', business_id: '', service_id: '', price: '' };
+        form.value = { name: '', dni: '', service_id: '', price: '' };
         errors.value = {};
     }
 });
 
 const validate = () => {
     const e: Record<string, string> = {};
-    if (!form.value.name.trim())                      e.name        = 'Requerido';
-    if (!form.value.dni || String(form.value.dni).length !== 8) e.dni = 'DNI debe tener 8 dígitos';
-    if (!form.value.business_id)                      e.business_id = 'Requerido';
-    if (!form.value.service_id)                       e.service_id  = 'Requerido';
-    if (!form.value.price || Number(form.value.price) <= 0) e.price = 'Ingrese un monto válido';
-    if (!props.cafeId)                                e.cafe        = 'Seleccione una cafetería primero';
-    if (!props.date)                                  e.date        = 'Seleccione una fecha primero';
+    if (!form.value.name.trim())                                   e.name       = 'Requerido';
+    if (!form.value.dni || String(form.value.dni).length !== 8)    e.dni        = 'DNI debe tener 8 dígitos';
+    if (!form.value.service_id)                                    e.service_id = 'Requerido';
+    if (!form.value.price || Number(form.value.price) <= 0)        e.price      = 'Ingrese un monto válido';
+    if (!props.cafeId)                                             e.cafe       = 'Seleccione una cafetería primero';
+    if (!props.date)                                               e.date       = 'Seleccione una fecha primero';
     errors.value = e;
     return Object.keys(e).length === 0;
 };
@@ -75,8 +71,8 @@ const submit = async () => {
         const res = await axios.post('/sales/visitor', {
             name:         form.value.name,
             dni:          form.value.dni,
-            mine_id:      form.value.mine_id || null,
-            business_id:  form.value.business_id,
+            mine_id:      currentUser.value?.mine_id || null,
+            business_id:  currentUser.value?.business_id || null,
             service_id:   form.value.service_id,
             price:        form.value.price,
             cafe_id:      props.cafeId,
@@ -149,36 +145,25 @@ const submit = async () => {
                     </div>
                 </div>
 
-                <!-- Empresa y Mina -->
+                <!-- Empresa y Mina (auto desde el usuario) -->
                 <div class="grid grid-cols-2 gap-3">
                     <div class="grid gap-1.5">
                         <Label class="text-[11px] font-bold tracking-wider text-slate-400 uppercase">Empresa</Label>
-                        <Select v-model="form.business_id">
-                            <SelectTrigger :class="{ 'border-red-400': errors.business_id }" class="h-10 border-slate-200 text-sm">
-                                <SelectValue placeholder="Seleccionar" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem v-for="b in businesses" :key="b.id" :value="b.id.toString()">
-                                    {{ b.name }}
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <p v-if="errors.business_id" class="text-[10px] font-semibold text-red-500">{{ errors.business_id }}</p>
+                        <div class="flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3">
+                            <Icon name="building-2" size="14" class="shrink-0 text-slate-400" />
+                            <span class="truncate text-sm font-semibold text-slate-700">
+                                {{ currentUser?.business?.name || '—' }}
+                            </span>
+                        </div>
                     </div>
                     <div class="grid gap-1.5">
-                        <Label class="text-[11px] font-bold tracking-wider text-slate-400 uppercase">
-                            Mina <span class="font-normal normal-case text-slate-300">(opcional)</span>
-                        </Label>
-                        <Select v-model="form.mine_id">
-                            <SelectTrigger class="h-10 border-slate-200 text-sm">
-                                <SelectValue placeholder="Seleccionar" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem v-for="m in mines" :key="m.id" :value="m.id.toString()">
-                                    {{ m.name }}
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
+                        <Label class="text-[11px] font-bold tracking-wider text-slate-400 uppercase">Mina</Label>
+                        <div class="flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3">
+                            <Icon name="mountain" size="14" class="shrink-0 text-slate-400" />
+                            <span class="truncate text-sm font-semibold text-slate-700">
+                                {{ currentUser?.mine?.name || '—' }}
+                            </span>
+                        </div>
                     </div>
                 </div>
 

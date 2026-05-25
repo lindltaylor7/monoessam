@@ -75,19 +75,33 @@ const translatePaginationLabel = (label: string) => {
                         </div>
                     </TableCell>
                     <TableCell class="py-3">
-                        <Badge variant="secondary" class="border-none bg-slate-100 text-[10px] font-bold text-slate-600">
-                            <Icon name="id-card" size="10" class="mr-1" />
-                            {{ sale?.tickets[0]?.dinner?.dni }}
-                        </Badge>
+                        <div class="flex flex-col gap-1">
+                            <Badge variant="secondary" class="border-none bg-slate-100 text-[10px] font-bold text-slate-600">
+                                <Icon name="id-card" size="10" class="mr-1" />
+                                {{ sale?.tickets[0]?.dni || '—' }}
+                            </Badge>
+                            <span v-if="sale?.tickets[0]?.subdealership_name"
+                                class="truncate text-[10px] font-medium text-slate-400"
+                                :title="sale?.tickets[0]?.subdealership_name">
+                                {{ sale?.tickets[0]?.subdealership_name }}
+                            </span>
+                        </div>
                     </TableCell>
                     <TableCell class="py-3">
                         <div class="flex items-center gap-3">
-                            <div class="bg-primary/10 text-primary flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold">
-                                {{ sale?.tickets[0]?.dinner?.name?.charAt(0) }}
+                            <div class="bg-primary/10 text-primary flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold">
+                                {{ (sale?.tickets[0]?.dinner_name || '?').charAt(0).toUpperCase() }}
                             </div>
-                            <span class="max-w-[150px] truncate text-[13px] font-bold text-slate-700" :title="sale?.tickets[0]?.dinner?.name">
-                                {{ sale?.tickets[0]?.dinner?.name }}
-                            </span>
+                            <div class="min-w-0">
+                                <span class="block max-w-[150px] truncate text-[13px] font-bold text-slate-700"
+                                    :title="sale?.tickets[0]?.dinner_name">
+                                    {{ sale?.tickets[0]?.dinner_name || '—' }}
+                                </span>
+                                <span v-if="sale?.is_visitor"
+                                    class="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-600">
+                                    VISITANTE
+                                </span>
+                            </div>
                         </div>
                     </TableCell>
                     <TableCell class="py-3">

@@ -341,8 +341,6 @@ const todayTotal = computed(() => {
 
             <VisitorSaleModal
                 v-model:open="showVisitorModal"
-                :mines="props.mines"
-                :businesses="props.businesses"
                 :services="servicesSelected"
                 :cafeId="cafeSelected"
                 :saletypeId="saletypeSelected"
