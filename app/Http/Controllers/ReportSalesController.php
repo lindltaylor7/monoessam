@@ -33,7 +33,7 @@ class ReportSalesController extends Controller
             ->whereIn('cafe_id', $cafeIds)
             ->whereBetween('date', [$startDate, $endDate])
             ->when($user->business_id, fn($q) => $q->where('business_id', $user->business_id))
-            ->with(['tickets.dinner', 'cafe', 'cafe.unit'])
+            ->with(['tickets.dinner', 'tickets.ticket_details', 'cafe', 'cafe.unit'])
             ->orderBy('date', 'desc')
             ->orderBy('id', 'desc');
 

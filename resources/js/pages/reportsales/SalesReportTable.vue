@@ -82,6 +82,7 @@ const formatTime = (dateString: string) => {
                     <TableHead class="py-4 text-[11px] font-bold tracking-wider text-slate-600 uppercase">Cafetería</TableHead>
                     <TableHead class="py-4 text-[11px] font-bold tracking-wider text-slate-600 uppercase">DNI</TableHead>
                     <TableHead class="py-4 text-[11px] font-bold tracking-wider text-slate-600 uppercase">Comensal</TableHead>
+                    <TableHead class="py-4 text-[11px] font-bold tracking-wider text-slate-600 uppercase">Servicio</TableHead>
                     <TableHead class="py-4 text-[11px] font-bold tracking-wider text-slate-600 uppercase">Importe</TableHead>
                     <TableHead class="py-4 text-right text-[11px] font-bold tracking-wider text-slate-600 uppercase">Acciones</TableHead>
                 </TableRow>
@@ -120,6 +121,18 @@ const formatTime = (dateString: string) => {
                             <span class="max-w-[150px] truncate text-[13px] font-bold text-slate-700" :title="sale?.tickets[0]?.dinner?.name">
                                 {{ sale?.tickets[0]?.dinner?.name || 'Sin nombre' }}
                             </span>
+                        </div>
+                    </TableCell>
+                    <TableCell class="py-3">
+                        <div class="flex flex-wrap gap-1">
+                            <Badge
+                                v-for="detail in sale?.tickets[0]?.ticket_details"
+                                :key="detail.id"
+                                class="bg-primary/10 text-primary border-none text-[10px] font-bold"
+                            >
+                                {{ detail.service_name }}
+                            </Badge>
+                            <span v-if="!sale?.tickets[0]?.ticket_details?.length" class="text-[11px] text-slate-400 italic">—</span>
                         </div>
                     </TableCell>
                     <TableCell class="py-3 text-[13px] font-black text-slate-900"> S/{{ Number(sale.total).toFixed(2) }} </TableCell>
@@ -189,7 +202,7 @@ const formatTime = (dateString: string) => {
                 </TableRow>
 
                 <TableRow v-if="totalSales.length === 0">
-                    <TableCell colspan="6" class="h-32 text-center text-sm font-medium text-slate-400 italic">
+                    <TableCell colspan="7" class="h-32 text-center text-sm font-medium text-slate-400 italic">
                         No hay ventas registradas con los filtros seleccionados.
                     </TableCell>
                 </TableRow>

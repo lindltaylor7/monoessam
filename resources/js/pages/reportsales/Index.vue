@@ -7,9 +7,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import { ChartBar } from 'lucide-vue-next';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import SalesReportTable from './SalesReportTable.vue';
 
 interface Cafe {
@@ -49,6 +49,8 @@ interface PaginatedSales {
     per_page: number;
     total: number;
 }
+
+const businessName = computed(() => (usePage<any>().props.auth.user as any)?.business?.name ?? '');
 
 const props = defineProps<{
     sales: PaginatedSales;
@@ -116,7 +118,9 @@ const exportToExcel = () => {
                         <ChartBar class="text-white" />
                     </div>
                     <div>
-                        <h1 class="text-2xl font-bold tracking-tight text-slate-900">Reporte de Ventas</h1>
+                        <h1 class="text-2xl font-bold tracking-tight text-slate-900">
+                            Reporte de Ventas {{ businessName ? ` - ${businessName}` : '' }}
+                        </h1>
                         <p class="text-sm text-slate-500">Consulta y gestiona las ventas registradas</p>
                     </div>
                 </div>
