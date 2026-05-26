@@ -78,9 +78,9 @@ const applyFilters = () => {
     router.get(
         route('reportsales.index'),
         {
-            start_date:       startDate.value,
-            end_date:         endDate.value,
-            cafe_id:          selectedCafe.value !== 'all' ? selectedCafe.value : null,
+            start_date: startDate.value,
+            end_date: endDate.value,
+            cafe_id: selectedCafe.value !== 'all' ? selectedCafe.value : null,
             subdealership_id: selectedSubdealership.value !== 'all' ? selectedSubdealership.value : null,
         },
         {
@@ -147,7 +147,7 @@ const exportToExcel = () => {
                     <CardHeader class="pb-3">
                         <CardDescription class="flex items-center gap-2 text-xs font-semibold tracking-wider text-slate-500 uppercase">
                             <Icon name="currency-dollar" size="14" />
-                            Total Vendido
+                            Total sin IGV
                         </CardDescription>
                     </CardHeader>
                     <CardContent>

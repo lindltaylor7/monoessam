@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Link as InertiaLink } from '@inertiajs/vue3';
-import { ref, watch } from 'vue';
 
 interface Cafe {
     id: number;
@@ -20,6 +19,7 @@ interface Sale {
     id: number;
     date: string;
     total: number;
+    is_visitor: boolean;
     cafe: Cafe;
     tickets: any[];
 }
@@ -33,15 +33,6 @@ const emit = defineEmits<{
     deleteSale: [saleId: number];
 }>();
 
-const totalSales = ref<Sale[]>([]);
-
-watch(
-    () => props.sales,
-    (newVal) => {
-        totalSales.value = [...newVal];
-    },
-    { immediate: true },
-);
 
 const sendToPrint = (ticketId: number, businessId: number) => {
     window.open('/print-ticket/' + ticketId + '/' + businessId, '_blank');
@@ -63,14 +54,6 @@ const formatDate = (dateString: string) => {
     });
 };
 
-const formatTime = (dateString: string) => {
-    // Assuming the date string contains time information
-    // If not, this will need to be adjusted based on your data structure
-    return new Date(dateString).toLocaleTimeString('es-PE', {
-        hour: '2-digit',
-        minute: '2-digit',
-    });
-};
 </script>
 
 <template>
@@ -89,7 +72,7 @@ const formatTime = (dateString: string) => {
             </TableHeader>
             <TableBody>
                 <TableRow
-                    v-for="sale in totalSales"
+                    v-for="sale in props.sales"
                     :key="sale.id"
                     class="group border-b-slate-100 transition-all last:border-0 hover:bg-slate-50/50"
                 >
@@ -110,17 +93,31 @@ const formatTime = (dateString: string) => {
                     <TableCell class="py-3">
                         <Badge variant="secondary" class="border-none bg-slate-100 text-[10px] font-bold text-slate-600">
                             <Icon name="id-card" size="10" class="mr-1" />
-                            {{ sale?.tickets[0]?.dinner?.dni || 'N/A' }}
+                            {{ sale?.tickets[0]?.dni || 'N/A' }}
                         </Badge>
                     </TableCell>
                     <TableCell class="py-3">
                         <div class="flex items-center gap-3">
-                            <div class="bg-primary/10 text-primary flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold">
-                                {{ sale?.tickets[0]?.dinner?.name?.charAt(0) || '?' }}
+                            <div class="bg-primary/10 text-primary flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-xs font-bold">
+                                {{ (sale?.tickets[0]?.dinner_name || '?').charAt(0).toUpperCase() }}
                             </div>
-                            <span class="max-w-[150px] truncate text-[13px] font-bold text-slate-700" :title="sale?.tickets[0]?.dinner?.name">
-                                {{ sale?.tickets[0]?.dinner?.name || 'Sin nombre' }}
-                            </span>
+                            <div class="min-w-0">
+                                <span class="block max-w-[150px] truncate text-[13px] font-bold text-slate-700"
+                                    :title="sale?.tickets[0]?.dinner_name">
+                                    {{ sale?.tickets[0]?.dinner_name || 'Sin nombre' }}
+                                </span>
+                                <div class="flex items-center gap-1 mt-0.5">
+                                    <span v-if="sale.is_visitor"
+                                        class="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-600">
+                                        VISITANTE
+                                    </span>
+                                    <span v-if="sale?.tickets[0]?.subdealership_name"
+                                        class="max-w-[120px] truncate text-[10px] font-medium text-slate-400"
+                                        :title="sale?.tickets[0]?.subdealership_name">
+                                        {{ sale?.tickets[0]?.subdealership_name }}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
                     </TableCell>
                     <TableCell class="py-3">
@@ -177,7 +174,11 @@ const formatTime = (dateString: string) => {
                                         </div>
                                         <div class="flex justify-between">
                                             <span class="text-slate-600">Comensal:</span>
-                                            <span class="font-semibold">{{ sale?.tickets[0]?.dinner?.name || 'N/A' }}</span>
+                                            <span class="font-semibold">{{ sale?.tickets[0]?.dinner_name || 'N/A' }}</span>
+                                        </div>
+                                        <div v-if="sale?.tickets[0]?.subdealership_name" class="flex justify-between">
+                                            <span class="text-slate-600">Subconcesionaria:</span>
+                                            <span class="font-semibold">{{ sale?.tickets[0]?.subdealership_name }}</span>
                                         </div>
                                         <div class="flex justify-between border-t pt-2">
                                             <span class="font-bold text-slate-600">Total:</span>
@@ -201,7 +202,7 @@ const formatTime = (dateString: string) => {
                     </TableCell>
                 </TableRow>
 
-                <TableRow v-if="totalSales.length === 0">
+                <TableRow v-if="props.sales.length === 0">
                     <TableCell colspan="7" class="h-32 text-center text-sm font-medium text-slate-400 italic">
                         No hay ventas registradas con los filtros seleccionados.
                     </TableCell>
