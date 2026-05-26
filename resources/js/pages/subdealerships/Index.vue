@@ -3,8 +3,8 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Subdealership } from '@/types';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
-import { ref, watch } from 'vue';
 import Swal from 'sweetalert2';
+import { ref, watch } from 'vue';
 import SubdealershipModal from './SubdealershipModal.vue';
 
 interface Props {
@@ -18,7 +18,9 @@ const displayedSubdealerships = ref([...props.subdealerships]);
 
 watch(
     () => props.subdealerships,
-    (val) => { displayedSubdealerships.value = [...val]; },
+    (val) => {
+        displayedSubdealerships.value = [...val];
+    },
 );
 
 const showModal = ref(false);
@@ -130,7 +132,7 @@ const deleteSubdealership = async (id: number) => {
                                 <th class="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">RUC</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">Teléfono</th>
                                 <th class="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">Email</th>
-                                <th class="px-6 py-3 text-right text-xs font-medium tracking-wider text-gray-500 uppercase">Acciones</th>
+                                <!--  <th class="px-6 py-3 text-right text-xs font-medium tracking-wider text-gray-500 uppercase">Acciones</th> -->
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200 bg-white">
@@ -147,10 +149,10 @@ const deleteSubdealership = async (id: number) => {
                                 <td class="px-6 py-4 text-sm whitespace-nowrap text-gray-500">
                                     {{ subdealership.email || '—' }}
                                 </td>
-                                <td class="px-6 py-4 text-right text-sm font-medium whitespace-nowrap">
+                                <!--  <td class="px-6 py-4 text-right text-sm font-medium whitespace-nowrap">
                                     <button @click="openEditModal(subdealership)" class="mr-3 text-indigo-600 hover:text-indigo-900">Editar</button>
                                     <button @click="deleteSubdealership(subdealership.id)" class="text-red-600 hover:text-red-900">Eliminar</button>
-                                </td>
+                                </td> -->
                             </tr>
                         </tbody>
                     </table>

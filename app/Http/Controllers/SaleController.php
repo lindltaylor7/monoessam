@@ -294,9 +294,10 @@ class SaleController extends Controller
             return response()->json(['message' => 'Servicio no encontrado.'], 404);
         }
 
-        $user     = Auth::user();
-        $price    = floatval($request->price);
-        $business = Business::find($request->business_id);
+        $user           = Auth::user();
+        $price          = floatval($request->price);
+        $business       = Business::find($request->business_id);
+        $subdealership  = $request->subdealership_id ? Subdealership::find($request->subdealership_id) : null;
 
         $sale = Sale::create([
             'dinner_id'    => null,
@@ -319,9 +320,9 @@ class SaleController extends Controller
             'dinner_id'          => null,
             'dinner_name'        => $request->name,
             'dni'                => $request->dni,
-            'subdealership_name' => '',
+            'subdealership_name' => $subdealership?->name ?? '',
             'serial_number'      => 'T00-VIS',
-            'subdealership_ruc'  => '',
+            'subdealership_ruc'  => $subdealership?->ruc ?? '',
             'price_value'        => $price,
             'igv'                => $price * 0.18,
             'status'             => 1,

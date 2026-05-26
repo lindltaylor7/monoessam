@@ -11,6 +11,7 @@ import { UserRoundPlus } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
 interface Service  { id: number; name: string; code: string; pivot?: { price: number } }
+interface Subdealership { id: number; name: string; ruc: string }
 
 const props = defineProps<{
     open: boolean;
@@ -29,13 +30,28 @@ const emit = defineEmits<{
 const currentUser = computed(() => (usePage<any>().props.auth.user as any));
 
 const form = ref({
-    name:       '',
-    dni:        '',
-    service_id: '' as string | number,
-    price:      '' as string | number,
+    name:              '',
+    dni:               '',
+    service_id:        '' as string | number,
+    price:             '' as string | number,
+    subdealership_id:  '' as string | number,
 });
 const errors = ref<Record<string, string>>({});
 const processing = ref(false);
+const subdealerships = ref<Subdealership[]>([]);
+const loadingSubdealerships = ref(false);
+
+const fetchSubdealerships = async () => {
+    loadingSubdealerships.value = true;
+    try {
+        const res = await axios.get('/subdealerships/search');
+        subdealerships.value = res.data;
+    } catch {
+        subdealerships.value = [];
+    } finally {
+        loadingSubdealerships.value = false;
+    }
+};
 
 const selectedService = computed(() =>
     props.services.find((s) => s.id === Number(form.value.service_id)),
@@ -47,8 +63,9 @@ watch(selectedService, (s) => {
 
 watch(() => props.open, (v) => {
     if (v) {
-        form.value = { name: '', dni: '', service_id: '', price: '' };
+        form.value = { name: '', dni: '', service_id: '', price: '', subdealership_id: '' };
         errors.value = {};
+        fetchSubdealerships();
     }
 });
 
@@ -69,16 +86,17 @@ const submit = async () => {
     processing.value = true;
     try {
         const res = await axios.post('/sales/visitor', {
-            name:         form.value.name,
-            dni:          form.value.dni,
-            mine_id:      currentUser.value?.mine_id || null,
-            business_id:  currentUser.value?.business_id || null,
-            service_id:   form.value.service_id,
-            price:        form.value.price,
-            cafe_id:      props.cafeId,
-            sale_type_id: props.saletypeId,
-            receipt_type: props.receiptType,
-            date:         props.date,
+            name:             form.value.name,
+            dni:              form.value.dni,
+            mine_id:          currentUser.value?.mine_id || null,
+            business_id:      currentUser.value?.business_id || null,
+            service_id:       form.value.service_id,
+            price:            form.value.price,
+            cafe_id:          props.cafeId,
+            sale_type_id:     props.saletypeId,
+            receipt_type:     props.receiptType,
+            date:             props.date,
+            subdealership_id: form.value.subdealership_id || null,
         });
         emit('success', res.data.sales || []);
         emit('update:open', false);
@@ -165,6 +183,21 @@ const submit = async () => {
                             </span>
                         </div>
                     </div>
+                </div>
+
+                <!-- Subconcesionaria -->
+                <div class="grid gap-1.5">
+                    <Label class="text-[11px] font-bold tracking-wider text-slate-400 uppercase">Subconcesionaria</Label>
+                    <Select v-model="form.subdealership_id" :disabled="loadingSubdealerships">
+                        <SelectTrigger class="h-10 border-slate-200 text-sm">
+                            <SelectValue :placeholder="loadingSubdealerships ? 'Cargando...' : 'Seleccionar (opcional)'" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem v-for="sd in subdealerships" :key="sd.id" :value="sd.id.toString()">
+                                {{ sd.name }}
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
                 </div>
 
                 <div class="border-t border-slate-100"></div>
