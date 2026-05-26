@@ -3,8 +3,7 @@ import Icon from '@/components/Icon.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Link as InertiaLink } from '@inertiajs/vue3';
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import SaleDetailsPopover from './SaleDetailsPopover.vue';
 
 const formatTime = (createdAt: string) => {
@@ -20,7 +19,7 @@ const props = defineProps({
     },
     paginateData: {
         type: Object,
-        required: true,
+        default: () => ({}),
     },
     cafeId: {
         type: Number,
@@ -28,24 +27,30 @@ const props = defineProps({
     },
 });
 
-const totalSales = ref<any[]>([]);
+const PER_PAGE = 15;
+const currentPage = ref(1);
 
 watch(
     () => props.sales,
-    (newVal) => {
-        totalSales.value = [...newVal];
-    },
-    { immediate: true },
+    () => { currentPage.value = 1; },
 );
+
+const totalPages = computed(() => Math.max(1, Math.ceil(props.sales.length / PER_PAGE)));
+
+const pagedSales = computed(() =>
+    props.sales.slice((currentPage.value - 1) * PER_PAGE, currentPage.value * PER_PAGE),
+);
+
+const visiblePages = computed(() => {
+    const pages: number[] = [];
+    const start = Math.max(1, currentPage.value - 2);
+    const end   = Math.min(totalPages.value, currentPage.value + 2);
+    for (let i = start; i <= end; i++) pages.push(i);
+    return pages;
+});
 
 const sendToPrint = (ticketId: number, businessId: number) => {
     window.open('/print-ticket/' + ticketId + '/' + businessId, '_blank');
-};
-
-const translatePaginationLabel = (label: string) => {
-    if (label.includes('Previous')) return 'Anterior';
-    if (label.includes('Next')) return 'Siguiente';
-    return label;
 };
 </script>
 
@@ -64,7 +69,7 @@ const translatePaginationLabel = (label: string) => {
             </TableHeader>
             <TableBody>
                 <TableRow
-                    v-for="sale in totalSales"
+                    v-for="sale in pagedSales"
                     :key="sale.id"
                     class="group border-b-slate-100 transition-all last:border-0 hover:bg-slate-50/50"
                 >
@@ -131,7 +136,7 @@ const translatePaginationLabel = (label: string) => {
                     </TableCell>
                 </TableRow>
 
-                <TableRow v-if="totalSales.length === 0">
+                <TableRow v-if="props.sales.length === 0">
                     <TableCell colspan="6" class="h-32 text-center text-sm font-medium text-slate-400 italic">
                         No hay ventas registradas en esta cafetería para el día de hoy.
                     </TableCell>
@@ -140,27 +145,36 @@ const translatePaginationLabel = (label: string) => {
         </Table>
 
         <div
-            v-if="paginateData.links && paginateData.links.length > 3"
+            v-if="totalPages > 1"
             class="flex items-center justify-center gap-1.5 border-t border-slate-100 bg-slate-50/50 px-4 py-3"
         >
-            <template v-for="link in paginateData.links" :key="link.label">
-                <InertiaLink
-                    v-if="link.url"
-                    :href="link.url"
-                    class="flex h-8 min-w-[32px] items-center justify-center rounded-lg border px-2.5 text-[11px] font-bold shadow-sm transition-all"
-                    :class="{
-                        'bg-primary text-primary-foreground border-primary': link.active,
-                        'border-slate-200 bg-white text-slate-600 hover:bg-slate-50': !link.active,
-                    }"
-                    v-html="translatePaginationLabel(link.label)"
-                    preserve-scroll
-                />
-                <span
-                    v-else
-                    class="pointer-events-none flex h-8 min-w-[32px] items-center justify-center rounded-lg px-2.5 text-[11px] font-bold text-slate-300"
-                    v-html="translatePaginationLabel(link.label)"
-                ></span>
-            </template>
+            <button
+                :disabled="currentPage === 1"
+                @click="currentPage--"
+                class="flex h-8 min-w-[32px] items-center justify-center rounded-lg border px-2.5 text-[11px] font-bold shadow-sm transition-all border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+                Anterior
+            </button>
+
+            <button
+                v-for="page in visiblePages"
+                :key="page"
+                @click="currentPage = page"
+                class="flex h-8 min-w-[32px] items-center justify-center rounded-lg border px-2.5 text-[11px] font-bold shadow-sm transition-all"
+                :class="page === currentPage
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'"
+            >
+                {{ page }}
+            </button>
+
+            <button
+                :disabled="currentPage === totalPages"
+                @click="currentPage++"
+                class="flex h-8 min-w-[32px] items-center justify-center rounded-lg border px-2.5 text-[11px] font-bold shadow-sm transition-all border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+                Siguiente
+            </button>
         </div>
     </div>
 </template>

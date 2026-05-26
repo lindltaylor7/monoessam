@@ -156,18 +156,37 @@ const handleDoublePriceSave = (dni: string) => {
 const dinnerFound = ref<any>({});
 const subdealership = ref<any>({});
 
+const validateConfig = (): boolean => {
+    const missing: string[] = [];
+
+    if (!receiptType.value)                        missing.push('Tipo de Documento');
+    if (!saletypeSelected.value)                   missing.push('Categoría de Venta');
+    if (!cafeSelected.value)                       missing.push('Cafetería / Punto de Servicio');
+    if (!dateSelected.value)                       missing.push('Fecha');
+    if (servicesSelectedToSale.value.length === 0) missing.push('Servicio(s) seleccionado(s)');
+
+    if (missing.length > 0) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Configuración incompleta',
+            html: `<p class="text-sm text-slate-600 mb-3">Completa los siguientes campos antes de registrar la venta:</p>
+                   <ul class="text-left space-y-1">
+                     ${missing.map((m) => `<li class="flex items-center gap-2 text-sm font-semibold text-red-600">
+                       <span class="inline-block h-1.5 w-1.5 rounded-full bg-red-500 shrink-0"></span>${m}
+                     </li>`).join('')}
+                   </ul>`,
+            confirmButtonColor: '#dc2626',
+            confirmButtonText: 'Entendido',
+        });
+        return false;
+    }
+    return true;
+};
+
 const saveSale = (dni: string, force = false) => {
     dniDinnerSearched.value = dni;
 
-    if (!dateSelected.value) {
-        showError('Por favor, seleccione una fecha válida.');
-        return;
-    }
-
-    if (servicesSelectedToSale.value.length === 0) {
-        showError('Debe seleccionar al menos un servicio.');
-        return;
-    }
+    if (!validateConfig()) return;
 
     const fd = new FormData();
     fd.append('cafe_id', cafeSelected.value.toString());
@@ -268,7 +287,7 @@ const todayTotal = computed(() => {
 
                 <div class="flex items-center gap-4">
                     <button
-                        @click="showVisitorModal = true"
+                        @click="validateConfig() && (showVisitorModal = true)"
                         class="flex items-center gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-5 py-3 text-sm font-bold text-violet-700 transition-all hover:bg-violet-100 hover:shadow-sm active:scale-95"
                     >
                         <Icon name="user-round-plus" class="h-4 w-4" />
