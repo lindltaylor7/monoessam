@@ -7,7 +7,6 @@ import { Settings } from 'lucide-vue-next';
 import { ref, watch } from 'vue';
 import DatePicker from './DatePicker.vue';
 import DinnersTable from './DinnersTable.vue';
-import ReportDialog from './ReportDialog.vue';
 
 interface Props {
     cafes: Cafe[];
@@ -181,7 +180,7 @@ const addServiceSelected = (service: Service) => {
         <!-- Quick Actions -->
         <div class="grid grid-cols-2 gap-4">
             <!-- <ExcelDialog class="w-full" /> -->
-            <ReportDialog class="w-full" :units="units" :sale_types="sale_types" />
+            <!-- <ReportDialog class="w-full" :units="units" :sale_types="sale_types" /> -->
         </div>
     </div>
 </template>

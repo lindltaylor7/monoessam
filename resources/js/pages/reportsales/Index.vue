@@ -21,10 +21,17 @@ interface Cafe {
     };
 }
 
+interface Subdealership {
+    id: number;
+    name: string;
+    ruc: string;
+}
+
 interface Filters {
     start_date: string;
     end_date: string;
     cafe_id: number | null;
+    subdealership_id: number | null;
 }
 
 interface Statistics {
@@ -55,6 +62,7 @@ const businessName = computed(() => (usePage<any>().props.auth.user as any)?.bus
 const props = defineProps<{
     sales: PaginatedSales;
     cafes: Cafe[];
+    subdealerships: Subdealership[];
     filters: Filters;
     statistics: Statistics;
 }>();
@@ -63,15 +71,17 @@ const props = defineProps<{
 const startDate = ref(props.filters.start_date);
 const endDate = ref(props.filters.end_date);
 const selectedCafe = ref<string>(props.filters.cafe_id?.toString() || 'all');
+const selectedSubdealership = ref<string>(props.filters.subdealership_id?.toString() || 'all');
 
 // Aplicar filtros
 const applyFilters = () => {
     router.get(
         route('reportsales.index'),
         {
-            start_date: startDate.value,
-            end_date: endDate.value,
-            cafe_id: selectedCafe.value !== 'all' ? selectedCafe.value : null,
+            start_date:       startDate.value,
+            end_date:         endDate.value,
+            cafe_id:          selectedCafe.value !== 'all' ? selectedCafe.value : null,
+            subdealership_id: selectedSubdealership.value !== 'all' ? selectedSubdealership.value : null,
         },
         {
             preserveState: true,
@@ -86,6 +96,7 @@ const resetFilters = () => {
     startDate.value = today;
     endDate.value = today;
     selectedCafe.value = 'all';
+    selectedSubdealership.value = 'all';
     applyFilters();
 };
 
@@ -180,19 +191,19 @@ const exportToExcel = () => {
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <div class="grid gap-4 md:grid-cols-4">
+                    <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
                         <div class="space-y-2">
-                            <Label for="start-date" class="text-xs font-bold tracking-wider text-slate-600 uppercase"> Fecha Inicio </Label>
+                            <Label for="start-date" class="text-xs font-bold tracking-wider text-slate-600 uppercase">Fecha Inicio</Label>
                             <Input id="start-date" v-model="startDate" type="date" class="border-slate-300" />
                         </div>
 
                         <div class="space-y-2">
-                            <Label for="end-date" class="text-xs font-bold tracking-wider text-slate-600 uppercase"> Fecha Fin </Label>
+                            <Label for="end-date" class="text-xs font-bold tracking-wider text-slate-600 uppercase">Fecha Fin</Label>
                             <Input id="end-date" v-model="endDate" type="date" class="border-slate-300" />
                         </div>
 
                         <div class="space-y-2">
-                            <Label for="cafe" class="text-xs font-bold tracking-wider text-slate-600 uppercase"> Cafetería </Label>
+                            <Label for="cafe" class="text-xs font-bold tracking-wider text-slate-600 uppercase">Cafetería</Label>
                             <Select v-model="selectedCafe">
                                 <SelectTrigger id="cafe" class="border-slate-300">
                                     <SelectValue placeholder="Todas las cafeterías" />
@@ -201,6 +212,21 @@ const exportToExcel = () => {
                                     <SelectItem value="all">Todas las cafeterías</SelectItem>
                                     <SelectItem v-for="cafe in cafes" :key="cafe.id" :value="cafe.id.toString()">
                                         {{ cafe.name }} {{ cafe.unit ? `- ${cafe.unit.name}` : '' }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div class="space-y-2">
+                            <Label for="subdealership" class="text-xs font-bold tracking-wider text-slate-600 uppercase">Subconcesionaria</Label>
+                            <Select v-model="selectedSubdealership">
+                                <SelectTrigger id="subdealership" class="border-slate-300">
+                                    <SelectValue placeholder="Todas" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">Todas</SelectItem>
+                                    <SelectItem v-for="sd in subdealerships" :key="sd.id" :value="sd.id.toString()">
+                                        {{ sd.name }}
                                     </SelectItem>
                                 </SelectContent>
                             </Select>
