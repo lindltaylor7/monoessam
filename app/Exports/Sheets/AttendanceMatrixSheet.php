@@ -70,13 +70,17 @@ class AttendanceMatrixSheet implements FromArray, WithStyles, WithTitle
         foreach ($this->sales as $sale) {
             $date = $sale->date;
             foreach ($sale->tickets as $ticket) {
-                $personKey = strtoupper(trim($ticket->dinner_name ?? 'DESCONOCIDO'))
-                    . '|' . ($ticket->dni ?? '');
+                // Prefer the Dinner relation (source of truth for SISTEMA).
+                // Fall back to the denormalized dinner_name field (used for VISITAS where dinner_id is null).
+                $resolvedName = $ticket->dinner?->name ?? $ticket->dinner_name ?? 'DESCONOCIDO';
+                $resolvedDni  = $ticket->dinner?->dni  ?? $ticket->dni ?? '';
+
+                $personKey = strtoupper(trim($resolvedName)) . '|' . $resolvedDni;
 
                 if (!isset($this->persons[$personKey])) {
                     $this->persons[$personKey] = [
-                        'name' => strtoupper(trim($ticket->dinner_name ?? 'DESCONOCIDO')),
-                        'dni'  => $ticket->dni ?? '',
+                        'name' => strtoupper(trim($resolvedName)),
+                        'dni'  => $resolvedDni,
                     ];
                 }
 
