@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Cafe;
+use App\Exports\SalesReportExport;
 use App\Models\Sale;
 use App\Models\Subdealership;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
+use Maatwebsite\Excel\Facades\Excel;
 
 class ReportSalesController extends Controller
 {
@@ -15,7 +17,8 @@ class ReportSalesController extends Controller
      */
     public function index(Request $request)
     {
-        $user = auth()->user();
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
 
         // Cargar unidades y cafés del usuario
         $user->load(['units.cafes']);
@@ -96,11 +99,26 @@ class ReportSalesController extends Controller
     }
 
     /**
-     * Export sales report to Excel
+     * Export sales report to Excel — one sheet per subdealership
      */
     public function export(Request $request)
     {
-        // TODO: Implement Excel export functionality
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+        $user->load(['units.cafes']);
+
+        $cafeIds    = $user->units->flatMap->cafes->unique('id')->pluck('id')->all();
+        $startDate  = $request->input('start_date', date('Y-m-d'));
+        $endDate    = $request->input('end_date', date('Y-m-d'));
+        $cafeId     = $request->input('cafe_id');
+        $sdId       = $request->input('subdealership_id') ? (int) $request->input('subdealership_id') : null;
+
+        $fileName = 'reporte-ventas-' . $startDate . '-a-' . $endDate . '.xlsx';
+
+        return Excel::download(
+            new SalesReportExport($startDate, $endDate, $cafeId, $sdId, $cafeIds, $user->business_id),
+            $fileName,
+        );
     }
 
     /**
@@ -111,7 +129,9 @@ class ReportSalesController extends Controller
         $sale = Sale::findOrFail($id);
 
         // Verificar permisos del usuario
-        $user = auth()->user();
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+        $user->load(['units.cafes']);
         $userCafeIds = $user->units->flatMap->cafes->pluck('id');
 
         if (!$userCafeIds->contains($sale->cafe_id)) {

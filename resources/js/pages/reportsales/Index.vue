@@ -109,10 +109,15 @@ const deleteSale = (saleId: number) => {
     }
 };
 
-// Exportar a Excel
+// Exportar a Excel — descarga directa pasando los filtros activos
 const exportToExcel = () => {
-    // TODO: Implementar exportación a Excel
-    alert('Funcionalidad de exportación en desarrollo');
+    const params = new URLSearchParams();
+    params.set('start_date', startDate.value);
+    params.set('end_date',   endDate.value);
+    if (selectedCafe.value !== 'all')          params.set('cafe_id',          selectedCafe.value);
+    if (selectedSubdealership.value !== 'all') params.set('subdealership_id', selectedSubdealership.value);
+
+    window.location.href = route('reportsales.export') + '?' + params.toString();
 };
 </script>
 
