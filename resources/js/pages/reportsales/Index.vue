@@ -109,15 +109,23 @@ const deleteSale = (saleId: number) => {
     }
 };
 
-// Exportar a Excel — descarga directa pasando los filtros activos
-const exportToExcel = () => {
+const buildParams = () => {
     const params = new URLSearchParams();
     params.set('start_date', startDate.value);
     params.set('end_date',   endDate.value);
     if (selectedCafe.value !== 'all')          params.set('cafe_id',          selectedCafe.value);
     if (selectedSubdealership.value !== 'all') params.set('subdealership_id', selectedSubdealership.value);
+    return params.toString();
+};
 
-    window.location.href = route('reportsales.export') + '?' + params.toString();
+// Reporte resumen (por subdealership, columnas D/A/C agrupado)
+const exportToExcel = () => {
+    window.location.href = route('reportsales.export') + '?' + buildParams();
+};
+
+// Reporte valorización (matriz diaria: VLZ / SISTEMA / VISITAS / REFRIGERIOS)
+const exportValorizacion = () => {
+    window.location.href = route('reportsales.export-vlz') + '?' + buildParams();
 };
 </script>
 
@@ -140,10 +148,16 @@ const exportToExcel = () => {
                         <p class="text-sm text-slate-500">Consulta y gestiona las ventas registradas</p>
                     </div>
                 </div>
-                <Button @click="exportToExcel" variant="outline" class="gap-2">
-                    <Icon name="download" size="16" />
-                    Exportar a Excel
-                </Button>
+                <div class="flex items-center gap-2">
+                    <Button @click="exportToExcel" variant="outline" class="gap-2">
+                        <Icon name="download" size="16" />
+                        Resumen por empresa
+                    </Button>
+                    <Button @click="exportValorizacion" class="gap-2 bg-emerald-600 hover:bg-emerald-700">
+                        <Icon name="table-2" size="16" />
+                        Valorización
+                    </Button>
+                </div>
             </div>
 
             <!-- Statistics Cards -->

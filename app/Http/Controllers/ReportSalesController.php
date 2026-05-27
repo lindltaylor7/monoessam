@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exports\SalesReportExport;
+use App\Exports\ValorizacionExport;
 use App\Models\Sale;
 use App\Models\Subdealership;
 use Illuminate\Http\Request;
@@ -117,6 +118,56 @@ class ReportSalesController extends Controller
 
         return Excel::download(
             new SalesReportExport($startDate, $endDate, $cafeId, $sdId, $cafeIds, $user->business_id),
+            $fileName,
+        );
+    }
+
+    /**
+     * Export Valorización — matriz diaria por persona con tabs VLZ/SISTEMA/VISITAS/REFRIGERIOS
+     */
+    public function exportValorizacion(Request $request)
+    {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+        $user->load(['units.cafes', 'business', 'mine']);
+
+        $cafeIds   = $user->units->flatMap->cafes->unique('id')->pluck('id')->all();
+        $startDate = $request->input('start_date', date('Y-m-d'));
+        $endDate   = $request->input('end_date', date('Y-m-d'));
+        $cafeId    = $request->input('cafe_id');
+        $sdId      = $request->input('subdealership_id') ? (int) $request->input('subdealership_id') : null;
+
+        // Resolve cafe/unit for header
+        $cafeInfo = ['name' => ''];
+        $unitInfo = ['name' => ''];
+        if ($cafeId) {
+            $cafe = \App\Models\Cafe::with('unit')->find($cafeId);
+            $cafeInfo = ['name' => $cafe?->name ?? ''];
+            $unitInfo = ['name' => $cafe?->unit?->name ?? $user->mine?->name ?? ''];
+        } else {
+            $firstCafe = $user->units->flatMap->cafes->first();
+            $cafeInfo  = ['name' => $firstCafe?->name ?? ''];
+            $unitInfo  = ['name' => $user->units->first()?->name ?? $user->mine?->name ?? ''];
+        }
+
+        $businessInfo = [
+            'name'          => $user->business?->name ?? '',
+            'ruc'           => $user->business?->ruc ?? '',
+            'legal_address' => $user->business?->legal_address ?? $user->business?->name ?? '',
+        ];
+
+        $aFavorDe = $sdId
+            ? (Subdealership::find($sdId)?->name ?? $user->mine?->name ?? '')
+            : ($user->mine?->name ?? '');
+
+        $fileName = 'valorizacion-' . $startDate . '-a-' . $endDate . '.xlsx';
+
+        return Excel::download(
+            new ValorizacionExport(
+                $startDate, $endDate, $cafeId, $sdId,
+                $cafeIds, $user->business_id,
+                $businessInfo, $unitInfo, $cafeInfo, $aFavorDe,
+            ),
             $fileName,
         );
     }
