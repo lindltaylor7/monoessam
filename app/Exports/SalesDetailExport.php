@@ -52,13 +52,14 @@ class SalesDetailExport implements WithMultipleSheets
             foreach ($sale->tickets as $ticket) {
                 foreach ($ticket->ticket_details as $detail) {
                     $this->rows[] = [
-                        'sd_name'  => strtoupper($ticket->subdealership_name ?: 'SIN EMPRESA'),
-                        'name'     => strtoupper($ticket->dinner_name ?: 'SIN NOMBRE'),
-                        'date'     => $date,
-                        'time'     => $time,
-                        'svc_name' => strtoupper($detail->service_name ?: '—'),
-                        'svc_code' => strtoupper($detail->code ?: '—'),
-                        'amount'   => (int) ($detail->amount ?? 1),
+                        'sd_name'    => strtoupper($ticket->subdealership_name ?: 'SIN EMPRESA'),
+                        'name'       => strtoupper($ticket->dinner_name ?: 'SIN NOMBRE'),
+                        'date'       => $date,
+                        'time'       => $time,
+                        'svc_name'   => strtoupper($detail->service_name ?: '—'),
+                        'svc_code'   => strtoupper($detail->code ?: '—'),
+                        'amount'     => (int) ($detail->amount ?? 1),
+                        'unit_price' => (float) ($detail->unit_price ?? 0),
                     ];
                 }
             }
