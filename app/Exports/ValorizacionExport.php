@@ -40,8 +40,7 @@ class ValorizacionExport implements WithMultipleSheets
         $query = Sale::query()
             ->whereIn('cafe_id', $this->cafeIds)
             ->whereBetween('date', [$this->startDate, $this->endDate])
-            ->when($this->businessId, fn($q) => $q->where('business_id', $this->businessId))
-            ->when($this->cafeId,     fn($q) => $q->where('cafe_id',     $this->cafeId))
+            ->when($this->cafeId, fn($q) => $q->where('cafe_id', $this->cafeId))
             ->with(['tickets.ticket_details', 'tickets.dinner']);
 
         // Filter by subdealership if provided

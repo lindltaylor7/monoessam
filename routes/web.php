@@ -283,6 +283,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('businesses')->name('businesses.')->group(function () {
         Route::get('/', [BusinessController::class, 'index'])->name('index');
         Route::post('services', [BusinessController::class, 'businessServices'])->name('services');
+        Route::post('{id}/logo', [BusinessController::class, 'uploadLogo'])->name('logo');
     });
 
     // ========================================================================

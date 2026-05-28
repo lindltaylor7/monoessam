@@ -9,6 +9,7 @@ use Maatwebsite\Excel\Concerns\WithTitle;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 /**
@@ -190,5 +191,22 @@ class VlzSummarySheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
             $sheet->getColumnDimension($c)->setWidth(12);
         }
         $sheet->getColumnDimension('K')->setWidth(14);
+
+        /* ── Business logo at A1 ── */
+        $logoPath = $this->businessInfo['logo'] ?? null;
+        if ($logoPath) {
+            $fullPath = storage_path('app/public/' . $logoPath);
+            if (file_exists($fullPath)) {
+                $drawing = new Drawing();
+                $drawing->setName('Logo');
+                $drawing->setDescription('Business Logo');
+                $drawing->setPath($fullPath);
+                $drawing->setCoordinates('A1');
+                $drawing->setOffsetX(2);
+                $drawing->setOffsetY(2);
+                $drawing->setHeight(48);
+                $drawing->setWorksheet($sheet);
+            }
+        }
     }
 }

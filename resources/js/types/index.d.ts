@@ -125,7 +125,10 @@ export interface Headquarter {
     id: number;
     name: string;
     business_id?: number;
+    address?: string;
+    phone?: string;
     areas: Area[];
+    business?: { id: number; name: string };
 }
 
 export interface Dealership {

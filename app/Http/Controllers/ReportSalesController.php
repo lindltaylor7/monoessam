@@ -41,17 +41,22 @@ class ReportSalesController extends Controller
         $cafeFilter           = $request->input('cafe_id');
         $subdealershipFilter  = $request->input('subdealership_id');
 
+        // Resolve name directly from DB so the lookup never silently returns null
         $subdealershipName = $subdealershipFilter
-            ? $subdealerships->firstWhere('id', (int) $subdealershipFilter)?->name
+            ? Subdealership::find((int) $subdealershipFilter)?->name
             : null;
 
         $applySubdealershipFilter = function ($q) use ($subdealershipFilter, $subdealershipName) {
             $q->whereHas('tickets', function ($tq) use ($subdealershipFilter, $subdealershipName) {
                 $tq->where(function ($inner) use ($subdealershipFilter, $subdealershipName) {
-                    $inner->whereHas('dinner', fn($dq) => $dq->where('subdealership_id', $subdealershipFilter));
+                    // Primary: match the denormalized subdealership_name stored on every ticket
                     if ($subdealershipName) {
-                        $inner->orWhere('subdealership_name', $subdealershipName);
+                        $inner->where('subdealership_name', $subdealershipName);
                     }
+                    // Fallback: match through the dinner → subdealership relation
+                    $inner->orWhereHas('dinner', fn($dq) =>
+                        $dq->where('subdealership_id', (int) $subdealershipFilter)
+                    );
                 });
             });
         };
@@ -60,7 +65,6 @@ class ReportSalesController extends Controller
         $salesQuery = Sale::query()
             ->whereIn('cafe_id', $cafeIds)
             ->whereBetween('date', [$startDate, $endDate])
-            ->when($user->business_id, fn($q) => $q->where('business_id', $user->business_id))
             ->when($cafeFilter, fn($q) => $q->where('cafe_id', $cafeFilter))
             ->when($subdealershipFilter, $applySubdealershipFilter)
             ->with(['tickets.dinner', 'tickets.ticket_details', 'cafe', 'cafe.unit'])
@@ -74,7 +78,6 @@ class ReportSalesController extends Controller
         $statsBase = Sale::query()
             ->whereIn('cafe_id', $cafeIds)
             ->whereBetween('date', [$startDate, $endDate])
-            ->when($user->business_id, fn($q) => $q->where('business_id', $user->business_id))
             ->when($cafeFilter, fn($q) => $q->where('cafe_id', $cafeFilter))
             ->when($subdealershipFilter, $applySubdealershipFilter);
 
@@ -154,6 +157,7 @@ class ReportSalesController extends Controller
             'name'          => $user->business?->name ?? '',
             'ruc'           => $user->business?->ruc ?? '',
             'legal_address' => $user->business?->legal_address ?? $user->business?->name ?? '',
+            'logo'          => $user->business?->logo ?? null,
         ];
 
         $aFavorDe = $sdId
