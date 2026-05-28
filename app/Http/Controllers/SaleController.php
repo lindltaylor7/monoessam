@@ -201,6 +201,9 @@ class SaleController extends Controller
             'status'             => 1,
         ]);
 
+        $serviceTypeMap = Service::whereIn('id', collect($services)->pluck('serviceID')->filter()->unique()->toArray())
+            ->pluck('type', 'id');
+
         foreach ($services as $service) {
             Ticket_detail::create([
                 'ticket_id'    => $ticket->id,
@@ -209,7 +212,7 @@ class SaleController extends Controller
                 'service_name' => $service['name'],
                 'amount'       => $service['quantity'] ?? 1,
                 'um'           => 'UNI',
-                'service_type' => $service['serviceID'],
+                'service_type' => $serviceTypeMap[$service['serviceID']] ?? $service['serviceID'],
                 'description'  => '',
                 'unit_value'   => $service['price'],
                 'unit_price'   => $service['unit_price'] ?? $service['price'],
@@ -335,7 +338,7 @@ class SaleController extends Controller
             'service_name' => $service->name,
             'amount'       => 1,
             'um'           => 'UNI',
-            'service_type' => $service->id,
+            'service_type' => $service->type,
             'description'  => '',
             'unit_value'   => $price,
             'unit_price'   => $price,
