@@ -41,6 +41,16 @@ class CafeController extends Controller
         return response()->json($cafe);
     }
 
+    /** Return the services associated with a cafe (with pivot price). */
+    public function services($id)
+    {
+        $cafe = Cafe::find($id);
+        if (!$cafe) {
+            return response()->json([], 404);
+        }
+        return response()->json($cafe->services()->get());
+    }
+
     /**
      * Display the specified resource.
      */

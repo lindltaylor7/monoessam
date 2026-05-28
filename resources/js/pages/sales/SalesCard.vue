@@ -98,81 +98,53 @@ defineExpose({
             </div>
         </div>
 
-        <CardContent class="p-6">
+        <CardContent class="px-4 py-3">
+            <!-- Result: found dinner -->
             <div
                 v-if="dinnerFound && dinnerFound.id"
-                class="animate-in fade-in slide-in-from-bottom-4 grid grid-cols-1 gap-6 duration-500 md:grid-cols-2"
+                class="animate-in fade-in slide-in-from-bottom-2 flex items-center gap-0 overflow-hidden rounded-xl border border-slate-100 bg-slate-50 duration-300"
             >
-                <!-- Comensal Info -->
-                <div class="space-y-4">
-                    <div class="flex items-center gap-2">
-                        <div class="h-1 w-8 rounded-full bg-emerald-500"></div>
-                        <span class="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">Datos del Comensal</span>
+                <!-- Comensal -->
+                <div class="flex flex-1 items-center gap-3 px-4 py-3">
+                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600">
+                        <Icon name="user" size="16" />
                     </div>
-
-                    <div
-                        class="group flex items-start gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 transition-all hover:border-emerald-200 hover:bg-white hover:shadow-md"
-                    >
-                        <div
-                            class="flex h-14 w-14 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 transition-colors group-hover:bg-emerald-500 group-hover:text-white"
-                        >
-                            <Icon name="user" size="24" />
-                        </div>
-                        <div class="flex-1 space-y-1">
-                            <p class="text-[10px] font-bold tracking-widest text-slate-400 uppercase">Nombre Completo</p>
-                            <p class="text-base leading-tight font-black text-slate-900 uppercase">{{ dinnerFound.name }}</p>
-                            <div class="mt-2 flex items-center gap-3">
-                                <Badge variant="secondary" class="bg-emerald-100 text-[10px] font-bold text-emerald-700">
-                                    <Icon name="id-card" size="10" class="mr-1" /> {{ dinnerFound.dni }}
-                                </Badge>
-                                <Badge v-if="dinnerFound.phone" variant="secondary" class="bg-slate-200 text-[10px] font-bold text-slate-600">
-                                    <Icon name="phone" size="10" class="mr-1" /> {{ dinnerFound.phone }}
-                                </Badge>
-                            </div>
+                    <div class="min-w-0">
+                        <p class="truncate text-[13px] font-black leading-tight text-slate-900 uppercase">{{ dinnerFound.name }}</p>
+                        <div class="mt-0.5 flex items-center gap-2">
+                            <Badge variant="secondary" class="h-4 bg-emerald-100 px-1.5 text-[9px] font-bold text-emerald-700">
+                                <Icon name="id-card" size="9" class="mr-0.5" />{{ dinnerFound.dni }}
+                            </Badge>
+                            <Badge v-if="dinnerFound.phone" variant="secondary" class="h-4 bg-slate-200 px-1.5 text-[9px] font-bold text-slate-500">
+                                <Icon name="phone" size="9" class="mr-0.5" />{{ dinnerFound.phone }}
+                            </Badge>
                         </div>
                     </div>
                 </div>
 
-                <!-- Subdealership Info -->
-                <div class="space-y-4">
-                    <div class="flex items-center gap-2">
-                        <div class="h-1 w-8 rounded-full bg-blue-500"></div>
-                        <span class="text-[10px] font-bold tracking-[0.2em] text-slate-400 uppercase">Empresa / Concesionaria</span>
-                    </div>
+                <!-- Divider -->
+                <div class="h-12 w-px shrink-0 bg-slate-200"></div>
 
-                    <div
-                        class="group flex items-start gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 transition-all hover:border-blue-200 hover:bg-white hover:shadow-md"
-                    >
-                        <div
-                            class="flex h-14 w-14 items-center justify-center rounded-xl bg-blue-100 text-blue-600 transition-colors group-hover:bg-blue-500 group-hover:text-white"
-                        >
-                            <Icon name="building" size="24" />
-                        </div>
-                        <div class="flex-1 space-y-1">
-                            <p class="text-[10px] font-bold tracking-widest text-slate-400 uppercase">Razón Social</p>
-                            <p class="text-base leading-tight font-black text-slate-900 uppercase">{{ subdealership.name }}</p>
-                            <div class="mt-2 flex items-center gap-3">
-                                <Badge variant="secondary" class="bg-blue-100 text-[10px] font-bold text-blue-700">
-                                    <Icon name="hash" size="10" class="mr-1" /> RUC {{ subdealership.ruc }}
-                                </Badge>
-                                <Badge v-if="subdealership.phone" variant="secondary" class="bg-slate-200 text-[10px] font-bold text-slate-600">
-                                    <Icon name="phone" size="10" class="mr-1" /> {{ subdealership.phone }}
-                                </Badge>
-                            </div>
+                <!-- Subdealership -->
+                <div class="flex flex-1 items-center gap-3 px-4 py-3">
+                    <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                        <Icon name="building" size="16" />
+                    </div>
+                    <div class="min-w-0">
+                        <p class="truncate text-[13px] font-black leading-tight text-slate-900 uppercase">{{ subdealership.name || '—' }}</p>
+                        <div class="mt-0.5 flex items-center gap-2">
+                            <Badge v-if="subdealership.ruc" variant="secondary" class="h-4 bg-blue-100 px-1.5 text-[9px] font-bold text-blue-700">
+                                RUC {{ subdealership.ruc }}
+                            </Badge>
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- Empty State -->
-            <div v-else class="flex flex-col items-center justify-center space-y-4 py-12 text-center">
-                <div class="flex h-20 w-20 items-center justify-center rounded-full bg-slate-50 text-slate-200">
-                    <Icon name="user-check" size="48" stroke-width="1.5" />
-                </div>
-                <div class="space-y-1">
-                    <p class="text-lg font-bold text-slate-900 uppercase">Esperando Identificación</p>
-                    <p class="max-w-[280px] text-sm text-slate-500">Ingrese el DNI para verificar los datos del comensal y registrar el servicio.</p>
-                </div>
+            <div v-else class="flex items-center justify-center gap-3 py-4 text-slate-300">
+                <Icon name="user-check" size="20" stroke-width="1.5" />
+                <p class="text-xs font-semibold text-slate-400">Ingrese el DNI del comensal para continuar</p>
             </div>
         </CardContent>
     </Card>

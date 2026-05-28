@@ -27,24 +27,24 @@ const props = defineProps({
     },
 });
 
-const PER_PAGE = 15;
+const PER_PAGE = 10;
 const currentPage = ref(1);
 
 watch(
     () => props.sales,
-    () => { currentPage.value = 1; },
+    () => {
+        currentPage.value = 1;
+    },
 );
 
 const totalPages = computed(() => Math.max(1, Math.ceil(props.sales.length / PER_PAGE)));
 
-const pagedSales = computed(() =>
-    props.sales.slice((currentPage.value - 1) * PER_PAGE, currentPage.value * PER_PAGE),
-);
+const pagedSales = computed(() => props.sales.slice((currentPage.value - 1) * PER_PAGE, currentPage.value * PER_PAGE));
 
 const visiblePages = computed(() => {
     const pages: number[] = [];
     const start = Math.max(1, currentPage.value - 2);
-    const end   = Math.min(totalPages.value, currentPage.value + 2);
+    const end = Math.min(totalPages.value, currentPage.value + 2);
     for (let i = start; i <= end; i++) pages.push(i);
     return pages;
 });
@@ -85,9 +85,11 @@ const sendToPrint = (ticketId: number, businessId: number) => {
                                 <Icon name="id-card" size="10" class="mr-1" />
                                 {{ sale?.tickets[0]?.dni || '—' }}
                             </Badge>
-                            <span v-if="sale?.tickets[0]?.subdealership_name"
+                            <span
+                                v-if="sale?.tickets[0]?.subdealership_name"
                                 class="truncate text-[10px] font-medium text-slate-400"
-                                :title="sale?.tickets[0]?.subdealership_name">
+                                :title="sale?.tickets[0]?.subdealership_name"
+                            >
                                 {{ sale?.tickets[0]?.subdealership_name }}
                             </span>
                         </div>
@@ -98,12 +100,13 @@ const sendToPrint = (ticketId: number, businessId: number) => {
                                 {{ (sale?.tickets[0]?.dinner_name || '?').charAt(0).toUpperCase() }}
                             </div>
                             <div class="min-w-0">
-                                <span class="block max-w-[150px] truncate text-[13px] font-bold text-slate-700"
-                                    :title="sale?.tickets[0]?.dinner_name">
+                                <span
+                                    class="block max-w-[150px] truncate text-[13px] font-bold text-slate-700"
+                                    :title="sale?.tickets[0]?.dinner_name"
+                                >
                                     {{ sale?.tickets[0]?.dinner_name || '—' }}
                                 </span>
-                                <span v-if="sale?.is_visitor"
-                                    class="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-600">
+                                <span v-if="sale?.is_visitor" class="rounded bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-600">
                                     VISITANTE
                                 </span>
                             </div>
@@ -144,14 +147,11 @@ const sendToPrint = (ticketId: number, businessId: number) => {
             </TableBody>
         </Table>
 
-        <div
-            v-if="totalPages > 1"
-            class="flex items-center justify-center gap-1.5 border-t border-slate-100 bg-slate-50/50 px-4 py-3"
-        >
+        <div v-if="totalPages > 1" class="flex items-center justify-center gap-1.5 border-t border-slate-100 bg-slate-50/50 px-4 py-3">
             <button
                 :disabled="currentPage === 1"
                 @click="currentPage--"
-                class="flex h-8 min-w-[32px] items-center justify-center rounded-lg border px-2.5 text-[11px] font-bold shadow-sm transition-all border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                class="flex h-8 min-w-[32px] items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-bold text-slate-600 shadow-sm transition-all hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
                 Anterior
             </button>
@@ -161,9 +161,11 @@ const sendToPrint = (ticketId: number, businessId: number) => {
                 :key="page"
                 @click="currentPage = page"
                 class="flex h-8 min-w-[32px] items-center justify-center rounded-lg border px-2.5 text-[11px] font-bold shadow-sm transition-all"
-                :class="page === currentPage
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'"
+                :class="
+                    page === currentPage
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                "
             >
                 {{ page }}
             </button>
@@ -171,7 +173,7 @@ const sendToPrint = (ticketId: number, businessId: number) => {
             <button
                 :disabled="currentPage === totalPages"
                 @click="currentPage++"
-                class="flex h-8 min-w-[32px] items-center justify-center rounded-lg border px-2.5 text-[11px] font-bold shadow-sm transition-all border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                class="flex h-8 min-w-[32px] items-center justify-center rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-bold text-slate-600 shadow-sm transition-all hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
             >
                 Siguiente
             </button>

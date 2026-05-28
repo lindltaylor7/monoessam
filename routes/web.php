@@ -160,6 +160,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('search/{unitId}/{word?}', [CafeController::class, 'search'])->name('search');
         Route::post('serviceables', [CafeController::class, 'cafeServiceables'])->name('serviceables');
         Route::get('{id}/export-headcount', [CafeController::class, 'exportHeadcount'])->name('export-headcount');
+        Route::get('{id}/services', [CafeController::class, 'services'])->name('services');
     });
 
     Route::prefix('dealerships')->name('dealerships.')->group(function () {

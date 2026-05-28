@@ -3,6 +3,7 @@ import Icon from '@/components/Icon.vue';
 import { Card, CardContent } from '@/components/ui/card';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Cafe, Service, Unit } from '@/types';
+import axios from 'axios';
 import { Settings } from 'lucide-vue-next';
 import { ref, watch } from 'vue';
 import DatePicker from './DatePicker.vue';
@@ -19,13 +20,12 @@ interface Props {
 
 const emits = defineEmits(['showServicesFromCafeSelected', 'updateDate', 'updateFormData', 'addServiceSelected']);
 
-const props = defineProps<Props>();
+defineProps<Props>();
 const doublePrice = ref(false);
 
 const cafeSelected = ref<number>(0);
 const saletypeSelected = ref<number>(0);
 const servicesSelected = ref<any[]>([]);
-const salesSelected = ref<any[]>([]);
 const receiptType = ref<number>(0);
 const showOtherUnitDialog = ref(false);
 
@@ -43,15 +43,18 @@ const doublePriceSave = () => {
 };
 
 watch(cafeSelected, (newVal) => {
-    const found = props.cafes.find((cafe) => cafe.id === newVal) as any;
-    if (found) {
-        servicesSelected.value = found.services || [];
-        salesSelected.value = found.sales || [];
-        emits('showServicesFromCafeSelected', servicesSelected.value, newVal);
-    } else {
+    if (!newVal) {
         servicesSelected.value = [];
-        emits('showServicesFromCafeSelected', servicesSelected.value);
+        emits('showServicesFromCafeSelected', [], undefined);
+        return;
     }
+    axios.get(`/cafes/${newVal}/services`).then((res) => {
+        servicesSelected.value = res.data ?? [];
+        emits('showServicesFromCafeSelected', servicesSelected.value, newVal);
+    }).catch(() => {
+        servicesSelected.value = [];
+        emits('showServicesFromCafeSelected', [], newVal);
+    });
 });
 
 watch([receiptType, saletypeSelected, cafeSelected], () => {
