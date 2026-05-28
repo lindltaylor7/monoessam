@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\SalesDetailExport;
 use App\Exports\SalesReportExport;
 use App\Exports\ValorizacionExport;
 use App\Models\Sale;
@@ -172,6 +173,35 @@ class ReportSalesController extends Controller
                 $cafeIds, $user->business_id,
                 $businessInfo, $unitInfo, $cafeInfo, $aFavorDe,
             ),
+            $fileName,
+        );
+    }
+
+    /**
+     * Export detail — flat list: one row per service consumed
+     */
+    public function exportDetail(Request $request)
+    {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+        $user->load(['units.cafes']);
+
+        $cafeIds   = $user->units->flatMap->cafes->unique('id')->pluck('id')->all();
+        $startDate = $request->input('start_date', date('Y-m-d'));
+        $endDate   = $request->input('end_date', date('Y-m-d'));
+        $cafeId    = $request->input('cafe_id');
+        $sdId      = $request->input('subdealership_id') ? (int) $request->input('subdealership_id') : null;
+
+        $cafeName = 'TODAS LAS CAFETERÍAS';
+        if ($cafeId) {
+            $cafe = \App\Models\Cafe::find($cafeId);
+            $cafeName = $cafe?->name ?? 'TODAS LAS CAFETERÍAS';
+        }
+
+        $fileName = 'detalle-consumo-' . $startDate . '-a-' . $endDate . '.xlsx';
+
+        return Excel::download(
+            new SalesDetailExport($startDate, $endDate, $cafeId, $sdId, $cafeIds, $cafeName),
             $fileName,
         );
     }

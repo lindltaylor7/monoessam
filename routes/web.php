@@ -363,7 +363,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/', [ReportSalesController::class, 'index'])->name('index');
         Route::delete('{id}', [ReportSalesController::class, 'destroy'])->name('destroy');
         Route::get('export',    [ReportSalesController::class, 'export'])->name('export');
-        Route::get('export-vlz', [ReportSalesController::class, 'exportValorizacion'])->name('export-vlz');
+        Route::get('export-vlz',    [ReportSalesController::class, 'exportValorizacion'])->name('export-vlz');
+        Route::get('export-detail', [ReportSalesController::class, 'exportDetail'])->name('export-detail');
     });
 
 

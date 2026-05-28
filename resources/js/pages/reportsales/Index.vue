@@ -43,7 +43,9 @@ interface Statistics {
 interface Sale {
     id: number;
     date: string;
+    created_at: string;
     total: number;
+    is_visitor: boolean;
     cafe: Cafe;
     tickets: any[];
 }
@@ -127,6 +129,11 @@ const exportToExcel = () => {
 const exportValorizacion = () => {
     window.location.href = route('reportsales.export-vlz') + '?' + buildParams();
 };
+
+// Detalle de consumo — una fila por servicio consumido
+const exportDetail = () => {
+    window.location.href = route('reportsales.export-detail') + '?' + buildParams();
+};
 </script>
 
 <template>
@@ -156,6 +163,10 @@ const exportValorizacion = () => {
                     <Button @click="exportValorizacion" class="gap-2 bg-emerald-600 hover:bg-emerald-700">
                         <Icon name="table-2" size="16" />
                         Valorización
+                    </Button>
+                    <Button @click="exportDetail" variant="outline" class="gap-2 border-violet-300 text-violet-700 hover:bg-violet-50 hover:border-violet-400">
+                        <Icon name="list-details" size="16" />
+                        Detalle de consumo
                     </Button>
                 </div>
             </div>
