@@ -14,25 +14,25 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 /**
- * Cross-tab: rows = [EMPRESA > NOMBRE], columns = [DATE > SERVICE_NAME > (CANT | S/)].
+ * Cross-tab: rows = [EMPRESA > NOMBRE], columns = [DATE > SERVICE_NAME (qty only)].
+ * Services ordered by type: 1=Desayuno, 2=Almuerzo, 3=Cena, 4=Refrigerio.
  */
 class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitle
 {
-    /** Unique, chronologically-sorted date strings (dd/mm/yyyy) */
+    /** Chronologically-sorted date strings (dd/mm/yyyy) */
     private array $dates = [];
 
-    /** Unique, alphabetically-sorted service names */
+    /** Service names sorted by type (D→A→C→R) */
     private array $services = [];
 
-    /** [sd_name][name][date|svc_name] => ['qty' => int, 'price' => float] */
+    /** [sd_name][name][date|svc_name] => qty */
     private array $matrix = [];
 
-    /** [{sd, start_row, count}] — for EMPRESA cell merges */
+    /** [{sd, start_row, count}] */
     private array $sdGroups = [];
 
-    private const FIXED_COLS = 2;  // EMPRESA + APELLIDOS Y NOMBRES
-    private const COLS_PER_SVC = 2; // CANT + S/
-    private const DATA_START = 6;  // rows 1-5: title, period, spacer, header-dates, header-services
+    private const FIXED_COLS = 2; // EMPRESA + APELLIDOS Y NOMBRES
+    private const DATA_START  = 6; // rows 1-5: title, period, spacer, header-dates, header-services
 
     public function __construct(
         private readonly array  $rows,
@@ -43,23 +43,23 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
         $this->buildMatrix();
     }
 
-    /* ── Build cross-tab structure ── */
     private function buildMatrix(): void
     {
-        $dateSet = [];
-        $svcSet  = [];
-        $sdOrder = [];
+        $dateSet    = [];
+        /** svc_name => svc_type (for ordering) */
+        $svcTypeMap = [];
+        $sdOrder    = [];
 
         foreach ($this->rows as $row) {
-            $sd    = $row['sd_name'];
-            $name  = $row['name'];
-            $date  = $row['date'];
-            $svc   = $row['svc_name'];
-            $qty   = $row['amount'];
-            $price = (float) ($row['unit_price'] ?? 0);
+            $sd   = $row['sd_name'];
+            $name = $row['name'];
+            $date = $row['date'];
+            $svc  = $row['svc_name'];
+            $qty  = (int) ($row['amount'] ?? 1);
+            $type = (int) ($row['svc_type'] ?? 99);
 
-            $dateSet[$date] = true;
-            $svcSet[$svc]   = true;
+            $dateSet[$date]       = true;
+            $svcTypeMap[$svc]     = $type;
 
             if (!isset($this->matrix[$sd])) {
                 $this->matrix[$sd] = [];
@@ -69,11 +69,7 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
                 $this->matrix[$sd][$name] = [];
             }
             $key = $date . '|' . $svc;
-            $prev = $this->matrix[$sd][$name][$key] ?? ['qty' => 0, 'price' => 0.0];
-            $this->matrix[$sd][$name][$key] = [
-                'qty'   => $prev['qty'] + $qty,
-                'price' => $prev['price'] + $qty * $price,
-            ];
+            $this->matrix[$sd][$name][$key] = ($this->matrix[$sd][$name][$key] ?? 0) + $qty;
         }
 
         /* Sort dates chronologically */
@@ -84,12 +80,14 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
         );
         $this->dates = $dates;
 
-        /* Sort services alphabetically */
-        $svcs = array_keys($svcSet);
-        sort($svcs);
+        /* Sort services by type (1=D, 2=A, 3=C, 4=R) then name */
+        $svcs = array_keys($svcTypeMap);
+        usort($svcs, fn($a, $b) =>
+            ($svcTypeMap[$a] ?? 99) <=> ($svcTypeMap[$b] ?? 99) ?: strcmp($a, $b)
+        );
         $this->services = $svcs;
 
-        /* Sort subdealerships and record row ranges for cell merges */
+        /* Sort subdealerships and record row ranges for EMPRESA cell merges */
         sort($sdOrder);
         $currentRow = self::DATA_START;
         foreach ($sdOrder as $sd) {
@@ -100,7 +98,6 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
         }
     }
 
-    /* ── Array returned to Maatwebsite ── */
     public function array(): array
     {
         if (empty($this->dates) || empty($this->services)) {
@@ -109,7 +106,7 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
 
         $fmt   = fn(string $d) => Carbon::parse($d)->translatedFormat('d \d\e F \d\e Y');
         $nSvcs = count($this->services);
-        $nCols = self::FIXED_COLS + count($this->dates) * $nSvcs * self::COLS_PER_SVC;
+        $nCols = self::FIXED_COLS + count($this->dates) * $nSvcs;
         $empty = array_fill(0, $nCols, '');
 
         /* Row 1 – cafe title */
@@ -120,21 +117,20 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
         $period    = $empty;
         $period[0] = 'Período: ' . $fmt($this->startDate) . ' — ' . $fmt($this->endDate);
 
-        /* Row 4 – header level 1: dates (each merges over nSvcs * COLS_PER_SVC cols) */
+        /* Row 4 – header level 1: dates (each merges over nSvcs cols) */
         $header1 = ['EMPRESA', 'APELLIDOS Y NOMBRES'];
         foreach ($this->dates as $date) {
             $header1[] = $date;
-            for ($i = 1; $i < $nSvcs * self::COLS_PER_SVC; $i++) {
+            for ($i = 1; $i < $nSvcs; $i++) {
                 $header1[] = '';
             }
         }
 
-        /* Row 5 – header level 2: service name | S/ repeated per date */
+        /* Row 5 – header level 2: service names (one col each) */
         $header2 = ['', ''];
         foreach ($this->dates as $_) {
             foreach ($this->services as $svc) {
                 $header2[] = $svc;
-                $header2[] = 'S/';
             }
         }
 
@@ -148,39 +144,30 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
 
             foreach ($persons as $person) {
                 $row = [$first ? $sd : '', $person];
-
                 foreach ($this->dates as $date) {
                     foreach ($this->services as $svc) {
-                        $key  = $date . '|' . $svc;
-                        $cell = $this->matrix[$sd][$person][$key] ?? null;
-                        $row[] = ($cell && $cell['qty'] > 0) ? $cell['qty'] : '';
-                        $row[] = ($cell && $cell['price'] > 0) ? number_format($cell['price'], 2) : '';
+                        $key   = $date . '|' . $svc;
+                        $qty   = $this->matrix[$sd][$person][$key] ?? null;
+                        $row[] = ($qty !== null && $qty > 0) ? (int) $qty : '';
                     }
                 }
-
                 $rows[] = $row;
                 $first  = false;
             }
         }
 
-        /* Totals row — sum only the S/ columns (every 2nd data col) */
-        $totals = ['', 'TOTAL'];
+        /* Totals row */
+        $totals        = ['', 'TOTAL'];
         $dataRowArrays = array_slice($rows, self::DATA_START - 1);
-        foreach ($this->dates as $di => $date) {
-            foreach ($this->services as $si => $svc) {
-                $qtyColIdx   = self::FIXED_COLS + ($di * $nSvcs + $si) * self::COLS_PER_SVC;       // 0-based
-                $priceColIdx = $qtyColIdx + 1;
-
-                $totQty   = 0;
-                $totPrice = 0.0;
+        foreach ($this->dates as $di => $_) {
+            foreach ($this->services as $si => $_s) {
+                $colIdx = self::FIXED_COLS + $di * $nSvcs + $si; // 0-based
+                $sum    = 0;
                 foreach ($dataRowArrays as $dr) {
-                    $qVal = $dr[$qtyColIdx]   ?? '';
-                    $pVal = $dr[$priceColIdx] ?? '';
-                    $totQty   += is_numeric($qVal) ? (int) $qVal : 0;
-                    $totPrice += is_numeric(str_replace(',', '', $pVal)) ? (float) str_replace(',', '', $pVal) : 0.0;
+                    $v = $dr[$colIdx] ?? '';
+                    $sum += is_numeric($v) ? (int) $v : 0;
                 }
-                $totals[] = $totQty   > 0 ? $totQty   : '';
-                $totals[] = $totPrice > 0 ? number_format($totPrice, 2) : '';
+                $totals[] = $sum > 0 ? $sum : '';
             }
         }
         $rows[] = $totals;
@@ -193,7 +180,6 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
         return 'RESUMEN';
     }
 
-    /* ── Styles ── */
     public function styles(Worksheet $sheet): void
     {
         if (empty($this->dates) || empty($this->services)) {
@@ -201,15 +187,14 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
         }
 
         $nSvcs     = count($this->services);
-        $nDataCols = count($this->dates) * $nSvcs * self::COLS_PER_SVC;
-        $totalCols = self::FIXED_COLS + $nDataCols;
+        $totalCols = self::FIXED_COLS + count($this->dates) * $nSvcs;
         $lastCol   = Coordinate::stringFromColumnIndex($totalCols);
 
         $totalRows   = array_sum(array_column($this->sdGroups, 'count'));
         $lastDataRow = self::DATA_START + $totalRows - 1;
         $totalsRow   = $lastDataRow + 1;
 
-        /* ── Merge title / period ── */
+        /* ── Title / period merges ── */
         $sheet->mergeCells("A1:{$lastCol}1");
         $sheet->mergeCells("A2:{$lastCol}2");
         $sheet->mergeCells("A3:{$lastCol}3");
@@ -234,12 +219,11 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
         ]);
         $sheet->getRowDimension(4)->setRowHeight(22);
 
-        /* Merge date cells in row 4 */
-        $dateMergeSpan = $nSvcs * self::COLS_PER_SVC;
-        foreach ($this->dates as $i => $date) {
-            $startIdx = self::FIXED_COLS + 1 + $i * $dateMergeSpan; // 1-based
-            $endIdx   = $startIdx + $dateMergeSpan - 1;
-            if ($startIdx < $endIdx) {
+        /* Merge date cells in row 4 (each spans nSvcs columns) */
+        if ($nSvcs > 1) {
+            foreach ($this->dates as $i => $_) {
+                $startIdx = self::FIXED_COLS + 1 + $i * $nSvcs; // 1-based
+                $endIdx   = $startIdx + $nSvcs - 1;
                 $sheet->mergeCells(
                     Coordinate::stringFromColumnIndex($startIdx) . '4:' .
                     Coordinate::stringFromColumnIndex($endIdx)   . '4'
@@ -247,7 +231,7 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
             }
         }
 
-        /* ── Header row 5: service names + S/ (medium blue) ── */
+        /* ── Header row 5: service names (medium blue) ── */
         $sheet->getStyle("A5:{$lastCol}5")->applyFromArray([
             'font'      => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 9],
             'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '2D5FA8']],
@@ -262,22 +246,14 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
                 'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']]],
                 'font'    => ['size' => 9],
             ]);
-
             for ($r = self::DATA_START; $r <= $lastDataRow; $r++) {
                 if ($r % 2 === 0) {
                     $sheet->getStyle("A{$r}:{$lastCol}{$r}")->getFill()
                         ->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('F8FAFC');
                 }
-                /* Center CANT columns, right-align S/ columns */
-                for ($di = 0; $di < count($this->dates); $di++) {
-                    for ($si = 0; $si < $nSvcs; $si++) {
-                        $qtyIdx   = self::FIXED_COLS + 1 + ($di * $nSvcs + $si) * self::COLS_PER_SVC;
-                        $priceIdx = $qtyIdx + 1;
-                        $sheet->getStyle(Coordinate::stringFromColumnIndex($qtyIdx) . $r)
-                            ->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                        $sheet->getStyle(Coordinate::stringFromColumnIndex($priceIdx) . $r)
-                            ->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
-                    }
+                for ($c = self::FIXED_COLS + 1; $c <= $totalCols; $c++) {
+                    $sheet->getStyle(Coordinate::stringFromColumnIndex($c) . $r)
+                        ->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 }
             }
         }
@@ -288,15 +264,10 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
             'fill'    => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'DBEAFE']],
             'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'BFDBFE']]],
         ]);
-        for ($di = 0; $di < count($this->dates); $di++) {
-            for ($si = 0; $si < $nSvcs; $si++) {
-                $qtyIdx   = self::FIXED_COLS + 1 + ($di * $nSvcs + $si) * self::COLS_PER_SVC;
-                $priceIdx = $qtyIdx + 1;
-                $sheet->getStyle(Coordinate::stringFromColumnIndex($qtyIdx) . $totalsRow)
-                    ->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                $sheet->getStyle(Coordinate::stringFromColumnIndex($priceIdx) . $totalsRow)
-                    ->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
-            }
+        $sheet->getStyle("B{$totalsRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+        for ($c = self::FIXED_COLS + 1; $c <= $totalCols; $c++) {
+            $sheet->getStyle(Coordinate::stringFromColumnIndex($c) . $totalsRow)
+                ->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         }
 
         /* ── EMPRESA column: merge rows per group ── */
@@ -310,22 +281,16 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
                 'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'EFF6FF']],
                 'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
             ]);
-            /* Bottom border to separate groups */
             $sheet->getStyle("A{$endRow}:{$lastCol}{$endRow}")->getBorders()
                 ->getBottom()->setBorderStyle(Border::BORDER_MEDIUM)
                 ->getColor()->setRGB('94A3B8');
         }
 
         /* ── Column widths ── */
-        $sheet->getColumnDimension('A')->setWidth(22); // EMPRESA
+        $sheet->getColumnDimension('A')->setWidth(22);
         // Column B auto-sized (ShouldAutoSize)
-        for ($di = 0; $di < count($this->dates); $di++) {
-            for ($si = 0; $si < $nSvcs; $si++) {
-                $qtyIdx   = self::FIXED_COLS + 1 + ($di * $nSvcs + $si) * self::COLS_PER_SVC;
-                $priceIdx = $qtyIdx + 1;
-                $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($qtyIdx))->setWidth(7);
-                $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($priceIdx))->setWidth(10);
-            }
+        for ($c = self::FIXED_COLS + 1; $c <= $totalCols; $c++) {
+            $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($c))->setWidth(10);
         }
     }
 }
