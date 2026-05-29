@@ -17,15 +17,27 @@ class SalesDetailSheet implements FromArray, ShouldAutoSize, WithStyles, WithTit
     private array $dataRows  = [];
     private const DATA_START = 5;
 
+    /** Service-type display order: 1=Desayuno, 2=Almuerzo, 3=Cena, 4=Refrigerio */
+    private const SVC_ORDER = [1 => 1, 2 => 2, 3 => 3, 4 => 4];
+
     public function __construct(
         private readonly array  $rows,
         private readonly string $startDate,
         private readonly string $endDate,
         private readonly string $cafeName,
     ) {
+        /* Sort: service type → date → person name */
+        $sorted = $this->rows;
+        usort($sorted, function (array $a, array $b): int {
+            $orderA = self::SVC_ORDER[$a['svc_type']] ?? 99;
+            $orderB = self::SVC_ORDER[$b['svc_type']] ?? 99;
+            if ($orderA !== $orderB) return $orderA <=> $orderB;
+            if ($a['date_raw'] !== $b['date_raw']) return strcmp($a['date_raw'], $b['date_raw']);
+            return strcmp($a['name'], $b['name']);
+        });
+
         $num = 1;
-        foreach ($this->rows as $row) {
-            $price = (float) ($row['unit_price'] ?? 0) * (int) ($row['amount'] ?? 1);
+        foreach ($sorted as $row) {
             $this->dataRows[] = [
                 $num++,
                 $row['sd_name'],
@@ -34,26 +46,22 @@ class SalesDetailSheet implements FromArray, ShouldAutoSize, WithStyles, WithTit
                 $row['time'],
                 $row['svc_name'],
                 (int) ($row['amount'] ?? 1),
-                number_format($price, 2),
             ];
         }
     }
 
     public function array(): array
     {
-        $fmt        = fn(string $d) => Carbon::parse($d)->translatedFormat('d \d\e F \d\e Y');
-        $totalQty   = array_sum(array_column($this->dataRows, 6));
-        $totalPrice = array_sum(
-            array_map(fn($r) => (float) str_replace(',', '', $r[7] ?? '0'), $this->dataRows)
-        );
+        $fmt      = fn(string $d) => Carbon::parse($d)->translatedFormat('d \d\e F \d\e Y');
+        $totalQty = array_sum(array_column($this->dataRows, 6));
 
         return array_merge(
-            [['CAFETERÍA: ' . strtoupper($this->cafeName), '', '', '', '', '', '', '']],
-            [['Período: ' . $fmt($this->startDate) . ' — ' . $fmt($this->endDate), '', '', '', '', '', '', '']],
-            [['', '', '', '', '', '', '', '']],
-            [['N°', 'SUBCONCESIONARIA', 'APELLIDOS Y NOMBRES', 'FECHA', 'HORA', 'SERVICIO', 'CANT.', 'PRECIO']],
+            [['CAFETERÍA: ' . strtoupper($this->cafeName), '', '', '', '', '', '']],
+            [['Período: ' . $fmt($this->startDate) . ' — ' . $fmt($this->endDate), '', '', '', '', '', '']],
+            [['', '', '', '', '', '', '']],
+            [['N°', 'SUBCONCESIONARIA', 'APELLIDOS Y NOMBRES', 'FECHA', 'HORA', 'SERVICIO', 'CANT.']],
             $this->dataRows,
-            [['', '', '', '', '', 'TOTAL', $totalQty, number_format($totalPrice, 2)]],
+            [['', '', '', '', '', 'TOTAL', $totalQty]],
         );
     }
 
@@ -66,7 +74,7 @@ class SalesDetailSheet implements FromArray, ShouldAutoSize, WithStyles, WithTit
     {
         $lastDataRow = self::DATA_START + count($this->dataRows) - 1;
         $totalsRow   = $lastDataRow + 1;
-        $lastCol     = 'H';
+        $lastCol     = 'G';
 
         $sheet->mergeCells("A1:{$lastCol}1");
         $sheet->mergeCells("A2:{$lastCol}2");
@@ -102,12 +110,9 @@ class SalesDetailSheet implements FromArray, ShouldAutoSize, WithStyles, WithTit
                     $sheet->getStyle("A{$r}:{$lastCol}{$r}")->getFill()
                         ->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('F8FAFC');
                 }
-                // Center: N°, Fecha, Hora, Cant.
                 foreach (['A', 'D', 'E', 'G'] as $col) {
                     $sheet->getStyle("{$col}{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 }
-                // Right-align: Precio
-                $sheet->getStyle("H{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
             }
         }
 
@@ -118,7 +123,6 @@ class SalesDetailSheet implements FromArray, ShouldAutoSize, WithStyles, WithTit
         ]);
         $sheet->getStyle("F{$totalsRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         $sheet->getStyle("G{$totalsRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle("H{$totalsRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
         $sheet->getColumnDimension('A')->setWidth(6);
         $sheet->getColumnDimension('B')->setWidth(24);
@@ -127,6 +131,5 @@ class SalesDetailSheet implements FromArray, ShouldAutoSize, WithStyles, WithTit
         $sheet->getColumnDimension('E')->setWidth(10);
         $sheet->getColumnDimension('F')->setWidth(26);
         $sheet->getColumnDimension('G')->setWidth(8);
-        $sheet->getColumnDimension('H')->setWidth(12);
     }
 }

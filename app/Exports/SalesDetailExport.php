@@ -55,9 +55,11 @@ class SalesDetailExport implements WithMultipleSheets
                         'sd_name'    => strtoupper($ticket->subdealership_name ?: 'SIN EMPRESA'),
                         'name'       => strtoupper($ticket->dinner_name ?: 'SIN NOMBRE'),
                         'date'       => $date,
+                        'date_raw'   => $sale->date,   // yyyy-mm-dd for sorting
                         'time'       => $time,
                         'svc_name'   => strtoupper($detail->service_name ?: '—'),
                         'svc_code'   => strtoupper($detail->code ?: '—'),
+                        'svc_type'   => (int) ($detail->service_type ?? 99),
                         'amount'     => (int) ($detail->amount ?? 1),
                         'unit_price' => (float) ($detail->unit_price ?? 0),
                     ];
