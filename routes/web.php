@@ -22,6 +22,7 @@ use App\Http\Controllers\MineController;
 use App\Http\Controllers\PeriodController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\ProviderController;
+use App\Http\Controllers\GeneralReportController;
 use App\Http\Controllers\ReportSalesController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SaleController;
@@ -359,6 +360,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/history/staff/{id}/pdf', [InventoryController::class, 'staffHistoryPdf'])->name('history.staff.pdf');
         Route::get('/units', [InventoryController::class, 'unitsStockIndex'])->name('units.index');
     });
+
+    Route::get('generalreport', [GeneralReportController::class, 'index'])->name('generalreport.index');
 
     Route::prefix('reportsales')->name('reportsales.')->group(function () {
         Route::get('/', [ReportSalesController::class, 'index'])->name('index');
