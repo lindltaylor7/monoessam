@@ -11,7 +11,7 @@ defineEmits(['click']);
 </script>
 
 <template>
-    <Badge :class="[colorClass, 'cursor-pointer rounded-sm hover:opacity-80 transition-opacity']" @click="$emit('click')">
+    <Badge :class="[colorClass, 'cursor-pointer rounded-sm transition-opacity hover:opacity-80']" @click="$emit('click')">
         {{ label }}
     </Badge>
 </template>

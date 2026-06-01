@@ -25,7 +25,7 @@ const form = useForm({
 
 // Enviar
 const submit = () => {
-   form.post(route('roles.permissions'), {
+    form.post(route('roles.permissions'), {
         onSuccess: () => {
             open.value = false;
         },

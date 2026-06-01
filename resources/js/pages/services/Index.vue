@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
-import { useForm } from '@inertiajs/vue3';
+import { Head, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import { onMounted, ref } from 'vue';
 import ServiceModal from './ServiceModal.vue';
-import { Head } from '@inertiajs/vue3';
+import ServiceSyncModal from './ServiceSyncModal.vue';
 
 // Definición de tipos
 interface Service {
@@ -112,7 +112,10 @@ const confirmDelete = (id: number) => {
                 <div class="md:col-span-3">
                     <div class="flex items-center justify-between">
                         <h1 class="text-2xl font-bold">Servicios</h1>
-                        <ServiceModal :serviceTypes="serviceTypes" @fetchServices="fetchServices" />
+                        <div class="flex items-center gap-2">
+                            <ServiceSyncModal />
+                            <ServiceModal :serviceTypes="serviceTypes" @fetchServices="fetchServices" />
+                        </div>
                     </div>
                 </div>
 

@@ -6,12 +6,15 @@ interface Errors {
     [key: string]: string | string[];
 }
 
-const props = withDefaults(defineProps<{
-    errors: Errors;
-    show?: boolean;
-}>(), {
-    show: true,
-});
+const props = withDefaults(
+    defineProps<{
+        errors: Errors;
+        show?: boolean;
+    }>(),
+    {
+        show: true,
+    },
+);
 
 // Función para traducir las claves técnicas de Laravel a nombres amigables
 const translateKey = (key: string): string => {

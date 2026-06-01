@@ -43,14 +43,18 @@ const headquartersSelected = ref<any[]>([]);
 const headquarterSelected = ref(0);
 const areasSelected = ref<any[]>([]);
 const areaSelected = ref(0);
-const guardSelected = ref<string | number>(0)
+const guardSelected = ref<string | number>(0);
 
 // Sincronizar valor inicial
-watch(() => props.workplace, (newVal) => {
-    if (newVal !== undefined && newVal !== null && newVal != 0) {
-        workplace.value = String(newVal);
-    }
-}, { immediate: true });
+watch(
+    () => props.workplace,
+    (newVal) => {
+        if (newVal !== undefined && newVal !== null && newVal != 0) {
+            workplace.value = String(newVal);
+        }
+    },
+    { immediate: true },
+);
 
 // Notificar cambios al padre para persistencia en el formulario
 watch(workplace, (newValue) => {
@@ -59,12 +63,12 @@ watch(workplace, (newValue) => {
     }
 });
 
-if(props.workplace && props.workplace != 0){
-    workplace.value = String(props.workplace)
-    
-    if(props.areaId != 0){
+if (props.workplace && props.workplace != 0) {
+    workplace.value = String(props.workplace);
+
+    if (props.areaId != 0) {
         businnesSelected.value = props.headquarter?.business?.id;
-        
+
         const business = props.businneses.find((b) => b.id == businnesSelected.value);
         if (business) {
             headquartersSelected.value = business.headquarters;
@@ -78,10 +82,9 @@ if(props.workplace && props.workplace != 0){
         }
     }
 }
-   
 
-if(props.guard != ''){
-    guardSelected.value = props.guard
+if (props.guard != '') {
+    guardSelected.value = props.guard;
 }
 
 watch(businnesSelected, (newValue) => {
@@ -105,7 +108,6 @@ watch(areaSelected, (newValue) => {
 watch(guardSelected, (newValue) => {
     emit('select-guard', newValue);
 });
-
 </script>
 
 <template>
@@ -198,7 +200,6 @@ watch(guardSelected, (newValue) => {
                             Lugar de trabajo
                         </label>
                         <div class="pl-7">
-                           
                             <Select class="w-full" v-model="workplace">
                                 <SelectTrigger class="h-11 border-zinc-200 bg-white hover:bg-zinc-50">
                                     <SelectValue placeholder="Seleccionar lugar de trabajo" />
@@ -358,7 +359,7 @@ watch(guardSelected, (newValue) => {
                                             </div>
                                             Guardia asignada
                                         </label>
-                                       <Select v-model="guardSelected">
+                                        <Select v-model="guardSelected">
                                             <SelectTrigger>
                                                 <SelectValue placeholder="Seleccionar" />
                                             </SelectTrigger>
@@ -368,7 +369,7 @@ watch(guardSelected, (newValue) => {
                                                 <SelectItem value="Guardia C">Guardia C</SelectItem>
                                                 <SelectItem value="Guardia Admin">Guardia Admin</SelectItem>
                                             </SelectContent>
-                                       </Select>
+                                        </Select>
                                     </div>
                                 </div>
                             </div>

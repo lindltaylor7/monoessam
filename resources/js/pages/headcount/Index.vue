@@ -1,14 +1,14 @@
 <script setup lang="ts">
+import { useHeadcountData } from '@/composables/useHeadcountData';
+import { useHeadcountSelection } from '@/composables/useHeadcountSelection';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Area, Cafe, Headquarter, Mine, Permission, Role, Unit, User } from '@/types';
+import { Area, Headquarter, Mine, Permission, Role, Unit, User } from '@/types';
 import { Head } from '@inertiajs/vue3';
+import Swal from 'sweetalert2';
 import { ref, watch } from 'vue';
 import TableHeadcount from './TableHeadcount.vue';
 import HeadcountFilters from './partials/HeadcountFilters.vue';
 import HeadcountGrid from './partials/HeadcountGrid.vue';
-import { useHeadcountSelection } from '@/composables/useHeadcountSelection';
-import { useHeadcountData } from '@/composables/useHeadcountData';
-import Swal from 'sweetalert2';
 
 interface Props {
     users: User[];
@@ -32,19 +32,19 @@ const changeView = () => {
 // Composables
 const { selectedOptions, selectedUnits, selectedCafes } = useHeadcountSelection(props.mines);
 
-const { 
-    guardsSelected, 
-    unassignedUsers, 
-    assignedUsers, 
+const {
+    guardsSelected,
+    unassignedUsers,
+    assignedUsers,
     allStaff,
-    selectedPeriods, 
+    selectedPeriods,
     fetchCafeData,
     assignGuards,
     deleteGuard,
     handleUserAssignment,
     unassignUser,
     asignRolesToGuard,
-    deleteGuardRole
+    deleteGuardRole,
 } = useHeadcountData();
 
 // Watch selection to fetch data
@@ -58,14 +58,14 @@ watch(
                 allowOutsideClick: false,
                 didOpen: () => {
                     Swal.showLoading();
-                }
+                },
             });
-            
+
             fetchCafeData(Number(newCafeId));
 
-            Swal.close()
+            Swal.close();
         }
-    }
+    },
 );
 
 const exportToExcel = () => {

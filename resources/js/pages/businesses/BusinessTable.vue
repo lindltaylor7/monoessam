@@ -1,37 +1,67 @@
 <script setup lang="ts">
 import Button from '@/components/ui/button/Button.vue';
 import { Headquarter } from '@/types';
-import { Trash } from 'lucide-vue-next';
+import axios from 'axios';
+import { ImageUp, Trash } from 'lucide-vue-next';
+import { ref } from 'vue';
 import AreaModal from '../headcount/AreaModal.vue';
 import ServicePopover from './ServicePopover.vue';
 
-const props = defineProps({
-    businesses: {
-        type: Array,
-        default: () => [],
-    },
-    services: {
-        type: Array,
-        default: () => [],
-    },
-    headquarters: {
-        type: Array,
-        default: () => [],
-    },
-});
-
-interface Emits {
-    (e: 'selectAreas', headquarter: Headquarter): void;
+interface Business {
+    id: number;
+    name: string;
+    description?: string;
+    logo?: string | null;
 }
 
-const emit = defineEmits<Emits>();
+const props = defineProps<{
+    businesses: Business[];
+    services: unknown[];
+    headquarters: Headquarter[];
+}>();
 
-const getBusinessHeadquarters = (businessId) => {
-    return props.headquarters.filter((h) => h.business.id === businessId);
+const emit = defineEmits<{
+    (e: 'selectAreas', headquarter: Headquarter): void;
+}>();
+
+const uploading = ref<number | null>(null);
+
+const getBusinessHeadquarters = (businessId: number) => {
+    return props.headquarters.filter((h) => h.business?.id === businessId);
 };
 
 const selectHeadquarter = (headquarter: Headquarter) => {
     emit('selectAreas', headquarter);
+};
+
+const triggerLogoUpload = (businessId: number) => {
+    const input = document.getElementById(`logo-input-${businessId}`) as HTMLInputElement;
+    input?.click();
+};
+
+const handleLogoUpload = async (event: Event, businessId: number) => {
+    const file = (event.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('logo', file);
+
+    uploading.value = businessId;
+    try {
+        const response = await axios.post(`/businesses/${businessId}/logo`, formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+        const business = (props.businesses as any[]).find((b) => b.id === businessId);
+        if (business && response.data?.logo) {
+            business.logo = response.data.logo;
+        }
+        // Reset input so same file can be re-uploaded
+        (event.target as HTMLInputElement).value = '';
+    } catch {
+        // silently ignore
+    } finally {
+        uploading.value = null;
+    }
 };
 </script>
 <template>
@@ -66,17 +96,40 @@ const selectHeadquarter = (headquarter: Headquarter) => {
             >
                 <div class="p-4">
                     <div class="flex items-center justify-between">
-                        <div>
-                            <h3 class="font-medium text-gray-900 dark:text-white">{{ business.name }}</h3>
-                            <p v-if="business.description" class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                                {{ business.description }}
-                            </p>
+                        <div class="flex items-center gap-3">
+                            <img
+                                v-if="business.logo"
+                                :src="`/storage/${business.logo}`"
+                                class="h-10 w-10 rounded-md object-contain border border-gray-200 dark:border-gray-600 bg-white"
+                                :alt="business.name"
+                            />
+                            <div>
+                                <h3 class="font-medium text-gray-900 dark:text-white">{{ business.name }}</h3>
+                                <p v-if="business.description" class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                                    {{ business.description }}
+                                </p>
+                            </div>
                         </div>
-                        <ServicePopover
-                            :services="services"
-                            :business="business"
-                            class="opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-                        />
+                        <div class="flex items-center gap-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                            <input
+                                :id="`logo-input-${business.id}`"
+                                type="file"
+                                accept="image/*"
+                                class="hidden"
+                                @change="(e) => handleLogoUpload(e, business.id)"
+                            />
+                            <Button
+                                class="flex cursor-pointer items-center justify-center rounded-lg border border-transparent bg-blue-50 p-2 text-blue-600 transition-all duration-200 ease-in-out hover:scale-105 hover:border-blue-200 hover:bg-blue-100 hover:text-blue-700 hover:shadow-sm dark:bg-blue-900/20 dark:text-blue-400 dark:hover:bg-blue-900/40"
+                                :title="business.logo ? 'Cambiar logo' : 'Subir logo'"
+                                :disabled="uploading === business.id"
+                                @click="triggerLogoUpload(business.id)"
+                            >
+                                <ImageUp class="h-5 w-5" :class="{ 'animate-pulse': uploading === business.id }" />
+                            </Button>
+                            <ServicePopover
+                                :services="services"
+                                :business="business"
+                            /></div>
                     </div>
 
                     <div v-if="getBusinessHeadquarters(business.id).length > 0" class="mt-3 space-y-2">

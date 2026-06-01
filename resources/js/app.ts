@@ -4,12 +4,12 @@ import { createInertiaApp } from '@inertiajs/vue3';
 import { configureEcho } from '@laravel/echo-vue';
 import VueDnDKitPlugin from '@vue-dnd-kit/core';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
+import 'sweetalert2/dist/sweetalert2.min.css';
 import type { DefineComponent } from 'vue';
 import { createApp, h } from 'vue';
+import VueSweetalert2 from 'vue-sweetalert2';
 import { ZiggyVue } from 'ziggy-js';
 import { initializeTheme } from './composables/useAppearance';
-import VueSweetalert2 from 'vue-sweetalert2';
-import 'sweetalert2/dist/sweetalert2.min.css';
 
 configureEcho({
     broadcaster: 'pusher',

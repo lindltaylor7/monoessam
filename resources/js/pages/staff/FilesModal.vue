@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertCircle } from 'lucide-vue-next';
 import Button from '@/components/ui/button/Button.vue';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
-import { useForm, usePage } from '@inertiajs/vue3';
-import { CalendarIcon, Eye, File, Upload, X, Award, FileText, GraduationCap, Briefcase, CreditCard, ShieldAlert, Stethoscope, Syringe, ClipboardCheck, Activity, FileSignature, ShieldCheck } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
 import { SharedData } from '@/types';
+import { useForm, usePage } from '@inertiajs/vue3';
+import { AlertCircle, CalendarIcon, Eye, File, Upload, X } from 'lucide-vue-next';
+import { computed, ref } from 'vue';
 
 interface StaffFile {
     id: number;
@@ -49,7 +48,7 @@ const filesRequired = ref([
         accept: '.pdf,.doc,.docx',
         maxSize: 10,
         hasExpiration: false,
-        icon: 'FileText'
+        icon: 'FileText',
     },
     {
         label: 'Certificado Único Laboral (CUL)',
@@ -58,7 +57,7 @@ const filesRequired = ref([
         maxSize: 10,
         hasExpiration: true,
         expirationDate: null,
-        icon: 'Award'
+        icon: 'Award',
     },
     {
         label: 'Certificado de Estudios',
@@ -66,7 +65,7 @@ const filesRequired = ref([
         accept: '.pdf,.jpg,.jpeg,.png',
         maxSize: 10,
         hasExpiration: false,
-        icon: 'GraduationCap'
+        icon: 'GraduationCap',
     },
     {
         label: 'Certificados de Trabajo',
@@ -74,7 +73,7 @@ const filesRequired = ref([
         accept: '.pdf,.jpg,.jpeg,.png',
         maxSize: 10,
         hasExpiration: false,
-        icon: 'Briefcase'
+        icon: 'Briefcase',
     },
     {
         label: 'DNI escaneado',
@@ -83,7 +82,7 @@ const filesRequired = ref([
         maxSize: 5,
         hasExpiration: true,
         expirationDate: null,
-        icon: 'CreditCard'
+        icon: 'CreditCard',
     },
     {
         label: 'Antecedentes Penales y Policiales',
@@ -92,7 +91,7 @@ const filesRequired = ref([
         maxSize: 10,
         hasExpiration: true,
         expirationDate: null,
-        icon: 'ShieldAlert'
+        icon: 'ShieldAlert',
     },
     {
         label: 'Carné de sanidad',
@@ -101,7 +100,7 @@ const filesRequired = ref([
         maxSize: 10,
         hasExpiration: true,
         expirationDate: null,
-        icon: 'Stethoscope'
+        icon: 'Stethoscope',
     },
     {
         label: 'Carné de vacunación contra el COVID',
@@ -109,7 +108,7 @@ const filesRequired = ref([
         accept: '.pdf,.jpg,.jpeg,.png',
         maxSize: 10,
         hasExpiration: false,
-        icon: 'Syringe'
+        icon: 'Syringe',
     },
     {
         label: 'Examen Medico Ocupacional (EMO)',
@@ -118,7 +117,7 @@ const filesRequired = ref([
         maxSize: 10,
         hasExpiration: true,
         expirationDate: null,
-        icon: 'ClipboardCheck'
+        icon: 'ClipboardCheck',
     },
     {
         label: 'SCTR Vida Ley',
@@ -127,7 +126,7 @@ const filesRequired = ref([
         maxSize: 10,
         hasExpiration: true,
         expirationDate: null,
-        icon: 'CreditCard'
+        icon: 'CreditCard',
     },
     {
         label: 'SCTR Pensión y Salud',
@@ -136,7 +135,7 @@ const filesRequired = ref([
         maxSize: 10,
         hasExpiration: true,
         expirationDate: null,
-        icon: 'Activity'
+        icon: 'Activity',
     },
     {
         label: 'SCTR Socavón',
@@ -145,7 +144,7 @@ const filesRequired = ref([
         maxSize: 10,
         hasExpiration: true,
         expirationDate: null,
-        icon: 'ShieldCheck'
+        icon: 'ShieldCheck',
     },
     {
         label: 'Contrato',
@@ -154,7 +153,7 @@ const filesRequired = ref([
         maxSize: 10,
         hasExpiration: true,
         expirationDate: null,
-        icon: 'FileSignature'
+        icon: 'FileSignature',
     },
 ]);
 
@@ -258,7 +257,7 @@ const updateExpirationDate = (fileId: number, expirationDate: string) => {
 
     updateForm.post(route('staff.update-filedate'), {
         onError: () => {
-             alert('Error al actualizar la fecha');
+            alert('Error al actualizar la fecha');
         },
     });
 };
@@ -323,7 +322,11 @@ const isNearExpiry = (expirationDate: string | null) => {
 <template>
     <Dialog v-model:open="open">
         <DialogTrigger as-child>
-            <Button variant="ghost" size="icon" class="h-9 w-9 cursor-pointer rounded-full text-blue-600 transition-all hover:bg-blue-50 hover:text-blue-800">
+            <Button
+                variant="ghost"
+                size="icon"
+                class="h-9 w-9 cursor-pointer rounded-full text-blue-600 transition-all hover:bg-blue-50 hover:text-blue-800"
+            >
                 <File class="h-4 w-4" />
             </Button>
         </DialogTrigger>
@@ -339,13 +342,17 @@ const isNearExpiry = (expirationDate: string | null) => {
                     <div class="grid grid-cols-1 gap-4 lg:grid-cols-3">
                         <div class="col-span-1 rounded-xl border border-blue-100 bg-blue-50/50 p-4 lg:col-span-2">
                             <div class="flex gap-4">
-                                <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-200">
+                                <div
+                                    class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-200"
+                                >
                                     <File class="h-6 w-6" />
                                 </div>
                                 <div class="space-y-1">
                                     <h4 class="font-bold text-blue-900">Instrucciones de Carga</h4>
                                     <p class="text-xs leading-relaxed text-blue-700/80">
-                                        Suba los documentos en formato <span class="font-bold">PDF, JPG o PNG</span>. El tamaño máximo permitido es de <span class="font-bold">15MB</span> por archivo. Los documentos resaltados en naranja requieren una fecha de vigencia.
+                                        Suba los documentos en formato <span class="font-bold">PDF, JPG o PNG</span>. El tamaño máximo permitido es de
+                                        <span class="font-bold">15MB</span> por archivo. Los documentos resaltados en naranja requieren una fecha de
+                                        vigencia.
                                     </p>
                                 </div>
                             </div>
@@ -353,8 +360,10 @@ const isNearExpiry = (expirationDate: string | null) => {
 
                         <div class="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm">
                             <div class="flex h-full flex-col justify-center gap-1 text-center">
-                                <span class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Total Documentos</span>
-                                <span class="text-3xl font-black text-zinc-800">{{ props.staff.staff_files?.length || 0 }} / {{ filesRequired.length }}</span>
+                                <span class="text-xs font-semibold tracking-wider text-zinc-400 uppercase">Total Documentos</span>
+                                <span class="text-3xl font-black text-zinc-800"
+                                    >{{ props.staff.staff_files?.length || 0 }} / {{ filesRequired.length }}</span
+                                >
                             </div>
                         </div>
                     </div>
@@ -371,22 +380,29 @@ const isNearExpiry = (expirationDate: string | null) => {
 
                     <!-- Document List Grid -->
                     <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                        <div 
-                            v-for="(fileType, index) in filesRequired" 
+                        <div
+                            v-for="(fileType, index) in filesRequired"
                             :key="index"
-                            class="group relative flex flex-col rounded-2xl border border-zinc-200 bg-white p-5 transition-all duration-300 hover:border-blue-300 hover:shadow-xl hover:shadow-blue-500/5 shadow-sm"
+                            class="group relative flex flex-col rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm transition-all duration-300 hover:border-blue-300 hover:shadow-xl hover:shadow-blue-500/5"
                         >
                             <div class="mb-4 flex items-start justify-between">
                                 <div class="flex gap-4">
-                                    <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-500 transition-colors group-hover:bg-blue-50 group-hover:text-blue-600">
+                                    <div
+                                        class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-zinc-100 text-zinc-500 transition-colors group-hover:bg-blue-50 group-hover:text-blue-600"
+                                    >
                                         <!-- <component :is="fileType.icon" v-if="groupedFiles[fileType.label]?.length > 0" class="h-6 w-6" /> -->
                                         <File class="h-6 w-6" />
                                     </div>
                                     <div class="space-y-1">
-                                        <h4 class="font-bold text-zinc-900 leading-tight">{{ fileType.label }}</h4>
+                                        <h4 class="leading-tight font-bold text-zinc-900">{{ fileType.label }}</h4>
                                         <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-                                            <span class="text-[10px] font-bold text-zinc-400 uppercase tracking-tighter">Máx {{ fileType.maxSize }}MB</span>
-                                            <span v-if="fileType.hasExpiration" class="flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-600 uppercase">
+                                            <span class="text-[10px] font-bold tracking-tighter text-zinc-400 uppercase"
+                                                >Máx {{ fileType.maxSize }}MB</span
+                                            >
+                                            <span
+                                                v-if="fileType.hasExpiration"
+                                                class="flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-600 uppercase"
+                                            >
                                                 <CalendarIcon class="h-3 w-3" />
                                                 Vigencia obligatoria
                                             </span>
@@ -398,11 +414,11 @@ const isNearExpiry = (expirationDate: string | null) => {
                             <!-- Upload Area -->
                             <div class="mb-4 space-y-3">
                                 <div v-if="fileType.hasExpiration" class="space-y-1.5">
-                                    <label class="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Establecer fecha de expiración</label>
+                                    <label class="text-[10px] font-bold tracking-wider text-zinc-400 uppercase">Establecer fecha de expiración</label>
                                     <input
                                         type="date"
                                         v-model="fileType.expirationDate"
-                                        class="w-full rounded-lg border-2 border-zinc-100 bg-zinc-50 px-3 py-2 text-sm font-medium transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100 outline-none"
+                                        class="w-full rounded-lg border-2 border-zinc-100 bg-zinc-50 px-3 py-2 text-sm font-medium transition-all outline-none focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100"
                                         :min="new Date().toISOString().split('T')[0]"
                                     />
                                 </div>
@@ -416,9 +432,18 @@ const isNearExpiry = (expirationDate: string | null) => {
                                     ]"
                                 >
                                     <template v-if="uploadingFileType === fileType.key">
-                                        <svg class="h-5 w-5 animate-spin text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <svg
+                                            class="h-5 w-5 animate-spin text-blue-600"
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            fill="none"
+                                            viewBox="0 0 24 24"
+                                        >
                                             <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            <path
+                                                class="opacity-75"
+                                                fill="currentColor"
+                                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                            ></path>
                                         </svg>
                                         <span>Procesando...</span>
                                     </template>
@@ -444,26 +469,35 @@ const isNearExpiry = (expirationDate: string | null) => {
                                         :key="file.id"
                                         class="flex items-center justify-between rounded-xl border p-3 transition-all duration-300"
                                         :class="[
-                                            isExpired(file.expiration_date) 
-                                                ? 'bg-red-50/50 border-red-200 ring-1 ring-red-100' 
-                                                : (isNearExpiry(file.expiration_date) ? 'bg-amber-50/50 border-amber-200' : 'bg-emerald-50/30 border-emerald-100')
+                                            isExpired(file.expiration_date)
+                                                ? 'border-red-200 bg-red-50/50 ring-1 ring-red-100'
+                                                : isNearExpiry(file.expiration_date)
+                                                  ? 'border-amber-200 bg-amber-50/50'
+                                                  : 'border-emerald-100 bg-emerald-50/30',
                                         ]"
                                     >
                                         <div class="min-w-0 flex-1 space-y-1">
                                             <div class="flex items-center gap-2">
-                                                <div class="h-2 w-2 rounded-full" :class="isExpired(file.expiration_date) ? 'bg-red-500 animate-pulse' : 'bg-emerald-500'"></div>
+                                                <div
+                                                    class="h-2 w-2 rounded-full"
+                                                    :class="isExpired(file.expiration_date) ? 'animate-pulse bg-red-500' : 'bg-emerald-500'"
+                                                ></div>
                                                 <p class="truncate text-xs font-bold text-zinc-900">{{ file.path }}</p>
                                             </div>
                                             <div class="flex flex-wrap items-center gap-2 text-[10px] font-medium text-zinc-500 uppercase">
                                                 <span>{{ formatDate(file.created_at) }}</span>
-                                                <span v-if="file.expiration_date" class="flex items-center gap-1" :class="isExpired(file.expiration_date) ? 'text-red-600 font-bold' : 'text-zinc-400'">
+                                                <span
+                                                    v-if="file.expiration_date"
+                                                    class="flex items-center gap-1"
+                                                    :class="isExpired(file.expiration_date) ? 'font-bold text-red-600' : 'text-zinc-400'"
+                                                >
                                                     <CalendarIcon class="h-3 w-3" />
                                                     Vence: {{ formatExpirationDate(file.expiration_date) }}
                                                 </span>
                                             </div>
                                         </div>
 
-                                        <div class="flex items-center gap-1.5 ml-2">
+                                        <div class="ml-2 flex items-center gap-1.5">
                                             <Button
                                                 variant="ghost"
                                                 size="icon"
@@ -483,8 +517,19 @@ const isNearExpiry = (expirationDate: string | null) => {
                                             >
                                                 <template v-if="deletingFileId === file.id">
                                                     <svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24">
-                                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                                        <circle
+                                                            class="opacity-25"
+                                                            cx="12"
+                                                            cy="12"
+                                                            r="10"
+                                                            stroke="currentColor"
+                                                            stroke-width="4"
+                                                        ></circle>
+                                                        <path
+                                                            class="opacity-75"
+                                                            fill="currentColor"
+                                                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                                        ></path>
                                                     </svg>
                                                 </template>
                                                 <X v-else class="h-4 w-4" />
@@ -506,7 +551,7 @@ const isNearExpiry = (expirationDate: string | null) => {
                         </div>
                         <span class="text-xs font-medium text-zinc-500">Expediente auditado por {{ page.props.auth.user?.name }}</span>
                     </div>
-                    <Button variant="outline" @click="open = false" class="rounded-xl font-bold px-6">Finalizar Gestión</Button>
+                    <Button variant="outline" @click="open = false" class="rounded-xl px-6 font-bold">Finalizar Gestión</Button>
                 </div>
             </DialogFooter>
         </DialogContent>

@@ -1,12 +1,7 @@
-import { Ref } from 'vue';
 import { Staff, Unit } from '@/types';
+import { Ref } from 'vue';
 
-export function useStaffInitialization(
-    form: any,
-    prendasFijas: Ref<any[]>,
-    imagePreview: Ref<string | null>,
-    cafesUnitSelected: Ref<any[]>
-) {
+export function useStaffInitialization(form: any, prendasFijas: Ref<any[]>, imagePreview: Ref<string | null>, cafesUnitSelected: Ref<any[]>) {
     const initializeStaffData = (staff: Staff | undefined, units: Unit[]) => {
         if (!staff) {
             resetForm();
@@ -46,8 +41,6 @@ export function useStaffInitialization(
             form.children = staff.staff_financial.children;
         }
 
-
-
         // Lugar de trabajo
         initializeWorkplace(staff, units);
 
@@ -55,11 +48,7 @@ export function useStaffInitialization(
         form.guard = staff.guard_role?.guard_selected?.name;
 
         // Foto
-        imagePreview.value = staff.photo
-            ? staff.photo.url.startsWith('http')
-                ? staff.photo.url
-                : `/storage/${staff.photo.url}`
-            : null;
+        imagePreview.value = staff.photo ? (staff.photo.url.startsWith('http') ? staff.photo.url : `/storage/${staff.photo.url}`) : null;
     };
 
     const initializeWorkplace = (staff: Staff, units: Unit[]) => {

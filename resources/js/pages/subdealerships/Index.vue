@@ -1,24 +1,28 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, useForm } from '@inertiajs/vue3';
-import { Link } from '@inertiajs/vue3';
-import { Subdealership, Dealership } from '@/types';
-import { ref } from 'vue';
-import SubdealershipModal from './SubdealershipModal.vue';
+import { Subdealership } from '@/types';
+import { Head, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
+import Swal from 'sweetalert2';
+import { ref, watch } from 'vue';
+import SubdealershipModal from './SubdealershipModal.vue';
 
 interface Props {
     subdealerships: Subdealership[];
-    dealerships: Dealership[];
+    allSubdealerships: Subdealership[];
 }
 
 const props = defineProps<Props>();
 
-const allSubdealerships = ref([]);
+const displayedSubdealerships = ref([...props.subdealerships]);
 
-allSubdealerships.value = props.subdealerships
+watch(
+    () => props.subdealerships,
+    (val) => {
+        displayedSubdealerships.value = [...val];
+    },
+);
 
-const showEditModal = ref(false);
 const showModal = ref(false);
 const editingSubdealership = ref<Subdealership | null>(null);
 
@@ -29,7 +33,6 @@ const form = useForm({
     legal_address: '',
     phone: '',
     email: '',
-    dealership_id: '',
 });
 
 const openEditModal = (subdealership: Subdealership) => {
@@ -40,12 +43,11 @@ const openEditModal = (subdealership: Subdealership) => {
     form.legal_address = subdealership.legal_address || '';
     form.phone = subdealership.phone || '';
     form.email = subdealership.email || '';
-    form.dealership_id = subdealership.dealership_id?.toString() || '';
     showModal.value = true;
 };
 
 const openCreateModal = () => {
-    console.log('test')
+    editingSubdealership.value = null;
     form.reset();
     form.clearErrors();
     showModal.value = true;
@@ -58,44 +60,57 @@ const closeModal = () => {
     form.clearErrors();
 };
 
-const closeCreateModal = () => {
-    showCreateModal.value = false;
-    editingSubdealership.value = null;
-    form.reset();
-    form.clearErrors();
-};
-
-const submitEdit = () => {
-    if (!editingSubdealership.value) return;
-    
-    form.put(route('subdealerships.update', editingSubdealership.value.id), {
+const submitCreate = (form: any) => {
+    form.post(route('subdealerships.store'), {
         onSuccess: () => {
             closeModal();
+            router.reload({ only: ['subdealerships', 'allSubdealerships'] });
+            Swal.fire({
+                icon: 'success',
+                title: '¡Registrado!',
+                text: 'La subconcesionaria se ha creado correctamente.',
+                timer: 2500,
+                showConfirmButton: false,
+            });
         },
     });
 };
 
-const submitCreate = (form: any) => {
-    form.post(route('subdealerships.store'));
-    form.reset();
-    allSubdealerships.value = props.subdealerships;
-    closeModal();
+const attachExisting = (id: number) => {
+    router.post(
+        route('subdealerships.attach', { subdealership: id }),
+        {},
+        {
+            onSuccess: () => {
+                router.reload({ only: ['subdealerships', 'allSubdealerships'] });
+                Swal.fire({
+                    icon: 'success',
+                    title: '¡Asociada!',
+                    text: 'La subconcesionaria existente se ha asociado a tu mina correctamente.',
+                    timer: 2500,
+                    showConfirmButton: false,
+                });
+            },
+        },
+    );
 };
 
 const deleteSubdealership = async (id: number) => {
-    if (confirm('Estás seguro de eliminar esta subconcesionaria?')) {
-        await axios.delete(`/subdealerships/${id}`).then(() => {
-              allSubdealerships.value = props.subdealerships.filter((subdealership: Subdealership) => subdealership.id != id);
-        }).catch((error) => {
-            console.log(error);
-        });
+    if (confirm('¿Estás seguro de eliminar esta subconcesionaria?')) {
+        await axios
+            .delete(`/subdealerships/${id}`)
+            .then(() => {
+                displayedSubdealerships.value = displayedSubdealerships.value.filter((s) => s.id !== id);
+            })
+            .catch((error) => {
+                console.error(error);
+            });
     }
 };
-
 </script>
 
 <template>
-    <Head title="Subdealerships" />
+    <Head title="Subconcesionarias" />
     <AppLayout>
         <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
             <div class="flex h-[40px] w-full items-center justify-between">
@@ -113,64 +128,37 @@ const deleteSubdealership = async (id: number) => {
                     <table class="min-w-full divide-y divide-gray-300">
                         <thead class="bg-gray-50">
                             <tr>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Nombre
-                                </th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    RUC
-                                </th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Concesionaria
-                                </th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Teléfono
-                                </th>
-                                <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Email
-                                </th>
-                                <th scope="col" class="px-6 py-3 text-rigth text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Acciones
-                                </th>
+                                <th class="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">Nombre</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">RUC</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">Teléfono</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">Email</th>
+                                <!--  <th class="px-6 py-3 text-right text-xs font-medium tracking-wider text-gray-500 uppercase">Acciones</th> -->
                             </tr>
                         </thead>
-                        <tbody class="bg-white divide-y divide-gray-200">
-                            <tr v-for="subdealership in allSubdealerships" :key="subdealership.id" class="hover:bg-gray-50">
-                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        <tbody class="divide-y divide-gray-200 bg-white">
+                            <tr v-for="subdealership in displayedSubdealerships" :key="subdealership.id" class="hover:bg-gray-50">
+                                <td class="px-6 py-4 text-sm font-medium whitespace-nowrap text-gray-900">
                                     {{ subdealership.name }}
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {{ subdealership.ruc || '-' }}
+                                <td class="px-6 py-4 text-sm whitespace-nowrap text-gray-500">
+                                    {{ subdealership.ruc || '—' }}
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {{ subdealership.dealership?.name || '-' }}
+                                <td class="px-6 py-4 text-sm whitespace-nowrap text-gray-500">
+                                    {{ subdealership.phone || '—' }}
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {{ subdealership.phone || '-' }}
+                                <td class="px-6 py-4 text-sm whitespace-nowrap text-gray-500">
+                                    {{ subdealership.email || '—' }}
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                    {{ subdealership.email || '-' }}
-                                </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                    
-                                    <button
-                                        @click="openEditModal(subdealership)"
-                                        class="text-indigo-600 hover:text-indigo-900 mr-3"
-                                    >
-                                        Editar
-                                    </button>
-                                    <button
-                                        @click="deleteSubdealership(subdealership.id)"
-                                        class="text-red-600 hover:text-red-900"
-                                    >
-                                        Eliminar
-                                    </button>
-                                </td>
+                                <!--  <td class="px-6 py-4 text-right text-sm font-medium whitespace-nowrap">
+                                    <button @click="openEditModal(subdealership)" class="mr-3 text-indigo-600 hover:text-indigo-900">Editar</button>
+                                    <button @click="deleteSubdealership(subdealership.id)" class="text-red-600 hover:text-red-900">Eliminar</button>
+                                </td> -->
                             </tr>
                         </tbody>
                     </table>
                 </div>
-                
-                <div v-if="props.subdealerships.length === 0" class="text-center py-12">
+
+                <div v-if="displayedSubdealerships.length === 0" class="py-12 text-center">
                     <p class="text-gray-500">No se han encontrado subconcesionarias.</p>
                     <button
                         @click="openCreateModal"
@@ -182,13 +170,13 @@ const deleteSubdealership = async (id: number) => {
             </div>
         </div>
 
-        <!-- Edit Modal -->
         <SubdealershipModal
             :showModal="showModal"
-            :dealerships="props.dealerships"
             :editingSubdealership="editingSubdealership"
+            :existingSubdealerships="props.allSubdealerships"
             @closeModal="closeModal"
             @submitCreate="submitCreate"
+            @attachExisting="attachExisting"
         />
     </AppLayout>
 </template>

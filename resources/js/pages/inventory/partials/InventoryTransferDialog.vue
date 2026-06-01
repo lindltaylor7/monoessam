@@ -1,17 +1,15 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
-import { router } from '@inertiajs/vue3';
-import { 
-    Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription, DialogClose 
-} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Trash2, Plus, Search, Loader2, Package, User, Building2, Truck, Shirt, X, AlertCircle } from 'lucide-vue-next';
+import { router } from '@inertiajs/vue3';
 import axios from 'axios';
+import { AlertCircle, Loader2, Package, Plus, Search, Shirt, Trash2, Truck, X } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
+import { computed, ref, watch } from 'vue';
 
 const props = defineProps<{
     open: boolean;
@@ -27,7 +25,7 @@ const form = ref({
     unit_id: '',
     staff_id: '',
     notes: '',
-    items: [] as any[]
+    items: [] as any[],
 });
 
 const isSubmitting = ref(false);
@@ -39,7 +37,7 @@ const selectedType = ref<'cloth' | 'epp'>('epp');
 // Filtrar personal por unidad seleccionada
 const filteredStaff = computed(() => {
     if (!form.value.unit_id) return [];
-    return props.staff.filter(s => {
+    return props.staff.filter((s) => {
         // Asumiendo que s.staffable tiene unit_id o similar
         // En este sistema Cafe pertenece a Unit.
         const cafe = s.cafe;
@@ -55,7 +53,7 @@ const searchItems = async (query: string) => {
     isSearching.value = true;
     try {
         const response = await axios.get(route('inventory.items.search'), {
-            params: { type: selectedType.value, query }
+            params: { type: selectedType.value, query },
         });
         searchResults.value = response.data;
     } catch (e) {
@@ -80,7 +78,7 @@ const addItem = (item: any) => {
         });
         return;
     }
-    const exists = form.value.items.find(i => i.stockable_id === item.id && i.stockable_type === selectedType.value);
+    const exists = form.value.items.find((i) => i.stockable_id === item.id && i.stockable_type === selectedType.value);
     if (exists) {
         exists.quantity++;
     } else {
@@ -95,7 +93,7 @@ const addItem = (item: any) => {
             color_hex: '',
             available_stock: item.stock,
             stock_details: item.stock_details || [],
-            stock_options: item.stock_options || []
+            stock_options: item.stock_options || [],
         });
     }
     itemSearch.value = '';
@@ -108,7 +106,7 @@ const removeItem = (index: number) => {
 
 const handleSubmit = () => {
     if (!form.value.unit_id || form.value.items.length === 0) return;
-    
+
     isSubmitting.value = true;
     router.post(route('inventory.transfer.store'), form.value, {
         onSuccess: (page) => {
@@ -117,7 +115,7 @@ const handleSubmit = () => {
                 Swal.fire({
                     icon: 'error',
                     title: 'Error de Envío',
-                    text: flash.error
+                    text: flash.error,
                 });
             } else {
                 emit('update:open', false);
@@ -127,7 +125,7 @@ const handleSubmit = () => {
                     title: 'Envío Registrado',
                     text: 'Los ítems se enviaron correctamente.',
                     timer: 2000,
-                    showConfirmButton: false
+                    showConfirmButton: false,
                 });
             }
         },
@@ -136,11 +134,11 @@ const handleSubmit = () => {
             Swal.fire({
                 icon: 'error',
                 title: 'No se pudo generar el envío',
-                text: errorMsg
+                text: errorMsg,
             });
         },
-        onFinish: () => isSubmitting.value = false,
-        preserveScroll: true
+        onFinish: () => (isSubmitting.value = false),
+        preserveScroll: true,
     });
 };
 
@@ -149,39 +147,41 @@ const resetForm = () => {
         unit_id: '',
         staff_id: '',
         notes: '',
-        items: []
+        items: [],
     };
 };
 
-watch(() => props.open, (val) => {
-    if (val) resetForm();
-});
-
+watch(
+    () => props.open,
+    (val) => {
+        if (val) resetForm();
+    },
+);
 </script>
 
 <template>
     <Dialog :open="open" @update:open="$emit('update:open', $event)">
-        <DialogContent class="sm:max-w-[800px] p-0 overflow-hidden border-none rounded-2xl shadow-2xl">
-            <DialogHeader class="p-6 bg-slate-900 text-white relative">
-                <DialogTitle class="text-xl font-black flex items-center gap-3">
+        <DialogContent class="overflow-hidden rounded-2xl border-none p-0 shadow-2xl sm:max-w-[800px]">
+            <DialogHeader class="relative bg-slate-900 p-6 text-white">
+                <DialogTitle class="flex items-center gap-3 text-xl font-black">
                     <Truck class="h-6 w-6 text-indigo-400" />
                     Generar Envío a Unidad
                 </DialogTitle>
                 <DialogDescription class="text-slate-400">
                     Registra la salida de items desde el almacén principal hacia una unidad específica.
                 </DialogDescription>
-                <DialogClose class="absolute right-4 top-4 text-white hover:opacity-100 opacity-60">
+                <DialogClose class="absolute top-4 right-4 text-white opacity-60 hover:opacity-100">
                     <X class="h-5 w-5" />
                 </DialogClose>
             </DialogHeader>
 
-            <div class="p-6 space-y-6 bg-white overflow-y-auto max-h-[70vh]">
+            <div class="max-h-[70vh] space-y-6 overflow-y-auto bg-white p-6">
                 <!-- Step 1: Destination -->
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div class="space-y-2">
-                        <Label class="text-[10px] font-black uppercase text-slate-500">Unidad de Destino</Label>
+                        <Label class="text-[10px] font-black text-slate-500 uppercase">Unidad de Destino</Label>
                         <Select v-model="form.unit_id">
-                            <SelectTrigger class="h-11 bg-slate-50 border-none">
+                            <SelectTrigger class="h-11 border-none bg-slate-50">
                                 <SelectValue placeholder="Seleccionar Unidad" />
                             </SelectTrigger>
                             <SelectContent>
@@ -193,9 +193,9 @@ watch(() => props.open, (val) => {
                     </div>
 
                     <div class="space-y-2">
-                        <Label class="text-[10px] font-black uppercase text-slate-500">Asignar a Persona (Opcional)</Label>
+                        <Label class="text-[10px] font-black text-slate-500 uppercase">Asignar a Persona (Opcional)</Label>
                         <Select v-model="form.staff_id" :disabled="!form.unit_id">
-                            <SelectTrigger class="h-11 bg-slate-50 border-none">
+                            <SelectTrigger class="h-11 border-none bg-slate-50">
                                 <SelectValue placeholder="Seleccionar Personal" />
                             </SelectTrigger>
                             <SelectContent>
@@ -211,10 +211,10 @@ watch(() => props.open, (val) => {
                 <!-- Step 2: Add Items -->
                 <div class="space-y-4 border-t pt-4">
                     <div class="flex items-end gap-2">
-                        <div class="flex-none w-32">
-                            <Label class="text-[10px] font-black uppercase text-slate-500">Tipo</Label>
+                        <div class="w-32 flex-none">
+                            <Label class="text-[10px] font-black text-slate-500 uppercase">Tipo</Label>
                             <Select v-model="selectedType">
-                                <SelectTrigger class="h-10 bg-slate-50 border-none">
+                                <SelectTrigger class="h-10 border-none bg-slate-50">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -223,44 +223,58 @@ watch(() => props.open, (val) => {
                                 </SelectContent>
                             </Select>
                         </div>
-                        <div class="flex-1 relative">
-                            <Label class="text-[10px] font-black uppercase text-slate-500">Buscar Item</Label>
+                        <div class="relative flex-1">
+                            <Label class="text-[10px] font-black text-slate-500 uppercase">Buscar Item</Label>
                             <div class="relative">
-                                <Search class="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                                <Input 
-                                    v-model="itemSearch" 
-                                    placeholder="Nombre del EPP o prenda..." 
-                                    class="pl-9 h-10 bg-slate-50 border-none"
-                                />
-                                <div v-if="isSearching" class="absolute right-3 top-3">
+                                <Search class="absolute top-3 left-3 h-4 w-4 text-slate-400" />
+                                <Input v-model="itemSearch" placeholder="Nombre del EPP o prenda..." class="h-10 border-none bg-slate-50 pl-9" />
+                                <div v-if="isSearching" class="absolute top-3 right-3">
                                     <Loader2 class="h-4 w-4 animate-spin text-indigo-600" />
                                 </div>
                             </div>
 
                             <!-- Search Results -->
-                            <div v-if="searchResults.length > 0" class="absolute z-50 w-full mt-1 bg-white border rounded-xl shadow-2xl max-h-64 overflow-y-auto border-slate-100">
-                                <div 
-                                    v-for="item in searchResults" 
+                            <div
+                                v-if="searchResults.length > 0"
+                                class="absolute z-50 mt-1 max-h-64 w-full overflow-y-auto rounded-xl border border-slate-100 bg-white shadow-2xl"
+                            >
+                                <div
+                                    v-for="item in searchResults"
                                     :key="item.id"
                                     @click="addItem(item)"
-                                    class="p-3 hover:bg-slate-50 cursor-pointer flex items-center justify-between text-sm transition-colors border-b last:border-none"
-                                    :class="{'opacity-50 cursor-not-allowed hover:bg-white': item.stock <= 0}"
+                                    class="flex cursor-pointer items-center justify-between border-b p-3 text-sm transition-colors last:border-none hover:bg-slate-50"
+                                    :class="{ 'cursor-not-allowed opacity-50 hover:bg-white': item.stock <= 0 }"
                                 >
                                     <div class="flex flex-col gap-1">
                                         <span class="font-bold text-slate-700">{{ item.name }}</span>
                                         <div class="flex flex-wrap gap-1 text-[10px]">
-                                            <span v-if="item.stock > 0" class="font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                            <span
+                                                v-if="item.stock > 0"
+                                                class="rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 font-bold text-emerald-600"
+                                            >
                                                 Stock: {{ item.stock }}
                                             </span>
-                                            <span v-else class="font-bold px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-100 flex items-center gap-1">
+                                            <span
+                                                v-else
+                                                class="flex items-center gap-1 rounded-full border border-rose-100 bg-rose-50 px-2 py-0.5 font-bold text-rose-600"
+                                            >
                                                 <AlertCircle class="h-3 w-3" /> Sin Stock Principal
                                             </span>
-                                            <span v-for="(detalle, i) in item.stock_details" :key="i" class="font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded text-[9px]">
+                                            <span
+                                                v-for="(detalle, i) in item.stock_details"
+                                                :key="i"
+                                                class="rounded bg-slate-100 px-1.5 py-0.5 text-[9px] font-medium text-slate-500"
+                                            >
                                                 {{ detalle }}
                                             </span>
                                         </div>
                                     </div>
-                                    <Button v-if="item.stock > 0" variant="ghost" size="sm" class="h-8 w-8 p-0 text-indigo-600 hover:bg-indigo-50 shrink-0">
+                                    <Button
+                                        v-if="item.stock > 0"
+                                        variant="ghost"
+                                        size="sm"
+                                        class="h-8 w-8 shrink-0 p-0 text-indigo-600 hover:bg-indigo-50"
+                                    >
                                         <Plus class="h-4 w-4" />
                                     </Button>
                                 </div>
@@ -269,27 +283,29 @@ watch(() => props.open, (val) => {
                     </div>
 
                     <!-- Items Table -->
-                    <div class="rounded-xl border border-slate-100 overflow-hidden shadow-sm">
+                    <div class="overflow-hidden rounded-xl border border-slate-100 shadow-sm">
                         <Table>
                             <TableHeader class="bg-slate-50">
                                 <TableRow>
-                                    <TableHead class="text-[10px] font-black uppercase py-2">Item</TableHead>
-                                    <TableHead class="text-[10px] font-black uppercase py-2 w-48">Talla y Color</TableHead>
-                                    <TableHead class="text-[10px] font-black uppercase py-2 w-24">Cantidad</TableHead>
+                                    <TableHead class="py-2 text-[10px] font-black uppercase">Item</TableHead>
+                                    <TableHead class="w-48 py-2 text-[10px] font-black uppercase">Talla y Color</TableHead>
+                                    <TableHead class="w-24 py-2 text-[10px] font-black uppercase">Cantidad</TableHead>
                                     <TableHead class="w-12"></TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                <TableRow v-for="(item, index) in form.items" :key="index" class="hover:bg-slate-50 group">
+                                <TableRow v-for="(item, index) in form.items" :key="index" class="group hover:bg-slate-50">
                                     <TableCell class="p-3">
                                         <div class="flex items-center gap-2">
-                                            <div class="h-7 w-7 rounded-lg bg-indigo-50 flex items-center justify-center text-indigo-600 shrink-0">
+                                            <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
                                                 <Package v-if="item.stockable_type === 'epp'" class="h-3.5 w-3.5" />
                                                 <Shirt v-else class="h-3.5 w-3.5" />
                                             </div>
-                                            <div class="flex flex-col gap-0.5 min-w-0">
-                                                <span class="text-xs font-bold text-slate-700 line-clamp-1 truncate block" :title="item.name">{{ item.name }}</span>
-                                                <span class="text-[9px] text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.5 rounded w-fit italic">
+                                            <div class="flex min-w-0 flex-col gap-0.5">
+                                                <span class="line-clamp-1 block truncate text-xs font-bold text-slate-700" :title="item.name">{{
+                                                    item.name
+                                                }}</span>
+                                                <span class="w-fit rounded bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-600 italic">
                                                     Stock Disp: {{ item.available_stock || 0 }}
                                                 </span>
                                             </div>
@@ -297,48 +313,73 @@ watch(() => props.open, (val) => {
                                     </TableCell>
                                     <TableCell class="p-3">
                                         <div v-if="item.stock_options && item.stock_options.length > 0">
-                                            <Select 
-                                                :model-value="item.size + '|' + (item.color_id || '')" 
-                                                @update:model-value="(val: any) => {
-                                                    const sVal = String(val);
-                                                    const [size, colorId] = sVal.split('|');
-                                                    item.size = size;
-                                                    item.color_id = colorId ? Number(colorId) : null;
-                                                    const opt = item.stock_options.find((o: any) => o.value === size && String(o.color_id || '') === String(colorId || ''));
-                                                    if (opt) {
-                                                        item.color_name = opt.color_name;
-                                                        item.color_hex = opt.color_hex;
-                                                        item.available_stock = opt.quantity;
-                                                        if (item.quantity > opt.quantity) item.quantity = opt.quantity;
+                                            <Select
+                                                :model-value="item.size + '|' + (item.color_id || '')"
+                                                @update:model-value="
+                                                    (val: any) => {
+                                                        const sVal = String(val);
+                                                        const [size, colorId] = sVal.split('|');
+                                                        item.size = size;
+                                                        item.color_id = colorId ? Number(colorId) : null;
+                                                        const opt = item.stock_options.find(
+                                                            (o: any) => o.value === size && String(o.color_id || '') === String(colorId || ''),
+                                                        );
+                                                        if (opt) {
+                                                            item.color_name = opt.color_name;
+                                                            item.color_hex = opt.color_hex;
+                                                            item.available_stock = opt.quantity;
+                                                            if (item.quantity > opt.quantity) item.quantity = opt.quantity;
+                                                        }
                                                     }
-                                                }"
+                                                "
                                             >
-                                                <SelectTrigger class="h-8 text-xs bg-white text-slate-700 w-full min-w-[160px]">
+                                                <SelectTrigger class="h-8 w-full min-w-[160px] bg-white text-xs text-slate-700">
                                                     <SelectValue placeholder="Elegir Opción" />
                                                 </SelectTrigger>
                                                 <SelectContent>
-                                                    <SelectItem v-for="opt in item.stock_options" :key="opt.label" :value="opt.value + '|' + (opt.color_id || '')">
+                                                    <SelectItem
+                                                        v-for="opt in item.stock_options"
+                                                        :key="opt.label"
+                                                        :value="opt.value + '|' + (opt.color_id || '')"
+                                                    >
                                                         <div class="flex items-center gap-2">
-                                                            <div v-if="opt.color_hex" class="h-2 w-2 rounded-full" :style="{ backgroundColor: opt.color_hex }"></div>
+                                                            <div
+                                                                v-if="opt.color_hex"
+                                                                class="h-2 w-2 rounded-full"
+                                                                :style="{ backgroundColor: opt.color_hex }"
+                                                            ></div>
                                                             <span>{{ opt.label }} ({{ opt.quantity }})</span>
                                                         </div>
                                                     </SelectItem>
                                                 </SelectContent>
                                             </Select>
                                         </div>
-                                        <div v-else class="text-[10px] text-rose-500 font-bold bg-rose-50 p-1 rounded italic text-center">Sin Opciones de Stock</div>
+                                        <div v-else class="rounded bg-rose-50 p-1 text-center text-[10px] font-bold text-rose-500 italic">
+                                            Sin Opciones de Stock
+                                        </div>
                                     </TableCell>
                                     <TableCell class="p-3">
-                                        <Input type="number" v-model="item.quantity" min="1" :max="item.available_stock" class="h-8 text-xs bg-white text-center" />
+                                        <Input
+                                            type="number"
+                                            v-model="item.quantity"
+                                            min="1"
+                                            :max="item.available_stock"
+                                            class="h-8 bg-white text-center text-xs"
+                                        />
                                     </TableCell>
                                     <TableCell class="p-3 text-right">
-                                        <Button variant="ghost" size="icon" @click="removeItem(index)" class="h-8 w-8 text-slate-300 hover:text-rose-500">
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            @click="removeItem(index)"
+                                            class="h-8 w-8 text-slate-300 hover:text-rose-500"
+                                        >
                                             <Trash2 class="h-4 w-4" />
                                         </Button>
                                     </TableCell>
                                 </TableRow>
                                 <TableRow v-if="form.items.length === 0">
-                                    <TableCell colspan="4" class="h-32 text-center text-slate-400 italic text-xs">
+                                    <TableCell colspan="4" class="h-32 text-center text-xs text-slate-400 italic">
                                         No has seleccionado items para enviar.
                                     </TableCell>
                                 </TableRow>
@@ -348,8 +389,8 @@ watch(() => props.open, (val) => {
                 </div>
 
                 <div class="space-y-2 pt-4">
-                    <Label class="text-[10px] font-black uppercase text-slate-500">Observaciones / Notas</Label>
-                    <textarea 
+                    <Label class="text-[10px] font-black text-slate-500 uppercase">Observaciones / Notas</Label>
+                    <textarea
                         v-model="form.notes"
                         class="flex min-h-[80px] w-full rounded-xl border-none bg-slate-50 px-3 py-2 text-sm placeholder:text-slate-400 focus:ring-1 focus:ring-indigo-500"
                         placeholder="Escribe alguna nota adicional..."
@@ -357,18 +398,20 @@ watch(() => props.open, (val) => {
                 </div>
             </div>
 
-            <DialogFooter class="p-6 bg-slate-50 border-t flex items-center justify-between sm:justify-between">
-                <div class="text-[10px] font-black uppercase text-slate-400 tracking-widest">
-                    {{ form.items.length }} Items en lista
-                </div>
+            <DialogFooter class="flex items-center justify-between border-t bg-slate-50 p-6 sm:justify-between">
+                <div class="text-[10px] font-black tracking-widest text-slate-400 uppercase">{{ form.items.length }} Items en lista</div>
                 <div class="flex gap-3">
-                    <Button variant="ghost" @click="$emit('update:open', false)" class="font-bold uppercase text-[10px] tracking-widest text-slate-500">
+                    <Button
+                        variant="ghost"
+                        @click="$emit('update:open', false)"
+                        class="text-[10px] font-bold tracking-widest text-slate-500 uppercase"
+                    >
                         Cancelar
                     </Button>
-                    <Button 
-                        @click="handleSubmit" 
+                    <Button
+                        @click="handleSubmit"
                         :disabled="isSubmitting || !form.unit_id || form.items.length === 0"
-                        class="bg-slate-900 hover:bg-black text-white px-8 font-black uppercase text-[10px] tracking-widest shadow-lg"
+                        class="bg-slate-900 px-8 text-[10px] font-black tracking-widest text-white uppercase shadow-lg hover:bg-black"
                     >
                         {{ isSubmitting ? 'Enviando...' : 'Confirmar Envío' }}
                     </Button>

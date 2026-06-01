@@ -2,70 +2,74 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Subdealership;
-use App\Http\Requests\StoreSubdealershipRequest;
 use App\Http\Requests\UpdateSubdealershipRequest;
-use App\Models\Dealership;
+use App\Models\Subdealership;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
 class SubdealershipController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
     public function index()
     {
+        $user = Auth::user();
+        $mineId = $user->mine_id;
+
+        if ($mineId) {
+            $subdealerships = Subdealership::whereHas('mines', fn($q) => $q->where('mines.id', $mineId))->get();
+        } else {
+            $subdealerships = Subdealership::all();
+        }
+
         return Inertia::render('subdealerships/Index', [
-            'subdealerships' => Subdealership::with('dealership')->get(),
-            'dealerships' => Dealership::all(),
+            'subdealerships'    => $subdealerships,
+            'allSubdealerships' => Subdealership::all(),
         ]);
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
     public function create()
     {
-        return Inertia::render('subdealerships/Create', [
-            'dealerships' => \App\Models\Dealership::all(),
-        ]);
+        return Inertia::render('subdealerships/Create');
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(Request $request)
     {
-        $subdealership = Subdealership::create($request->all());
+        $request->validate(['name' => 'required|string|max:255']);
+
+        $existing = Subdealership::whereRaw('LOWER(name) = LOWER(?)', [trim($request->name)])->first();
+
+        if ($existing) {
+            return back()->withErrors([
+                'name' => 'DUPLICATE:' . $existing->id . ':' . $existing->name . ':' . ($existing->ruc ?? ''),
+            ]);
+        }
+
+        $subdealership = Subdealership::create($request->only([
+            'name', 'ruc', 'fiscal_address', 'legal_address', 'phone', 'email',
+        ]));
+
+        $mineId = Auth::user()->mine_id;
+        if ($mineId) {
+            $subdealership->mines()->attach($mineId);
+        }
 
         return redirect()->back()->with('success', 'Subdealership created successfully.');
     }
 
-    /**
-     * Display the specified resource.
-     */
     public function show(Subdealership $subdealership)
     {
         return Inertia::render('subdealerships/Show', [
-            'subdealership' => $subdealership->load('dealership', 'dinners', 'units', 'mines'),
+            'subdealership' => $subdealership->load('dinners', 'units', 'mines'),
         ]);
     }
 
-    /**
-     * Show the form for editing the specified resource.
-     */
     public function edit(Subdealership $subdealership)
     {
         return Inertia::render('subdealerships/Edit', [
             'subdealership' => $subdealership,
-            'dealerships' => \App\Models\Dealership::all(),
         ]);
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
     public function update(UpdateSubdealershipRequest $request, Subdealership $subdealership)
     {
         $subdealership->update($request->validated());
@@ -73,9 +77,36 @@ class SubdealershipController extends Controller
         return redirect()->route('subdealerships.index')->with('success', 'Subdealership updated successfully.');
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
+    public function search(Request $request)
+    {
+        $user = Auth::user();
+        $mineId = $user->mine_id;
+        $q = trim($request->get('q', ''));
+
+        $query = Subdealership::query();
+
+        if ($mineId) {
+            $query->whereHas('mines', fn($q) => $q->where('mines.id', $mineId));
+        }
+
+        if ($q !== '') {
+            $query->where('name', 'like', "%{$q}%");
+        }
+
+        return response()->json($query->orderBy('name')->limit(20)->get(['id', 'name', 'ruc']));
+    }
+
+    public function attachToMine(Subdealership $subdealership)
+    {
+        $mineId = Auth::user()->mine_id;
+
+        if ($mineId) {
+            $subdealership->mines()->syncWithoutDetaching([$mineId]);
+        }
+
+        return redirect()->back()->with('success', 'Subconcesionaria asociada correctamente.');
+    }
+
     public function destroy($id)
     {
         Subdealership::destroy($id);

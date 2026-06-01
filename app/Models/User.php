@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Spatie\Permission\Traits\HasRoles;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Spatie\Permission\Models\Role;
@@ -28,7 +29,9 @@ class User extends Authenticatable
         'password',
         'type',
         'unit_id',
-        'user_id'
+        'user_id',
+        'mine_id',
+        'business_id',
     ];
 
     /**
@@ -80,5 +83,15 @@ class User extends Authenticatable
     public function units(): BelongsToMany
     {
         return $this->belongsToMany(Unit::class, 'user_units', 'user_id', 'unit_id')->withTimestamps();
+    }
+
+    public function mine(): BelongsTo
+    {
+        return $this->belongsTo(Mine::class);
+    }
+
+    public function business(): BelongsTo
+    {
+        return $this->belongsTo(Business::class);
     }
 }

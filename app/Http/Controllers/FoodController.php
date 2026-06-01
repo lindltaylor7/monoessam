@@ -21,18 +21,15 @@ class FoodController extends Controller
             'dish_categories',
             'recipes.ingredients.assignments.provider',
             'recipes.ingredients.assignments.city',
-            'recipes.levels'
+            'recipes.ingredients.nutritionalFactors',
+            'recipes.ingredients.dosification',
+            'recipes.level'
         ])->take(50)->get();
 
         foreach ($dishes as $dish) {
-            $recipe = $dish->recipes->first();
-            if ($recipe) {
-                // Set mesearument_unit to the first level ID for backward compatibility in some views
-                $dish->mesearument_unit = $recipe->levels->first()?->id;
-                $dish->levels = $recipe->levels; // Pass the whole collection
-
-                // Map ingredients with their pivot data
-                $dish->ingredients = $recipe->ingredients->map(function ($ingredient) {
+            $dish->mesearument_unit = $dish->recipes->pluck('level_id')->toArray();
+            foreach ($dish->recipes as $recipe) {
+                $recipe->ingredients = $recipe->ingredients->map(function ($ingredient) {
                     $ingredient->gross_weight = $ingredient->pivot->gross_weight;
                     $ingredient->solid_waste = $ingredient->pivot->solid_waste;
                     $ingredient->liquid_waste = $ingredient->pivot->liquid_waste;
@@ -42,9 +39,6 @@ class FoodController extends Controller
                     $ingredient->final_product = $ingredient->pivot->net_weight;
                     return $ingredient;
                 });
-            } else {
-                $dish->ingredients = [];
-                $dish->levels = [];
             }
         }
 
@@ -52,7 +46,8 @@ class FoodController extends Controller
             'dishes' => $dishes,
             'ingredient_categories' => Ingredient_category::all(),
             'dish_categories' => Dish_category::all(),
-            'ingredients' => Ingredient::with(['assignments.provider', 'assignments.city'])
+            'levels' => \App\Models\Level::all(),
+            'ingredients' => Ingredient::with(['assignments.provider', 'assignments.city', 'nutritionalFactors', 'dosification'])
                 ->orderBy('name')
                 ->take(300)
                 ->get()
@@ -62,7 +57,7 @@ class FoodController extends Controller
     public function searchIngredients($query)
     {
         return Ingredient::where('name', 'like', "%$query%")
-            ->with(['assignments.provider', 'assignments.city', 'dosification'])
+            ->with(['assignments.provider', 'assignments.city', 'dosification', 'nutritionalFactors'])
             ->take(20)
             ->get();
     }
@@ -115,7 +110,54 @@ class FoodController extends Controller
     public function structure()
     {
         return Inertia::render('structure-menu/Index', [
-            'categories' => Dish_category::all()
+            'categories' => Dish_category::all(),
+            'mines' => \App\Models\Mine::with(['units', 'units.cafes', 'units.cafes.services'])->get(),
+            'structures' => \App\Models\Structure::with('costs')->get()
         ]);
+    }
+
+    public function storeStructure(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255|unique:structures,name',
+            'serviceable_id' => 'required|exists:serviceables,id',
+            'categories' => 'required|array',
+            'selling_price' => 'nullable|numeric'
+        ], [
+            'name.unique' => 'Ya existe una estructura guardada con ese nombre. Por favor, elige otro.',
+            'serviceable_id.required' => 'Debe seleccionar un servicio antes de guardar la estructura.'
+        ]);
+
+        $structure = \App\Models\Structure::create([
+            'name' => $request->name,
+            'serviceable_id' => $request->serviceable_id,
+            'selling_price' => $request->selling_price
+        ]);
+
+        foreach ($request->categories as $category) {
+            \App\Models\StructureCost::create([
+                'structure_id' => $structure->id,
+                'dish_category_id' => $category['id'] ?? null,
+                'name' => $category['name'] ?? null,
+                'order' => $category['order'] ?? 0,
+                'reference_volume' => $category['reference_volume'] ?? null,
+                'measurement_unit' => $category['measurement_unit'] ?? $category['mesearument_unit'] ?? null,
+                'ration' => $category['ration'] ?? null,
+                'unit_cost' => $category['unit_cost'] ?? null,
+                'total_cost' => $category['total_cost'] ?? null,
+                'unit_cost_superior' => $category['unit_cost_superior'] ?? null,
+                'total_cost_superior' => $category['total_cost_superior'] ?? null,
+            ]);
+        }
+
+        return back()->with('success', 'Estructura guardada exitosamente.');
+    }
+
+    public function destroyStructure($id)
+    {
+        $structure = \App\Models\Structure::findOrFail($id);
+        $structure->delete();
+        
+        return back()->with('success', 'Estructura eliminada exitosamente.');
     }
 }

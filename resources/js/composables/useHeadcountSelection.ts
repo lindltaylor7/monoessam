@@ -1,19 +1,22 @@
-import { Mine, Unit, Cafe } from '@/types';
-import { ref, watch, Ref } from 'vue';
+import { Cafe, Mine, Unit } from '@/types';
+import { ref, watch } from 'vue';
 
 export function useHeadcountSelection(mines: Mine[]) {
     const selectedOptions = ref<{
         mine: string | null;
         unit: string | null;
         cafe: string | null;
+        service: string | null;
     }>({
         mine: null,
         unit: null,
         cafe: null,
+        service: null,
     });
 
     const selectedUnits = ref<Unit[]>([]);
     const selectedCafes = ref<Cafe[]>([]);
+    const selectedServices = ref<any[]>([]);
 
     watch(
         selectedOptions,
@@ -35,13 +38,23 @@ export function useHeadcountSelection(mines: Mine[]) {
             } else {
                 selectedCafes.value = [];
             }
+
+            // Cambió el comedor
+            if (newVal.cafe) {
+                const cafeSelected = selectedCafes.value.find((cafe) => String(cafe.id) === String(newVal.cafe));
+                // @ts-ignore - The structure of cafe might include services
+                selectedServices.value = cafeSelected ? (cafeSelected as any).services || [] : [];
+            } else {
+                selectedServices.value = [];
+            }
         },
-        { deep: true }
+        { deep: true },
     );
 
     return {
         selectedOptions,
         selectedUnits,
         selectedCafes,
+        selectedServices,
     };
 }

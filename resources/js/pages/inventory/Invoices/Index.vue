@@ -1,25 +1,17 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
-import AppLayout from '@/layouts/AppLayout.vue';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { 
-    Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter 
-} from '@/components/ui/dialog';
-import { 
-    Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
-} from '@/components/ui/select';
-import { 
-    Plus, Trash2, Calendar, FileText, Truck, Building, Box, Shirt, ArrowUpRight, History, MoreHorizontal, Edit2, UploadCloud, Loader2, Tags, Search
-} from 'lucide-vue-next';
-import { 
-    Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import AppLayout from '@/layouts/AppLayout.vue';
+import { Head, router } from '@inertiajs/vue3';
+import { Box, Building, Edit2, FileText, Loader2, MoreHorizontal, Plus, Search, Shirt, Tags, Trash2, Truck } from 'lucide-vue-next';
+import { computed, ref, watch } from 'vue';
 
 interface Props {
     invoices: any[];
@@ -48,34 +40,35 @@ const invoiceForm = ref({
     date: new Date().toISOString().split('T')[0],
     notes: '',
     invoice_image: null as File | null,
-    items: [
-        { cloth_id: '', epp_id: '', color_id: '', size: '', quantity: 1, unit_price: 0 }
-    ]
+    items: [{ cloth_id: '', epp_id: '', color_id: '', size: '', quantity: 1, unit_price: 0 }],
 });
 
 const filteredHeadquarters = computed(() => {
     if (!invoiceForm.value.business_id) return [];
-    return props.headquarters.filter(hq => String(hq.business_id) === invoiceForm.value.business_id);
+    return props.headquarters.filter((hq) => String(hq.business_id) === invoiceForm.value.business_id);
 });
 
-watch(() => invoiceForm.value.business_id, () => {
-    invoiceForm.value.headquarter_id = '';
-});
+watch(
+    () => invoiceForm.value.business_id,
+    () => {
+        invoiceForm.value.headquarter_id = '';
+    },
+);
 
 const getAvailableClothes = (providerId: string | number) => {
     let baseList: any[] = [];
     if (!providerId) {
         baseList = [
             ...props.clothes.map((c: any) => ({ ...c, type: 'cloth', unique_id: `cloth_${c.id}` })),
-            ...props.epps.map((e: any) => ({ ...e, type: 'epp', unique_id: `epp_${e.id}` }))
+            ...props.epps.map((e: any) => ({ ...e, type: 'epp', unique_id: `epp_${e.id}` })),
         ];
     } else {
-        const provider = props.clothProviders.find(p => String(p.id) === String(providerId));
+        const provider = props.clothProviders.find((p) => String(p.id) === String(providerId));
         if (!provider) return [];
-        
+
         baseList = [
             ...(provider.clothes || []).map((c: any) => ({ ...c, type: 'cloth', unique_id: `cloth_${c.id}` })),
-            ...(provider.epps || []).map((e: any) => ({ ...e, type: 'epp', unique_id: `epp_${e.id}` }))
+            ...(provider.epps || []).map((e: any) => ({ ...e, type: 'epp', unique_id: `epp_${e.id}` })),
         ];
     }
     return baseList;
@@ -84,17 +77,17 @@ const getAvailableClothes = (providerId: string | number) => {
 const onItemSelect = (uniqueId: string, index: number) => {
     const item = invoiceForm.value.items[index];
     const available = getAvailableClothes(invoiceForm.value.cloth_provider_id);
-    const selected = available.find(a => a.unique_id === uniqueId);
-    
+    const selected = available.find((a) => a.unique_id === uniqueId);
+
     if (selected) {
         if (selected.type === 'cloth') {
             item.cloth_id = String(selected.id);
             item.epp_id = '';
-            item.unit_price = 0; 
+            item.unit_price = 0;
         } else {
             item.epp_id = String(selected.id);
             item.cloth_id = '';
-            item.unit_price = 0; 
+            item.unit_price = 0;
         }
         item.size = ''; // Reset size on item change
     }
@@ -110,18 +103,17 @@ const getSizesForItem = (uniqueId: string) => {
     if (!uniqueId) return [];
     if (uniqueId.startsWith('epp_')) {
         const eppId = uniqueId.split('_')[1];
-        const epp = props.epps.find(e => String(e.id) === eppId);
+        const epp = props.epps.find((e) => String(e.id) === eppId);
         return epp?.sizes || [];
     }
     return []; // Cloth models don't have sizes relation in migration yet
 };
 
 const getAvailablePrices = (eppId: string | number, providerId: string | number) => {
-    const epp = props.epps.find(e => String(e.id) === String(eppId));
+    const epp = props.epps.find((e) => String(e.id) === String(eppId));
     if (!epp || !epp.city_providers) return [];
     return epp.city_providers.filter((cp: any) => String(cp.cloth_provider_id) === String(providerId));
 };
-
 
 const addInvoiceItem = () => {
     invoiceForm.value.items.push({ cloth_id: '', epp_id: '', color_id: '', size: '', quantity: 1, unit_price: 0 });
@@ -134,7 +126,7 @@ const removeInvoiceItem = (index: number) => {
 };
 
 const totalAmount = computed(() => {
-    return invoiceForm.value.items.reduce((acc, item) => acc + (item.quantity * item.unit_price), 0);
+    return invoiceForm.value.items.reduce((acc, item) => acc + item.quantity * item.unit_price, 0);
 });
 
 const subtotal = computed(() => {
@@ -154,35 +146,37 @@ const handleInvoiceImageUpload = (e: Event) => {
 };
 
 const isInvoiceSubmitDisabled = computed(() => {
-    return !invoiceForm.value.business_id || 
-           !invoiceForm.value.cloth_provider_id || 
-           (filteredHeadquarters.value.length > 0 && !invoiceForm.value.headquarter_id) ||
-           invoiceForm.value.items.length === 0 || 
-           invoiceForm.value.items.some(i => {
-               const hasItem = i.cloth_id || i.epp_id;
-               const validQty = i.quantity > 0;
-               const hasSize = i.size && i.size.trim() !== '';
-               
-               // Verification for EPP
-               if (i.epp_id) {
-                   const sizes = getSizesForItem(`epp_${i.epp_id}`);
-                   return !hasItem || !validQty || !hasSize || sizes.length === 0;
-               }
-               
-               return !hasItem || !validQty || !hasSize;
-           });
+    return (
+        !invoiceForm.value.business_id ||
+        !invoiceForm.value.cloth_provider_id ||
+        (filteredHeadquarters.value.length > 0 && !invoiceForm.value.headquarter_id) ||
+        invoiceForm.value.items.length === 0 ||
+        invoiceForm.value.items.some((i) => {
+            const hasItem = i.cloth_id || i.epp_id;
+            const validQty = i.quantity > 0;
+            const hasSize = i.size && i.size.trim() !== '';
+
+            // Verification for EPP
+            if (i.epp_id) {
+                const sizes = getSizesForItem(`epp_${i.epp_id}`);
+                return !hasItem || !validQty || !hasSize || sizes.length === 0;
+            }
+
+            return !hasItem || !validQty || !hasSize;
+        })
+    );
 });
 
 const handleInvoiceSubmit = () => {
     if (isInvoiceSubmitDisabled.value) return;
-    
+
     const submitData = {
         ...invoiceForm.value,
         headquarter_id: invoiceForm.value.headquarter_id === '' ? null : invoiceForm.value.headquarter_id,
-        items: invoiceForm.value.items.map(item => ({
+        items: invoiceForm.value.items.map((item) => ({
             ...item,
-            color_id: (item.color_id === 'none' || item.color_id === '') ? null : item.color_id
-        }))
+            color_id: item.color_id === 'none' || item.color_id === '' ? null : item.color_id,
+        })),
     };
 
     router.post(route('inventory.invoice.store'), submitData, {
@@ -195,7 +189,7 @@ const handleInvoiceSubmit = () => {
             console.error('Submission errors:', errors);
             alert('Error al guardar la factura. Por favor revise los campos.');
         },
-        preserveScroll: true
+        preserveScroll: true,
     });
 };
 
@@ -209,7 +203,7 @@ const resetInvoiceForm = () => {
         date: new Date().toISOString().split('T')[0],
         notes: '',
         invoice_image: null as File | null,
-        items: [{ cloth_id: '', epp_id: '', color_id: '', size: '', quantity: 1, unit_price: 0 }]
+        items: [{ cloth_id: '', epp_id: '', color_id: '', size: '', quantity: 1, unit_price: 0 }],
     };
 };
 
@@ -225,10 +219,10 @@ const providerForm = ref({
 const openProviderModal = (provider: any = null) => {
     if (provider) {
         editingProvider.value = provider;
-        providerForm.value = { 
-            name: provider.name || '', 
-            email: provider.email || '', 
-            phone: provider.phone || ''
+        providerForm.value = {
+            name: provider.name || '',
+            email: provider.email || '',
+            phone: provider.phone || '',
         };
     } else {
         editingProvider.value = null;
@@ -240,11 +234,11 @@ const openProviderModal = (provider: any = null) => {
 const handleProviderSubmit = () => {
     if (editingProvider.value) {
         router.put(route('inventory.providers.update', editingProvider.value.id), providerForm.value, {
-            onSuccess: () => isProviderModalOpen.value = false
+            onSuccess: () => (isProviderModalOpen.value = false),
         });
     } else {
         router.post(route('inventory.providers.store'), providerForm.value, {
-            onSuccess: () => isProviderModalOpen.value = false
+            onSuccess: () => (isProviderModalOpen.value = false),
         });
     }
 };
@@ -256,16 +250,16 @@ const deleteProvider = (id: number) => {
 };
 
 const isEppModalOpen = ref(false);
-const eppForm = ref({ 
+const eppForm = ref({
     name: '',
     category_epp_id: 'none',
-    size_ids: [] as number[]
+    size_ids: [] as number[],
 });
 
 const handleEppSubmit = () => {
     const submitData = {
         ...eppForm.value,
-        category_epp_id: eppForm.value.category_epp_id === 'none' ? null : eppForm.value.category_epp_id
+        category_epp_id: eppForm.value.category_epp_id === 'none' ? null : eppForm.value.category_epp_id,
     };
 
     router.post(route('inventory.epps.store'), submitData, {
@@ -274,7 +268,7 @@ const handleEppSubmit = () => {
             eppForm.value.name = '';
             eppForm.value.category_epp_id = 'none';
             eppForm.value.size_ids = [];
-        }
+        },
     });
 };
 
@@ -287,7 +281,7 @@ const handleCategorySubmit = () => {
         onSuccess: () => {
             isCategoryModalOpen.value = false;
             categoryForm.value.name = '';
-        }
+        },
     });
 };
 
@@ -298,7 +292,7 @@ const priceForm = ref({
     epp_id: '',
     cloth_provider_id: '',
     city_id: '',
-    cost_price: ''
+    cost_price: '',
 });
 
 const openPriceModal = (epp: any, providerId: string | number | null = null) => {
@@ -307,7 +301,7 @@ const openPriceModal = (epp: any, providerId: string | number | null = null) => 
         epp_id: String(epp.id),
         cloth_provider_id: providerId ? String(providerId) : '',
         city_id: '',
-        cost_price: ''
+        cost_price: '',
     };
     isPriceModalOpen.value = true;
 };
@@ -318,8 +312,8 @@ const handlePriceSubmit = () => {
             priceForm.value.cloth_provider_id = '';
             priceForm.value.city_id = '';
             priceForm.value.cost_price = '';
-             isPriceModalOpen.value = false;
-        }
+            isPriceModalOpen.value = false;
+        },
     });
 };
 
@@ -333,18 +327,18 @@ const eppAssignmentSearch = ref('');
 const filteredEppsForAssignment = computed(() => {
     if (!eppAssignmentSearch.value) return props.epps;
     const s = eppAssignmentSearch.value.toLowerCase();
-    return props.epps.filter(e => e.name.toLowerCase().includes(s));
+    return props.epps.filter((e) => e.name.toLowerCase().includes(s));
 });
 
 const openAssignModal = (provider: any) => {
     assigningProvider.value = provider;
     eppAssignmentSearch.value = ''; // Reset search
-    
+
     // Get unique IDs from both the pivot relationship and the city_providers price table
     const pivotIds = provider.epps.map((e: any) => e.id);
     const ternaryIds = props.epps
-        .filter(epp => epp.city_providers?.some((cp: any) => String(cp.cloth_provider_id) === String(provider.id)))
-        .map(epp => epp.id);
+        .filter((epp) => epp.city_providers?.some((cp: any) => String(cp.cloth_provider_id) === String(provider.id)))
+        .map((epp) => epp.id);
 
     selectedEppIds.value = [...new Set([...pivotIds, ...ternaryIds])];
     selectedClothIds.value = provider.clothes?.map((c: any) => c.id) || [];
@@ -352,12 +346,16 @@ const openAssignModal = (provider: any) => {
 };
 
 const handleAssignmentSubmit = () => {
-    router.post(route('inventory.providers.epps.sync', assigningProvider.value.id), {
-        epp_ids: selectedEppIds.value,
-        cloth_ids: selectedClothIds.value
-    }, {
-        onSuccess: () => isAssignEppModalOpen.value = false
-    });
+    router.post(
+        route('inventory.providers.epps.sync', assigningProvider.value.id),
+        {
+            epp_ids: selectedEppIds.value,
+            cloth_ids: selectedClothIds.value,
+        },
+        {
+            onSuccess: () => (isAssignEppModalOpen.value = false),
+        },
+    );
 };
 
 // --- View Invoice Details ---
@@ -376,21 +374,25 @@ const handleInvoiceImageUpdate = (e: Event) => {
     if (!file || !selectedInvoice.value) return;
 
     isUploadingInvoiceImage.value = true;
-    router.post(route('inventory.invoice.image.update', selectedInvoice.value.id), {
-        invoice_image: file
-    }, {
-        forceFormData: true,
-        preserveScroll: true,
-        onSuccess: (page) => {
-            const updatedInvoice = (page.props as any).invoices.find((i: any) => i.id === selectedInvoice.value.id);
-            if (updatedInvoice) {
-                selectedInvoice.value = updatedInvoice;
-            }
+    router.post(
+        route('inventory.invoice.image.update', selectedInvoice.value.id),
+        {
+            invoice_image: file,
         },
-        onFinish: () => {
-            isUploadingInvoiceImage.value = false;
-        }
-    });
+        {
+            forceFormData: true,
+            preserveScroll: true,
+            onSuccess: (page) => {
+                const updatedInvoice = (page.props as any).invoices.find((i: any) => i.id === selectedInvoice.value.id);
+                if (updatedInvoice) {
+                    selectedInvoice.value = updatedInvoice;
+                }
+            },
+            onFinish: () => {
+                isUploadingInvoiceImage.value = false;
+            },
+        },
+    );
 };
 
 // --- EPP Size Logic ---
@@ -398,14 +400,14 @@ const isSizeModalOpen = ref(false);
 const selectedEppForSizes = ref<any>(null);
 const sizeForm = ref({
     epp_id: '',
-    size: ''
+    size: '',
 });
 
 const openSizeModal = (epp: any) => {
     selectedEppForSizes.value = epp;
     sizeForm.value = {
         epp_id: epp.id,
-        size: ''
+        size: '',
     };
     isSizeModalOpen.value = true;
 };
@@ -415,7 +417,7 @@ const handleSizeSubmit = () => {
         onSuccess: () => {
             sizeForm.value.size = '';
             // Update the local list if needed or let Inertia reload
-        }
+        },
     });
 };
 
@@ -436,7 +438,7 @@ const startEditingPrice = (cp: any) => {
 
 const saveInlinePrice = (cp: any) => {
     if (editingPriceId.value === null) return;
-    
+
     const newPrice = parseFloat(tempPriceValue.value);
     if (isNaN(newPrice) || newPrice < 0) {
         editingPriceId.value = null;
@@ -445,43 +447,45 @@ const saveInlinePrice = (cp: any) => {
 
     // Only update if value changed
     if (newPrice !== parseFloat(cp.cost_price)) {
-        router.post(route('inventory.epps.assign-price'), {
-            epp_id: cp.epp_id,
-            cloth_provider_id: cp.cloth_provider_id,
-            city_id: cp.city_id,
-            cost_price: newPrice
-        }, {
-            preserveScroll: true,
-            onSuccess: () => {
-                editingPriceId.value = null;
-            }
-        });
+        router.post(
+            route('inventory.epps.assign-price'),
+            {
+                epp_id: cp.epp_id,
+                cloth_provider_id: cp.cloth_provider_id,
+                city_id: cp.city_id,
+                cost_price: newPrice,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    editingPriceId.value = null;
+                },
+            },
+        );
     } else {
         editingPriceId.value = null;
     }
 };
-
-
 </script>
 
 <template>
     <Head title="Facturas y Proveedores" />
 
-    <AppLayout :breadcrumbs="[
-        { title: 'Logística', href: route('logistics') },
-        { title: 'Inventario', href: route('inventory.index') },
-        { title: 'Facturas y Proveedores', href: route('inventory.invoices.index') }
-    ]">
-        <div class="flex flex-col h-full w-full p-4 sm:p-6 gap-6 bg-slate-50/50">
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+    <AppLayout
+        :breadcrumbs="[
+            { title: 'Logística', href: route('logistics') },
+            { title: 'Inventario', href: route('inventory.index') },
+            { title: 'Facturas y Proveedores', href: route('inventory.invoices.index') },
+        ]"
+    >
+        <div class="flex h-full w-full flex-col gap-6 bg-slate-50/50 p-4 sm:p-6">
+            <div class="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
                 <div>
-                    <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-3">
+                    <h1 class="flex items-center gap-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
                         <FileText class="h-8 w-8 text-indigo-600" />
                         Facturas y Proveedores de Prendas
                     </h1>
-                    <p class="text-muted-foreground text-sm mt-1">
-                        Historial de ingresos y gestión de proveedores especializados.
-                    </p>
+                    <p class="text-muted-foreground mt-1 text-sm">Historial de ingresos y gestión de proveedores especializados.</p>
                 </div>
                 <div class="flex gap-2">
                     <Button @click="isEppModalOpen = true" variant="outline" class="gap-2 border-slate-200 bg-white">
@@ -492,11 +496,11 @@ const saveInlinePrice = (cp: any) => {
                     </Button>
                     <Dialog v-model:open="isInvoiceModalOpen">
                         <DialogTrigger as-child>
-                            <Button class="gap-2 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200">
+                            <Button class="gap-2 bg-indigo-600 shadow-lg shadow-indigo-200 hover:bg-indigo-700">
                                 <Plus class="h-4 w-4" /> Ingresar Factura
                             </Button>
                         </DialogTrigger>
-                        <DialogContent class="sm:max-w-[1400px] max-h-[100vh] overflow-y-auto">
+                        <DialogContent class="max-h-[100vh] overflow-y-auto sm:max-w-[1400px]">
                             <DialogHeader>
                                 <DialogTitle class="flex items-center gap-2">
                                     <FileText class="h-5 w-5 text-indigo-600" />
@@ -504,11 +508,11 @@ const saveInlinePrice = (cp: any) => {
                                 </DialogTitle>
                                 <DialogDescription>Registre el ingreso de prendas detallando proveedores, costos y colores.</DialogDescription>
                             </DialogHeader>
-                            
+
                             <div class="grid gap-6 py-4">
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                                <div class="grid grid-cols-1 gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-3">
                                     <div class="space-y-2">
-                                        <Label class="text-xs font-bold uppercase text-slate-500">Empresa (Business)</Label>
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Empresa (Business)</Label>
                                         <Select v-model="invoiceForm.business_id">
                                             <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                                             <SelectContent>
@@ -517,16 +521,18 @@ const saveInlinePrice = (cp: any) => {
                                         </Select>
                                     </div>
                                     <div class="space-y-2">
-                                        <Label class="text-xs font-bold uppercase text-slate-500">Sede (Correspondiente)</Label>
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Sede (Correspondiente)</Label>
                                         <Select v-model="invoiceForm.headquarter_id" :disabled="!invoiceForm.business_id">
                                             <SelectTrigger class="bg-white"><SelectValue placeholder="Elegir Sede" /></SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem v-for="hq in filteredHeadquarters" :key="hq.id" :value="String(hq.id)">{{ hq.name }}</SelectItem>
+                                                <SelectItem v-for="hq in filteredHeadquarters" :key="hq.id" :value="String(hq.id)">{{
+                                                    hq.name
+                                                }}</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
                                     <div class="space-y-2">
-                                        <Label class="text-xs font-bold uppercase text-slate-500">Proveedor</Label>
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Proveedor</Label>
                                         <Select v-model="invoiceForm.cloth_provider_id">
                                             <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                                             <SelectContent>
@@ -536,7 +542,7 @@ const saveInlinePrice = (cp: any) => {
                                     </div>
 
                                     <div class="space-y-2">
-                                        <Label class="text-xs font-bold uppercase text-slate-500">Tipo de Documento</Label>
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Tipo de Documento</Label>
                                         <Select v-model="invoiceForm.document_type">
                                             <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                                             <SelectContent>
@@ -547,61 +553,87 @@ const saveInlinePrice = (cp: any) => {
                                     </div>
 
                                     <div class="space-y-2">
-                                        <Label class="text-xs font-bold uppercase text-slate-500">Nº Documento</Label>
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Nº Documento</Label>
                                         <Input v-model="invoiceForm.invoice_number" placeholder="Ej: F-001-123" class="bg-white" />
                                     </div>
                                     <div class="space-y-2">
-                                        <Label class="text-xs font-bold uppercase text-slate-500">Fecha</Label>
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Fecha</Label>
                                         <Input v-model="invoiceForm.date" type="date" class="bg-white" />
                                     </div>
                                     <div class="space-y-2">
-                                        <Label class="text-xs font-bold uppercase text-slate-500">Notas Adicionales</Label>
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Notas Adicionales</Label>
                                         <Input v-model="invoiceForm.notes" placeholder="..." class="bg-white" />
                                     </div>
                                     <div class="space-y-2">
-                                        <Label class="text-xs font-bold uppercase text-slate-500">Evidencia (Opcional)</Label>
-                                        <Input type="file" @change="handleInvoiceImageUpload" accept="image/*,.pdf" class="bg-white text-xs file:bg-slate-100 file:border-0 file:mr-4 file:py-2 file:px-4 file:rounded-full file:text-xs file:font-semibold hover:file:bg-slate-200" />
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Evidencia (Opcional)</Label>
+                                        <Input
+                                            type="file"
+                                            @change="handleInvoiceImageUpload"
+                                            accept="image/*,.pdf"
+                                            class="bg-white text-xs file:mr-4 file:rounded-full file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-xs file:font-semibold hover:file:bg-slate-200"
+                                        />
                                     </div>
                                 </div>
 
                                 <div class="space-y-4">
-                                    <div class="flex justify-between items-center px-1">
-                                        <h3 class="text-sm font-bold text-slate-700 flex items-center gap-2">
+                                    <div class="flex items-center justify-between px-1">
+                                        <h3 class="flex items-center gap-2 text-sm font-bold text-slate-700">
                                             <Shirt class="h-4 w-4 text-indigo-500" />
                                             Prendas Incluidas
                                         </h3>
-                                        <Button @click="addInvoiceItem" size="sm" variant="outline" class="h-8 gap-1.5 text-xs font-bold border-indigo-200 text-indigo-600 hover:bg-indigo-50">
+                                        <Button
+                                            @click="addInvoiceItem"
+                                            size="sm"
+                                            variant="outline"
+                                            class="h-8 gap-1.5 border-indigo-200 text-xs font-bold text-indigo-600 hover:bg-indigo-50"
+                                        >
                                             <Plus class="h-3.5 w-3.5" /> Agregar Fila
                                         </Button>
                                     </div>
 
-                                    <div class="border rounded-2xl overflow-hidden shadow-sm">
+                                    <div class="overflow-hidden rounded-2xl border shadow-sm">
                                         <table class="w-full text-sm">
-                                            <thead class="bg-slate-50 border-b">
-                                                <tr class="text-left text-[10px] font-black uppercase text-slate-400">
+                                            <thead class="border-b bg-slate-50">
+                                                <tr class="text-left text-[10px] font-black text-slate-400 uppercase">
                                                     <th class="px-4 py-3">Item (Prenda/EPP)</th>
                                                     <th class="px-4 py-3">Talla</th>
                                                     <th class="px-4 py-3">Color</th>
-                                                    <th class="px-4 py-3 w-24">Cant.</th>
-                                                    <th class="px-4 py-3 w-24">P. Unitario</th>
-                                                    <th class="px-4 py-3 w-24 text-right">Subtotal</th>
-                                                    <th v-if="invoiceForm.document_type === 'factura'" class="px-4 py-3 w-24 text-right">IGV (18%)</th>
-                                                    <th class="px-4 py-3 w-28 text-right">Total</th>
-                                                    <th class="px-4 py-3 w-10 text-center"></th>
+                                                    <th class="w-24 px-4 py-3">Cant.</th>
+                                                    <th class="w-24 px-4 py-3">P. Unitario</th>
+                                                    <th class="w-24 px-4 py-3 text-right">Subtotal</th>
+                                                    <th v-if="invoiceForm.document_type === 'factura'" class="w-24 px-4 py-3 text-right">
+                                                        IGV (18%)
+                                                    </th>
+                                                    <th class="w-28 px-4 py-3 text-right">Total</th>
+                                                    <th class="w-10 px-4 py-3 text-center"></th>
                                                 </tr>
                                             </thead>
                                             <tbody class="divide-y">
-                                                <tr v-for="(item, index) in invoiceForm.items" :key="index" class="group hover:bg-slate-50/50 transition-colors">
-                                                   <td class="p-3">
-                                                        <Select :model-value="getItemUniqueId(item)" @update:model-value="onItemSelect($event as string, index)">
-                                                            <SelectTrigger class="h-9 w-[200px] border-none shadow-none focus:ring-1 justify-start">
+                                                <tr
+                                                    v-for="(item, index) in invoiceForm.items"
+                                                    :key="index"
+                                                    class="group transition-colors hover:bg-slate-50/50"
+                                                >
+                                                    <td class="p-3">
+                                                        <Select
+                                                            :model-value="getItemUniqueId(item)"
+                                                            @update:model-value="onItemSelect($event as string, index)"
+                                                        >
+                                                            <SelectTrigger class="h-9 w-[200px] justify-start border-none shadow-none focus:ring-1">
                                                                 <SelectValue placeholder="Elegir..." class="truncate" />
                                                             </SelectTrigger>
-                                                            
+
                                                             <SelectContent>
-                                                                <SelectItem v-for="c in getAvailableClothes(invoiceForm.cloth_provider_id)" :key="c.unique_id" :value="c.unique_id">
+                                                                <SelectItem
+                                                                    v-for="c in getAvailableClothes(invoiceForm.cloth_provider_id)"
+                                                                    :key="c.unique_id"
+                                                                    :value="c.unique_id"
+                                                                >
                                                                     <div class="flex items-center gap-2">
-                                                                        <component :is="c.type === 'cloth' ? Shirt : Box" class="h-3.5 w-3.5 text-slate-400" />
+                                                                        <component
+                                                                            :is="c.type === 'cloth' ? Shirt : Box"
+                                                                            class="h-3.5 w-3.5 text-slate-400"
+                                                                        />
                                                                         <span class="truncate">{{ c.name }}</span>
                                                                     </div>
                                                                 </SelectItem>
@@ -611,30 +643,56 @@ const saveInlinePrice = (cp: any) => {
                                                     <td class="p-3">
                                                         <div v-if="getSizesForItem(getItemUniqueId(item)).length > 0">
                                                             <Select v-model="item.size">
-                                                                <SelectTrigger class="h-9 border-none shadow-none focus:ring-1"><SelectValue placeholder="Talla" /></SelectTrigger>
+                                                                <SelectTrigger class="h-9 border-none shadow-none focus:ring-1"
+                                                                    ><SelectValue placeholder="Talla"
+                                                                /></SelectTrigger>
                                                                 <SelectContent>
-                                                                    <SelectItem v-for="s in getSizesForItem(getItemUniqueId(item))" :key="s.id" :value="s.size">
+                                                                    <SelectItem
+                                                                        v-for="s in getSizesForItem(getItemUniqueId(item))"
+                                                                        :key="s.id"
+                                                                        :value="s.size"
+                                                                    >
                                                                         {{ s.size }}
                                                                     </SelectItem>
                                                                 </SelectContent>
                                                             </Select>
                                                         </div>
-                                                        <div v-else-if="item.epp_id" class="flex flex-col items-center justify-center p-1 bg-rose-50 rounded-lg border border-rose-100">
-                                                            <span class="text-[8px] text-rose-600 font-black uppercase text-center leading-tight mb-1">Requiere<br>asignar tallas</span>
-                                                            <Button @click="openSizeModal(props.epps.find(e => String(e.id) === String(item.epp_id)))" variant="ghost" size="sm" class="h-5 text-[8px] text-indigo-600 font-bold p-0 hover:bg-transparent hover:text-indigo-700">
+                                                        <div
+                                                            v-else-if="item.epp_id"
+                                                            class="flex flex-col items-center justify-center rounded-lg border border-rose-100 bg-rose-50 p-1"
+                                                        >
+                                                            <span class="mb-1 text-center text-[8px] leading-tight font-black text-rose-600 uppercase"
+                                                                >Requiere<br />asignar tallas</span
+                                                            >
+                                                            <Button
+                                                                @click="openSizeModal(props.epps.find((e) => String(e.id) === String(item.epp_id)))"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                class="h-5 p-0 text-[8px] font-bold text-indigo-600 hover:bg-transparent hover:text-indigo-700"
+                                                            >
                                                                 Configurar
                                                             </Button>
                                                         </div>
-                                                        <Input v-else v-model="item.size" placeholder="Talla..." class="h-9 border-none shadow-none focus:ring-1" />
+                                                        <Input
+                                                            v-else
+                                                            v-model="item.size"
+                                                            placeholder="Talla..."
+                                                            class="h-9 border-none shadow-none focus:ring-1"
+                                                        />
                                                     </td>
                                                     <td class="p-3">
                                                         <Select v-model="item.color_id">
-                                                            <SelectTrigger class="h-9 border-none shadow-none focus:ring-1"><SelectValue placeholder="Ninguno" /></SelectTrigger>
+                                                            <SelectTrigger class="h-9 border-none shadow-none focus:ring-1"
+                                                                ><SelectValue placeholder="Ninguno"
+                                                            /></SelectTrigger>
                                                             <SelectContent>
                                                                 <SelectItem value="none">Ninguno</SelectItem>
                                                                 <SelectItem v-for="color in colors" :key="color.id" :value="String(color.id)">
                                                                     <div class="flex items-center gap-2">
-                                                                        <div class="w-3 h-3 rounded-full border border-slate-200" :style="{ backgroundColor: color.hex_code }"></div>
+                                                                        <div
+                                                                            class="h-3 w-3 rounded-full border border-slate-200"
+                                                                            :style="{ backgroundColor: color.hex_code }"
+                                                                        ></div>
                                                                         {{ color.name }}
                                                                     </div>
                                                                 </SelectItem>
@@ -642,72 +700,130 @@ const saveInlinePrice = (cp: any) => {
                                                         </Select>
                                                     </td>
                                                     <td class="p-3">
-                                                        <Input type="number" v-model="item.quantity" min="1" class="h-9 border-none shadow-none focus:ring-1 text-center font-bold" />
+                                                        <Input
+                                                            type="number"
+                                                            v-model="item.quantity"
+                                                            min="1"
+                                                            class="h-9 border-none text-center font-bold shadow-none focus:ring-1"
+                                                        />
                                                     </td>
                                                     <td class="p-3">
-                                                        <div v-if="item.epp_id && getAvailablePrices(item.epp_id, invoiceForm.cloth_provider_id).length > 0" class="flex flex-col gap-1">
+                                                        <div
+                                                            v-if="
+                                                                item.epp_id &&
+                                                                getAvailablePrices(item.epp_id, invoiceForm.cloth_provider_id).length > 0
+                                                            "
+                                                            class="flex flex-col gap-1"
+                                                        >
                                                             <Select v-model="item.unit_price">
-                                                                <SelectTrigger class="h-9 border-none shadow-none focus:ring-1 text-xs font-bold text-indigo-600">
+                                                                <SelectTrigger
+                                                                    class="h-9 border-none text-xs font-bold text-indigo-600 shadow-none focus:ring-1"
+                                                                >
                                                                     <SelectValue placeholder="Elegir Precio" />
                                                                 </SelectTrigger>
                                                                 <SelectContent>
-                                                                    <SelectItem v-for="cp in getAvailablePrices(item.epp_id, invoiceForm.cloth_provider_id)" :key="cp.id" :value="Number(cp.cost_price)">
+                                                                    <SelectItem
+                                                                        v-for="cp in getAvailablePrices(item.epp_id, invoiceForm.cloth_provider_id)"
+                                                                        :key="cp.id"
+                                                                        :value="Number(cp.cost_price)"
+                                                                    >
                                                                         S/.{{ Number(cp.cost_price).toFixed(2) }} ({{ cp.city?.name }})
                                                                     </SelectItem>
                                                                 </SelectContent>
                                                             </Select>
                                                         </div>
                                                         <div v-else class="relative">
-                                                            <span class="absolute left-2 top-2 text-slate-400 text-xs">S/.</span>
-                                                            <Input type="number" v-model="item.unit_price" step="0.01" class="h-9 pl-6 border-none shadow-none focus:ring-1 font-bold text-indigo-600" />
+                                                            <span class="absolute top-2 left-2 text-xs text-slate-400">S/.</span>
+                                                            <Input
+                                                                type="number"
+                                                                v-model="item.unit_price"
+                                                                step="0.01"
+                                                                class="h-9 border-none pl-6 font-bold text-indigo-600 shadow-none focus:ring-1"
+                                                            />
                                                         </div>
                                                     </td>
-                                                                                                      <!-- Subtotal Item (Base Imponible si es factura) -->
+                                                    <!-- Subtotal Item (Base Imponible si es factura) -->
                                                     <td class="p-3 text-right text-xs font-medium text-slate-600">
-                                                        S/.{{ (invoiceForm.document_type === 'factura' ? (item.quantity * item.unit_price) / 1.18 : (item.quantity * item.unit_price)).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                        S/.{{
+                                                            (invoiceForm.document_type === 'factura'
+                                                                ? (item.quantity * item.unit_price) / 1.18
+                                                                : item.quantity * item.unit_price
+                                                            ).toLocaleString(undefined, { minimumFractionDigits: 2 })
+                                                        }}
                                                     </td>
                                                     <!-- IGV Item (Desglosado si es factura) -->
-                                                    <td v-if="invoiceForm.document_type === 'factura'" class="p-3 text-right text-xs font-medium text-indigo-500">
-                                                        S/.{{ ((item.quantity * item.unit_price) - ((item.quantity * item.unit_price) / 1.18)).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                    <td
+                                                        v-if="invoiceForm.document_type === 'factura'"
+                                                        class="p-3 text-right text-xs font-medium text-indigo-500"
+                                                    >
+                                                        S/.{{
+                                                            (
+                                                                item.quantity * item.unit_price -
+                                                                (item.quantity * item.unit_price) / 1.18
+                                                            ).toLocaleString(undefined, { minimumFractionDigits: 2 })
+                                                        }}
                                                     </td>
                                                     <!-- Total Item (Precio real ingresado) -->
-                                                    <td class="p-3 text-right font-bold text-slate-900 text-xs">
-                                                        S/.{{ (item.quantity * item.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                    <td class="p-3 text-right text-xs font-bold text-slate-900">
+                                                        S/.{{
+                                                            (item.quantity * item.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 })
+                                                        }}
                                                     </td>
                                                     <td class="p-3 text-center">
-                                                        <Button @click="removeInvoiceItem(index)" variant="ghost" size="sm" class="h-8 w-8 p-0 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <Button
+                                                            @click="removeInvoiceItem(index)"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            class="h-8 w-8 rounded-full p-0 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600"
+                                                        >
                                                             <Trash2 class="h-4 w-4" />
                                                         </Button>
                                                     </td>
                                                 </tr>
                                             </tbody>
-                                            <tfoot class="bg-slate-50 border-t border-slate-200">
+                                            <tfoot class="border-t border-slate-200 bg-slate-50">
                                                 <tr>
-                                                    <td :colspan="invoiceForm.document_type === 'factura' ? 6 : 5" rowspan="3" class="px-4 py-3 align-top">
-                                                        <div class="p-3 bg-white rounded-xl border border-dashed border-slate-200 text-[10px] text-slate-400">
-                                                            <p class="font-bold uppercase tracking-widest mb-1">Notas de Cálculo:</p>
-                                                            <p v-if="invoiceForm.document_type === 'factura'">• Los precios ingresados ya **incluyen** IGV.</p>
-                                                            <p v-if="invoiceForm.document_type === 'factura'">• Se extrae el 18% para mostrar la base imponible.</p>
+                                                    <td
+                                                        :colspan="invoiceForm.document_type === 'factura' ? 6 : 5"
+                                                        rowspan="3"
+                                                        class="px-4 py-3 align-top"
+                                                    >
+                                                        <div
+                                                            class="rounded-xl border border-dashed border-slate-200 bg-white p-3 text-[10px] text-slate-400"
+                                                        >
+                                                            <p class="mb-1 font-bold tracking-widest uppercase">Notas de Cálculo:</p>
+                                                            <p v-if="invoiceForm.document_type === 'factura'">
+                                                                • Los precios ingresados ya **incluyen** IGV.
+                                                            </p>
+                                                            <p v-if="invoiceForm.document_type === 'factura'">
+                                                                • Se extrae el 18% para mostrar la base imponible.
+                                                            </p>
                                                             <p v-else>• Las boletas no desglosan impuestos; el total es el monto bruto.</p>
                                                         </div>
                                                     </td>
-                                                    <td class="px-4 py-2 text-right font-bold text-slate-500 text-[11px] uppercase tracking-wider">Subtotal Gravado</td>
+                                                    <td class="px-4 py-2 text-right text-[11px] font-bold tracking-wider text-slate-500 uppercase">
+                                                        Subtotal Gravado
+                                                    </td>
                                                     <td class="px-4 py-2 text-right font-mono font-bold text-slate-700">
                                                         S/.{{ subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
                                                     </td>
                                                     <td></td>
                                                 </tr>
                                                 <tr>
-                                                    <td class="px-4 py-2 text-right font-bold text-slate-500 text-[11px] uppercase tracking-wider">IGV (18%)</td>
+                                                    <td class="px-4 py-2 text-right text-[11px] font-bold tracking-wider text-slate-500 uppercase">
+                                                        IGV (18%)
+                                                    </td>
                                                     <td class="px-4 py-2 text-right font-mono font-bold text-slate-600">
                                                         S/.{{ igv.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
                                                     </td>
                                                     <td></td>
                                                 </tr>
                                                 <tr class="bg-indigo-50/50">
-                                                    <td class="px-4 py-3 text-right font-black text-indigo-900 text-[12px] uppercase tracking-widest">Total Factura</td>
+                                                    <td class="px-4 py-3 text-right text-[12px] font-black tracking-widest text-indigo-900 uppercase">
+                                                        Total Factura
+                                                    </td>
                                                     <td class="px-4 py-3 text-right">
-                                                        <span class="text-xl font-black text-indigo-700 font-mono">
+                                                        <span class="font-mono text-xl font-black text-indigo-700">
                                                             S/.{{ totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
                                                         </span>
                                                     </td>
@@ -719,12 +835,12 @@ const saveInlinePrice = (cp: any) => {
                                 </div>
                             </div>
 
-                            <DialogFooter class="bg-slate-50 -mx-6 -mb-6 p-6 mt-4 border-t rounded-b-lg">
+                            <DialogFooter class="-mx-6 mt-4 -mb-6 rounded-b-lg border-t bg-slate-50 p-6">
                                 <Button variant="ghost" @click="isInvoiceModalOpen = false" class="font-bold">Cancelar</Button>
-                                <Button 
-                                    @click="handleInvoiceSubmit" 
+                                <Button
+                                    @click="handleInvoiceSubmit"
                                     :disabled="isInvoiceSubmitDisabled"
-                                    class="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 font-bold"
+                                    class="bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700"
                                 >
                                     Guardar e Ingresar Stock
                                 </Button>
@@ -735,20 +851,14 @@ const saveInlinePrice = (cp: any) => {
             </div>
 
             <Tabs defaultValue="invoices" class="w-full">
-                <TabsList class="mb-4 bg-white border">
-                    <TabsTrigger value="invoices" class="gap-2">
-                        <FileText class="h-4 w-4" /> Facturas Recientes
-                    </TabsTrigger>
-                    <TabsTrigger value="providers" class="gap-2">
-                        <Truck class="h-4 w-4" /> Proveedores de Ropa
-                    </TabsTrigger>
-                    <TabsTrigger value="epps" class="gap-2">
-                        <Box class="h-4 w-4" /> Catálogo de EPP
-                    </TabsTrigger>
+                <TabsList class="mb-4 border bg-white">
+                    <TabsTrigger value="invoices" class="gap-2"> <FileText class="h-4 w-4" /> Facturas Recientes </TabsTrigger>
+                    <TabsTrigger value="providers" class="gap-2"> <Truck class="h-4 w-4" /> Proveedores de Ropa </TabsTrigger>
+                    <TabsTrigger value="epps" class="gap-2"> <Box class="h-4 w-4" /> Catálogo de EPP </TabsTrigger>
                 </TabsList>
-                
+
                 <TabsContent value="invoices">
-                    <Card class="bg-white border-slate-200 shadow-sm overflow-hidden rounded-2xl">
+                    <Card class="overflow-hidden rounded-2xl border-slate-200 bg-white shadow-sm">
                         <CardHeader class="border-b bg-slate-50/50">
                             <CardTitle class="text-lg">Historial de Facturación</CardTitle>
                         </CardHeader>
@@ -756,12 +866,12 @@ const saveInlinePrice = (cp: any) => {
                             <Table>
                                 <TableHeader>
                                     <TableRow class="bg-slate-50/50 hover:bg-slate-50/50">
-                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Nº Factura</TableHead>
-                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Empresa / Sede</TableHead>
-                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Proveedor</TableHead>
-                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Fecha</TableHead>
-                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Registrado por</TableHead>
-                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px] text-right">Total</TableHead>
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Nº Factura</TableHead>
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Empresa / Sede</TableHead>
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Proveedor</TableHead>
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Fecha</TableHead>
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Registrado por</TableHead>
+                                        <TableHead class="text-right text-[10px] font-bold text-slate-500 uppercase">Total</TableHead>
                                         <TableHead class="w-[50px]"></TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -775,10 +885,12 @@ const saveInlinePrice = (cp: any) => {
                                             </div>
                                         </TableCell>
                                         <TableCell class="font-medium text-slate-700">{{ inv.provider?.name }}</TableCell>
-                                        <TableCell class="text-slate-500">{{ inv.date  }}</TableCell>
+                                        <TableCell class="text-slate-500">{{ inv.date }}</TableCell>
                                         <TableCell>
                                             <div class="flex items-center gap-2">
-                                                <div class="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500">
+                                                <div
+                                                    class="flex h-6 w-6 items-center justify-center rounded-full bg-slate-100 text-[10px] font-bold text-slate-500"
+                                                >
                                                     {{ inv.user?.name?.charAt(0) || '?' }}
                                                 </div>
                                                 <span class="text-xs text-slate-600">{{ inv.user?.name || 'Sistema' }}</span>
@@ -788,7 +900,12 @@ const saveInlinePrice = (cp: any) => {
                                             S/.{{ Number(inv.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
                                         </TableCell>
                                         <TableCell>
-                                            <Button @click="viewInvoiceDetails(inv)" variant="ghost" size="sm" class="h-8 w-8 p-0 text-slate-400 hover:text-indigo-600 transition-colors">
+                                            <Button
+                                                @click="viewInvoiceDetails(inv)"
+                                                variant="ghost"
+                                                size="sm"
+                                                class="h-8 w-8 p-0 text-slate-400 transition-colors hover:text-indigo-600"
+                                            >
                                                 <MoreHorizontal class="h-4 w-4" />
                                             </Button>
                                         </TableCell>
@@ -805,7 +922,7 @@ const saveInlinePrice = (cp: any) => {
                 </TabsContent>
 
                 <TabsContent value="providers">
-                    <Card class="bg-white border-slate-200 shadow-sm overflow-hidden rounded-2xl">
+                    <Card class="overflow-hidden rounded-2xl border-slate-200 bg-white shadow-sm">
                         <CardHeader class="border-b bg-slate-50/50">
                             <CardTitle class="text-lg">Gestión de Proveedores</CardTitle>
                         </CardHeader>
@@ -813,9 +930,9 @@ const saveInlinePrice = (cp: any) => {
                             <Table>
                                 <TableHeader>
                                     <TableRow class="bg-slate-50/50 hover:bg-slate-50/50">
-                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Nombre</TableHead>
-                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Email</TableHead>
-                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Teléfono</TableHead>
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Nombre</TableHead>
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Email</TableHead>
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Teléfono</TableHead>
                                         <TableHead class="w-[100px]"></TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -825,14 +942,29 @@ const saveInlinePrice = (cp: any) => {
                                         <TableCell>{{ prov.email || '-' }}</TableCell>
                                         <TableCell>{{ prov.phone || '-' }}</TableCell>
                                         <TableCell class="flex justify-end gap-2">
-                                            <Button @click="openAssignModal(prov)" variant="ghost" size="sm" class="h-8 gap-2 text-slate-400 hover:text-indigo-600">
+                                            <Button
+                                                @click="openAssignModal(prov)"
+                                                variant="ghost"
+                                                size="sm"
+                                                class="h-8 gap-2 text-slate-400 hover:text-indigo-600"
+                                            >
                                                 <Box class="h-4 w-4" /> <span class="text-xs font-bold uppercase">EPPs</span>
                                                 <Badge variant="secondary" class="h-5 px-1.5 text-[10px]">{{ prov.epps?.length || 0 }}</Badge>
                                             </Button>
-                                            <Button @click="openProviderModal(prov)" variant="ghost" size="sm" class="h-8 w-8 p-0 text-slate-400 hover:text-indigo-600">
+                                            <Button
+                                                @click="openProviderModal(prov)"
+                                                variant="ghost"
+                                                size="sm"
+                                                class="h-8 w-8 p-0 text-slate-400 hover:text-indigo-600"
+                                            >
                                                 <Edit2 class="h-4 w-4" />
                                             </Button>
-                                            <Button @click="deleteProvider(prov.id)" variant="ghost" size="sm" class="h-8 w-8 p-0 text-slate-400 hover:text-rose-600">
+                                            <Button
+                                                @click="deleteProvider(prov.id)"
+                                                variant="ghost"
+                                                size="sm"
+                                                class="h-8 w-8 p-0 text-slate-400 hover:text-rose-600"
+                                            >
                                                 <Trash2 class="h-4 w-4" />
                                             </Button>
                                         </TableCell>
@@ -849,45 +981,71 @@ const saveInlinePrice = (cp: any) => {
                 </TabsContent>
 
                 <TabsContent value="epps">
-                    <Card class="bg-white border-slate-200 shadow-sm overflow-hidden rounded-2xl">
-                        <CardHeader class="border-b bg-slate-50/50 flex flex-row items-center justify-between">
+                    <Card class="overflow-hidden rounded-2xl border-slate-200 bg-white shadow-sm">
+                        <CardHeader class="flex flex-row items-center justify-between border-b bg-slate-50/50">
                             <CardTitle class="text-lg">Catálogo de Elementos de Protección</CardTitle>
                         </CardHeader>
                         <CardContent class="p-0">
                             <Table>
                                 <TableHeader>
                                     <TableRow class="bg-slate-50/50 hover:bg-slate-50/50">
-                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Nombre</TableHead>
-                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Categoría</TableHead>
-                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Precio Costo</TableHead>
-                                        <TableHead class="font-bold text-slate-500 uppercase text-[10px]">Tallas Estándar</TableHead>
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Nombre</TableHead>
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Categoría</TableHead>
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Precio Costo</TableHead>
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Tallas Estándar</TableHead>
                                         <TableHead class="w-[100px]"></TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    <TableRow v-for="epp in epps" :key="epp.id" :class="'group transition-colors ' + (epp.id % 2 === 0 ? '' : 'bg-slate-50/30')">
+                                    <TableRow
+                                        v-for="epp in epps"
+                                        :key="epp.id"
+                                        :class="'group transition-colors ' + (epp.id % 2 === 0 ? '' : 'bg-slate-50/30')"
+                                    >
                                         <TableCell class="font-bold text-slate-900">{{ epp.name }}</TableCell>
                                         <TableCell>
-                                            <Badge v-if="epp.category" variant="outline" class="bg-indigo-50 text-indigo-700 border-indigo-100 flex items-center gap-1 w-fit">
+                                            <Badge
+                                                v-if="epp.category"
+                                                variant="outline"
+                                                class="flex w-fit items-center gap-1 border-indigo-100 bg-indigo-50 text-indigo-700"
+                                            >
                                                 <Tags class="h-3 w-3" /> {{ epp.category.name }}
                                             </Badge>
                                             <span v-else class="text-xs text-slate-400 italic">Sin Categoría</span>
                                         </TableCell>
                                         <TableCell>
-                                            <div class="flex flex-col gap-1.5 max-w-[300px]">
-                                                <div v-for="cp in epp.city_providers" :key="cp.id" class="flex items-center justify-between p-1.5 rounded-lg border border-indigo-100 bg-indigo-50/20 text-[10px]">
-                                                    <span class="font-bold text-slate-700 truncate mr-2" :title="cp.provider?.name">{{ cp.provider?.name }}</span>
-                                                    <div class="flex items-center gap-2 shrink-0">
-                                                        <Badge variant="outline" class="h-4 border-slate-200 text-slate-500 whitespace-nowrap">{{ cp.city?.name }}</Badge>
-                                                        <span class="font-black text-indigo-600 font-mono">S/.{{ Number(cp.cost_price).toFixed(2) }}</span>
+                                            <div class="flex max-w-[300px] flex-col gap-1.5">
+                                                <div
+                                                    v-for="cp in epp.city_providers"
+                                                    :key="cp.id"
+                                                    class="flex items-center justify-between rounded-lg border border-indigo-100 bg-indigo-50/20 p-1.5 text-[10px]"
+                                                >
+                                                    <span class="mr-2 truncate font-bold text-slate-700" :title="cp.provider?.name">{{
+                                                        cp.provider?.name
+                                                    }}</span>
+                                                    <div class="flex shrink-0 items-center gap-2">
+                                                        <Badge variant="outline" class="h-4 border-slate-200 whitespace-nowrap text-slate-500">{{
+                                                            cp.city?.name
+                                                        }}</Badge>
+                                                        <span class="font-mono font-black text-indigo-600"
+                                                            >S/.{{ Number(cp.cost_price).toFixed(2) }}</span
+                                                        >
                                                     </div>
                                                 </div>
-                                                <span v-if="!epp.city_providers || epp.city_providers.length === 0" class="text-xs text-slate-400 italic">Precios no asignados</span>
+                                                <span
+                                                    v-if="!epp.city_providers || epp.city_providers.length === 0"
+                                                    class="text-xs text-slate-400 italic"
+                                                    >Precios no asignados</span
+                                                >
                                             </div>
                                         </TableCell>
                                         <TableCell>
-                                            <div class="flex flex-wrap gap-1.5 max-w-[200px]">
-                                                <Badge v-for="sz in epp.sizes" :key="sz.id" class="bg-indigo-600 text-[9px] font-black uppercase tracking-tighter">
+                                            <div class="flex max-w-[200px] flex-wrap gap-1.5">
+                                                <Badge
+                                                    v-for="sz in epp.sizes"
+                                                    :key="sz.id"
+                                                    class="bg-indigo-600 text-[9px] font-black tracking-tighter uppercase"
+                                                >
                                                     {{ sz.size }}
                                                 </Badge>
                                                 <span v-if="!epp.sizes?.length" class="text-xs text-slate-400 italic">Sin tallas base</span>
@@ -895,19 +1053,27 @@ const saveInlinePrice = (cp: any) => {
                                         </TableCell>
                                         <TableCell class="text-right">
                                             <div class="flex justify-end gap-1">
-                                                <Button @click="openPriceModal(epp)" variant="ghost" size="sm" class="h-8 gap-2 text-indigo-600 hover:bg-indigo-50">
+                                                <Button
+                                                    @click="openPriceModal(epp)"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    class="h-8 gap-2 text-indigo-600 hover:bg-indigo-50"
+                                                >
                                                     <Truck class="h-4 w-4" /> <span class="text-xs font-bold uppercase">Precio</span>
                                                 </Button>
-                                                <Button @click="openSizeModal(epp)" variant="ghost" size="sm" class="h-8 gap-2 text-indigo-600 hover:bg-indigo-50">
+                                                <Button
+                                                    @click="openSizeModal(epp)"
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    class="h-8 gap-2 text-indigo-600 hover:bg-indigo-50"
+                                                >
                                                     <Plus class="h-4 w-4" /> <span class="text-xs font-bold uppercase">Talla</span>
                                                 </Button>
                                             </div>
                                         </TableCell>
                                     </TableRow>
                                     <TableRow v-if="epps.length === 0">
-                                        <TableCell colspan="3" class="h-32 text-center text-slate-400 italic">
-                                            No hay EPPs registrados.
-                                        </TableCell>
+                                        <TableCell colspan="3" class="h-32 text-center text-slate-400 italic"> No hay EPPs registrados. </TableCell>
                                     </TableRow>
                                 </TableBody>
                             </Table>
@@ -939,7 +1105,7 @@ const saveInlinePrice = (cp: any) => {
                     </div>
                     <DialogFooter>
                         <Button variant="ghost" @click="isProviderModalOpen = false">Cancelar</Button>
-                        <Button @click="handleProviderSubmit" class="bg-indigo-600 hover:bg-indigo-700 text-white">
+                        <Button @click="handleProviderSubmit" class="bg-indigo-600 text-white hover:bg-indigo-700">
                             {{ editingProvider ? 'Actualizar' : 'Registrar Proveedor' }}
                         </Button>
                     </DialogFooter>
@@ -955,14 +1121,18 @@ const saveInlinePrice = (cp: any) => {
                     </DialogHeader>
                     <div class="space-y-6 py-4">
                         <div class="grid gap-2">
-                            <Label class="text-xs font-bold uppercase text-slate-500 tracking-widest">Nombre del EPP</Label>
+                            <Label class="text-xs font-bold tracking-widest text-slate-500 uppercase">Nombre del EPP</Label>
                             <Input v-model="eppForm.name" placeholder="Ej: Guantes de Nitrilo" class="border-slate-200" />
                         </div>
 
                         <div class="grid gap-2">
                             <div class="flex items-center justify-between">
-                                <Label class="text-xs font-bold uppercase text-slate-500 tracking-widest">Categoría</Label>
-                                <Button @click="isCategoryModalOpen = true" variant="ghost" class="h-6 text-[10px] gap-1 text-indigo-600 hover:text-indigo-700 p-0">
+                                <Label class="text-xs font-bold tracking-widest text-slate-500 uppercase">Categoría</Label>
+                                <Button
+                                    @click="isCategoryModalOpen = true"
+                                    variant="ghost"
+                                    class="h-6 gap-1 p-0 text-[10px] text-indigo-600 hover:text-indigo-700"
+                                >
                                     <Plus class="h-3 w-3" /> Nueva Categoría
                                 </Button>
                             </div>
@@ -976,12 +1146,14 @@ const saveInlinePrice = (cp: any) => {
                         </div>
 
                         <div class="space-y-3">
-                            <Label class="text-xs font-bold uppercase text-slate-500 tracking-widest flex items-center gap-2">
+                            <Label class="flex items-center gap-2 text-xs font-bold tracking-widest text-slate-500 uppercase">
                                 <Plus class="h-3 w-3" /> Tallas Estándar (Selección Múltiple)
                             </Label>
-                            <div class="grid grid-cols-4 gap-2 border rounded-2xl p-4 bg-slate-50/50 max-h-[200px] overflow-y-auto">
-                                <label v-for="size in all_sizes" :key="size.id" 
-                                    class="flex items-center gap-2 p-2 rounded-xl border bg-white transition-all cursor-pointer hover:border-indigo-400"
+                            <div class="grid max-h-[200px] grid-cols-4 gap-2 overflow-y-auto rounded-2xl border bg-slate-50/50 p-4">
+                                <label
+                                    v-for="size in all_sizes"
+                                    :key="size.id"
+                                    class="flex cursor-pointer items-center gap-2 rounded-xl border bg-white p-2 transition-all hover:border-indigo-400"
                                     :class="eppForm.size_ids.includes(size.id) ? 'border-indigo-600 ring-1 ring-indigo-600' : 'border-slate-100'"
                                 >
                                     <input type="checkbox" :value="size.id" v-model="eppForm.size_ids" class="h-3 w-3 rounded text-indigo-600" />
@@ -992,7 +1164,11 @@ const saveInlinePrice = (cp: any) => {
                     </div>
                     <DialogFooter>
                         <Button variant="ghost" @click="isEppModalOpen = false" class="font-bold">Cancelar</Button>
-                        <Button @click="handleEppSubmit" :disabled="!eppForm.name" class="bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100 font-bold">
+                        <Button
+                            @click="handleEppSubmit"
+                            :disabled="!eppForm.name"
+                            class="bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-100 hover:bg-indigo-700"
+                        >
                             Registrar EPP con Tallas
                         </Button>
                     </DialogFooter>
@@ -1009,55 +1185,63 @@ const saveInlinePrice = (cp: any) => {
                         </DialogTitle>
                         <DialogDescription>Seleccione los elementos (EPPs y Prendas) que este proveedor puede suministrar.</DialogDescription>
                     </DialogHeader>
-                    <div class="py-4 max-h-[500px] overflow-y-auto pr-2 space-y-6">
+                    <div class="max-h-[500px] space-y-6 overflow-y-auto py-4 pr-2">
                         <!-- EPPs Section -->
                         <div class="space-y-3">
                             <div class="flex items-center justify-between px-1">
-                                <h3 class="text-sm font-bold text-slate-500 uppercase flex items-center gap-2">
+                                <h3 class="flex items-center gap-2 text-sm font-bold text-slate-500 uppercase">
                                     <Box class="h-4 w-4" /> Catálogo de EPPs
                                 </h3>
                                 <div class="relative w-48">
-                                    <Search class="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                                    <Input 
-                                        v-model="eppAssignmentSearch" 
-                                        placeholder="Buscar EPP..." 
-                                        class="h-8 pl-8 text-[10px] rounded-xl border-slate-200 focus:ring-indigo-500" 
+                                    <Search class="absolute top-2.5 left-2.5 h-3.5 w-3.5 text-slate-400" />
+                                    <Input
+                                        v-model="eppAssignmentSearch"
+                                        placeholder="Buscar EPP..."
+                                        class="h-8 rounded-xl border-slate-200 pl-8 text-[10px] focus:ring-indigo-500"
                                     />
                                 </div>
                             </div>
-                            <div v-if="filteredEppsForAssignment.length === 0" class="text-center py-4 text-slate-400 italic text-xs">
+                            <div v-if="filteredEppsForAssignment.length === 0" class="py-4 text-center text-xs text-slate-400 italic">
                                 No se encontraron EPPs.
                             </div>
                             <div class="grid grid-cols-1 gap-2">
-                                <label 
-                                    v-for="epp in filteredEppsForAssignment" 
-                                    :key="epp.id" 
-                                    class="flex items-center gap-3 p-2.5 rounded-xl border transition-all cursor-pointer hover:bg-slate-50"
+                                <label
+                                    v-for="epp in filteredEppsForAssignment"
+                                    :key="epp.id"
+                                    class="flex cursor-pointer items-center gap-3 rounded-xl border p-2.5 transition-all hover:bg-slate-50"
                                     :class="selectedEppIds.includes(epp.id) ? 'border-indigo-600 bg-indigo-50/50' : 'border-slate-100'"
                                 >
-                                    <input 
-                                        type="checkbox" 
-                                        :value="epp.id" 
+                                    <input
+                                        type="checkbox"
+                                        :value="epp.id"
                                         v-model="selectedEppIds"
                                         class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
                                     />
                                     <span class="text-sm font-semibold text-slate-700">{{ epp.name }}</span>
-                                    
+
                                     <!-- Prices for this specific provider -->
                                     <div class="ml-auto flex flex-col items-end gap-1">
-                                        <div v-if="assigningProvider && epp.city_providers?.some((cp: any) => String(cp.cloth_provider_id) === String(assigningProvider.id))" 
-                                             class="flex flex-col items-end gap-1">
-                                            <div v-for="cp in epp.city_providers.filter((cp: any) => String(cp.cloth_provider_id) === String(assigningProvider.id))" 
-                                                 :key="cp.id"
-                                                 class="text-[10px] font-black text-indigo-700 bg-white px-2 py-0.5 rounded-md border border-indigo-200 flex items-center gap-1.5"
-                                                 @dblclick.stop="startEditingPrice(cp)"
+                                        <div
+                                            v-if="
+                                                assigningProvider &&
+                                                epp.city_providers?.some((cp: any) => String(cp.cloth_provider_id) === String(assigningProvider.id))
+                                            "
+                                            class="flex flex-col items-end gap-1"
+                                        >
+                                            <div
+                                                v-for="cp in epp.city_providers.filter(
+                                                    (cp: any) => String(cp.cloth_provider_id) === String(assigningProvider.id),
+                                                )"
+                                                :key="cp.id"
+                                                class="flex items-center gap-1.5 rounded-md border border-indigo-200 bg-white px-2 py-0.5 text-[10px] font-black text-indigo-700"
+                                                @dblclick.stop="startEditingPrice(cp)"
                                             >
-                                                <span class="text-[8px] text-slate-400 uppercase tracking-tighter">{{ cp.city?.name }}</span>
-                                                
+                                                <span class="text-[8px] tracking-tighter text-slate-400 uppercase">{{ cp.city?.name }}</span>
+
                                                 <template v-if="editingPriceId === cp.id">
-                                                    <input 
+                                                    <input
                                                         v-model="tempPriceValue"
-                                                        class="w-16 h-4 px-1 text-[10px] border border-indigo-500 rounded focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                                                        class="h-4 w-16 rounded border border-indigo-500 px-1 text-[10px] focus:ring-1 focus:ring-indigo-400 focus:outline-none"
                                                         @blur="saveInlinePrice(cp)"
                                                         @keyup.enter="saveInlinePrice(cp)"
                                                         @click.stop
@@ -1066,15 +1250,15 @@ const saveInlinePrice = (cp: any) => {
                                                 <span v-else>S/.{{ Number(cp.cost_price).toFixed(2) }}</span>
                                             </div>
                                         </div>
-                                        
-                                        <Button 
+
+                                        <Button
                                             v-if="assigningProvider"
-                                            variant="ghost" 
-                                            size="sm" 
-                                            class="h-5 px-1.5 text-[8px] font-bold uppercase text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50"
+                                            variant="ghost"
+                                            size="sm"
+                                            class="h-5 px-1.5 text-[8px] font-bold text-indigo-400 uppercase hover:bg-indigo-50 hover:text-indigo-600"
                                             @click.stop.prevent="openPriceModal(epp, assigningProvider.id)"
                                         >
-                                            <Plus class="h-2.5 w-2.5 mr-1" /> Precio
+                                            <Plus class="mr-1 h-2.5 w-2.5" /> Precio
                                         </Button>
                                     </div>
                                 </label>
@@ -1083,22 +1267,20 @@ const saveInlinePrice = (cp: any) => {
 
                         <!-- Clothes Section -->
                         <div class="space-y-3">
-                            <h3 class="text-sm font-bold text-slate-500 uppercase flex items-center gap-2 px-1">
+                            <h3 class="flex items-center gap-2 px-1 text-sm font-bold text-slate-500 uppercase">
                                 <Shirt class="h-4 w-4" /> Catálogo de Prendas
                             </h3>
-                            <div v-if="clothes.length === 0" class="text-center py-4 text-slate-400 italic text-xs">
-                                No hay prendas registradas.
-                            </div>
+                            <div v-if="clothes.length === 0" class="py-4 text-center text-xs text-slate-400 italic">No hay prendas registradas.</div>
                             <div class="grid grid-cols-1 gap-2">
-                                <label 
-                                    v-for="cloth in clothes" 
-                                    :key="cloth.id" 
-                                    class="flex items-center gap-3 p-2.5 rounded-xl border transition-all cursor-pointer hover:bg-slate-50"
+                                <label
+                                    v-for="cloth in clothes"
+                                    :key="cloth.id"
+                                    class="flex cursor-pointer items-center gap-3 rounded-xl border p-2.5 transition-all hover:bg-slate-50"
                                     :class="selectedClothIds.includes(cloth.id) ? 'border-indigo-600 bg-indigo-50/50' : 'border-slate-100'"
                                 >
-                                    <input 
-                                        type="checkbox" 
-                                        :value="cloth.id" 
+                                    <input
+                                        type="checkbox"
+                                        :value="cloth.id"
                                         v-model="selectedClothIds"
                                         class="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-600"
                                     />
@@ -1109,7 +1291,7 @@ const saveInlinePrice = (cp: any) => {
                     </div>
                     <DialogFooter class="border-t pt-4">
                         <Button variant="ghost" @click="isAssignEppModalOpen = false">Cancelar</Button>
-                        <Button @click="handleAssignmentSubmit" class="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200">
+                        <Button @click="handleAssignmentSubmit" class="bg-indigo-600 text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700">
                             Confirmar Asignación
                         </Button>
                     </DialogFooter>
@@ -1131,46 +1313,45 @@ const saveInlinePrice = (cp: any) => {
                     </div>
                     <DialogFooter>
                         <Button variant="ghost" @click="isSizeModalOpen = false">Cerrar</Button>
-                        <Button @click="handleSizeSubmit" :disabled="!sizeForm.size" class="bg-indigo-600 text-white">
-                            Agregar Talla
-                        </Button>
+                        <Button @click="handleSizeSubmit" :disabled="!sizeForm.size" class="bg-indigo-600 text-white"> Agregar Talla </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
             <!-- View Invoice Details Modal -->
             <Dialog v-model:open="isViewInvoiceModalOpen">
-                <DialogContent class="sm:max-w-[700px] max-h-[90vh] flex flex-col p-0 overflow-hidden">
-                    <DialogHeader class="p-6 border-b bg-slate-50/50">
-                        <div class="flex justify-between items-start">
+                <DialogContent class="flex max-h-[90vh] flex-col overflow-hidden p-0 sm:max-w-[700px]">
+                    <DialogHeader class="border-b bg-slate-50/50 p-6">
+                        <div class="flex items-start justify-between">
                             <div>
-                                <DialogTitle class="text-xl font-black text-slate-900 flex items-center gap-2">
+                                <DialogTitle class="flex items-center gap-2 text-xl font-black text-slate-900">
                                     <FileText class="h-5 w-5 text-indigo-600" />
                                     Factura #{{ selectedInvoice?.invoice_number }}
                                 </DialogTitle>
                                 <DialogDescription class="mt-1">
-                                    {{ selectedInvoice?.provider?.name }} • {{ selectedInvoice?.date }} • Reg. por: {{ selectedInvoice?.user?.name || 'Sistema' }}
+                                    {{ selectedInvoice?.provider?.name }} • {{ selectedInvoice?.date }} • Reg. por:
+                                    {{ selectedInvoice?.user?.name || 'Sistema' }}
                                 </DialogDescription>
                             </div>
                         </div>
                     </DialogHeader>
 
-                    <div class="flex-1 overflow-y-auto p-6 space-y-6">
+                    <div class="flex-1 space-y-6 overflow-y-auto p-6">
                         <!-- Invoice Info Cards -->
                         <div class="grid grid-cols-2 gap-4">
-                            <div class="p-4 rounded-2xl bg-slate-50 border border-slate-100 italic">
-                                <p class="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">Origen / Destino</p>
+                            <div class="rounded-2xl border border-slate-100 bg-slate-50 p-4 italic">
+                                <p class="mb-2 text-[10px] font-black tracking-widest text-slate-400 uppercase">Origen / Destino</p>
                                 <div class="space-y-1">
-                                    <p class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                                    <p class="flex items-center gap-2 text-sm font-bold text-slate-800">
                                         <Building class="h-3.5 w-3.5" /> {{ selectedInvoice?.business?.name }}
                                     </p>
-                                    <p class="text-xs text-slate-500 ml-5">
+                                    <p class="ml-5 text-xs text-slate-500">
                                         {{ selectedInvoice?.headquarter?.name || 'Distribución General' }}
                                     </p>
                                 </div>
                             </div>
-                            <div class="p-4 rounded-2xl bg-indigo-50/30 border border-indigo-100">
-                                <p class="text-[10px] font-black uppercase text-indigo-400 tracking-widest mb-2">Notas / Observaciones</p>
-                                <p class="text-xs text-slate-600 leading-relaxed">
+                            <div class="rounded-2xl border border-indigo-100 bg-indigo-50/30 p-4">
+                                <p class="mb-2 text-[10px] font-black tracking-widest text-indigo-400 uppercase">Notas / Observaciones</p>
+                                <p class="text-xs leading-relaxed text-slate-600">
                                     {{ selectedInvoice?.notes || 'Sin observaciones adicionales para esta factura.' }}
                                 </p>
                             </div>
@@ -1178,19 +1359,19 @@ const saveInlinePrice = (cp: any) => {
 
                         <!-- Items Table -->
                         <div class="space-y-3">
-                            <h3 class="text-xs font-black uppercase text-slate-400 tracking-widest flex items-center gap-2">
+                            <h3 class="flex items-center gap-2 text-xs font-black tracking-widest text-slate-400 uppercase">
                                 <Box class="h-4 w-4" /> Detalle de Ítems
                             </h3>
-                            <div class="rounded-2xl border border-slate-100 overflow-hidden">
+                            <div class="overflow-hidden rounded-2xl border border-slate-100">
                                 <Table>
                                     <TableHeader>
                                         <TableRow class="bg-slate-50/80">
-                                            <TableHead class="text-[10px] font-black uppercase text-slate-500">Item</TableHead>
-                                            <TableHead class="text-[10px] font-black uppercase text-slate-500">Talla</TableHead>
-                                            <TableHead class="text-[10px] font-black uppercase text-slate-500">Color</TableHead>
-                                            <TableHead class="text-[10px] font-black uppercase text-slate-500 text-center">Cant.</TableHead>
-                                            <TableHead class="text-[10px] font-black uppercase text-slate-500 text-right">P. Unit</TableHead>
-                                            <TableHead class="text-[10px] font-black uppercase text-slate-500 text-right">Total</TableHead>
+                                            <TableHead class="text-[10px] font-black text-slate-500 uppercase">Item</TableHead>
+                                            <TableHead class="text-[10px] font-black text-slate-500 uppercase">Talla</TableHead>
+                                            <TableHead class="text-[10px] font-black text-slate-500 uppercase">Color</TableHead>
+                                            <TableHead class="text-center text-[10px] font-black text-slate-500 uppercase">Cant.</TableHead>
+                                            <TableHead class="text-right text-[10px] font-black text-slate-500 uppercase">P. Unit</TableHead>
+                                            <TableHead class="text-right text-[10px] font-black text-slate-500 uppercase">Total</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -1206,26 +1387,51 @@ const saveInlinePrice = (cp: any) => {
                                             <TableCell class="py-2 text-xs text-slate-600">{{ item.size || '-' }}</TableCell>
                                             <TableCell class="py-2">
                                                 <div v-if="item.color" class="flex items-center gap-1.5">
-                                                    <div class="h-2.5 w-2.5 rounded-full border border-slate-200" :style="{ backgroundColor: item.color.hex_code }"></div>
-                                                    <span class="text-[10px] text-slate-500 font-medium">{{ item.color.name }}</span>
+                                                    <div
+                                                        class="h-2.5 w-2.5 rounded-full border border-slate-200"
+                                                        :style="{ backgroundColor: item.color.hex_code }"
+                                                    ></div>
+                                                    <span class="text-[10px] font-medium text-slate-500">{{ item.color.name }}</span>
                                                 </div>
                                                 <span v-else class="text-[10px] text-slate-400">-</span>
                                             </TableCell>
                                             <TableCell class="py-2 text-center text-xs font-black text-slate-700">{{ item.quantity }}</TableCell>
-                                            <TableCell class="py-2 text-right text-[10px] text-slate-500 font-medium">S/.{{ Number(item.unit_price).toFixed(2) }}</TableCell>
-                                            <TableCell class="py-2 text-right text-xs font-black text-indigo-600">S/.{{ Number(item.total_price).toFixed(2) }}</TableCell>
+                                            <TableCell class="py-2 text-right text-[10px] font-medium text-slate-500"
+                                                >S/.{{ Number(item.unit_price).toFixed(2) }}</TableCell
+                                            >
+                                            <TableCell class="py-2 text-right text-xs font-black text-indigo-600"
+                                                >S/.{{ Number(item.total_price).toFixed(2) }}</TableCell
+                                            >
                                         </TableRow>
                                         <TableRow class="bg-slate-50/30">
-                                            <TableCell colspan="4" class="border-t border-slate-100 rounded-bl-xl"></TableCell>
-                                            <TableCell colspan="2" class="p-0 border-t border-slate-100 rounded-br-xl">
-                                                <div class="p-4 space-y-3">
-                                                    <div class="flex justify-between items-center px-2">
-                                                        <span class="text-[10px] font-black uppercase text-slate-400 tracking-widest">IGV (18%)</span>
-                                                        <span class="text-xs font-bold text-slate-600 font-mono">S/. {{ Number(selectedInvoice?.total_amount / 1.18 * 0.18 || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</span>
+                                            <TableCell colspan="4" class="rounded-bl-xl border-t border-slate-100"></TableCell>
+                                            <TableCell colspan="2" class="rounded-br-xl border-t border-slate-100 p-0">
+                                                <div class="space-y-3 p-4">
+                                                    <div class="flex items-center justify-between px-2">
+                                                        <span class="text-[10px] font-black tracking-widest text-slate-400 uppercase">IGV (18%)</span>
+                                                        <span class="font-mono text-xs font-bold text-slate-600"
+                                                            >S/.
+                                                            {{
+                                                                Number((selectedInvoice?.total_amount / 1.18) * 0.18 || 0).toLocaleString(undefined, {
+                                                                    minimumFractionDigits: 2,
+                                                                })
+                                                            }}</span
+                                                        >
                                                     </div>
-                                                    <div class="flex justify-between items-center p-3 bg-indigo-50/50 rounded-xl border border-indigo-100 shadow-sm">
-                                                        <span class="text-[10px] font-black uppercase text-indigo-700 tracking-widest">Total Factura</span>
-                                                        <span class="text-sm font-black text-indigo-700 font-mono">S/. {{ Number(selectedInvoice?.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</span>
+                                                    <div
+                                                        class="flex items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 shadow-sm"
+                                                    >
+                                                        <span class="text-[10px] font-black tracking-widest text-indigo-700 uppercase"
+                                                            >Total Factura</span
+                                                        >
+                                                        <span class="font-mono text-sm font-black text-indigo-700"
+                                                            >S/.
+                                                            {{
+                                                                Number(selectedInvoice?.total_amount || 0).toLocaleString(undefined, {
+                                                                    minimumFractionDigits: 2,
+                                                                })
+                                                            }}</span
+                                                        >
                                                     </div>
                                                 </div>
                                             </TableCell>
@@ -1235,32 +1441,46 @@ const saveInlinePrice = (cp: any) => {
                             </div>
                         </div>
 
-                        <div v-if="selectedInvoice?.invoice_image" class="p-4 rounded-2xl bg-indigo-50/30 border border-indigo-100 mt-4 flex items-center justify-between">
-                            <p class="text-[10px] font-black uppercase text-indigo-400 tracking-widest">Evidencia Adjunta</p>
-                            <a :href="selectedInvoice.invoice_image" target="_blank" class="inline-flex items-center gap-2 text-sm font-bold text-indigo-600 hover:text-indigo-800 transition-colors">
+                        <div
+                            v-if="selectedInvoice?.invoice_image"
+                            class="mt-4 flex items-center justify-between rounded-2xl border border-indigo-100 bg-indigo-50/30 p-4"
+                        >
+                            <p class="text-[10px] font-black tracking-widest text-indigo-400 uppercase">Evidencia Adjunta</p>
+                            <a
+                                :href="selectedInvoice.invoice_image"
+                                target="_blank"
+                                class="inline-flex items-center gap-2 text-sm font-bold text-indigo-600 transition-colors hover:text-indigo-800"
+                            >
                                 <FileText class="h-4 w-4" /> Ver Documento / Imagen
                             </a>
                         </div>
-                        <div v-else class="p-4 rounded-2xl bg-slate-50/30 border border-slate-100 mt-4 space-y-3">
-                            <p class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Adjuntar Evidencia</p>
+                        <div v-else class="mt-4 space-y-3 rounded-2xl border border-slate-100 bg-slate-50/30 p-4">
+                            <p class="text-[10px] font-black tracking-widest text-slate-400 uppercase">Adjuntar Evidencia</p>
                             <p class="text-xs text-slate-500">Esta factura aún no cuenta con un documento o imagen de evidencia.</p>
                             <div class="relative w-full">
-                                <Input 
-                                    type="file" 
-                                    @change="handleInvoiceImageUpdate" 
-                                    accept="image/*,.pdf" 
+                                <Input
+                                    type="file"
+                                    @change="handleInvoiceImageUpdate"
+                                    accept="image/*,.pdf"
                                     :disabled="isUploadingInvoiceImage"
-                                    class="bg-white text-xs file:bg-indigo-50 file:border-0 file:mr-4 file:py-2 file:px-4 file:rounded-full file:text-xs file:font-bold file:text-indigo-600 hover:file:bg-indigo-100 w-full cursor-pointer h-12" 
+                                    class="h-12 w-full cursor-pointer bg-white text-xs file:mr-4 file:rounded-full file:border-0 file:bg-indigo-50 file:px-4 file:py-2 file:text-xs file:font-bold file:text-indigo-600 hover:file:bg-indigo-100"
                                 />
-                                <div v-if="isUploadingInvoiceImage" class="absolute inset-0 bg-white/50 backdrop-blur-sm flex items-center justify-center rounded-md font-bold text-indigo-600 gap-2 text-sm z-10">
+                                <div
+                                    v-if="isUploadingInvoiceImage"
+                                    class="absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-md bg-white/50 text-sm font-bold text-indigo-600 backdrop-blur-sm"
+                                >
                                     <Loader2 class="h-4 w-4 animate-spin" /> Subiendo archivo...
                                 </div>
                             </div>
                         </div>
                     </div>
-                    
-                    <DialogFooter class="p-4 border-t bg-slate-50/50">
-                        <Button variant="outline" @click="isViewInvoiceModalOpen = false" class="rounded-xl border-slate-200 font-bold uppercase text-[10px] tracking-widest h-10">
+
+                    <DialogFooter class="border-t bg-slate-50/50 p-4">
+                        <Button
+                            variant="outline"
+                            @click="isViewInvoiceModalOpen = false"
+                            class="h-10 rounded-xl border-slate-200 text-[10px] font-bold tracking-widest uppercase"
+                        >
                             Cerrar Detalle
                         </Button>
                     </DialogFooter>
@@ -1296,14 +1516,18 @@ const saveInlinePrice = (cp: any) => {
                         <div class="grid gap-2">
                             <Label>Precio de Costo</Label>
                             <div class="relative">
-                                <span class="absolute left-3 top-2.5 text-slate-400 text-sm">S/.</span>
+                                <span class="absolute top-2.5 left-3 text-sm text-slate-400">S/.</span>
                                 <Input v-model="priceForm.cost_price" type="number" step="0.01" placeholder="0.00" class="pl-10" />
                             </div>
                         </div>
                     </div>
                     <DialogFooter>
                         <Button variant="ghost" @click="isPriceModalOpen = false">Cerrar</Button>
-                        <Button @click="handlePriceSubmit" :disabled="!priceForm.cloth_provider_id || !priceForm.city_id || !priceForm.cost_price" class="bg-indigo-600 text-white font-bold">
+                        <Button
+                            @click="handlePriceSubmit"
+                            :disabled="!priceForm.cloth_provider_id || !priceForm.city_id || !priceForm.cost_price"
+                            class="bg-indigo-600 font-bold text-white"
+                        >
                             Asignar Precio
                         </Button>
                     </DialogFooter>
@@ -1325,7 +1549,7 @@ const saveInlinePrice = (cp: any) => {
                     </div>
                     <DialogFooter>
                         <Button variant="ghost" @click="isCategoryModalOpen = false">Cancelar</Button>
-                        <Button @click="handleCategorySubmit" :disabled="!categoryForm.name" class="bg-indigo-600 text-white font-bold">
+                        <Button @click="handleCategorySubmit" :disabled="!categoryForm.name" class="bg-indigo-600 font-bold text-white">
                             Guardar Categoría
                         </Button>
                     </DialogFooter>

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Business, Headquarter } from '@/types';
+import { Head } from '@inertiajs/vue3';
 import { ref } from 'vue';
 import AreasColumn from './AreasColumn.vue';
 import BusinessTable from './BusinessTable.vue';
 import InsertModal from './InsertBusinessModal.vue';
-import { Head } from '@inertiajs/vue3';
 
 interface Props {
     businesses: Business[];

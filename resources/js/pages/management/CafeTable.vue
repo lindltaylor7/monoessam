@@ -33,7 +33,6 @@ const openRolesModal = (cafe: any) => {
     isRolesModalOpen.value = true;
 };
 
-
 // Constante para el tipo de lugar (Cafetería)
 const PLACE_TYPE_CAFE = 3;
 </script>

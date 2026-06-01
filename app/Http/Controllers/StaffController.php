@@ -488,6 +488,17 @@ class StaffController extends Controller
         ]);
     }
 
+    public function updateFileStatus(Request $request)
+    {
+        $staff_file = Staff_file::find($request->fileId);
+
+        if ($staff_file) {
+            $staff_file->update([
+                'status' => $request->status
+            ]);
+        }
+    }
+
     public function deleteFile($id)
     {
         $staff_file = Staff_file::find($id);

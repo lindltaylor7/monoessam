@@ -15,12 +15,14 @@ use App\Http\Controllers\IngredientCategoryController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\LaboralController;
 use App\Http\Controllers\IngredientController;
+use App\Http\Controllers\NutritionalFactorController;
 use App\Http\Controllers\LogisticController;
 use App\Http\Controllers\ManagementController;
 use App\Http\Controllers\MineController;
 use App\Http\Controllers\PeriodController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\ProviderController;
+use App\Http\Controllers\GeneralReportController;
 use App\Http\Controllers\ReportSalesController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SaleController;
@@ -114,6 +116,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/update-status', [StaffController::class, 'updateStatusStaff'])->name('update-status');
         Route::post('/upload-file', [StaffController::class, 'uploadFile'])->name('upload-file');
         Route::post('/upload-filedate', [StaffController::class, 'uploadFileDate'])->name('update-filedate');
+        Route::post('/update-file-status', [StaffController::class, 'updateFileStatus'])->name('update-file-status');
         Route::delete('/delete-file/{id}', [StaffController::class, 'deleteFile'])->name('delete-file');
         Route::post('/mass-upload-sctr', [StaffController::class, 'massUploadSctr'])->name('mass-upload-sctr');
     });
@@ -158,6 +161,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('search/{unitId}/{word?}', [CafeController::class, 'search'])->name('search');
         Route::post('serviceables', [CafeController::class, 'cafeServiceables'])->name('serviceables');
         Route::get('{id}/export-headcount', [CafeController::class, 'exportHeadcount'])->name('export-headcount');
+        Route::get('{id}/services', [CafeController::class, 'services'])->name('services');
     });
 
     Route::prefix('dealerships')->name('dealerships.')->group(function () {
@@ -168,6 +172,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('subdealerships')->name('subdealerships.')->group(function () {
         Route::get('/', [SubdealershipController::class, 'index'])->name('index');
         Route::post('/', [SubdealershipController::class, 'store'])->name('store');
+        Route::get('/search', [SubdealershipController::class, 'search'])->name('search');
+        Route::post('/{subdealership}/attach', [SubdealershipController::class, 'attachToMine'])->name('attach');
         Route::get('/{subdealership}', [SubdealershipController::class, 'show'])->name('show');
         Route::put('/{subdealership}', [SubdealershipController::class, 'update'])->name('update');
         Route::delete('/{id}', [SubdealershipController::class, 'destroy'])->name('destroy');
@@ -179,10 +185,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('food')->name('food.')->group(function () {
         Route::get('/', [FoodController::class, 'index'])->name('index');
         Route::get('structure-menu', [FoodController::class, 'structure'])->name('structure');
+        Route::post('structure-menu', [FoodController::class, 'storeStructure'])->name('structure.store');
+        Route::delete('structure-menu/{id}', [FoodController::class, 'destroyStructure'])->name('structure.destroy');
     });
 
     Route::prefix('dishes')->name('dishes.')->group(function () {
-        Route::get('search/{query}', [DishController::class, 'search'])->name('search');
+        Route::get('search/{query?}', [DishController::class, 'search'])->name('search');
         Route::get('search-ingredients/{query}', [FoodController::class, 'searchIngredients'])->name('search-ingredients');
         Route::post('/', [DishController::class, 'store'])->name('store');
         Route::put('{id}', [DishController::class, 'update'])->name('update');
@@ -193,6 +201,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('dish-categories')->name('dish-categories.')->group(function () {
         Route::post('/', [DishCategoryController::class, 'store'])->name('store');
         Route::delete('{id}', [DishCategoryController::class, 'destroy'])->name('destroy');
+        Route::post('import', [DishCategoryController::class, 'import'])->name('import');
+        Route::post('import-relationships', [DishCategoryController::class, 'importRelationships'])->name('import-relationships');
+    });
+
+    Route::prefix('levels')->name('levels.')->group(function () {
+        Route::post('/', [\App\Http\Controllers\LevelController::class, 'store'])->name('store');
+        Route::delete('{id}', [\App\Http\Controllers\LevelController::class, 'destroy'])->name('destroy');
     });
 
     Route::prefix('ingredients')->name('ingredients.')->group(function () {
@@ -202,8 +217,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('{id}', [IngredientController::class, 'destroy'])->name('destroy');
         Route::post('{id}/dosification', [IngredientController::class, 'updateDosification'])->name('dosification.update');
         Route::get('search/{word?}', [IngredientController::class, 'search'])->name('search');
+        Route::get('{id}/substitutes', [IngredientController::class, 'substitutes'])->name('substitutes');
         Route::post('import', [IngredientController::class, 'import'])->name('import');
         Route::post('import-energy', [IngredientController::class, 'importEnergy'])->name('import-energy');
+        Route::post('import-dosifications', [IngredientController::class, 'importDosifications'])->name('import-dosifications');
     });
 
     Route::prefix('ingredient-categories')->name('ingredient-categories.')->group(function () {
@@ -211,12 +228,23 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::delete('{id}', [IngredientCategoryController::class, 'destroy'])->name('destroy');
     });
 
+    Route::prefix('nutritional')->name('nutritional.')->group(function () {
+        Route::get('/', [NutritionalFactorController::class, 'index'])->name('index');
+        Route::post('/', [NutritionalFactorController::class, 'store'])->name('store');
+        Route::post('import', [NutritionalFactorController::class, 'import'])->name('import');
+        Route::put('{nutritional_factor}', [NutritionalFactorController::class, 'update'])->name('update');
+        Route::delete('{nutritional_factor}', [NutritionalFactorController::class, 'destroy'])->name('destroy');
+    });
+
     // ========================================================================
     // CENAS Y COMIDAS
     // ========================================================================
     Route::prefix('dinners')->name('dinners.')->group(function () {
-        // Route::get('/', [DinnerController::class, 'index'])->name('index');
         Route::get('/', [DinnerController::class, 'index'])->name('index');
+        Route::get('/check-dni', [DinnerController::class, 'checkDni'])->name('check-dni');
+        Route::post('/save', [DinnerController::class, 'save'])->name('save');
+        Route::put('/{dinner}', [DinnerController::class, 'update'])->name('update');
+        Route::delete('/{dinner}', [DinnerController::class, 'destroy'])->name('destroy');
         Route::post('/', [DinnerController::class, 'store'])->name('store');
         Route::get('pagination/{offset}', [DinnerController::class, 'pagination'])->name('pagination');
         Route::get('report/{dateInitial}/{datFinal}', [DinnerController::class, 'report'])->name('report');
@@ -229,6 +257,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('services')->name('services.')->group(function () {
         Route::get('/', [ServiceController::class, 'index'])->name('index');
         Route::get('list', [ServiceController::class, 'list'])->name('list');
+        Route::get('cafes-data', [ServiceController::class, 'cafesData'])->name('cafes-data');
+        Route::post('cafes/{cafe}/sync', [ServiceController::class, 'syncCafeServices'])->name('sync-cafe');
         Route::post('/', [ServiceController::class, 'store'])->name('store');
         Route::delete('{id}', [ServiceController::class, 'destroy'])->name('destroy');
         Route::put('prices', [ServiceController::class, 'updatePrices'])->name('update-prices');
@@ -255,6 +285,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::prefix('businesses')->name('businesses.')->group(function () {
         Route::get('/', [BusinessController::class, 'index'])->name('index');
         Route::post('services', [BusinessController::class, 'businessServices'])->name('services');
+        Route::post('{id}/logo', [BusinessController::class, 'uploadLogo'])->name('logo');
     });
 
     // ========================================================================
@@ -266,7 +297,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('{id}', [SaleController::class, 'update'])->name('update');
         Route::delete('{id}', [SaleController::class, 'destroy'])->name('destroy');
         Route::post('excel', [SaleController::class, 'excel'])->name('excel');
+        Route::get('by-date', [SaleController::class, 'byDate'])->name('byDate');
+        Route::post('visitor', [SaleController::class, 'storeVisitor'])->name('storeVisitor');
         Route::get('search/{word}/{id}', [SaleController::class, 'search'])->name('search');
+        Route::get('report/{startDate}/{endDate}', [SaleController::class, 'report'])->name('report');
     });
 
     // ========================================================================
@@ -281,7 +315,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::put('/quantity/{id}', [ClothController::class, 'updateQuantity'])->name('update-quantity');
         Route::post('/staff-size', [ClothController::class, 'updateStaffSize'])->name('staff-size');
         Route::post('/status', [ClothController::class, 'updateStatus'])->name('status');
-        
+
         // EPP Manage Routes
         Route::post('/assign-epp-role', [ClothController::class, 'assignEppRole'])->name('assign-epp-role');
         Route::delete('/epps/{id}', [ClothController::class, 'destroyEpp'])->name('epps.destroy');
@@ -312,8 +346,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         // EPP Sizes
         Route::post('/epp-sizes', [InventoryController::class, 'storeEppSize'])->name('epp-sizes.store');
         Route::delete('/epp-sizes/{id}', [InventoryController::class, 'destroyEppSize'])->name('epp-sizes.destroy');
-        
-        
+
+
         // Stock details
         Route::get('/stock/{id}/sizes', [InventoryController::class, 'getStockSizes'])->name('stock.sizes');
 
@@ -327,15 +361,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/units', [InventoryController::class, 'unitsStockIndex'])->name('units.index');
     });
 
+    Route::get('generalreport', [GeneralReportController::class, 'index'])->name('generalreport.index');
+
     Route::prefix('reportsales')->name('reportsales.')->group(function () {
         Route::get('/', [ReportSalesController::class, 'index'])->name('index');
         Route::delete('{id}', [ReportSalesController::class, 'destroy'])->name('destroy');
-        Route::get('export', [ReportSalesController::class, 'export'])->name('export');
+        Route::get('export',    [ReportSalesController::class, 'export'])->name('export');
+        Route::get('export-vlz',    [ReportSalesController::class, 'exportValorizacion'])->name('export-vlz');
+        Route::get('export-detail', [ReportSalesController::class, 'exportDetail'])->name('export-detail');
     });
 
 
     // ========================================================================
-    // PLANIFICACIÓN Y QUEBRADOS (TIBURCIO)
+    // PLANIFICACIÓN Y QUEBRADOS
     // ========================================================================
     Route::prefix('planning')->name('planning.')->group(function () {
         Route::get('/', [\App\Http\Controllers\PlanningController::class, 'index'])->name('index');
@@ -355,6 +393,23 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::post('/', [PeriodController::class, 'store'])->name('store');
         Route::delete('{id}', [PeriodController::class, 'destroy'])->name('destroy');
         Route::put('user/{id}', [PeriodController::class, 'periodUser'])->name('user');
+    });
+
+    // ========================================================================
+    // CICLOS
+    // ========================================================================
+    Route::prefix('cycles')->name('cycles.')->group(function () {
+        Route::get('/', function () {
+            return \Inertia\Inertia::render('cycles/Index', [
+                'mines' => \App\Models\Mine::with(['units', 'units.cafes', 'units.cafes.services'])->get(),
+                'structures' => \App\Models\Structure::with('costs')->get(),
+                'savedCycles' => \App\Models\MenuCycle::orderBy('id', 'desc')->get(),
+                'dishCategories' => \App\Models\Dish_category::all(),
+                'levels' => \App\Models\Level::all(),
+            ]);
+        })->name('index');
+        Route::post('/', [\App\Http\Controllers\MenuCycleController::class, 'store'])->name('store');
+        Route::get('/export/{serviceable_id}', [\App\Http\Controllers\MenuCycleController::class, 'export'])->name('export');
     });
 
     // ========================================================================

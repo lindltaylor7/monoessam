@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Input } from '@/components/ui/input';
 import { AlertCircle, Calendar, CalendarCheck, Paperclip } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
+import { computed } from 'vue';
 
 interface Props {
     file: {

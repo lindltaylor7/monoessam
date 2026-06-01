@@ -1,38 +1,13 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
-import AppLayout from '@/layouts/AppLayout.vue';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { 
-    Coffee, 
-    ShieldCheck, 
-    Plus, 
-    Search,
-    UserCircle,
-    CheckCircle2,
-    Settings2,
-    Building2
-} from 'lucide-vue-next';
-import { 
-    Dialog, 
-    DialogContent, 
-    DialogDescription, 
-    DialogHeader, 
-    DialogTitle, 
-    DialogFooter 
-} from '@/components/ui/dialog';
-import { 
-    Table, 
-    TableBody, 
-    TableCell, 
-    TableHead, 
-    TableHeader, 
-    TableRow 
-} from '@/components/ui/table';
+import AppLayout from '@/layouts/AppLayout.vue';
+import { Head, router } from '@inertiajs/vue3';
+import { Building2, CheckCircle2, Coffee, Search, Settings2, ShieldCheck, UserCircle } from 'lucide-vue-next';
+import { computed, ref } from 'vue';
 
 interface Props {
     cafes: any[];
@@ -49,16 +24,12 @@ const selectedRoleIds = ref<number[]>([]);
 
 const filteredRoles = computed(() => {
     if (!roleSearchQuery.value) return props.roles;
-    return props.roles.filter(role => 
-        role.name.toLowerCase().includes(roleSearchQuery.value.toLowerCase())
-    );
+    return props.roles.filter((role) => role.name.toLowerCase().includes(roleSearchQuery.value.toLowerCase()));
 });
 
 const filteredCafes = computed(() => {
     if (!searchQuery.value) return props.cafes;
-    return props.cafes.filter(cafe => 
-        cafe.name.toLowerCase().includes(searchQuery.value.toLowerCase())
-    );
+    return props.cafes.filter((cafe) => cafe.name.toLowerCase().includes(searchQuery.value.toLowerCase()));
 });
 
 const openEditModal = (cafe: any) => {
@@ -80,79 +51,82 @@ const toggleRole = (roleId: number) => {
 const handleSave = () => {
     if (!selectedCafe.value) return;
 
-    router.post(route('cafes.roles.sync', selectedCafe.value.id), {
-        role_ids: selectedRoleIds.value
-    }, {
-        onSuccess: () => {
-            isModalOpen.value = false;
+    router.post(
+        route('cafes.roles.sync', selectedCafe.value.id),
+        {
+            role_ids: selectedRoleIds.value,
         },
-        preserveScroll: true
-    });
+        {
+            onSuccess: () => {
+                isModalOpen.value = false;
+            },
+            preserveScroll: true,
+        },
+    );
 };
-
 </script>
 
 <template>
     <Head title="Asignación de Roles por Café" />
 
-    <AppLayout :breadcrumbs="[
-        { title: 'Configuración', href: '#' },
-        { title: 'Cafés', href: route('cafes.roles.index') },
-        { title: 'Roles', href: route('cafes.roles.index') }
-    ]">
-        <div class="flex flex-col gap-6 p-6 max-w-7xl mx-auto w-full">
+    <AppLayout
+        :breadcrumbs="[
+            { title: 'Configuración', href: '#' },
+            { title: 'Cafés', href: route('cafes.roles.index') },
+            { title: 'Roles', href: route('cafes.roles.index') },
+        ]"
+    >
+        <div class="mx-auto flex w-full max-w-7xl flex-col gap-6 p-6">
             <!-- Header Section -->
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div class="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
                 <div>
-                    <h1 class="text-3xl font-black text-slate-900 flex items-center gap-3">
-                        <div class="p-2 bg-amber-100 rounded-2xl">
+                    <h1 class="flex items-center gap-3 text-3xl font-black text-slate-900">
+                        <div class="rounded-2xl bg-amber-100 p-2">
                             <Coffee class="h-8 w-8 text-amber-600" />
                         </div>
                         Roles por Café
                     </h1>
-                    <p class="text-slate-500 mt-2 font-medium">
-                        Define qué perfiles de usuario están activos en cada punto de servicio.
-                    </p>
+                    <p class="mt-2 font-medium text-slate-500">Define qué perfiles de usuario están activos en cada punto de servicio.</p>
                 </div>
-                
+
                 <div class="relative w-full md:w-80">
-                    <Search class="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                    <Input 
+                    <Search class="absolute top-3 left-3 h-4 w-4 text-slate-400" />
+                    <Input
                         v-model="searchQuery"
-                        placeholder="Buscar café..." 
-                        class="pl-10 h-11 bg-white border-slate-200 shadow-sm rounded-xl focus:ring-amber-500"
+                        placeholder="Buscar café..."
+                        class="h-11 rounded-xl border-slate-200 bg-white pl-10 shadow-sm focus:ring-amber-500"
                     />
                 </div>
             </div>
 
             <!-- Stats Overview -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card class="bg-indigo-600 text-white border-none shadow-xl shadow-indigo-100 overflow-hidden relative">
+            <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <Card class="relative overflow-hidden border-none bg-indigo-600 text-white shadow-xl shadow-indigo-100">
                     <div class="absolute -right-4 -bottom-4 opacity-10">
                         <Building2 class="h-32 w-32" />
                     </div>
                     <CardContent class="p-6">
-                        <p class="text-indigo-100 text-xs font-black uppercase tracking-widest mb-1">Total Cafés</p>
+                        <p class="mb-1 text-xs font-black tracking-widest text-indigo-100 uppercase">Total Cafés</p>
                         <p class="text-4xl font-black">{{ cafes.length }}</p>
                     </CardContent>
                 </Card>
 
-                <Card class="bg-amber-500 text-white border-none shadow-xl shadow-amber-100 overflow-hidden relative">
+                <Card class="relative overflow-hidden border-none bg-amber-500 text-white shadow-xl shadow-amber-100">
                     <div class="absolute -right-4 -bottom-4 opacity-10">
                         <ShieldCheck class="h-32 w-32" />
                     </div>
                     <CardContent class="p-6">
-                        <p class="text-amber-100 text-xs font-black uppercase tracking-widest mb-1">Roles Disponibles</p>
+                        <p class="mb-1 text-xs font-black tracking-widest text-amber-100 uppercase">Roles Disponibles</p>
                         <p class="text-4xl font-black">{{ roles.length }}</p>
                     </CardContent>
                 </Card>
 
-                <Card class="bg-slate-900 text-white border-none shadow-xl overflow-hidden relative">
+                <Card class="relative overflow-hidden border-none bg-slate-900 text-white shadow-xl">
                     <div class="absolute -right-4 -bottom-4 opacity-10">
                         <UserCircle class="h-32 w-32" />
                     </div>
                     <CardContent class="p-6">
-                        <p class="text-slate-400 text-xs font-black uppercase tracking-widest mb-1">Asignaciones Activas</p>
+                        <p class="mb-1 text-xs font-black tracking-widest text-slate-400 uppercase">Asignaciones Activas</p>
                         <p class="text-4xl font-black">
                             {{ cafes.reduce((acc, c) => acc + c.roles.length, 0) }}
                         </p>
@@ -161,72 +135,75 @@ const handleSave = () => {
             </div>
 
             <!-- Cafes List -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <Card 
-                    v-for="cafe in filteredCafes" 
+            <div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Card
+                    v-for="cafe in filteredCafes"
                     :key="cafe.id"
-                    class="group hover:shadow-2xl hover:shadow-indigo-50/50 transition-all duration-300 border-slate-100 rounded-3xl overflow-hidden bg-white/80 backdrop-blur-sm"
+                    class="group overflow-hidden rounded-3xl border-slate-100 bg-white/80 backdrop-blur-sm transition-all duration-300 hover:shadow-2xl hover:shadow-indigo-50/50"
                 >
                     <CardHeader class="flex flex-row items-center justify-between space-y-0 p-6">
                         <div class="flex items-center gap-4">
-                            <div class="h-12 w-12 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 group-hover:bg-amber-50 group-hover:text-amber-600 transition-colors">
+                            <div
+                                class="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-50 text-slate-400 transition-colors group-hover:bg-amber-50 group-hover:text-amber-600"
+                            >
                                 <Coffee class="h-6 w-6" />
                             </div>
                             <div>
-                                <CardTitle class="text-lg font-black text-slate-900 tabular-nums uppercase tracking-tight flex flex-col">
+                                <CardTitle class="flex flex-col text-lg font-black tracking-tight text-slate-900 uppercase tabular-nums">
                                     <span>{{ cafe.name }}</span>
-                                    <span class="text-[10px] text-slate-400 font-bold tracking-tighter">
+                                    <span class="text-[10px] font-bold tracking-tighter text-slate-400">
                                         {{ cafe.unit?.mine?.name }} — {{ cafe.unit?.name }}
                                     </span>
                                 </CardTitle>
-                                <CardDescription class="text-xs font-bold text-slate-400 flex items-center gap-1 mt-1">
-                                    <Badge variant="outline" class="text-[10px] py-0 px-1.5 border-slate-200 text-slate-400">ID: {{ cafe.id }}</Badge>
+                                <CardDescription class="mt-1 flex items-center gap-1 text-xs font-bold text-slate-400">
+                                    <Badge variant="outline" class="border-slate-200 px-1.5 py-0 text-[10px] text-slate-400">ID: {{ cafe.id }}</Badge>
                                 </CardDescription>
                             </div>
                         </div>
-                        <Button 
-                            variant="ghost" 
-                            size="icon" 
+                        <Button
+                            variant="ghost"
+                            size="icon"
                             @click="openEditModal(cafe)"
-                            class="h-10 w-10 p-0 rounded-2xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all"
+                            class="h-10 w-10 rounded-2xl p-0 text-slate-400 transition-all hover:bg-indigo-50 hover:text-indigo-600"
                         >
                             <Settings2 class="h-5 w-5" />
                         </Button>
                     </CardHeader>
-                    
+
                     <CardContent class="p-6 pt-0">
                         <div class="flex flex-wrap gap-2">
-                            <Badge 
-                                v-for="role in cafe.roles" 
+                            <Badge
+                                v-for="role in cafe.roles"
                                 :key="role.id"
-                                class="bg-indigo-50 text-indigo-700 border-indigo-100 px-3 py-1 rounded-full text-xs font-bold"
+                                class="rounded-full border-indigo-100 bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700"
                             >
                                 {{ role.name }}
                             </Badge>
-                            <div v-if="cafe.roles.length === 0" class="text-xs text-slate-400 italic">
-                                Sin roles asignados aún.
-                            </div>
+                            <div v-if="cafe.roles.length === 0" class="text-xs text-slate-400 italic">Sin roles asignados aún.</div>
                         </div>
                     </CardContent>
                 </Card>
 
-                <div v-if="filteredCafes.length === 0" class="col-span-full py-12 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
-                    <Coffee class="h-12 w-12 mx-auto text-slate-200 mb-2" />
-                    <p class="text-slate-400 font-bold">No se encontraron cafés con ese nombre.</p>
+                <div
+                    v-if="filteredCafes.length === 0"
+                    class="col-span-full rounded-3xl border-2 border-dashed border-slate-200 bg-slate-50 py-12 text-center"
+                >
+                    <Coffee class="mx-auto mb-2 h-12 w-12 text-slate-200" />
+                    <p class="font-bold text-slate-400">No se encontraron cafés con ese nombre.</p>
                 </div>
             </div>
 
             <!-- Edit Modal -->
             <Dialog v-model:open="isModalOpen">
-                <DialogContent class="sm:max-w-[500px] p-0 overflow-hidden border-none rounded-3xl shadow-2xl">
-                    <DialogHeader class="p-8 bg-slate-900 text-white">
-                        <DialogTitle class="text-2xl font-black flex items-center gap-3">
+                <DialogContent class="overflow-hidden rounded-3xl border-none p-0 shadow-2xl sm:max-w-[500px]">
+                    <DialogHeader class="bg-slate-900 p-8 text-white">
+                        <DialogTitle class="flex items-center gap-3 text-2xl font-black">
                             <Settings2 class="h-6 w-6 text-amber-500" />
                             Gestionar Roles
                         </DialogTitle>
-                        <DialogDescription class="text-slate-400 font-medium">
-                            Configura qué roles están habilitados para: 
-                            <span class="text-white font-black underline decoration-amber-500 underline-offset-4">
+                        <DialogDescription class="font-medium text-slate-400">
+                            Configura qué roles están habilitados para:
+                            <span class="font-black text-white underline decoration-amber-500 underline-offset-4">
                                 {{ selectedCafe?.name }} ({{ selectedCafe?.unit?.mine?.name }})
                             </span>
                         </DialogDescription>
@@ -234,60 +211,83 @@ const handleSave = () => {
 
                     <div class="p-8 pb-0">
                         <div class="relative">
-                            <Search class="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                            <Input 
+                            <Search class="absolute top-3 left-3 h-4 w-4 text-slate-400" />
+                            <Input
                                 v-model="roleSearchQuery"
-                                placeholder="Buscar rol..." 
-                                class="pl-10 h-10 bg-slate-50 border-slate-100 rounded-xl focus:ring-amber-500"
+                                placeholder="Buscar rol..."
+                                class="h-10 rounded-xl border-slate-100 bg-slate-50 pl-10 focus:ring-amber-500"
                             />
                         </div>
                     </div>
 
-                    <div class="p-8 space-y-4 max-h-[50vh] overflow-y-auto custom-scrollbar">
-                        <p class="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em] mb-4">Roles Disponibles en el Sistema</p>
-                        
+                    <div class="custom-scrollbar max-h-[50vh] space-y-4 overflow-y-auto p-8">
+                        <p class="mb-4 text-[10px] font-black tracking-[0.2em] text-slate-400 uppercase">Roles Disponibles en el Sistema</p>
+
                         <div class="grid grid-cols-1 gap-2">
-                            <button 
-                                v-for="role in filteredRoles" 
+                            <button
+                                v-for="role in filteredRoles"
                                 :key="role.id"
                                 @click="toggleRole(role.id)"
-                                class="w-full text-left p-4 rounded-2xl border transition-all duration-200 flex items-center justify-between group"
-                                :class="selectedRoleIds.includes(role.id) 
-                                    ? 'bg-indigo-50 border-indigo-200 ring-2 ring-indigo-600/10' 
-                                    : 'bg-white border-slate-100 hover:border-slate-300'"
+                                class="group flex w-full items-center justify-between rounded-2xl border p-4 text-left transition-all duration-200"
+                                :class="
+                                    selectedRoleIds.includes(role.id)
+                                        ? 'border-indigo-200 bg-indigo-50 ring-2 ring-indigo-600/10'
+                                        : 'border-slate-100 bg-white hover:border-slate-300'
+                                "
                             >
                                 <div class="flex items-center gap-4">
-                                    <div class="h-10 w-10 rounded-xl flex items-center justify-center transition-colors"
-                                        :class="selectedRoleIds.includes(role.id) ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-400 group-hover:bg-slate-100'">
+                                    <div
+                                        class="flex h-10 w-10 items-center justify-center rounded-xl transition-colors"
+                                        :class="
+                                            selectedRoleIds.includes(role.id)
+                                                ? 'bg-indigo-600 text-white'
+                                                : 'bg-slate-50 text-slate-400 group-hover:bg-slate-100'
+                                        "
+                                    >
                                         <UserCircle class="h-5 w-5" />
                                     </div>
-                                    <span class="font-bold text-sm tracking-tight" :class="selectedRoleIds.includes(role.id) ? 'text-indigo-900' : 'text-slate-600'">
+                                    <span
+                                        class="text-sm font-bold tracking-tight"
+                                        :class="selectedRoleIds.includes(role.id) ? 'text-indigo-900' : 'text-slate-600'"
+                                    >
                                         {{ role.name }}
                                     </span>
                                 </div>
-                                
-                                <CheckCircle2 
+
+                                <CheckCircle2
                                     class="h-5 w-5 transition-all duration-300"
-                                    :class="selectedRoleIds.includes(role.id) ? 'text-indigo-600 scale-110 opacity-100' : 'text-slate-100 opacity-0 group-hover:opacity-100'"
+                                    :class="
+                                        selectedRoleIds.includes(role.id)
+                                            ? 'scale-110 text-indigo-600 opacity-100'
+                                            : 'text-slate-100 opacity-0 group-hover:opacity-100'
+                                    "
                                 />
                             </button>
                         </div>
-                        
-                        <div v-if="filteredRoles.length === 0" class="py-12 text-center bg-slate-50 rounded-2xl border-2 border-dashed border-slate-100">
-                            <UserCircle class="h-10 w-10 mx-auto text-slate-200 mb-2" />
-                            <p class="text-slate-400 text-xs font-bold">No se encontraron roles con ese nombre.</p>
+
+                        <div
+                            v-if="filteredRoles.length === 0"
+                            class="rounded-2xl border-2 border-dashed border-slate-100 bg-slate-50 py-12 text-center"
+                        >
+                            <UserCircle class="mx-auto mb-2 h-10 w-10 text-slate-200" />
+                            <p class="text-xs font-bold text-slate-400">No se encontraron roles con ese nombre.</p>
                         </div>
                     </div>
 
-                    <DialogFooter class="p-8 bg-slate-50 border-t border-slate-100 flex flex-row gap-2 sm:justify-between items-center">
-                        <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                            {{ selectedRoleIds.length }} seleccionados
-                        </p>
+                    <DialogFooter class="flex flex-row items-center gap-2 border-t border-slate-100 bg-slate-50 p-8 sm:justify-between">
+                        <p class="text-[10px] font-black tracking-widest text-slate-400 uppercase">{{ selectedRoleIds.length }} seleccionados</p>
                         <div class="flex gap-3">
-                            <Button variant="ghost" @click="isModalOpen = false" class="rounded-xl font-bold uppercase text-[10px] tracking-widest text-slate-500 hover:bg-slate-100">
+                            <Button
+                                variant="ghost"
+                                @click="isModalOpen = false"
+                                class="rounded-xl text-[10px] font-bold tracking-widest text-slate-500 uppercase hover:bg-slate-100"
+                            >
                                 Cancelar
                             </Button>
-                            <Button @click="handleSave" class="rounded-xl bg-slate-900 hover:bg-black text-white px-8 font-black uppercase text-[10px] tracking-widest shadow-lg shadow-slate-200">
+                            <Button
+                                @click="handleSave"
+                                class="rounded-xl bg-slate-900 px-8 text-[10px] font-black tracking-widest text-white uppercase shadow-lg shadow-slate-200 hover:bg-black"
+                            >
                                 Guardar Cambios
                             </Button>
                         </div>

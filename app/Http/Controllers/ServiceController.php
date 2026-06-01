@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Cafe;
+use App\Models\Mine;
 use App\Models\Service;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -95,5 +96,32 @@ class ServiceController extends Controller
         $services = Service::with('cafes')->get();
 
         return response()->json($services);
+    }
+
+    public function cafesData()
+    {
+        $mines = Mine::with([
+            'units',
+            'units.cafes',
+            'units.cafes.services',
+        ])->get();
+
+        return response()->json([
+            'mines'    => $mines,
+            'services' => Service::orderBy('type')->orderBy('name')->get(),
+        ]);
+    }
+
+    public function syncCafeServices(Request $request, Cafe $cafe)
+    {
+        $services = $request->services ?? [];
+
+        $sync = collect($services)->mapWithKeys(fn($s) => [
+            $s['id'] => ['price' => $s['price'] ?? 0],
+        ])->toArray();
+
+        $cafe->services()->sync($sync);
+
+        return response()->json(['success' => true]);
     }
 }

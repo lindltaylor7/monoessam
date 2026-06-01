@@ -13,23 +13,29 @@ const df = new DateFormatter('es-ES', {
 });
 
 const value = ref<DateValue>();
+const open = ref(false);
 
 const emit = defineEmits(['updateDate']);
 
 watch(value, (dateValue) => {
     if (!dateValue) return;
     const formattedDate = `${dateValue.year}-${String(dateValue.month).padStart(2, '0')}-${String(dateValue.day).padStart(2, '0')}`;
-
     emit('updateDate', formattedDate);
+    open.value = false;
 });
 </script>
 
 <template>
-    <Popover>
+    <Popover v-model:open="open">
         <PopoverTrigger as-child>
             <Button
                 variant="outline"
-                :class="cn('w-full h-11 justify-start text-left font-bold text-xs rounded-xl border-slate-200 hover:bg-slate-50 transition-all', !value && 'text-slate-400')"
+                :class="
+                    cn(
+                        'h-11 w-full justify-start rounded-xl border-slate-200 text-left text-xs font-bold transition-all hover:bg-slate-50',
+                        !value && 'text-slate-400',
+                    )
+                "
             >
                 <CalendarIcon class="mr-2 h-4 w-4 text-blue-500" />
                 {{ value ? df.format(value.toDate(getLocalTimeZone())) : 'Selecciona fecha' }}

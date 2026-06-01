@@ -2,16 +2,15 @@
 import { Button } from '@/components/ui/button';
 import Input from '@/components/ui/input/Input.vue';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useStaffActions } from '@/composables/useStaffActions';
+import { useStaffFilter } from '@/composables/useStaffFilter';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Business, Cafe, Role, Staff, Unit } from '@/types';
 import { Head } from '@inertiajs/vue3';
 import { ref, watch } from 'vue';
 import StaffRegistrationDialog from './StaffRegistrationDialog.vue';
-import StaffTable from './partials/StaffTable.vue';
 import StaffMobileCard from './partials/StaffMobileCard.vue';
-import { useStaffFilter } from '@/composables/useStaffFilter';
-import { useStaffActions } from '@/composables/useStaffActions';
-
+import StaffTable from './partials/StaffTable.vue';
 
 interface Props {
     cafes: Cafe[];
@@ -31,7 +30,7 @@ watch(
     () => props.staff,
     (newVal) => {
         localStaff.value = newVal;
-    }
+    },
 );
 
 // Composables
@@ -43,8 +42,8 @@ const { deleteStaff } = useStaffActions((id) => {
 });
 
 // Paginación
-import { computed } from 'vue';
 import { ChevronLeft, ChevronRight } from 'lucide-vue-next';
+import { computed } from 'vue';
 
 const currentPage = ref(1);
 const itemsPerPage = 10;
@@ -73,7 +72,6 @@ const prevPage = () => {
 watch(filteredStaff, () => {
     currentPage.value = 1;
 });
-
 </script>
 
 <template>
@@ -82,23 +80,19 @@ watch(filteredStaff, () => {
         <div class="flex h-full flex-1 flex-col gap-6 rounded-xl p-4">
             <div class="flex items-center justify-between">
                 <h1 class="text-2xl font-semibold tracking-tight">Personal</h1>
-                <StaffRegistrationDialog 
-                    :cafes="props.cafes" 
-                    :roles="props.roles" 
-                    :units="props.units" 
-                    :businneses="props.businneses" 
+                <StaffRegistrationDialog
+                    :cafes="props.cafes"
+                    :roles="props.roles"
+                    :units="props.units"
+                    :businneses="props.businneses"
                     :role-clothes="props.roleClothes"
                 />
             </div>
 
             <div class="flex items-center">
-                <Input 
-                    type="text" 
-                    placeholder="Buscar personal por dni o nombre" 
-                    v-model="searchQuery"
-                />
+                <Input type="text" placeholder="Buscar personal por dni o nombre" v-model="searchQuery" />
                 <Select v-model="selectedUnitId">
-                    <SelectTrigger class="h-10 border-zinc-200 bg-white hover:bg-zinc-50 ml-2 w-[200px]">
+                    <SelectTrigger class="ml-2 h-10 w-[200px] border-zinc-200 bg-white hover:bg-zinc-50">
                         <SelectValue placeholder="Seleccionar unidad" />
                     </SelectTrigger>
                     <SelectContent class="border-zinc-200 bg-white shadow-lg">
@@ -112,7 +106,7 @@ watch(filteredStaff, () => {
 
             <div class="bg-card rounded-xl border shadow-sm">
                 <!-- Vista Desktop -->
-                <StaffTable 
+                <StaffTable
                     :staff-list="paginatedStaff"
                     :cafes="props.cafes"
                     :roles="props.roles"
@@ -123,9 +117,9 @@ watch(filteredStaff, () => {
                 />
 
                 <!-- Vista Mobile: Cards -->
-                <div class="space-y-4 md:hidden p-4">
-                    <StaffMobileCard 
-                        v-for="staff in paginatedStaff" 
+                <div class="space-y-4 p-4 md:hidden">
+                    <StaffMobileCard
+                        v-for="staff in paginatedStaff"
                         :key="staff.id"
                         :staff="staff"
                         :cafes="props.cafes"
@@ -144,28 +138,17 @@ watch(filteredStaff, () => {
 
                 <!-- Controles de Paginación -->
                 <div class="flex items-center justify-between border-t p-4" v-if="totalPages > 1">
-                    <div class="text-sm text-muted-foreground">
-                        Mostrando {{ (currentPage - 1) * itemsPerPage + 1 }} - {{ Math.min(currentPage * itemsPerPage, filteredStaff.length) }} de {{ filteredStaff.length }} registros
+                    <div class="text-muted-foreground text-sm">
+                        Mostrando {{ (currentPage - 1) * itemsPerPage + 1 }} - {{ Math.min(currentPage * itemsPerPage, filteredStaff.length) }} de
+                        {{ filteredStaff.length }} registros
                     </div>
                     <div class="flex items-center gap-2">
-                        <Button 
-                            variant="outline" 
-                            size="sm" 
-                            :disabled="currentPage === 1" 
-                            @click="prevPage"
-                        >
+                        <Button variant="outline" size="sm" :disabled="currentPage === 1" @click="prevPage">
                             <ChevronLeft class="h-4 w-4" />
                             Anterior
                         </Button>
-                        <div class="text-sm font-medium">
-                            Página {{ currentPage }} de {{ totalPages }}
-                        </div>
-                        <Button 
-                            variant="outline" 
-                            size="sm" 
-                            :disabled="currentPage === totalPages" 
-                            @click="nextPage"
-                        >
+                        <div class="text-sm font-medium">Página {{ currentPage }} de {{ totalPages }}</div>
+                        <Button variant="outline" size="sm" :disabled="currentPage === totalPages" @click="nextPage">
                             Siguiente
                             <ChevronRight class="h-4 w-4" />
                         </Button>

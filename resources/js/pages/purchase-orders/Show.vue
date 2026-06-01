@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, Link } from '@inertiajs/vue3';
-import { PurchaseOrder } from '@/types';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import AppLayout from '@/layouts/AppLayout.vue';
+import { PurchaseOrder } from '@/types';
+import { Head, Link } from '@inertiajs/vue3';
 import dayjs from 'dayjs';
 
 interface Props {
@@ -25,9 +25,7 @@ const exportExcel = () => {
         <div class="flex flex-col gap-6 p-6">
             <div class="flex items-center justify-between">
                 <div class="flex flex-col gap-1">
-                    <Link :href="route('purchase_orders.index')" class="text-sm text-muted-foreground hover:underline">
-                        ← Volver a la lista
-                    </Link>
+                    <Link :href="route('purchase_orders.index')" class="text-muted-foreground text-sm hover:underline"> ← Volver a la lista </Link>
                     <h1 class="text-2xl font-bold">Detalle de Pedido #{{ order.id }}</h1>
                 </div>
                 <div class="flex gap-2">
@@ -43,18 +41,18 @@ const exportExcel = () => {
                     </CardHeader>
                     <CardContent class="flex flex-col gap-4">
                         <div class="flex flex-col">
-                            <span class="text-xs font-semibold uppercase text-muted-foreground">Café / Comedor</span>
+                            <span class="text-muted-foreground text-xs font-semibold uppercase">Café / Comedor</span>
                             <span class="text-lg font-bold">{{ order.program?.cafe?.name }}</span>
                         </div>
                         <div class="flex flex-col">
-                            <span class="text-xs font-semibold uppercase text-muted-foreground">Periodo de Consumo</span>
+                            <span class="text-muted-foreground text-xs font-semibold uppercase">Periodo de Consumo</span>
                             <span>
-                                {{ dayjs(order.program?.start_date).format('DD/MM/YYYY') }} al 
+                                {{ dayjs(order.program?.start_date).format('DD/MM/YYYY') }} al
                                 {{ dayjs(order.program?.end_date).format('DD/MM/YYYY') }}
                             </span>
                         </div>
                         <div class="flex flex-col">
-                            <span class="text-xs font-semibold uppercase text-muted-foreground">Estado del Pedido</span>
+                            <span class="text-muted-foreground text-xs font-semibold uppercase">Estado del Pedido</span>
                             <span class="capitalize">{{ order.status }}</span>
                         </div>
                     </CardContent>

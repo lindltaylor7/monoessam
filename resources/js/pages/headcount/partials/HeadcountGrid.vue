@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import StaffSelectables from '../StaffSelectables.vue';
-import GuardAreaDroppable from '../GuardAreaDroppable.vue';
 import { Cafe, Role, User } from '@/types';
+import GuardAreaDroppable from '../GuardAreaDroppable.vue';
 
 interface Props {
     guardsSelected: Cafe[];
@@ -11,13 +10,7 @@ interface Props {
 }
 
 defineProps<Props>();
-const emit = defineEmits([
-    'user-dropped', 
-    'assign-roles', 
-    'delete-guard-role', 
-    'delete-guard', 
-    'unassign-user'
-]);
+const emit = defineEmits(['user-dropped', 'assign-roles', 'delete-guard-role', 'delete-guard', 'unassign-user']);
 </script>
 
 <template>

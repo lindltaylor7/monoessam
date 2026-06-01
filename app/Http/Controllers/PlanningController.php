@@ -25,12 +25,32 @@ class PlanningController extends Controller
 
     public function index()
     {
+        $menuCycles = \App\Models\MenuCycle::orderBy('id', 'desc')->get()->map(function ($cycle) {
+            $serviceable = \DB::table('serviceables')->find($cycle->serviceable_id);
+            $mealType = 'N/A';
+            $cafeId = null;
+            if ($serviceable) {
+                $service = \App\Models\Service::find($serviceable->service_id);
+                if ($service) {
+                    $mealType = $service->name;
+                }
+                if ($serviceable->serviceable_type === 'App\Models\Cafe') {
+                    $cafeId = $serviceable->serviceable_id;
+                }
+            }
+            $cycle->meal_type = $mealType;
+            $cycle->cafe_id = $cafeId;
+            return $cycle;
+        });
+
         return Inertia::render('planning/Index', [
             'cafes' => Cafe::all(),
             'programs' => WeeklyProgram::with('cafe')->get(),
             'dish_categories' => Dish_category::all(),
             'menu_structure' => MenuStructure::with('dish_category')->get(),
             'dishes' => Dish::with('dish_categories')->get(),
+            'menu_cycles' => $menuCycles,
+            'mines' => \App\Models\Mine::with(['units', 'units.cafes', 'units.cafes.services'])->get(),
         ]);
     }
 

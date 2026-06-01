@@ -1,17 +1,16 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
-import { Head, router, Link } from '@inertiajs/vue3';
-import AppLayout from '@/layouts/AppLayout.vue';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Eye, ChevronLeft, ChevronRight, Package, Plus } from 'lucide-vue-next';
 import { useStaffFilter } from '@/composables/useStaffFilter';
-import { Staff, Unit } from '@/types';
+import AppLayout from '@/layouts/AppLayout.vue';
 import StaffClothesDialog from '@/pages/clothes/partials/StaffClothesDialog.vue';
 import InventoryTransferDialog from '@/pages/inventory/partials/InventoryTransferDialog.vue';
-import { Truck } from 'lucide-vue-next';
+import { Staff } from '@/types';
+import { Head, router } from '@inertiajs/vue3';
+import { ChevronLeft, ChevronRight, Eye, Truck } from 'lucide-vue-next';
+import { computed, ref, watch } from 'vue';
 
 interface ExtendedStaff extends Staff {
     staff_clothes: Array<{
@@ -22,7 +21,7 @@ interface ExtendedStaff extends Staff {
         clothing_size: string;
         clothe_name?: string;
         cloth?: { name: string };
-        epp?: { name: string, sizes: Array<{ id: number, size: string }> };
+        epp?: { name: string; sizes: Array<{ id: number; size: string }> };
         color?: { id: number; name: string };
         status?: string;
         quantity: number;
@@ -33,27 +32,27 @@ interface ExtendedStaff extends Staff {
 }
 
 const props = defineProps<{
-    staff: ExtendedStaff[]; 
+    staff: ExtendedStaff[];
     roleClothes: Record<number, Record<string, Array<{ id: number; name: string }>>>;
-    roleEpps: Record<number, Record<string, Array<{ id: number; name: string; sizes: Array<{ id: number, size: string }> }>>>;
+    roleEpps: Record<number, Record<string, Array<{ id: number; name: string; sizes: Array<{ id: number; size: string }> }>>>;
     units: any[];
-    colors: Array<{ id: number, name: string }>;
-    headquarters?: Array<{ id: number, name: string, business?: { name: string } }>;
+    colors: Array<{ id: number; name: string }>;
+    headquarters?: Array<{ id: number; name: string; business?: { name: string } }>;
 }>();
 
 const getClothesForStaff = (person: ExtendedStaff) => {
     if (!person.role_id) return [];
     const roleMap = props.roleClothes[person.role_id];
     if (!roleMap) return [];
-    
+
     const cafeId = person.cafe_id || (person.staffable_type === 'App\\Models\\Cafe' ? person.staffable_id : null);
-    const specific = cafeId ? (roleMap[String(cafeId)] || []) : [];
+    const specific = cafeId ? roleMap[String(cafeId)] || [] : [];
     const common = roleMap['all'] || [];
-    
+
     // Merge without duplicates
     const merged = [...specific];
-    common.forEach(c => {
-        if (!merged.find(m => m.id === c.id)) merged.push(c);
+    common.forEach((c) => {
+        if (!merged.find((m) => m.id === c.id)) merged.push(c);
     });
     return merged;
 };
@@ -66,12 +65,12 @@ watch(
     (newVal) => {
         localStaff.value = newVal;
         if (selectedStaff.value) {
-            const updated = newVal.find(s => s.id === selectedStaff.value?.id);
+            const updated = newVal.find((s) => s.id === selectedStaff.value?.id);
             if (updated) {
                 selectedStaff.value = updated;
             }
         }
-    }
+    },
 );
 
 const { filteredStaff, searchQuery, selectedUnitId } = useStaffFilter(localStaff as any);
@@ -113,15 +112,19 @@ const openModal = (staff: ExtendedStaff) => {
 };
 
 const updateSize = (staffId: number, clothId: number, size: string) => {
-    router.post(route('clothes.staff-size'), {
-        staff_id: staffId,
-        cloth_id: clothId,
-        clothing_size: size
-    }, {
-        preserveScroll: true,
-        preserveState: true,
-        only: ['staff']
-    });
+    router.post(
+        route('clothes.staff-size'),
+        {
+            staff_id: staffId,
+            cloth_id: clothId,
+            clothing_size: size,
+        },
+        {
+            preserveScroll: true,
+            preserveState: true,
+            only: ['staff'],
+        },
+    );
 };
 
 const getClothSize = (staff: ExtendedStaff, clothId: number) => {
@@ -142,100 +145,106 @@ const getInitials = (name: string) => {
 <template>
     <Head title="EPPs" />
 
-    <AppLayout :breadcrumbs="[
-        { title: 'Personal', href: route('staff.index') },
-        { title: 'Tallas', href: route('clothes.index') }
-    ]">
+    <AppLayout
+        :breadcrumbs="[
+            { title: 'Personal', href: route('staff.index') },
+            { title: 'Tallas', href: route('clothes.index') },
+        ]"
+    >
         <div class="p-6">
-             <div class="flex justify-between items-center mb-6">
-                 <div>
+            <div class="mb-6 flex items-center justify-between">
+                <div>
                     <h1 class="text-3xl font-bold tracking-tight">Asignación de Prendas por Rol y Comedor</h1>
-                    <p class="text-muted-foreground text-xs sm:text-sm mt-1">
+                    <p class="text-muted-foreground mt-1 text-xs sm:text-sm">
                         Selecciona las prendas asignadas a cada rol/cargo en el comedor seleccionado
                     </p>
-                 </div>
-                 <div class="flex flex-wrap gap-2">
+                </div>
+                <div class="flex flex-wrap gap-2">
                     <!-- <Link :href="route('inventory.index')">
                         <Button variant="outline" class="gap-2">
                             <Package class="h-4 w-4" />
                             Inventario
                         </Button>
                     </Link> -->
-                    <Button @click="isTransferModalOpen = true" size="sm" class="gap-2 bg-slate-900 hover:bg-black text-white shadow-lg">
+                    <Button @click="isTransferModalOpen = true" size="sm" class="gap-2 bg-slate-900 text-white shadow-lg hover:bg-black">
                         <Truck class="h-4 w-4" />
                         Generar Envío a Unidad
                     </Button>
-                 </div>
+                </div>
             </div>
 
-            <div class="flex items-center mb-6">
-                <Input 
-                    type="text" 
-                    placeholder="Buscar personal por dni o nombre" 
-                    v-model="searchQuery"
-                />
+            <div class="mb-6 flex items-center">
+                <Input type="text" placeholder="Buscar personal por dni o nombre" v-model="searchQuery" />
                 <Select v-model="selectedUnitId">
-                    <SelectTrigger class="h-10 border-zinc-200 bg-white hover:bg-zinc-50 ml-2 w-[200px]">
+                    <SelectTrigger class="ml-2 h-10 w-[200px] border-zinc-200 bg-white hover:bg-zinc-50">
                         <SelectValue placeholder="Seleccionar unidad" />
                     </SelectTrigger>
                     <SelectContent class="border-zinc-200 bg-white shadow-lg">
                         <SelectItem value="0" class="hover:bg-zinc-50"> Ninguna </SelectItem>
                         <SelectItem :value="String(unit.id)" class="hover:bg-zinc-50" v-for="unit in units" :key="unit.id">
-                           {{ unit.mine.name }} - {{ unit.name }} 
+                            {{ unit.mine.name }} - {{ unit.name }}
                         </SelectItem>
                     </SelectContent>
                 </Select>
             </div>
 
-            <div class="bg-white rounded-xl border shadow-sm overflow-hidden">
+            <div class="overflow-hidden rounded-xl border bg-white shadow-sm">
                 <div class="overflow-x-auto">
-                    <table class="w-full text-sm text-left">
-                        <thead class="bg-gray-50 text-gray-500 border-b">
+                    <table class="w-full text-left text-sm">
+                        <thead class="border-b bg-gray-50 text-gray-500">
                             <tr>
                                 <th class="p-4 font-medium">Personal</th>
                                 <th class="p-4 font-medium">Fecha de ingreso</th>
                                 <th class="p-4 font-medium">Cargo</th>
                                 <th class="p-4 font-medium">Comedor</th>
                                 <th class="p-4 font-medium">Unidad</th>
-                               <!-- <th class="p-4 font-medium">Tallas</th> -->
-                                <th class="p-4 font-medium w-16">Prendas</th>
+                                <!-- <th class="p-4 font-medium">Tallas</th> -->
+                                <th class="w-16 p-4 font-medium">Prendas</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100">
-                             <tr v-for="person in paginatedStaff" :key="person.id" class="hover:bg-gray-50/50">
+                            <tr v-for="person in paginatedStaff" :key="person.id" class="hover:bg-gray-50/50">
                                 <td class="p-4">
                                     <div class="flex items-center gap-3">
                                         <Avatar class="h-9 w-9 border">
-                                            <AvatarImage 
-                                                v-if="person.photo?.url" 
-                                                :src="`/storage/${person.photo?.url}`" 
-                                                class="object-cover"
-                                            />
+                                            <AvatarImage v-if="person.photo?.url" :src="`/storage/${person.photo?.url}`" class="object-cover" />
                                             <AvatarFallback>{{ getInitials(person.name) }}</AvatarFallback>
                                         </Avatar>
                                         <div class="font-medium text-gray-900">{{ person.name }}</div>
                                     </div>
                                 </td>
                                 <td class="p-4">
-                                    <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-700/10" v-if="person.staff_financial && person.staff_financial.start_date">
+                                    <span
+                                        class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-green-700/10 ring-inset"
+                                        v-if="person.staff_financial && person.staff_financial.start_date"
+                                    >
                                         {{ person.staff_financial.start_date }}
                                     </span>
                                     <span v-else class="text-gray-400 italic">Sin fecha de ingreso</span>
                                 </td>
                                 <td class="p-4">
-                                    <span class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-inset ring-blue-700/10" v-if="person.role">
+                                    <span
+                                        class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-700/10 ring-inset"
+                                        v-if="person.role"
+                                    >
                                         {{ person.role.name }}
                                     </span>
                                     <span v-else class="text-gray-400 italic">Sin cargo</span>
                                 </td>
                                 <td class="p-4">
-                                    <span class="inline-flex items-center rounded-md bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700 ring-1 ring-inset ring-orange-700/10" v-if="person.staffable">
+                                    <span
+                                        class="inline-flex items-center rounded-md bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700 ring-1 ring-orange-700/10 ring-inset"
+                                        v-if="person.staffable"
+                                    >
                                         {{ person.staffable.name }}
                                     </span>
                                     <span v-else class="text-gray-400 italic">Sin café</span>
                                 </td>
                                 <td class="p-4">
-                                    <span class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-700/10" v-if="person.staffable?.unit">
+                                    <span
+                                        class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-green-700/10 ring-inset"
+                                        v-if="person.staffable?.unit"
+                                    >
                                         {{ person.staffable?.unit?.name }} - {{ person.staffable?.unit?.mine?.name }}
                                     </span>
                                     <span v-else class="text-gray-400 italic">Sin unidad</span>
@@ -264,39 +273,26 @@ const getInitials = (name: string) => {
                                         <Eye class="h-4 w-4 text-gray-500" />
                                     </Button>
                                 </td>
-                             </tr>
-                             <tr v-if="paginatedStaff.length === 0">
-                                 <td colspan="5" class="p-8 text-center text-gray-500">
-                                     No se encontró personal.
-                                 </td>
-                             </tr>
+                            </tr>
+                            <tr v-if="paginatedStaff.length === 0">
+                                <td colspan="5" class="p-8 text-center text-gray-500">No se encontró personal.</td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
 
                 <div class="flex items-center justify-between border-t p-4" v-if="totalPages > 1">
-                    <div class="text-sm text-muted-foreground">
-                        Mostrando {{ (currentPage - 1) * itemsPerPage + 1 }} - {{ Math.min(currentPage * itemsPerPage, filteredStaff.length) }} de {{ filteredStaff.length }} registros
+                    <div class="text-muted-foreground text-sm">
+                        Mostrando {{ (currentPage - 1) * itemsPerPage + 1 }} - {{ Math.min(currentPage * itemsPerPage, filteredStaff.length) }} de
+                        {{ filteredStaff.length }} registros
                     </div>
                     <div class="flex items-center gap-2">
-                        <Button 
-                            variant="outline" 
-                            size="sm" 
-                            :disabled="currentPage === 1" 
-                            @click="prevPage"
-                        >
+                        <Button variant="outline" size="sm" :disabled="currentPage === 1" @click="prevPage">
                             <ChevronLeft class="h-4 w-4" />
                             Anterior
                         </Button>
-                        <div class="text-sm font-medium">
-                            Página {{ currentPage }} de {{ totalPages }}
-                        </div>
-                        <Button 
-                            variant="outline" 
-                            size="sm" 
-                            :disabled="currentPage === totalPages" 
-                            @click="nextPage"
-                        >
+                        <div class="text-sm font-medium">Página {{ currentPage }} de {{ totalPages }}</div>
+                        <Button variant="outline" size="sm" :disabled="currentPage === totalPages" @click="nextPage">
                             Siguiente
                             <ChevronRight class="h-4 w-4" />
                         </Button>
@@ -305,14 +301,14 @@ const getInitials = (name: string) => {
             </div>
         </div>
 
-        <StaffClothesDialog 
-            :open="isModalOpen" 
-            :staff="selectedStaff" 
+        <StaffClothesDialog
+            :open="isModalOpen"
+            :staff="selectedStaff"
             :colors="colors"
             :role-clothes="roleClothes"
             :role-epps="roleEpps"
             :headquarters="headquarters"
-            @update:open="isModalOpen = $event" 
+            @update:open="isModalOpen = $event"
         />
 
         <InventoryTransferDialog

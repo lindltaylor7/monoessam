@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Business, Headquarter } from '@/types';
+import { Head } from '@inertiajs/vue3';
 import DealershipsDialog from '../businesses/DealershipsDialog.vue';
 import SubdealershipsDialog from '../businesses/SubdealershipsDialog.vue';
 import SubdealershipsTable from '../businesses/SubdealershipsTable.vue';
-import { Head } from '@inertiajs/vue3';
 
 interface Props {
     businesses: Business[];

@@ -11,7 +11,12 @@ class Sale extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['dinner_id', 'cafe_id', 'date', 'sale_type_id', 'payment_method_id', 'business_id', 'total', 'discount', 'payment_status', 'user_id', 'status'];
+    protected $fillable = [
+        'dinner_id', 'cafe_id', 'date', 'sale_type_id', 'payment_method_id',
+        'business_id', 'business_name', 'cafe_name', 'user_id',
+        'total', 'total_igv', 'discount', 'payment_status', 'status',
+        'is_visitor', 'mine_id',
+    ];
 
     public function cafe(): BelongsTo
     {

@@ -1,15 +1,16 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
-import AppLayout from '@/layouts/AppLayout.vue';
-import Input from '@/components/ui/input/Input.vue';
-import { Button } from '@/components/ui/button';
-import { Search, Download } from 'lucide-vue-next';
-import { ref, computed } from 'vue';
-import { Staff } from '@/types';
-import * as XLSX from 'xlsx';
-import FilesModal from '@/pages/staff/FilesModal.vue';
 import StatusBadge from '@/components/shared/StatusBadge.vue';
+import { Button } from '@/components/ui/button';
+import Input from '@/components/ui/input/Input.vue';
 import { getStatusColor, getStatusLabel } from '@/composables/useStaffConstants';
+import AppLayout from '@/layouts/AppLayout.vue';
+import ContractsModal from '@/pages/staff/ContractsModal.vue';
+import FilesModal from '@/pages/staff/FilesModal.vue';
+import { Staff } from '@/types';
+import { Head } from '@inertiajs/vue3';
+import { Download, Search } from 'lucide-vue-next';
+import { computed, ref } from 'vue';
+import * as XLSX from 'xlsx';
 
 interface Props {
     staff?: Staff[];
@@ -36,7 +37,7 @@ const formatDate = (dateString?: string) => {
     return date.toLocaleDateString('es-ES', {
         day: '2-digit',
         month: '2-digit',
-        year: 'numeric'
+        year: 'numeric',
     });
 };
 
@@ -44,53 +45,84 @@ const getStartDate = (staff: any) => {
     return staff.startDate || staff.start_date || staff.created_at;
 };
 
+const getEndDate = (staff: any) => {
+    const contracts = staff.staff_files?.filter((f: any) => f.file_type === 'Contratos Laborales') || [];
+    if (contracts.length === 0) return null;
+
+    // Sort by created_at descending
+    const sorted = [...contracts].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return sorted[0].expiration_date;
+};
+
+const getContractStatus = (staff: any) => {
+    const contracts = staff.staff_files?.filter((f: any) => f.file_type === 'Contratos Laborales') || [];
+    if (contracts.length === 0) return 'Sin contrato';
+
+    const sorted = [...contracts].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return sorted[0].status || 'Realizado';
+};
+
+const isExpired = (expirationDate: string | null) => {
+    if (!expirationDate) return false;
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    return new Date(expirationDate) < now;
+};
+
+const isNearExpiry = (expirationDate: string | null) => {
+    if (!expirationDate) return false;
+    const expiry = new Date(expirationDate);
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const diffTime = expiry.getTime() - now.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 && diffDays <= 30;
+};
+
 const filteredStaff = computed(() => {
     let filtered = props.staff || [];
-    
+
     // Filtro por nombre o DNI
     if (searchQuery.value) {
         const query = searchQuery.value.toLowerCase();
-        filtered = filtered.filter(s => 
-            s.name?.toLowerCase().includes(query) || 
-            s.dni?.includes(query)
-        );
+        filtered = filtered.filter((s) => s.name?.toLowerCase().includes(query) || s.dni?.includes(query));
     }
-    
+
     // Filtro por fecha de ingreso (Rango)
     if (startDateFilter.value || endDateFilter.value) {
-        filtered = filtered.filter(s => {
+        filtered = filtered.filter((s) => {
             const sDate = getStartDate(s);
             if (!sDate) return false;
-            
+
             // Format to YYYY-MM-DD
             try {
                 const dateObj = new Date(sDate);
                 const isoDate = dateObj.toISOString().split('T')[0];
-                
+
                 let matchesStart = true;
                 let matchesEnd = true;
-                
+
                 if (startDateFilter.value) {
                     matchesStart = isoDate >= startDateFilter.value;
                 }
                 if (endDateFilter.value) {
                     matchesEnd = isoDate <= endDateFilter.value;
                 }
-                
+
                 return matchesStart && matchesEnd;
             } catch (e) {
                 return false;
             }
         });
     }
-    
+
     return filtered;
 });
 
 const exportToExcel = () => {
     if (!startDateFilter.value && !endDateFilter.value) return;
 
-    const dataToExport = filteredStaff.value.map(staff => {
+    const dataToExport = filteredStaff.value.map((staff) => {
         let location = staff.staffable?.name || 'Sin asignar';
         if (staff.staffable?.unit?.name) {
             location += ` - ${staff.staffable.unit.name}`;
@@ -99,28 +131,27 @@ const exportToExcel = () => {
         }
 
         return {
-            'Nombre': staff.name,
-            'DNI': staff.dni,
-            'Cargo': staff.role?.name || 'Sin asignar',
+            Nombre: staff.name,
+            DNI: staff.dni,
+            Cargo: staff.role?.name || 'Sin asignar',
             'Comedor/Unidad': location,
-            'Sueldo': staff.staff_financial?.salary || '0.00',
+            Sueldo: staff.staff_financial?.salary || '0.00',
             'Fecha de Inicio': formatDate(getStartDate(staff)),
-            'Estado': getStatusLabel(staff.status)
+            'Fecha de Término': formatDate(getEndDate(staff)),
+            'Estado de Contrato': getContractStatus(staff),
+            Estado: getStatusLabel(staff.status),
         };
     });
 
     const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Expedientes");
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Expedientes');
 
-    const wscols = [
-        {wch: 35}, {wch: 12}, {wch: 25}, {wch: 35}, {wch: 10}, {wch: 15}, {wch: 15}
-    ];
+    const wscols = [{ wch: 35 }, { wch: 12 }, { wch: 25 }, { wch: 35 }, { wch: 10 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 15 }];
     worksheet['!cols'] = wscols;
 
     XLSX.writeFile(workbook, 'Expedientes_Laborales.xlsx');
 };
-
 </script>
 
 <template>
@@ -130,61 +161,101 @@ const exportToExcel = () => {
             <div class="flex items-center justify-between">
                 <div>
                     <h1 class="text-2xl font-semibold tracking-tight">Expedientes Laborales</h1>
-                    <p class="text-sm text-muted-foreground mt-1">Gestión de expedientes digitales del personal.</p>
+                    <p class="text-muted-foreground mt-1 text-sm">Gestión de expedientes digitales del personal.</p>
                 </div>
             </div>
 
             <!-- Filtros -->
-            <div class="flex items-center flex-wrap gap-4 bg-card p-4 rounded-xl border shadow-sm">
+            <div class="bg-card flex flex-wrap items-center gap-4 rounded-xl border p-4 shadow-sm">
                 <div class="relative w-full max-w-sm">
-                    <Search class="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input 
-                        type="text" 
-                        placeholder="Buscar por nombre o DNI..." 
-                        v-model="searchQuery"
-                        class="pl-9 bg-muted/50 border-zinc-200"
-                    />
+                    <Search class="text-muted-foreground absolute top-3 left-3 h-4 w-4" />
+                    <Input type="text" placeholder="Buscar por nombre o DNI..." v-model="searchQuery" class="bg-muted/50 border-zinc-200 pl-9" />
                 </div>
-                
+
                 <div class="flex items-center gap-2">
-                    <span class="text-sm font-medium text-muted-foreground whitespace-nowrap">Fecha de ingreso:</span>
-                    <div class="flex flex-col sm:flex-row items-center bg-white border border-zinc-200 rounded-lg shadow-sm overflow-hidden focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-400 transition-all">
-                        <div class="flex items-center justify-center pl-3 pr-2 py-2 bg-zinc-50 border-r border-zinc-100 text-zinc-500">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-calendar-days"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>
+                    <span class="text-muted-foreground text-sm font-medium whitespace-nowrap">Fecha de ingreso:</span>
+                    <div
+                        class="flex flex-col items-center overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm transition-all focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 sm:flex-row"
+                    >
+                        <div class="flex items-center justify-center border-r border-zinc-100 bg-zinc-50 py-2 pr-2 pl-3 text-zinc-500">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                class="lucide lucide-calendar-days"
+                            >
+                                <rect width="18" height="18" x="3" y="4" rx="2" ry="2" />
+                                <line x1="16" x2="16" y1="2" y2="6" />
+                                <line x1="8" x2="8" y1="2" y2="6" />
+                                <line x1="3" x2="21" y1="10" y2="10" />
+                                <path d="M8 14h.01" />
+                                <path d="M12 14h.01" />
+                                <path d="M16 14h.01" />
+                                <path d="M8 18h.01" />
+                                <path d="M12 18h.01" />
+                                <path d="M16 18h.01" />
+                            </svg>
                         </div>
-                        <input 
-                            type="date" 
+                        <input
+                            type="date"
                             v-model="startDateFilter"
-                            class="w-[130px] border-none bg-transparent px-3 py-2 text-sm text-zinc-700 outline-none focus:ring-0 hover:bg-zinc-50 transition-colors"
+                            class="w-[130px] border-none bg-transparent px-3 py-2 text-sm text-zinc-700 transition-colors outline-none hover:bg-zinc-50 focus:ring-0"
                             title="Desde"
                         />
-                        <div class="hidden sm:block h-5 w-px bg-zinc-200 mx-1"></div>
-                        <input 
-                            type="date" 
+                        <div class="mx-1 hidden h-5 w-px bg-zinc-200 sm:block"></div>
+                        <input
+                            type="date"
                             v-model="endDateFilter"
-                            class="w-[130px] border-none bg-transparent px-3 py-2 text-sm text-zinc-700 outline-none focus:ring-0 hover:bg-zinc-50 transition-colors"
+                            class="w-[130px] border-none bg-transparent px-3 py-2 text-sm text-zinc-700 transition-colors outline-none hover:bg-zinc-50 focus:ring-0"
                             title="Hasta"
                         />
                     </div>
-                    <Transition enter-active-class="transition ease-out duration-200" enter-from-class="opacity-0 scale-95" enter-to-class="opacity-100 scale-100" leave-active-class="transition ease-in duration-150" leave-from-class="opacity-100 scale-100" leave-to-class="opacity-0 scale-95">
-                        <Button 
-                            v-if="startDateFilter || endDateFilter" 
-                            variant="ghost" 
-                            size="icon" 
-                            @click="clearDateFilter" 
+                    <Transition
+                        enter-active-class="transition ease-out duration-200"
+                        enter-from-class="opacity-0 scale-95"
+                        enter-to-class="opacity-100 scale-100"
+                        leave-active-class="transition ease-in duration-150"
+                        leave-from-class="opacity-100 scale-100"
+                        leave-to-class="opacity-0 scale-95"
+                    >
+                        <Button
+                            v-if="startDateFilter || endDateFilter"
+                            variant="ghost"
+                            size="icon"
+                            @click="clearDateFilter"
                             title="Limpiar fechas"
-                            class="h-9 w-9 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-full"
+                            class="h-9 w-9 rounded-full text-zinc-400 hover:bg-red-50 hover:text-red-600"
                         >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                stroke-width="2"
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                class="lucide lucide-x"
+                            >
+                                <path d="M18 6 6 18" />
+                                <path d="m6 6 12 12" />
+                            </svg>
                         </Button>
                     </Transition>
                 </div>
 
                 <div class="ml-auto">
-                    <Button 
-                        v-if="startDateFilter || endDateFilter" 
-                        variant="default" 
-                        class="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2 font-semibold shadow-sm transition-all"
+                    <Button
+                        v-if="startDateFilter || endDateFilter"
+                        variant="default"
+                        class="flex items-center gap-2 bg-green-600 font-semibold text-white shadow-sm transition-all hover:bg-green-700"
                         @click="exportToExcel"
                     >
                         <Download class="h-4 w-4" />
@@ -194,8 +265,8 @@ const exportToExcel = () => {
             </div>
 
             <!-- Tabla -->
-            <div class="bg-card rounded-xl border shadow-sm overflow-hidden flex-1">
-                <div class="overflow-x-auto h-full">
+            <div class="bg-card flex-1 overflow-hidden rounded-xl border shadow-sm">
+                <div class="h-full overflow-x-auto">
                     <table class="w-full table-auto border-collapse">
                         <thead class="bg-muted/50 sticky top-0 z-10 shadow-sm">
                             <tr>
@@ -205,13 +276,15 @@ const exportToExcel = () => {
                                 <th class="p-4 text-left text-sm font-bold text-zinc-700">Comedor/Unidad</th>
                                 <th class="p-4 text-left text-sm font-bold text-zinc-700">Sueldo</th>
                                 <th class="p-4 text-left text-sm font-bold text-zinc-700">Fecha de Inicio</th>
+                                <th class="p-4 text-left text-sm font-bold text-zinc-700">Fecha de Término</th>
+                                <th class="p-4 text-left text-sm font-bold text-zinc-700">Estado de Contrato</th>
                                 <th class="p-4 text-left text-sm font-bold text-zinc-700">Estado</th>
                                 <th class="p-4 text-center text-sm font-bold text-zinc-700">Expediente Digital</th>
                             </tr>
                         </thead>
 
                         <tbody>
-                            <tr v-for="staff in filteredStaff" :key="staff.id" class="hover:bg-muted/30 border-t transition-colors group">
+                            <tr v-for="staff in filteredStaff" :key="staff.id" class="hover:bg-muted/30 group border-t transition-colors">
                                 <td class="p-4">
                                     <div class="font-semibold text-zinc-900">{{ staff.name }}</div>
                                 </td>
@@ -224,36 +297,89 @@ const exportToExcel = () => {
                                 <td class="p-4">
                                     <div class="text-sm text-zinc-600">
                                         {{ staff.staffable?.name || 'Sin asignar' }}
-                                        <span v-if="staff.staffable?.unit" class="text-xs text-zinc-400 block mt-0.5">{{ staff.staffable.unit.name }}</span>
-                                        <span v-else-if="staff.staffable?.headquarters" class="text-xs text-zinc-400 block mt-0.5">{{ staff.staffable.headquarters.name }}</span>
+                                        <span v-if="staff.staffable?.unit" class="mt-0.5 block text-xs text-zinc-400">{{
+                                            staff.staffable.unit.name
+                                        }}</span>
+                                        <span v-else-if="staff.staffable?.headquarters" class="mt-0.5 block text-xs text-zinc-400">{{
+                                            staff.staffable.headquarters.name
+                                        }}</span>
                                     </div>
                                 </td>
                                 <td class="p-4">
-                                    <div class="text-sm font-medium text-green-700 bg-green-50 px-2 py-0.5 rounded-md inline-block">S/. {{ staff.staff_financial?.salary || '0.00' }}</div>
+                                    <div class="inline-block rounded-md bg-green-50 px-2 py-0.5 text-sm font-medium text-green-700">
+                                        S/. {{ staff.staff_financial?.salary || '0.00' }}
+                                    </div>
                                 </td>
                                 <td class="p-4">
-                                    <div class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                                    <div
+                                        class="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700"
+                                    >
                                         {{ formatDate(getStartDate(staff)) }}
                                     </div>
                                 </td>
                                 <td class="p-4">
-                                    <StatusBadge 
-                                        :label="getStatusLabel(staff.status)" 
-                                        :color-class="getStatusColor(staff.status)" 
-                                    />
+                                    <div
+                                        class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium"
+                                        :class="
+                                            getEndDate(staff)
+                                                ? isExpired(getEndDate(staff))
+                                                    ? 'border-red-200 bg-red-50 text-red-700'
+                                                    : isNearExpiry(getEndDate(staff))
+                                                      ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                                      : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                                : 'border-zinc-200 bg-zinc-50 text-zinc-500'
+                                        "
+                                    >
+                                        <!-- Alerta Icon -->
+                                        <svg
+                                            v-if="getEndDate(staff) && (isExpired(getEndDate(staff)) || isNearExpiry(getEndDate(staff)))"
+                                            class="h-3.5 w-3.5"
+                                            :class="isExpired(getEndDate(staff)) ? 'text-red-500' : 'text-amber-500'"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                            xmlns="http://www.w3.org/2000/svg"
+                                        >
+                                            <path
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                                stroke-width="2"
+                                                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                                            ></path>
+                                        </svg>
+                                        {{ formatDate(getEndDate(staff)) }}
+                                    </div>
+                                </td>
+                                <td class="p-4">
+                                    <div
+                                        class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold"
+                                        :class="{
+                                            'bg-blue-50 text-blue-700': getContractStatus(staff) === 'Enviado',
+                                            'bg-green-50 text-green-700': getContractStatus(staff) === 'Firmado',
+                                            'bg-zinc-100 text-zinc-600':
+                                                getContractStatus(staff) === 'Realizado' || getContractStatus(staff) === 'Sin contrato',
+                                        }"
+                                    >
+                                        {{ getContractStatus(staff) }}
+                                    </div>
+                                </td>
+                                <td class="p-4">
+                                    <StatusBadge :label="getStatusLabel(staff.status)" :color-class="getStatusColor(staff.status)" />
                                 </td>
                                 <td class="p-4 text-center">
                                     <div class="flex items-center justify-center gap-2">
+                                        <!-- Modal exclusivo de Contratos -->
+                                        <ContractsModal :staff="staff as any" />
                                         <!-- Botón de expediente digital utilizando FilesModal de Staff -->
-                                        <FilesModal :staff="(staff as any)" />
+                                        <FilesModal :staff="staff as any" />
                                     </div>
                                 </td>
                             </tr>
                             <tr v-if="filteredStaff.length === 0">
                                 <td colspan="8" class="p-12 text-center">
-                                    <div class="flex flex-col items-center justify-center text-zinc-500 space-y-2">
+                                    <div class="flex flex-col items-center justify-center space-y-2 text-zinc-500">
                                         <Search class="h-8 w-8 text-zinc-300" />
-                                        <p class="font-medium text-lg">No se encontraron registros</p>
+                                        <p class="text-lg font-medium">No se encontraron registros</p>
                                         <p class="text-sm text-zinc-400">Intenta cambiar los filtros de búsqueda</p>
                                     </div>
                                 </td>
@@ -262,13 +388,11 @@ const exportToExcel = () => {
                     </table>
                 </div>
             </div>
-            
+
             <!-- Resumen -->
-            <div class="text-sm text-muted-foreground font-medium px-1">
+            <div class="text-muted-foreground px-1 text-sm font-medium">
                 Mostrando {{ filteredStaff.length }} {{ filteredStaff.length === 1 ? 'registro' : 'registros' }}
-                <span v-if="filteredStaff.length !== (props.staff?.length || 0)">
-                    (de {{ props.staff?.length || 0 }} en total)
-                </span>
+                <span v-if="filteredStaff.length !== (props.staff?.length || 0)"> (de {{ props.staff?.length || 0 }} en total) </span>
             </div>
         </div>
     </AppLayout>

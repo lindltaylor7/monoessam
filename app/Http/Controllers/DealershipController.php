@@ -16,7 +16,7 @@ class DealershipController extends Controller
     {
         return Inertia::render('dealerships/Index', [
             'dealerships' => Dealership::all(),
-            'subdealerships' => Subdealership::with('dealership')->get(),
+            'subdealerships' => Subdealership::all(),
         ]);
     }
 

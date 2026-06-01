@@ -8,6 +8,7 @@ use App\Models\Headquarter;
 use App\Models\Service;
 use App\Models\Subdealership;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 class BusinessController extends Controller
@@ -22,7 +23,7 @@ class BusinessController extends Controller
             'headquarters' => Headquarter::with(['business', 'areas'])->get(),
             'services' => Service::all(),
             'dealerships' => Dealership::all(),
-            'subdealerships' => Subdealership::with('dealership')->get(),
+            'subdealerships' => Subdealership::with('mines')->get(),
         ]);
     }
 
@@ -84,5 +85,21 @@ class BusinessController extends Controller
         $business->services()->sync($selectedIds);
 
         return to_route('businesses');
+    }
+
+    public function uploadLogo(Request $request, string $id)
+    {
+        $request->validate(['logo' => 'required|image|max:2048']);
+
+        $business = Business::findOrFail($id);
+
+        if ($business->logo) {
+            Storage::disk('public')->delete($business->logo);
+        }
+
+        $path = $request->file('logo')->store('business-logos', 'public');
+        $business->update(['logo' => $path]);
+
+        return response()->json(['logo' => $path]);
     }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Events\SessionEnded;
 use App\Models\Area;
+use App\Models\Business;
 use App\Models\Cafe;
 use App\Models\Guard_role;
 use App\Models\Headquarter;
@@ -24,10 +25,12 @@ class UsersController extends Controller
     public function index()
     {
         return Inertia::render('users/Index', [
-            'users' => User::with(['roles.permissions', 'areas', 'units', 'permissions'])->paginate(20),
+            'users' => User::with(['roles.permissions', 'areas', 'units', 'permissions', 'mine'])->paginate(20),
             'roles' => Role::all(),
             'areas' => Area::all(),
             'units' => Unit::all(),
+            'mines' => Mine::all(),
+            'businesses' => Business::all(),
             'permissions' => Permission::all(),
         ]);
     }
@@ -54,6 +57,8 @@ class UsersController extends Controller
             'name' => $request->name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
+            'mine_id' => $request->mine_id ?: null,
+            'business_id' => $request->business_id ?: null,
         ]);
 
         $role = Role::find($request->role_id);
@@ -104,6 +109,8 @@ class UsersController extends Controller
         $user->update([
             'name' => $request->name,
             'email' => $request->email,
+            'mine_id' => $request->mine_id ?: null,
+            'business_id' => $request->business_id ?: null,
         ]);
 
         if ($request->filled('password')) {

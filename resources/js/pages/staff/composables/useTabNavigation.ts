@@ -1,4 +1,4 @@
-import { ref, ComputedRef } from 'vue';
+import { ComputedRef, ref } from 'vue';
 
 export function useTabNavigation(isEditMode: ComputedRef<boolean>) {
     const activeTab = ref('personal');

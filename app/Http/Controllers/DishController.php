@@ -34,21 +34,9 @@ class DishController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'mesearument_unit' => 'required', // This can be a single ID or array of IDs
-            'ingredients' => 'nullable|array',
-            'ingredients.*.id' => 'required|exists:ingredients,id',
-            'ingredients.*.gross_weight' => 'nullable|numeric',
-            'ingredients.*.solid_waste' => 'nullable|numeric',
-            'ingredients.*.liquid_waste' => 'nullable|numeric',
-            'ingredients.*.calories' => 'nullable|numeric',
-            'ingredients.*.cost' => 'nullable|numeric',
-            'ingredients.*.unit_price' => 'nullable|numeric',
-            'ingredients.*.final_product' => 'nullable|numeric',
-            'total_gross_weight' => 'nullable|numeric',
-            'total_waste_weight' => 'nullable|numeric',
-            'total_calories' => 'nullable|numeric',
-            'total_cost' => 'nullable|numeric',
-            'total_net_weight' => 'nullable|numeric',
+            'mesearument_unit' => 'nullable',
+            'recipes' => 'nullable|array',
+            'dish_categories' => 'nullable|array',
         ]);
 
         try {
@@ -57,41 +45,50 @@ class DishController extends Controller
             $dish = Dish::create([
                 'name' => $validated['name'],
                 'description' => $validated['description'],
+                'user_id' => auth()->id(),
             ]);
 
-            // Create the recipe configuration
-            $recipe = DishRecipe::create([
-                'dish_id' => $dish->id,
-                'name' => 'Receta ' . $dish->name,
-                'total_gross_weight' => $validated['total_gross_weight'] ?? 0,
-                'total_waste_weight' => $validated['total_waste_weight'] ?? 0,
-                'total_calories' => $validated['total_calories'] ?? 0,
-                'total_cost' => $validated['total_cost'] ?? 0,
-                'total_net_weight' => $validated['total_net_weight'] ?? 0,
-            ]);
+            if (isset($validated['dish_categories'])) {
+                $dish->dish_categories()->sync($validated['dish_categories']);
+            }
 
-            // Attach levels
-            $levelIds = is_array($validated['mesearument_unit'])
-                ? $validated['mesearument_unit']
-                : [$validated['mesearument_unit']];
-            $recipe->levels()->attach($levelIds);
+            $levelIds = $request->input('mesearument_unit', []);
+            if (!is_array($levelIds)) {
+                $levelIds = [$levelIds];
+            }
 
-            if (!empty($validated['ingredients'])) {
-                foreach ($validated['ingredients'] as $ingredientData) {
-                    $recipe->ingredients()->attach($ingredientData['id'], [
-                        'gross_weight'  => $ingredientData['gross_weight'] ?? 0,
-                        'solid_waste'   => $ingredientData['solid_waste'] ?? 0,
-                        'liquid_waste'  => $ingredientData['liquid_waste'] ?? 0,
-                        'calories'      => $ingredientData['calories'] ?? 0,
-                        'cost'          => $ingredientData['cost'] ?? 0,
-                        'unit_price'    => $ingredientData['unit_price'] ?? 0,
-                        'net_weight'    => $ingredientData['final_product'] ?? 0,
-                    ]);
+            $recipesData = $request->input('recipes', []);
+
+            foreach ($levelIds as $levelId) {
+                $levelRecipe = $recipesData[$levelId] ?? [];
+                
+                $recipe = DishRecipe::create([
+                    'dish_id' => $dish->id,
+                    'level_id' => $levelId,
+                    'name' => 'Receta ' . $dish->name . ' - Nivel ' . $levelId,
+                    'total_gross_weight' => $levelRecipe['total_gross_weight'] ?? 0,
+                    'total_waste_weight' => $levelRecipe['total_waste_weight'] ?? 0,
+                    'total_calories' => $levelRecipe['total_calories'] ?? 0,
+                    'total_cost' => $levelRecipe['total_cost'] ?? 0,
+                    'total_net_weight' => $levelRecipe['total_net_weight'] ?? 0,
+                ]);
+
+                if (!empty($levelRecipe['ingredients'])) {
+                    foreach ($levelRecipe['ingredients'] as $ingredientData) {
+                        $recipe->ingredients()->attach($ingredientData['id'], [
+                            'gross_weight'  => $ingredientData['gross_weight'] ?? 0,
+                            'solid_waste'   => $ingredientData['solid_waste'] ?? 0,
+                            'liquid_waste'  => $ingredientData['liquid_waste'] ?? 0,
+                            'calories'      => $ingredientData['calories'] ?? 0,
+                            'cost'          => $ingredientData['cost'] ?? 0,
+                            'unit_price'    => $ingredientData['unit_price'] ?? 0,
+                            'net_weight'    => $ingredientData['final_product'] ?? 0,
+                        ]);
+                    }
                 }
             }
 
             DB::commit();
-
             return redirect()->back();
         } catch (\Exception $e) {
             DB::rollBack();
@@ -123,21 +120,9 @@ class DishController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'mesearument_unit' => 'required',
-            'ingredients' => 'nullable|array',
-            'ingredients.*.id' => 'required|exists:ingredients,id',
-            'ingredients.*.gross_weight' => 'nullable|numeric',
-            'ingredients.*.solid_waste' => 'nullable|numeric',
-            'ingredients.*.liquid_waste' => 'nullable|numeric',
-            'ingredients.*.calories' => 'nullable|numeric',
-            'ingredients.*.cost' => 'nullable|numeric',
-            'ingredients.*.unit_price' => 'nullable|numeric',
-            'ingredients.*.final_product' => 'nullable|numeric',
-            'total_gross_weight' => 'nullable|numeric',
-            'total_waste_weight' => 'nullable|numeric',
-            'total_calories' => 'nullable|numeric',
-            'total_cost' => 'nullable|numeric',
-            'total_net_weight' => 'nullable|numeric',
+            'mesearument_unit' => 'nullable',
+            'recipes' => 'nullable|array',
+            'dish_categories' => 'nullable|array',
         ]);
 
         try {
@@ -149,53 +134,60 @@ class DishController extends Controller
                 'description' => $validated['description'],
             ]);
 
-            // For now, we assume one primary recipe per dish or we update the existing one
-            $recipe = $dish->recipes()->first();
-            if (!$recipe) {
-                $recipe = DishRecipe::create([
-                    'dish_id' => $dish->id,
-                    'name' => 'Receta ' . $dish->name,
-                    'total_gross_weight' => $validated['total_gross_weight'] ?? 0,
-                    'total_waste_weight' => $validated['total_waste_weight'] ?? 0,
-                    'total_calories' => $validated['total_calories'] ?? 0,
-                    'total_cost' => $validated['total_cost'] ?? 0,
-                    'total_net_weight' => $validated['total_net_weight'] ?? 0,
-                ]);
-            } else {
-                $recipe->update([
-                    'total_gross_weight' => $validated['total_gross_weight'] ?? 0,
-                    'total_waste_weight' => $validated['total_waste_weight'] ?? 0,
-                    'total_calories' => $validated['total_calories'] ?? 0,
-                    'total_cost' => $validated['total_cost'] ?? 0,
-                    'total_net_weight' => $validated['total_net_weight'] ?? 0,
-                ]);
+            if (isset($validated['dish_categories'])) {
+                $dish->dish_categories()->sync($validated['dish_categories']);
             }
 
-            // Sync levels
-            $levelIds = is_array($validated['mesearument_unit'])
-                ? $validated['mesearument_unit']
-                : [$validated['mesearument_unit']];
-            $recipe->levels()->sync($levelIds);
+            $levelIds = $request->input('mesearument_unit', []);
+            if (!is_array($levelIds)) {
+                $levelIds = [$levelIds];
+            }
 
-            // Sync ingredients with pivot data
-            $ingredientsSync = [];
-            if (!empty($validated['ingredients'])) {
-                foreach ($validated['ingredients'] as $ingredientData) {
-                    $ingredientsSync[$ingredientData['id']] = [
-                        'gross_weight'  => $ingredientData['gross_weight'] ?? 0,
-                        'solid_waste'   => $ingredientData['solid_waste'] ?? 0,
-                        'liquid_waste'  => $ingredientData['liquid_waste'] ?? 0,
-                        'calories'      => $ingredientData['calories'] ?? 0,
-                        'cost'          => $ingredientData['cost'] ?? 0,
-                        'unit_price'    => $ingredientData['unit_price'] ?? 0,
-                        'net_weight'    => $ingredientData['final_product'] ?? 0,
-                    ];
+            $recipesData = $request->input('recipes', []);
+            
+            // Solo procesar recetas si se enviaron niveles
+            if (!empty($levelIds)) {
+                $dish->recipes()->whereNotIn('level_id', $levelIds)->delete();
+
+                foreach ($levelIds as $levelId) {
+                    $levelRecipe = $recipesData[$levelId] ?? [];
+                    
+                    $recipe = $dish->recipes()->where('level_id', $levelId)->first();
+                    if (!$recipe) {
+                        $recipe = DishRecipe::create([
+                            'dish_id' => $dish->id,
+                            'level_id' => $levelId,
+                            'name' => 'Receta ' . $dish->name . ' - Nivel ' . $levelId,
+                        ]);
+                    }
+                    
+                    $recipe->update([
+                        'total_gross_weight' => $levelRecipe['total_gross_weight'] ?? 0,
+                        'total_waste_weight' => $levelRecipe['total_waste_weight'] ?? 0,
+                        'total_calories' => $levelRecipe['total_calories'] ?? 0,
+                        'total_cost' => $levelRecipe['total_cost'] ?? 0,
+                        'total_net_weight' => $levelRecipe['total_net_weight'] ?? 0,
+                    ]);
+
+                    $ingredientsSync = [];
+                    if (!empty($levelRecipe['ingredients'])) {
+                        foreach ($levelRecipe['ingredients'] as $ingredientData) {
+                            $ingredientsSync[$ingredientData['id']] = [
+                                'gross_weight'  => $ingredientData['gross_weight'] ?? 0,
+                                'solid_waste'   => $ingredientData['solid_waste'] ?? 0,
+                                'liquid_waste'  => $ingredientData['liquid_waste'] ?? 0,
+                                'calories'      => $ingredientData['calories'] ?? 0,
+                                'cost'          => $ingredientData['cost'] ?? 0,
+                                'unit_price'    => $ingredientData['unit_price'] ?? 0,
+                                'net_weight'    => $ingredientData['final_product'] ?? 0,
+                            ];
+                        }
+                    }
+                    $recipe->ingredients()->sync($ingredientsSync);
                 }
             }
-            $recipe->ingredients()->sync($ingredientsSync);
 
             DB::commit();
-
             return redirect()->back();
         } catch (\Exception $e) {
             DB::rollBack();
@@ -217,27 +209,52 @@ class DishController extends Controller
         }
     }
 
-    public function search(string $word)
+    public function search(Request $request, ?string $word = null)
     {
-        $dishes = Dish::where('name', 'like', '%' . $word . '%')
-            ->with([
+        $categoryId = $request->query('category_id');
+        $levelId = $request->query('level_id');
+
+        $query = Dish::query();
+
+        if ($word) {
+            $query->where(function ($q) use ($word) {
+                $q->where('name', 'like', '%' . $word . '%')
+                    ->orWhereHas('dish_categories', function ($q2) use ($word) {
+                        $q2->where('name', 'like', '%' . $word . '%');
+                    })
+                    ->orWhereHas('recipes.level', function ($q2) use ($word) {
+                        $q2->where('name', 'like', '%' . $word . '%');
+                    });
+            });
+        }
+
+        if ($categoryId) {
+            $query->whereHas('dish_categories', function ($q) use ($categoryId) {
+                $q->where('dish_categories.id', $categoryId);
+            });
+        }
+
+        if ($levelId) {
+            $query->whereHas('recipes', function ($q) use ($levelId) {
+                $q->where('level_id', $levelId);
+            });
+        }
+
+        $dishes = $query->with([
                 'dish_categories',
                 'recipes.ingredients.assignments.provider',
                 'recipes.ingredients.assignments.city',
-                'recipes.levels'
+                'recipes.ingredients.nutritionalFactors',
+                'recipes.ingredients.dosification',
+                'recipes.level'
             ])
             ->take(8)
             ->get();
 
-        // Map the new structure to the flat format expected by the frontend (for backward compatibility)
         foreach ($dishes as $dish) {
-            $recipe = $dish->recipes->first();
-            if ($recipe) {
-                // Set mesearument_unit to the first level ID for now
-                $dish->mesearument_unit = $recipe->levels->first()?->id;
-
-                // Map ingredients with their pivot data
-                $dish->ingredients = $recipe->ingredients->map(function ($ingredient) {
+            $dish->mesearument_unit = $dish->recipes->pluck('level_id')->toArray();
+            foreach ($dish->recipes as $recipe) {
+                $recipe->ingredients = $recipe->ingredients->map(function ($ingredient) {
                     $ingredient->gross_weight = $ingredient->pivot->gross_weight;
                     $ingredient->solid_waste = $ingredient->pivot->solid_waste;
                     $ingredient->liquid_waste = $ingredient->pivot->liquid_waste;
@@ -247,8 +264,6 @@ class DishController extends Controller
                     $ingredient->final_product = $ingredient->pivot->net_weight;
                     return $ingredient;
                 });
-            } else {
-                $dish->ingredients = [];
             }
         }
 

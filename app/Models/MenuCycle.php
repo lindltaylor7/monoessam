@@ -7,6 +7,16 @@ use Illuminate\Database\Eloquent\Model;
 
 class MenuCycle extends Model
 {
-    /** @use HasFactory<\Database\Factories\MenuCycleFactory> */
     use HasFactory;
+
+    protected $fillable = [
+        'serviceable_id',
+        'name',
+        'days',
+        'cycle_data',
+    ];
+
+    protected $casts = [
+        'cycle_data' => 'array',
+    ];
 }

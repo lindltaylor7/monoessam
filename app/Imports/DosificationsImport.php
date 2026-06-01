@@ -4,24 +4,27 @@ namespace App\Imports;
 
 use App\Models\Dosification;
 use App\Models\Ingredient;
-use Maatwebsite\Excel\Concerns\ToModel;
+use Maatwebsite\Excel\Concerns\OnEachRow;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
+use Maatwebsite\Excel\Row;
 
-class DosificationsImport implements ToModel, WithHeadingRow
+class DosificationsImport implements OnEachRow, WithHeadingRow
 {
-    public function model(array $row)
+    public function onRow(Row $row)
     {
-        // 1. Limpieza del nombre para evitar fallos por espacios
-        $nombreAlimento = isset($row['cnomprod']) ? trim($row['cnomprod']) : null;
+        $rowData = $row->toArray();
 
-        if (!$nombreAlimento) return null;
+        // 1. Limpieza del nombre para evitar fallos por espacios
+        $nombreAlimento = isset($rowData['cnomprod']) ? trim($rowData['cnomprod']) : null;
+
+        if (!$nombreAlimento) return;
 
         $ingredientExistent = Ingredient::where('name', $nombreAlimento)->first();
 
         if (!$ingredientExistent) {
             // Opcional: Loguear alimentos que no existen para saber qué falta
             // \Log::warning("Ingrediente no encontrado: " . $nombreAlimento);
-            return null;
+            return;
         }
 
         // 2. Función auxiliar para limpiar números y manejar el "NULL" de texto
@@ -34,36 +37,38 @@ class DosificationsImport implements ToModel, WithHeadingRow
             return is_numeric($cleanNum) ? $cleanNum : null;
         };
 
-        return new Dosification([
-            'ingredient_id' => $ingredientExistent->id,
-            'energy'       => $parseNum($row['energ']),
-            'water'        => $parseNum($row['agua']),
-            'protein'      => $parseNum($row['prot']),
-            'lipid'        => $parseNum($row['lipid']),
-            'carbohydrate' => $parseNum($row['carbo']),
-            'fiber'        => $parseNum($row['fibra']),
-            'ash'          => $parseNum($row['ceniza']),
-            'calcium'      => $parseNum($row['calc']), // <-- Revisa si aquí debes dividir entre 1000 si son mg
-            'phosphorus'   => $parseNum($row['fosfo']),
-            'iron'         => $parseNum($row['hierro']),
-            'retinol'      => $parseNum($row['retinol']),
-            'thiamine'     => $parseNum($row['tiamina']),
-            'riboflavin'   => $parseNum($row['riboflav']),
-            'niacin'       => $parseNum($row['niacin']),
-            'a_asc'        => $parseNum($row['acidoasc']),
-            'sodium'       => $parseNum($row['na']),
-            'potassium'    => $parseNum($row['k']),
-            'magnesium'    => $parseNum($row['magnesio']),
-            'zinc'         => $parseNum($row['zinc']),
-            'selenium'     => $parseNum($row['selenio']),
-            'a_folic'      => $parseNum($row['acidfol']),
-            'v_b6'         => $parseNum($row['v_b6']),
-            'v_e'          => $parseNum($row['v_e']),
-            'v_b12'        => $parseNum($row['v_b12']),
-            'v_b9'         => $parseNum($row['v_b9']),
-            'iodine'       => $parseNum($row['yodo']),
-            'cholesterol'  => $parseNum($row['colesterol']),
-        ]);
+        Dosification::updateOrCreate(
+            ['ingredient_id' => $ingredientExistent->id],
+            [
+                'energy'       => $parseNum($rowData['energ'] ?? null),
+                'water'        => $parseNum($rowData['agua'] ?? null),
+                'protein'      => $parseNum($rowData['prot'] ?? null),
+                'lipid'        => $parseNum($rowData['lipid'] ?? null),
+                'carbohydrate' => $parseNum($rowData['carbo'] ?? null),
+                'fiber'        => $parseNum($rowData['fibra'] ?? null),
+                'ash'          => $parseNum($rowData['ceniza'] ?? null),
+                'calcium'      => $parseNum($rowData['calc'] ?? null),
+                'phosphorus'   => $parseNum($rowData['fosfo'] ?? null),
+                'iron'         => $parseNum($rowData['hierro'] ?? null),
+                'retinol'      => $parseNum($rowData['retinol'] ?? null),
+                'thiamine'     => $parseNum($rowData['tiamina'] ?? null),
+                'riboflavin'   => $parseNum($rowData['riboflav'] ?? null),
+                'niacin'       => $parseNum($rowData['niacin'] ?? null),
+                'a_asc'        => $parseNum($rowData['acidoasc'] ?? null),
+                'sodium'       => $parseNum($rowData['na'] ?? null),
+                'potassium'    => $parseNum($rowData['k'] ?? null),
+                'magnesium'    => $parseNum($rowData['magnesio'] ?? null),
+                'zinc'         => $parseNum($rowData['zinc'] ?? null),
+                'selenium'     => $parseNum($rowData['selenio'] ?? null),
+                'a_folic'      => $parseNum($rowData['acidfol'] ?? null),
+                'v_b6'         => $parseNum($rowData['v_b6'] ?? null),
+                'v_e'          => $parseNum($rowData['v_e'] ?? null),
+                'v_b12'        => $parseNum($rowData['v_b12'] ?? null),
+                'v_b9'         => $parseNum($rowData['v_b9'] ?? null),
+                'iodine'       => $parseNum($rowData['yodo'] ?? null),
+                'cholesterol'  => $parseNum($rowData['colesterol'] ?? null),
+            ]
+        );
     }
 
     public function headingRow(): int

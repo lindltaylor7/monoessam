@@ -1,13 +1,12 @@
 <script setup lang="ts">
+import Button from '@/components/ui/button/Button.vue';
 import Card from '@/components/ui/card/Card.vue';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Permission, Role, User } from '@/types';
-import PermissionModal from './PermissionModal.vue';
+import { Head, router } from '@inertiajs/vue3';
 import { Trash2 } from 'lucide-vue-next';
-import Button from '@/components/ui/button/Button.vue';
-import { router } from '@inertiajs/vue3';
-import { Head } from '@inertiajs/vue3';
+import PermissionModal from './PermissionModal.vue';
 
 interface Props {
     users: User[];
@@ -36,7 +35,7 @@ const deletePermission = (id: number) => {
                     <PermissionModal />
                 </div>
             </div>
-            
+
             <div class="border-sidebar-border/70 dark:border-sidebar-border relative overflow-hidden rounded-xl border">
                 <Card>
                     <Table>
@@ -59,10 +58,10 @@ const deletePermission = (id: number) => {
                                 <TableCell class="text-right">
                                     <div class="flex justify-end gap-2">
                                         <PermissionModal :permission="permission" />
-                                        <Button 
-                                            variant="ghost" 
-                                            size="icon" 
-                                            class="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            class="text-red-500 hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-900/20"
                                             @click="deletePermission(permission.id)"
                                         >
                                             <Trash2 class="h-4 w-4" />
@@ -71,9 +70,7 @@ const deletePermission = (id: number) => {
                                 </TableCell>
                             </TableRow>
                             <TableRow v-if="permissions.length === 0">
-                                <TableCell colspan="5" class="text-center py-4 text-muted-foreground">
-                                    No hay permisos registrados.
-                                </TableCell>
+                                <TableCell colspan="5" class="text-muted-foreground py-4 text-center"> No hay permisos registrados. </TableCell>
                             </TableRow>
                         </TableBody>
                     </Table>

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(php artisan *)",
+      "Bash(php -l app/Exports/SalesReportExport.php)",
+      "Bash(php -l app/Exports/SubdealershipSheetExport.php)",
+      "Bash(php -l app/Http/Controllers/ReportSalesController.php)"
+    ]
+  }
+}
