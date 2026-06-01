@@ -114,8 +114,8 @@ const deleteSale = (saleId: number) => {
 const buildParams = () => {
     const params = new URLSearchParams();
     params.set('start_date', startDate.value);
-    params.set('end_date',   endDate.value);
-    if (selectedCafe.value !== 'all')          params.set('cafe_id',          selectedCafe.value);
+    params.set('end_date', endDate.value);
+    if (selectedCafe.value !== 'all') params.set('cafe_id', selectedCafe.value);
     if (selectedSubdealership.value !== 'all') params.set('subdealership_id', selectedSubdealership.value);
     return params.toString();
 };
@@ -156,15 +156,19 @@ const exportDetail = () => {
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
-                    <Button @click="exportToExcel" variant="outline" class="gap-2">
+                    <!-- <Button @click="exportToExcel" variant="outline" class="gap-2">
                         <Icon name="download" size="16" />
                         Resumen por empresa
                     </Button>
                     <Button @click="exportValorizacion" class="gap-2 bg-emerald-600 hover:bg-emerald-700">
                         <Icon name="table-2" size="16" />
                         Valorización
-                    </Button>
-                    <Button @click="exportDetail" variant="outline" class="gap-2 border-violet-300 text-violet-700 hover:bg-violet-50 hover:border-violet-400">
+                    </Button> -->
+                    <Button
+                        @click="exportDetail"
+                        variant="outline"
+                        class="gap-2 border-violet-300 text-violet-700 hover:border-violet-400 hover:bg-violet-50"
+                    >
                         <Icon name="list-details" size="16" />
                         Detalle de consumo
                     </Button>
