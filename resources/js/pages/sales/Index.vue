@@ -77,6 +77,9 @@ const fetchSalesByDate = (date: string, cafeId: number) => {
 
 const showServicesFromCafeSelected = (services: any[], cafeId?: number) => {
     servicesSelected.value = services;
+    // Limpiar servicios seleccionados: los precios son por cafetería (pivot.price),
+    // mantenerlos al cambiar de café causaría registrar precios de la cafetería anterior.
+    servicesSelectedToSale.value = [];
     if (!cafeId) {
         localSales.value = [];
         return;

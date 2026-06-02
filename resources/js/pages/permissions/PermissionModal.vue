@@ -59,7 +59,7 @@ const submit = () => {
             <Button v-if="permission" variant="ghost" size="icon" title="Editar Permiso">
                 <Pencil class="h-4 w-4" />
             </Button>
-            <Button v-else title="Agregar Permiso" class="h-full w-auto bg-blue-400">
+            <Button v-else title="Agregar Permiso" class="w-auto bg-blue-400">
                 <ListCheck />
             </Button>
         </DialogTrigger>
