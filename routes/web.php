@@ -51,7 +51,7 @@ Route::get('/migrate', function () {
 // ============================================================================
 // RUTAS AUTENTICADAS
 // ============================================================================
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
 
     // Dashboard
     Route::get('dashboard', function () {
