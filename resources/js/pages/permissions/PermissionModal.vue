@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import IconPicker from '@/components/IconPicker.vue';
 import Button from '@/components/ui/button/Button.vue';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -81,8 +82,8 @@ const submit = () => {
                     <Input id="route_name" v-model="form.route_name" type="text" placeholder="p.ej. /users" />
                 </div>
                 <div class="grid gap-2">
-                    <Label for="icon_class">Icono (Clase o nombre)</Label>
-                    <Input id="icon_class" v-model="form.icon_class" type="text" placeholder="p.ej. Users" />
+                    <Label>Icono</Label>
+                    <IconPicker v-model="form.icon_class" />
                 </div>
             </div>
             <DialogFooter>

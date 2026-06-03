@@ -4,7 +4,16 @@
       "Bash(php artisan *)",
       "Bash(php -l app/Exports/SalesReportExport.php)",
       "Bash(php -l app/Exports/SubdealershipSheetExport.php)",
-      "Bash(php -l app/Http/Controllers/ReportSalesController.php)"
+      "Bash(php -l app/Http/Controllers/ReportSalesController.php)",
+      "Bash(Get-ChildItem -Path \"database/migrations\" -Filter \"*role*\" -o Name)",
+      "Bash(Get-ChildItem -Path \"database/migrations\" -Filter \"*permission*\" -o Name)",
+      "Bash(Get-ChildItem -Path \"database/migrations\" -Filter \"*area*\" -o Name)",
+      "Bash(Get-ChildItem -Path \"database/migrations\" -Filter \"*cafe*\" -o Name)",
+      "Bash(Get-ChildItem -Path \"database/migrations\" -Filter \"*mine*\" -o Name)",
+      "Bash(node -e \"const icons = require\\('lucide-vue-next'\\); const names = Object.keys\\(icons\\).filter\\(k => k !== 'default' && /^[A-Z]/.test\\(k\\)\\); console.log\\(names.length\\); console.log\\(JSON.stringify\\(names.slice\\(0,20\\)\\)\\)\")",
+      "Bash(node -e \"const icons = require\\('lucide-vue-next'\\); const names = Object.keys\\(icons\\).filter\\(k => /^[A-Z]/.test\\(k\\) && !k.endsWith\\('Icon'\\) && k !== 'default' && typeof icons[k] === 'object'\\); console.log\\(names.length\\); console.log\\(JSON.stringify\\(names.slice\\(0,10\\)\\)\\)\")",
+      "Bash(node -e \"const icons = require\\('lucide-vue-next'\\); const keys = Object.keys\\(icons\\); console.log\\(typeof icons['Users']\\); console.log\\(JSON.stringify\\(Object.keys\\(icons['Users']\\)\\).slice\\(0,100\\)\\)\")",
+      "Bash(node -e \"const icons = require\\('lucide-vue-next'\\); const names = Object.keys\\(icons\\).filter\\(k => /^[A-Z]/.test\\(k\\) && !k.endsWith\\('Icon'\\) && k !== 'default' && typeof icons[k] === 'function'\\); console.log\\(names.length\\); console.log\\(JSON.stringify\\(names.slice\\(0,15\\)\\)\\)\")"
     ]
   }
 }

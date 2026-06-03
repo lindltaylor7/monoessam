@@ -1,250 +1,437 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
-import { Head } from '@inertiajs/vue3';
-import { AlertCircle, ArrowUp, Clock, FileCheck, FileText, LogIn, PieChart, Users } from 'lucide-vue-next';
-import Card from '../components/ui/card/Card.vue';
+import { Head, usePage } from '@inertiajs/vue3';
+import {
+    AlertTriangle,
+    ArrowUpRight,
+    CalendarClock,
+    CheckCircle2,
+    FileWarning,
+    LayoutGrid,
+    ShoppingCart,
+    TrendingUp,
+    Users,
+    Utensils,
+    House,
+    Receipt,
+    BookOpen,
+    Building2,
+    HandHelping,
+    ClipboardList,
+} from 'lucide-vue-next';
+import { computed } from 'vue';
+import VueApexCharts from 'vue3-apexcharts';
 
-const breadcrumbs: BreadcrumbItem[] = [
-    {
-        title: 'Dashboard',
-        href: '/dashboard',
+const breadcrumbs: BreadcrumbItem[] = [{ title: 'Inicio', href: '/dashboard' }];
+
+// ── Types ──────────────────────────────────────────────────────────────────
+interface SalesStats   { todayCount: number; todayAmount: number }
+interface SalesChartPt { date: string; count: number; amount: number }
+interface StaffStats   { total: number; active: number; expiring: number; expired: number }
+interface DocAlert     { staff_name: string; file_type: string; expiration_date: string; days_left: number }
+
+const props = defineProps<{
+    salesStats:    SalesStats   | null;
+    salesChart:    SalesChartPt[] | null;
+    staffStats:    StaffStats   | null;
+    docAlerts:     DocAlert[]   | null;
+    totalServices: number;
+}>();
+
+// ── Auth context ───────────────────────────────────────────────────────────
+const page        = usePage();
+const user        = computed(() => (page.props.auth as any)?.user);
+const permissions = computed(() => (page.props.auth as any)?.permissions ?? []);
+const roles       = computed(() => (page.props.auth as any)?.roles ?? []);
+
+// ── Greeting ───────────────────────────────────────────────────────────────
+const greeting = computed(() => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Buenos días';
+    if (h < 19) return 'Buenas tardes';
+    return 'Buenas noches';
+});
+
+const todayLabel = computed(() =>
+    new Date().toLocaleDateString('es-PE', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+    }),
+);
+
+// ── Quick-access modules (from user's permissions) ──────────────────────────
+const iconMap: Record<string, any> = {
+    House, Users, Utensils, ClipboardList, Building2,
+    HandHelping, LayoutGrid, ShoppingCart, Receipt, BookOpen,
+};
+
+const quickLinks = computed(() =>
+    permissions.value
+        .filter((p: any) => p.route_name && p.sidebar_name)
+        .map((p: any) => ({
+            title: p.sidebar_name,
+            href:  '/' + p.route_name,
+            icon:  iconMap[p.icon_class] ?? LayoutGrid,
+        })),
+);
+
+// ── Visibility flags ───────────────────────────────────────────────────────
+const hasSalesSection     = computed(() => props.salesStats !== null);
+const hasHeadcountSection = computed(() => props.staffStats !== null);
+const hasAnySection       = computed(() => hasSalesSection.value || hasHeadcountSection.value);
+
+// ── KPI cards array (built only from available data) ──────────────────────
+const kpiCards = computed(() => {
+    const cards = [];
+
+    if (hasHeadcountSection.value) {
+        cards.push({
+            key:       'staff',
+            label:     'Personal total',
+            value:     props.staffStats!.total.toLocaleString('es-PE'),
+            sub:       `${props.staffStats!.active.toLocaleString('es-PE')} activos`,
+            subColor:  'text-green-600',
+            subIcon:   CheckCircle2,
+            iconBg:    'bg-blue-50 dark:bg-blue-900/30',
+            iconColor: 'text-blue-600 dark:text-blue-400',
+            icon:      Users,
+        });
+        cards.push({
+            key:       'docs',
+            label:     'Docs. por vencer',
+            value:     props.staffStats!.expiring.toLocaleString('es-PE'),
+            sub:       props.staffStats!.expired > 0
+                ? `${props.staffStats!.expired} ya vencidos`
+                : 'Próximos 30 días',
+            subColor:  props.staffStats!.expired > 0 ? 'text-red-500 font-medium' : 'text-gray-500',
+            subIcon:   props.staffStats!.expired > 0 ? AlertTriangle : null,
+            iconBg:    'bg-amber-50 dark:bg-amber-900/30',
+            iconColor: 'text-amber-600 dark:text-amber-400',
+            icon:      CalendarClock,
+        });
+    }
+
+    if (hasSalesSection.value) {
+        cards.push({
+            key:       'sales',
+            label:     'Ventas hoy',
+            value:     props.salesStats!.todayCount.toLocaleString('es-PE'),
+            sub:       `S/ ${props.salesStats!.todayAmount.toLocaleString('es-PE', { minimumFractionDigits: 2 })}`,
+            subColor:  'text-gray-700 dark:text-gray-300 font-semibold',
+            subIcon:   null,
+            iconBg:    'bg-red-50 dark:bg-red-900/30',
+            iconColor: 'text-red-600 dark:text-red-400',
+            icon:      ShoppingCart,
+        });
+    }
+
+    cards.push({
+        key:       'services',
+        label:     'Servicios',
+        value:     props.totalServices.toLocaleString('es-PE'),
+        sub:       'Tipos de servicio',
+        subColor:  'text-gray-500',
+        subIcon:   null,
+        iconBg:    'bg-purple-50 dark:bg-purple-900/30',
+        iconColor: 'text-purple-600 dark:text-purple-400',
+        icon:      Utensils,
+    });
+
+    return cards;
+});
+
+// ── Sales chart config ─────────────────────────────────────────────────────
+const chartLabels = computed(() =>
+    (props.salesChart ?? []).map(d =>
+        new Date(d.date + 'T00:00:00').toLocaleDateString('es-PE', { weekday: 'short' }),
+    ),
+);
+
+const chartSeries = computed(() => [{
+    name: 'Ventas',
+    data: (props.salesChart ?? []).map(d => d.count),
+}]);
+
+const chartOptions = computed(() => ({
+    chart: {
+        type:     'area' as const,
+        height:   200,
+        toolbar:  { show: false },
+        fontFamily: 'inherit',
     },
-];
+    dataLabels: { enabled: false },
+    stroke:     { curve: 'smooth' as const, width: 2.5 },
+    colors:     ['#dc2626'],
+    fill: {
+        type: 'gradient',
+        gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0.01 },
+    },
+    xaxis: {
+        categories: chartLabels.value,
+        labels:     { style: { fontSize: '11px', colors: '#9ca3af' } },
+        axisBorder: { show: false },
+        axisTicks:  { show: false },
+    },
+    yaxis: {
+        labels: {
+            style:     { fontSize: '11px', colors: '#9ca3af' },
+            formatter: (v: number) => v.toFixed(0),
+        },
+    },
+    grid: {
+        borderColor:    '#f3f4f6',
+        strokeDashArray: 4,
+        yaxis: { lines: { show: true } },
+        xaxis: { lines: { show: false } },
+    },
+    tooltip: {
+        y: {
+            formatter: (_val: number, opts: any) => {
+                const pt = (props.salesChart ?? [])[opts.dataPointIndex];
+                return `${_val} ventas · S/ ${pt?.amount?.toLocaleString('es-PE', { minimumFractionDigits: 2 })}`;
+            },
+        },
+    },
+}));
+
+const weekTotals = computed(() => ({
+    count:  (props.salesChart ?? []).reduce((s, d) => s + d.count, 0),
+    amount: (props.salesChart ?? []).reduce((s, d) => s + d.amount, 0),
+}));
+
+// ── Doc-alert helpers ──────────────────────────────────────────────────────
+function alertBadgeClass(days: number) {
+    if (days <= 7)  return 'bg-red-50 text-red-700 border-red-200';
+    if (days <= 15) return 'bg-amber-50 text-amber-700 border-amber-200';
+    return 'bg-yellow-50 text-yellow-700 border-yellow-200';
+}
+function alertDotClass(days: number) {
+    if (days <= 7)  return 'bg-red-500';
+    if (days <= 15) return 'bg-amber-500';
+    return 'bg-yellow-400';
+}
+function fmtDate(d: string) {
+    return new Date(d + 'T00:00:00').toLocaleDateString('es-PE', {
+        day: '2-digit', month: 'short', year: 'numeric',
+    });
+}
 </script>
 
 <template>
-    <Head title="Dashboard" />
+    <Head title="Inicio" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
-        <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
-            <!-- Banner Principal -->
-            <div
-                class="relative mb-2 flex flex-col items-center justify-between overflow-hidden rounded-2xl bg-[#0f62fe] px-6 py-10 shadow-lg sm:px-10 md:flex-row">
-                <!-- Background Decor -->
-                <div class="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-blue-500/50 blur-3xl"></div>
-                <div class="pointer-events-none absolute right-40 -bottom-20 h-64 w-64 rounded-full bg-blue-400/20 blur-3xl"></div>
+        <div class="flex flex-col gap-5 p-4 pb-8">
 
-                <div class="relative z-10 text-white md:w-3/5">
-                    <h1 class="text-3xl font-bold tracking-tight sm:text-4xl">Bienvenido de vuelta</h1>
-                    <p class="mt-4 max-w-2xl text-blue-100 sm:text-lg">
-                        Revisa todo el rendimiento del personal y los expedientes desde aquí. Se ha registrado un incremento de
-                        <span class="rounded bg-blue-500/40 px-2 py-0.5 font-bold text-white">15%</span> en asistencia y cumplimiento este mes.
-                    </p>
-                    <div class="mt-8 flex flex-wrap items-center gap-6">
-                        <button
-                            class="rounded-lg bg-white px-6 py-2.5 font-semibold text-blue-600 shadow-sm transition-colors duration-200 hover:bg-blue-50"
-                        >
-                            Revisar Expedientes
-                        </button>
-                        <div class="flex items-center gap-6">
-                            <div>
-                                <div class="text-2xl font-bold tracking-tight text-white">1,240</div>
-                                <div class="text-sm font-medium text-blue-200">Personal Activo</div>
-                            </div>
-                            <div class="h-8 w-px bg-blue-400/50"></div>
-                            <div>
-                                <div class="text-2xl font-bold tracking-tight text-white">92%</div>
-                                <div class="text-sm font-medium text-blue-200">Cumplimiento</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            <!-- ── HERO ──────────────────────────────────────────────────── -->
+            <div class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-red-700 via-red-600 to-rose-500 px-7 py-8 shadow-lg">
+                <div class="pointer-events-none absolute -top-16 -right-16 h-56 w-56 rounded-full bg-white/10 blur-3xl" />
+                <div class="pointer-events-none absolute -bottom-12 left-1/3 h-40 w-40 rounded-full bg-rose-300/20 blur-2xl" />
 
-                <!-- Abstract UI Illustration (Right) -->
-                <div class="relative z-10 hidden w-2/5 cursor-pointer md:block">
-                    <div class="flex justify-end pr-4">
-                        <div
-                            class="relative h-52 w-72 transform rounded-2xl border border-white/20 bg-white/10 p-5 shadow-2xl backdrop-blur-md transition-transform duration-500 hover:rotate-0 md:-rotate-3"
-                        >
-                            <div class="mb-4 flex gap-2">
-                                <div class="h-3 w-3 rounded-full bg-red-400/90"></div>
-                                <div class="h-3 w-3 rounded-full bg-amber-400/90"></div>
-                                <div class="h-3 w-3 rounded-full bg-green-400/90"></div>
-                            </div>
-                            <div class="space-y-3">
-                                <div class="h-4 w-3/4 rounded bg-white/20"></div>
-                                <div class="h-4 w-1/2 rounded bg-white/20"></div>
-                                <div class="mt-8 flex items-center gap-4">
-                                    <div class="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-xl bg-blue-300/30">
-                                        <Users class="h-8 w-8 text-blue-100" />
-                                    </div>
-                                    <div class="flex-1 space-y-2">
-                                        <div class="h-3 w-full rounded-full bg-white/20"></div>
-                                        <div class="h-3 w-4/5 rounded-full bg-white/20"></div>
-                                        <div class="h-3 w-2/3 rounded-full bg-white/20"></div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Floating badge -->
-                            <div
-                                class="absolute -right-6 -bottom-6 flex rotate-6 transform animate-bounce items-center gap-3 rounded-xl bg-white p-3 shadow-xl"
-                                style="animation-duration: 3s"
+                <div class="relative z-10 flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+                    <!-- Greeting -->
+                    <div>
+                        <p class="text-sm font-medium capitalize text-red-200">{{ todayLabel }}</p>
+                        <h1 class="mt-1 text-2xl font-bold text-white sm:text-3xl">
+                            {{ greeting }}, {{ user?.name?.split(' ')[0] ?? 'Usuario' }}
+                        </h1>
+                        <div class="mt-2.5 flex flex-wrap items-center gap-2">
+                            <span
+                                v-for="role in roles" :key="role"
+                                class="rounded-full bg-white/20 px-3 py-0.5 text-xs font-semibold text-white"
                             >
-                                <div class="rounded-lg bg-green-100 p-2 text-green-600"><ArrowUp class="h-5 w-5" /></div>
-                                <div>
-                                    <span class="block text-xs font-bold text-gray-800">Crecimiento</span>
-                                    <span class="block text-[10px] text-gray-500">Último Trimestre</span>
-                                </div>
+                                {{ role }}
+                            </span>
+                            <span
+                                v-if="user?.business?.name"
+                                class="rounded-full bg-white/15 px-3 py-0.5 text-xs font-medium text-red-100"
+                            >
+                                {{ user.business.name }}
+                            </span>
+                            <span
+                                v-if="user?.mine?.name"
+                                class="rounded-full bg-white/15 px-3 py-0.5 text-xs font-medium text-red-100"
+                            >
+                                {{ user.mine.name }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Hero snapshot — only when user has sales/headcount data -->
+                    <div v-if="hasAnySection" class="flex flex-wrap gap-4 md:gap-6">
+                        <template v-if="hasHeadcountSection">
+                            <div class="text-center">
+                                <p class="text-2xl font-bold text-white">{{ staffStats!.active.toLocaleString('es-PE') }}</p>
+                                <p class="text-xs font-medium text-red-200">Personal activo</p>
                             </div>
+                            <div class="hidden h-10 w-px self-center bg-white/20 md:block" />
+                        </template>
+                        <template v-if="hasSalesSection">
+                            <div class="text-center">
+                                <p class="text-2xl font-bold text-white">{{ salesStats!.todayCount.toLocaleString('es-PE') }}</p>
+                                <p class="text-xs font-medium text-red-200">Ventas hoy</p>
+                            </div>
+                            <div class="hidden h-10 w-px self-center bg-white/20 md:block" />
+                        </template>
+                        <div class="text-center">
+                            <p class="text-2xl font-bold text-white">{{ totalServices.toLocaleString('es-PE') }}</p>
+                            <p class="text-xs font-medium text-red-200">Servicios</p>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Bottom Cards Row -->
-            <div class="mb-2 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <!-- Stats Card 1 -->
-                <div
-                    class="border-sidebar-border/70 dark:border-sidebar-border overflow-hidden rounded-xl border bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-gray-800"
-                >
-                    <Card class="h-full border-0 bg-transparent p-6 shadow-none">
-                        <div class="flex items-center justify-between">
-                            <h3 class="text-sm font-semibold tracking-wider text-gray-500 uppercase dark:text-gray-400">Total Plantilla</h3>
-                            <div class="rounded-lg bg-blue-50 p-2 text-blue-600"><Users class="h-5 w-5" /></div>
-                        </div>
-                        <p class="mt-4 text-3xl font-bold text-gray-900 dark:text-white">1,240</p>
-                        <p class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-                            <span class="flex items-center font-medium text-green-600"><ArrowUp class="mr-1 h-3 w-3" /> 4.5%</span>
-                            <span class="ml-2">este mes</span>
-                        </p>
-                    </Card>
-                </div>
-
-                <!-- Stats Card 2 -->
-                <div
-                    class="border-sidebar-border/70 dark:border-sidebar-border overflow-hidden rounded-xl border bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-gray-800"
-                >
-                    <Card class="h-full border-0 bg-transparent p-6 shadow-none">
-                        <div class="flex items-center justify-between">
-                            <h3 class="text-sm font-semibold tracking-wider text-gray-500 uppercase dark:text-gray-400">Expedientes Digitales</h3>
-                            <div class="rounded-lg bg-purple-50 p-2 text-purple-600"><FileText class="h-5 w-5" /></div>
-                        </div>
-                        <p class="mt-4 text-3xl font-bold text-gray-900 dark:text-white">890</p>
-                        <p class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-                            <span class="flex items-center font-medium text-green-600"><ArrowUp class="mr-1 h-3 w-3" /> 12.3%</span>
-                            <span class="ml-2">completados</span>
-                        </p>
-                    </Card>
-                </div>
-
-                <!-- Stats Card 3 -->
-                <div
-                    class="border-sidebar-border/70 dark:border-sidebar-border overflow-hidden rounded-xl border bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-gray-800"
-                >
-                    <Card class="h-full border-0 bg-transparent p-6 shadow-none">
-                        <div class="flex items-center justify-between">
-                            <h3 class="text-sm font-semibold tracking-wider text-gray-500 uppercase dark:text-gray-400">Entrega de EPP</h3>
-                            <div class="rounded-lg bg-amber-50 p-2 text-amber-600"><PieChart class="h-5 w-5" /></div>
-                        </div>
-                        <p class="mt-4 text-3xl font-bold text-gray-900 dark:text-white">65%</p>
-                        <p class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-                            <span class="font-medium tracking-tight text-amber-600">Faltan asignaciones en Mina</span>
-                        </p>
-                    </Card>
-                </div>
-
-                <!-- Stats Card 4 -->
-                <div
-                    class="border-sidebar-border/70 dark:border-sidebar-border overflow-hidden rounded-xl border bg-white shadow-sm transition-shadow hover:shadow-md dark:bg-gray-800"
-                >
-                    <Card class="h-full border-0 bg-transparent p-6 shadow-none">
-                        <div class="flex items-center justify-between">
-                            <h3 class="text-sm font-semibold tracking-wider text-gray-500 uppercase dark:text-gray-400">Alertas</h3>
-                            <div class="rounded-lg bg-red-50 p-2 text-red-600"><AlertCircle class="h-5 w-5" /></div>
-                        </div>
-                        <p class="mt-4 text-3xl font-bold text-gray-900 dark:text-white">12</p>
-                        <p class="mt-2 flex items-center text-sm text-gray-500 dark:text-gray-400">
-                            <span class="font-medium text-red-500">Archivos por vencer (SCTR)</span>
-                        </p>
-                    </Card>
-                </div>
-            </div>
-
-            <!-- Main Content Area -->
+            <!-- ── KPI CARDS ─────────────────────────────────────────────── -->
             <div
-                class="border-sidebar-border/70 dark:border-sidebar-border relative flex-1 rounded-xl border bg-white shadow-sm lg:min-h-min dark:bg-gray-800"
+                :class="[
+                    'grid gap-4',
+                    kpiCards.length === 1 ? 'grid-cols-1 max-w-xs' :
+                    kpiCards.length === 2 ? 'grid-cols-2 lg:grid-cols-2' :
+                    kpiCards.length === 3 ? 'grid-cols-2 lg:grid-cols-3' :
+                                            'grid-cols-2 lg:grid-cols-4',
+                ]"
             >
-                <div class="p-6">
-                    <div class="flex items-center justify-between border-b border-gray-100 pb-4 dark:border-gray-700">
-                        <h2 class="text-lg font-bold text-gray-800 dark:text-white">Actividad Reciente</h2>
-                        <button
-                            class="rounded-md px-4 py-1.5 text-sm font-semibold text-blue-600 transition-colors hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
+                <div
+                    v-for="card in kpiCards" :key="card.key"
+                    class="rounded-xl border border-gray-100 bg-white p-5 shadow-sm transition-shadow hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+                >
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                            {{ card.label }}
+                        </span>
+                        <div :class="['rounded-lg p-2', card.iconBg]">
+                            <component :is="card.icon" :class="['h-4 w-4', card.iconColor]" />
+                        </div>
+                    </div>
+                    <p class="mt-3 text-3xl font-bold text-gray-900 dark:text-white">{{ card.value }}</p>
+                    <p class="mt-1 flex items-center gap-1 text-xs dark:text-gray-400" :class="card.subColor">
+                        <component :is="card.subIcon" v-if="card.subIcon" class="h-3 w-3" />
+                        {{ card.sub }}
+                    </p>
+                </div>
+            </div>
+
+            <!-- ── CHART + QUICK ACCESS ──────────────────────────────────── -->
+            <div class="grid grid-cols-1 gap-4" :class="hasSalesSection ? 'lg:grid-cols-5' : ''">
+
+                <!-- Sales chart (only for sales roles) -->
+                <div
+                    v-if="hasSalesSection && salesChart"
+                    class="lg:col-span-3 rounded-xl border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+                >
+                    <div class="mb-3 flex items-start justify-between">
+                        <div>
+                            <h2 class="font-bold text-gray-800 dark:text-white">Ventas — últimos 7 días</h2>
+                            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                                {{ weekTotals.count.toLocaleString('es-PE') }} transacciones ·
+                                <span class="font-semibold text-gray-700 dark:text-gray-300">
+                                    S/ {{ weekTotals.amount.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
+                                </span>
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-1 rounded-lg bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
+                            <TrendingUp class="h-3.5 w-3.5" />
+                            <span>Tendencia</span>
+                        </div>
+                    </div>
+                    <VueApexCharts type="area" height="200" :options="chartOptions" :series="chartSeries" />
+                </div>
+
+                <!-- Quick access modules -->
+                <div
+                    :class="[
+                        'rounded-xl border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800',
+                        hasSalesSection ? 'lg:col-span-2' : 'lg:col-span-full',
+                    ]"
+                >
+                    <h2 class="mb-4 font-bold text-gray-800 dark:text-white">Mis módulos</h2>
+
+                    <div v-if="quickLinks.length > 0" class="grid gap-2.5" :class="hasSalesSection ? 'grid-cols-2' : 'grid-cols-3 sm:grid-cols-4 lg:grid-cols-5'">
+                        <a
+                            v-for="link in quickLinks" :key="link.href"
+                            :href="link.href"
+                            class="group flex flex-col items-center gap-2 rounded-xl border border-gray-100 p-3 text-center transition-all hover:border-red-200 hover:bg-red-50 dark:border-gray-700 dark:hover:border-red-800 dark:hover:bg-red-900/20"
                         >
-                            Ver Todo
-                        </button>
+                            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-600 transition-colors group-hover:bg-red-600 group-hover:text-white dark:bg-gray-700 dark:text-gray-300">
+                                <component :is="link.icon" class="h-5 w-5" />
+                            </div>
+                            <span class="text-xs font-medium leading-tight text-gray-700 dark:text-gray-300">
+                                {{ link.title }}
+                            </span>
+                        </a>
                     </div>
 
-                    <div class="mt-4 space-y-2">
-                        <!-- Activity Item -->
-                        <div
-                            class="flex items-start rounded-xl border border-transparent p-4 transition-colors hover:border-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                        >
-                            <div
-                                class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-600 dark:bg-green-900/50 dark:text-green-400"
-                            >
-                                <FileCheck class="h-6 w-6" />
-                            </div>
-                            <div class="ml-4 flex-1">
-                                <div class="flex items-center justify-between">
-                                    <p class="font-semibold text-gray-900 dark:text-white">Expediente actualizado</p>
-                                    <time class="flex items-center text-xs font-medium text-gray-500 dark:text-gray-400"
-                                        ><Clock class="mr-1 h-3 w-3" /> Hace 2 horas</time
-                                    >
-                                </div>
-                                <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                                    Se han subido nuevos documentos al expediente de <strong>Juan Pérez</strong> (SCTR).
-                                </p>
-                            </div>
-                        </div>
-
-                        <!-- Activity Item -->
-                        <div
-                            class="flex items-start rounded-xl border border-transparent p-4 transition-colors hover:border-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                        >
-                            <div
-                                class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 dark:bg-blue-900/50 dark:text-blue-400"
-                            >
-                                <LogIn class="h-6 w-6" />
-                            </div>
-                            <div class="ml-4 flex-1">
-                                <div class="flex items-center justify-between">
-                                    <p class="font-semibold text-gray-900 dark:text-white">Nuevo Alta de Personal</p>
-                                    <time class="flex items-center text-xs font-medium text-gray-500 dark:text-gray-400"
-                                        ><Clock class="mr-1 h-3 w-3" /> Hace 5 horas</time
-                                    >
-                                </div>
-                                <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                                    <strong>María Góngora</strong> ha sido registrada como <em>Administradora</em> en la unidad Mina 1.
-                                </p>
-                            </div>
-                        </div>
-
-                        <!-- Activity Item -->
-                        <div
-                            class="flex items-start rounded-xl border border-transparent p-4 transition-colors hover:border-gray-100 hover:bg-gray-50 dark:hover:bg-gray-700/50"
-                        >
-                            <div
-                                class="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600 dark:bg-purple-900/50 dark:text-purple-400"
-                            >
-                                <AlertCircle class="h-6 w-6" />
-                            </div>
-                            <div class="ml-4 flex-1">
-                                <div class="flex items-center justify-between">
-                                    <p class="font-semibold text-gray-900 dark:text-white">Alerta de inasistencia</p>
-                                    <time class="flex items-center text-xs font-medium text-gray-500 dark:text-gray-400"
-                                        ><Clock class="mr-1 h-3 w-3" /> Ayer</time
-                                    >
-                                </div>
-                                <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                                    Se detectó inasistencia no justificada para <strong>Roberto Hernández</strong> en Comedor Principal.
-                                </p>
-                            </div>
+                    <!-- Empty state for operational staff with no permissions yet -->
+                    <div v-else class="flex flex-col items-center justify-center gap-3 py-8 text-center text-gray-400">
+                        <LayoutGrid class="h-10 w-10 opacity-30" />
+                        <div>
+                            <p class="text-sm font-medium text-gray-600 dark:text-gray-300">Sin módulos asignados</p>
+                            <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                Contacta al administrador para solicitar acceso a los módulos correspondientes a tu rol.
+                            </p>
                         </div>
                     </div>
                 </div>
             </div>
+
+            <!-- ── DOC ALERTS (only for headcount roles) ──────────────────── -->
+            <div
+                v-if="hasHeadcountSection && docAlerts && docAlerts.length > 0"
+                class="rounded-xl border border-amber-100 bg-white shadow-sm dark:border-amber-900/30 dark:bg-gray-800"
+            >
+                <div class="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-gray-700">
+                    <div class="flex items-center gap-2.5">
+                        <div class="rounded-lg bg-amber-100 p-1.5 dark:bg-amber-900/40">
+                            <FileWarning class="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                        </div>
+                        <div>
+                            <h2 class="font-bold text-gray-800 dark:text-white">Documentos próximos a vencer</h2>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">
+                                Próximos 30 días · {{ staffStats!.expiring }} documento(s)
+                            </p>
+                        </div>
+                    </div>
+                    <a
+                        href="/headcount"
+                        class="flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                    >
+                        Ver personal <ArrowUpRight class="h-3.5 w-3.5" />
+                    </a>
+                </div>
+
+                <div class="divide-y divide-gray-50 dark:divide-gray-700">
+                    <div
+                        v-for="(alert, i) in docAlerts" :key="i"
+                        class="flex items-center justify-between px-5 py-3 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/40"
+                    >
+                        <div class="flex items-center gap-3">
+                            <span :class="['h-2 w-2 flex-shrink-0 rounded-full', alertDotClass(alert.days_left)]" />
+                            <div>
+                                <p class="text-sm font-semibold text-gray-800 dark:text-white">{{ alert.staff_name }}</p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">{{ alert.file_type }}</p>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ fmtDate(alert.expiration_date) }}</p>
+                            <span :class="['inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold', alertBadgeClass(alert.days_left)]">
+                                {{ alert.days_left === 0 ? 'Vence hoy' : `${alert.days_left}d restantes` }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── HEADCOUNT: no alerts state ─────────────────────────────── -->
+            <div
+                v-else-if="hasHeadcountSection && docAlerts !== null && docAlerts.length === 0"
+                class="flex items-center gap-3 rounded-xl border border-green-100 bg-green-50 px-5 py-4 dark:border-green-900/30 dark:bg-green-900/10"
+            >
+                <CheckCircle2 class="h-5 w-5 flex-shrink-0 text-green-600 dark:text-green-400" />
+                <p class="text-sm font-medium text-green-700 dark:text-green-400">
+                    Todos los documentos del personal están al día para los próximos 30 días.
+                </p>
+            </div>
+
         </div>
     </AppLayout>
 </template>

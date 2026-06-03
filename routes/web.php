@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AreaController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\BusinessController;
 use App\Http\Controllers\CafeController;
 use App\Http\Controllers\ClothController;
@@ -54,9 +55,7 @@ Route::get('/migrate', function () {
 Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
 
     // Dashboard
-    Route::get('dashboard', function () {
-        return Inertia::render('Dashboard');
-    })->name('dashboard');
+    Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     // ========================================================================
     // GESTIÓN DE USUARIOS Y PERMISOS
