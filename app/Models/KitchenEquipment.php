@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class KitchenEquipment extends Model
@@ -10,18 +11,19 @@ class KitchenEquipment extends Model
     protected $table = 'kitchen_equipments';
 
     protected $fillable = [
-        'name',
-        'brand',
-        'model',
-        'size',
-        'description',
-        'color',
-        'current_type',
-        'series',
-        'manual',
-        'code',
-        'status',
+        'name', 'brand', 'model', 'size', 'description', 'color',
+        'current_type', 'series', 'manual', 'code', 'status', 'responsible_id',
     ];
+
+    public function responsible(): BelongsTo
+    {
+        return $this->belongsTo(Staff::class, 'responsible_id');
+    }
+
+    public function histories(): MorphMany
+    {
+        return $this->morphMany(EquipmentHistory::class, 'equipable')->latest();
+    }
 
     public function stocks(): MorphMany
     {

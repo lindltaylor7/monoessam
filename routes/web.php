@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AreaController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\EquipmentController;
 use App\Http\Controllers\BusinessController;
 use App\Http\Controllers\CafeController;
 use App\Http\Controllers\ClothController;
@@ -358,6 +359,18 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('/history/{id}/pdf', [InventoryController::class, 'historyPdf'])->name('history.pdf');
         Route::get('/history/staff/{id}/pdf', [InventoryController::class, 'staffHistoryPdf'])->name('history.staff.pdf');
         Route::get('/units', [InventoryController::class, 'unitsStockIndex'])->name('units.index');
+    });
+
+    // ========================================================================
+    // EQUIPOS
+    // ========================================================================
+    Route::prefix('equipments')->name('equipments.')->group(function () {
+        Route::get('/', [EquipmentController::class, 'index'])->name('index');
+        Route::post('/', [EquipmentController::class, 'store'])->name('store');
+        Route::put('{type}/{id}', [EquipmentController::class, 'update'])->name('update');
+        Route::delete('{type}/{id}', [EquipmentController::class, 'destroy'])->name('destroy');
+        Route::get('{type}/{id}/history', [EquipmentController::class, 'history'])->name('history');
+        Route::post('{type}/{id}/history', [EquipmentController::class, 'storeHistory'])->name('history.store');
     });
 
     Route::get('generalreport', [GeneralReportController::class, 'index'])->name('generalreport.index');
