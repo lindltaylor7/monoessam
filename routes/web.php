@@ -25,6 +25,10 @@ use App\Http\Controllers\PeriodController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\ProviderController;
 use App\Http\Controllers\GeneralReportController;
+use App\Http\Controllers\LevelController;
+use App\Http\Controllers\MenuCycleController;
+use App\Http\Controllers\PlanningController;
+use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\ReportSalesController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SaleController;
@@ -206,8 +210,8 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     });
 
     Route::prefix('levels')->name('levels.')->group(function () {
-        Route::post('/', [\App\Http\Controllers\LevelController::class, 'store'])->name('store');
-        Route::delete('{id}', [\App\Http\Controllers\LevelController::class, 'destroy'])->name('destroy');
+        Route::post('/', [LevelController::class, 'store'])->name('store');
+        Route::delete('{id}', [LevelController::class, 'destroy'])->name('destroy');
     });
 
     Route::prefix('ingredients')->name('ingredients.')->group(function () {
@@ -388,14 +392,14 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     // PLANIFICACIÓN Y QUEBRADOS
     // ========================================================================
     Route::prefix('planning')->name('planning.')->group(function () {
-        Route::get('/', [\App\Http\Controllers\PlanningController::class, 'index'])->name('index');
-        Route::post('/', [\App\Http\Controllers\PlanningController::class, 'store'])->name('store');
-        Route::post('{id}/generate-po', [\App\Http\Controllers\PlanningController::class, 'generatePurchaseOrder'])->name('generate-po');
+        Route::get('/', [PlanningController::class, 'index'])->name('index');
+        Route::post('/', [PlanningController::class, 'store'])->name('store');
+        Route::post('{id}/generate-po', [PlanningController::class, 'generatePurchaseOrder'])->name('generate-po');
     });
 
     Route::prefix('purchase-orders')->name('purchase_orders.')->group(function () {
-        Route::get('/', [\App\Http\Controllers\PurchaseOrderController::class, 'index'])->name('index');
-        Route::get('{id}', [\App\Http\Controllers\PurchaseOrderController::class, 'show'])->name('show');
+        Route::get('/', [PurchaseOrderController::class, 'index'])->name('index');
+        Route::get('{id}', [PurchaseOrderController::class, 'show'])->name('show');
     });
 
     // ========================================================================
@@ -420,8 +424,8 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
                 'levels' => \App\Models\Level::all(),
             ]);
         })->name('index');
-        Route::post('/', [\App\Http\Controllers\MenuCycleController::class, 'store'])->name('store');
-        Route::get('/export/{serviceable_id}', [\App\Http\Controllers\MenuCycleController::class, 'export'])->name('export');
+        Route::post('/', [MenuCycleController::class, 'store'])->name('store');
+        Route::get('/export/{serviceable_id}', [MenuCycleController::class, 'export'])->name('export');
     });
 
     // ========================================================================
