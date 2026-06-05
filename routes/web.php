@@ -3,6 +3,7 @@
 use App\Http\Controllers\AreaController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EquipmentController;
+use App\Http\Controllers\EquipmentDispatchController;
 use App\Http\Controllers\BusinessController;
 use App\Http\Controllers\CafeController;
 use App\Http\Controllers\ClothController;
@@ -37,7 +38,6 @@ use App\Http\Controllers\StaffController;
 use App\Http\Controllers\SubdealershipController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\UsersController;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -48,11 +48,6 @@ Route::get('/', function () {
     return Inertia::render('auth/Login');
 })->name('home');
 
-// Utilidad de desarrollo (considerar remover en producción)
-Route::get('/migrate', function () {
-    Artisan::call('migrate');
-    dd('migrated!');
-});
 
 // ============================================================================
 // RUTAS AUTENTICADAS
@@ -377,6 +372,13 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('{type}/{id}/history', [EquipmentController::class, 'storeHistory'])->name('history.store');
     });
 
+    Route::prefix('equipment-dispatches')->name('equipment-dispatches.')->group(function () {
+        Route::get('/', [EquipmentDispatchController::class, 'index'])->name('index');
+        Route::post('/', [EquipmentDispatchController::class, 'store'])->name('store');
+        Route::put('{id}/return', [EquipmentDispatchController::class, 'markReturned'])->name('return');
+        Route::get('{id}/pdf', [EquipmentDispatchController::class, 'pdf'])->name('pdf');
+    });
+
     Route::get('generalreport', [GeneralReportController::class, 'index'])->name('generalreport.index');
 
     Route::prefix('reportsales')->name('reportsales.')->group(function () {
@@ -415,15 +417,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     // CICLOS
     // ========================================================================
     Route::prefix('cycles')->name('cycles.')->group(function () {
-        Route::get('/', function () {
-            return \Inertia\Inertia::render('cycles/Index', [
-                'mines' => \App\Models\Mine::with(['units', 'units.cafes', 'units.cafes.services'])->get(),
-                'structures' => \App\Models\Structure::with('costs')->get(),
-                'savedCycles' => \App\Models\MenuCycle::orderBy('id', 'desc')->get(),
-                'dishCategories' => \App\Models\Dish_category::all(),
-                'levels' => \App\Models\Level::all(),
-            ]);
-        })->name('index');
+        Route::get('/', [MenuCycleController::class, 'index'])->name('index');
         Route::post('/', [MenuCycleController::class, 'store'])->name('store');
         Route::get('/export/{serviceable_id}', [MenuCycleController::class, 'export'])->name('export');
     });
@@ -434,27 +428,6 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     Route::get('management', [ManagementController::class, 'index'])->name('management');
     Route::get('logistics', [LogisticController::class, 'index'])->name('logistics');
 
-    // ========================================================================
-    // UTILIDADES
-    // ========================================================================
-    Route::get('qr/{id}', function ($id) {
-        $arrayProducts = [
-            1 => ['id' => 1, 'name' => 'Laptop Dell XPS 13', 'url' => '/products/1'],
-            2 => ['id' => 2, 'name' => 'Proyector Epson', 'url' => '/products/2'],
-            3 => ['id' => 3, 'name' => 'Impresora HP LaserJet', 'url' => '/products/3'],
-            4 => ['id' => 4, 'name' => 'Monitor Samsung 24"', 'url' => '/products/4'],
-            5 => ['id' => 5, 'name' => 'Teclado Mecánico Logitech', 'url' => '/products/5'],
-            6 => ['id' => 6, 'name' => 'Mouse Inalámbrico Logitech', 'url' => '/products/6'],
-            7 => ['id' => 7, 'name' => 'Disco Duro Externo Seagate', 'url' => '/products/7'],
-            8 => ['id' => 8, 'name' => 'Router TP-Link Archer C6', 'url' => '/products/8'],
-        ];
-
-        if (!array_key_exists($id, $arrayProducts)) {
-            return response()->json(['error' => 'Product not found'], 404);
-        }
-
-        return response()->json($arrayProducts[$id]);
-    })->name('qr.show');
 });
 
 // ============================================================================

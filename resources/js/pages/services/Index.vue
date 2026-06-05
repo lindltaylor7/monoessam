@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
+import { Coffee, LayoutGrid, LayoutList, Moon, Package, Pencil, ServerOff, Sunrise, Trash2, Utensils } from 'lucide-vue-next';
 import { onMounted, ref } from 'vue';
 import ServiceModal from './ServiceModal.vue';
 import ServiceSyncModal from './ServiceSyncModal.vue';
@@ -21,8 +25,7 @@ interface Service {
 const services = ref<Service[]>([]);
 const showModal = ref(false);
 const editingService = ref<Service | null>(null);
-const deleteServiceId = ref<number | null>(null);
-const showDeleteModal = ref(false);
+const viewMode = ref<'table' | 'cards'>('table');
 
 // Formulario para crear/editar servicios
 const form = useForm({
@@ -40,6 +43,14 @@ const serviceTypes = [
     { value: '4', label: 'Refrigerio' },
     { value: '5', label: 'Descartables' },
 ];
+
+const typeConfig: Record<string, { label: string; icon: unknown; classes: string }> = {
+    '1': { label: 'Desayuno',    icon: Sunrise,  classes: 'bg-amber-100  text-amber-700  dark:bg-amber-900/30  dark:text-amber-400' },
+    '2': { label: 'Almuerzo',    icon: Utensils, classes: 'bg-green-100  text-green-700  dark:bg-green-900/30  dark:text-green-400' },
+    '3': { label: 'Cena',        icon: Moon,     classes: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400' },
+    '4': { label: 'Refrigerio',  icon: Coffee,   classes: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
+    '5': { label: 'Descartables',icon: Package,  classes: 'bg-gray-100   text-gray-600   dark:bg-gray-700      dark:text-gray-300' },
+};
 
 // Cargar servicios al montar el componente
 onMounted(() => {
@@ -111,116 +122,197 @@ const confirmDelete = (id: number) => {
             <div class="grid auto-rows-min gap-4 md:grid-cols-3">
                 <div class="md:col-span-3">
                     <div class="flex items-center justify-between">
-                        <h1 class="text-2xl font-bold">Servicios</h1>
+                        <h1 class="text-2xl font-semibold tracking-tight">Servicios</h1>
                         <div class="flex items-center gap-2">
+                            <!-- Toggle vista -->
+                            <div class="bg-muted flex items-center rounded-lg p-1">
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger as-child>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                class="h-7 w-7 transition-all"
+                                                :class="viewMode === 'table' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+                                                @click="viewMode = 'table'"
+                                            >
+                                                <LayoutList class="h-4 w-4" />
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Vista tabla</TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                                <TooltipProvider>
+                                    <Tooltip>
+                                        <TooltipTrigger as-child>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                class="h-7 w-7 transition-all"
+                                                :class="viewMode === 'cards' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+                                                @click="viewMode = 'cards'"
+                                            >
+                                                <LayoutGrid class="h-4 w-4" />
+                                            </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>Vista cards</TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                            </div>
                             <ServiceSyncModal />
                             <ServiceModal :serviceTypes="serviceTypes" @fetchServices="fetchServices" />
                         </div>
                     </div>
                 </div>
 
-                <!-- Tabla de servicios -->
-                <div class="md:col-span-3">
-                    <div class="overflow-x-auto rounded-lg border border-gray-200">
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
+                <!-- Vista tabla -->
+                <div v-if="viewMode === 'table'" class="md:col-span-3">
+                    <div class="bg-card rounded-xl border shadow-sm">
+                        <table class="w-full table-auto border-collapse overflow-x-auto">
+                            <thead class="bg-muted/50">
                                 <tr>
-                                    <th class="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">Código</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">Nombre</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">Descripción</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">Tipo</th>
-                                    <th class="px-6 py-3 text-left text-xs font-medium tracking-wider text-gray-500 uppercase">Acciones</th>
+                                    <th class="px-5 py-3 text-left text-sm font-semibold">Código</th>
+                                    <th class="px-5 py-3 text-left text-sm font-semibold">Nombre</th>
+                                    <th class="px-5 py-3 text-left text-sm font-semibold">Descripción</th>
+                                    <th class="px-5 py-3 text-left text-sm font-semibold">Tipo</th>
+                                    <th class="px-5 py-3 text-center text-sm font-semibold">Acciones</th>
                                 </tr>
                             </thead>
-                            <tbody class="divide-y divide-gray-200 bg-white">
-                                <tr v-for="service in services" :key="service.id">
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        {{ service.code }}
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        {{ service.name }}
-                                    </td>
-                                    <td class="px-6 py-4">
-                                        {{ service.description }}
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        <span class="inline-flex rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-800">
-                                            {{ service.type }}
+                            <tbody>
+                                <tr
+                                    v-for="service in services"
+                                    :key="service.id"
+                                    class="hover:bg-muted/30 border-t transition"
+                                >
+                                    <td class="px-5 py-3 whitespace-nowrap">
+                                        <span class="bg-muted rounded px-2 py-0.5 font-mono text-xs font-medium">
+                                            {{ service.code }}
                                         </span>
                                     </td>
-                                    <td class="px-6 py-4 text-right text-sm font-medium whitespace-nowrap">
-                                        <button @click="openServiceModal(service)" class="mr-2 text-blue-600 hover:text-blue-900">Editar</button>
-                                        <button @click="confirmDelete(service.id)" class="text-red-600 hover:text-red-900">Eliminar</button>
+                                    <td class="px-5 py-3 whitespace-nowrap text-sm font-medium">
+                                        {{ service.name }}
+                                    </td>
+                                    <td class="text-muted-foreground max-w-xs truncate px-5 py-3 text-sm">
+                                        {{ service.description }}
+                                    </td>
+                                    <td class="px-5 py-3 whitespace-nowrap">
+                                        <span
+                                            class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold"
+                                            :class="typeConfig[service.type]?.classes ?? 'bg-gray-100 text-gray-600'"
+                                        >
+                                            <component :is="typeConfig[service.type]?.icon" class="h-3.5 w-3.5" />
+                                            {{ typeConfig[service.type]?.label ?? service.type }}
+                                        </span>
+                                    </td>
+                                    <td class="px-5 py-3 whitespace-nowrap">
+                                        <div class="flex items-center justify-center gap-1">
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger as-child>
+                                                        <Button variant="ghost" size="icon" class="h-8 w-8 text-blue-600 hover:bg-blue-50 hover:text-blue-700" @click="openServiceModal(service)">
+                                                            <Pencil class="h-4 w-4" />
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>Editar</TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+                                            <TooltipProvider>
+                                                <Tooltip>
+                                                    <TooltipTrigger as-child>
+                                                        <Button variant="ghost" size="icon" class="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-600" @click="confirmDelete(service.id)">
+                                                            <Trash2 class="h-4 w-4" />
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>Eliminar</TooltipContent>
+                                                </Tooltip>
+                                            </TooltipProvider>
+                                        </div>
                                     </td>
                                 </tr>
                                 <tr v-if="services.length === 0">
-                                    <td colspan="5" class="px-6 py-4 text-center text-gray-500">No hay servicios registrados</td>
+                                    <td colspan="5" class="py-16 text-center">
+                                        <div class="text-muted-foreground flex flex-col items-center gap-2">
+                                            <ServerOff class="h-10 w-10 opacity-40" />
+                                            <span class="text-sm">No hay servicios registrados</span>
+                                        </div>
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Modal para crear/editar servicio -->
-
-        <!-- Modal de confirmación para eliminar -->
-        <div v-if="showDeleteModal" class="fixed inset-0 z-50 overflow-y-auto">
-            <div class="flex min-h-screen items-center justify-center px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-                <div class="fixed inset-0 transition-opacity" aria-hidden="true">
-                    <div class="absolute inset-0 bg-gray-500 opacity-75" @click="showDeleteModal = false"></div>
-                </div>
-                <span class="hidden sm:inline-block sm:h-screen sm:align-middle" aria-hidden="true">&#8203;</span>
-                <div
-                    class="inline-block transform overflow-hidden rounded-lg bg-white text-left align-bottom shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:align-middle"
-                >
-                    <div class="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                        <div class="sm:flex sm:items-start">
-                            <div
-                                class="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10"
-                            >
-                                <svg
-                                    class="h-6 w-6 text-red-600"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                    stroke="currentColor"
-                                    aria-hidden="true"
-                                >
-                                    <path
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        stroke-width="2"
-                                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                                    />
-                                </svg>
-                            </div>
-                            <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
-                                <h3 class="text-lg leading-6 font-medium text-gray-900">Eliminar servicio</h3>
-                                <div class="mt-2">
-                                    <p class="text-sm text-gray-500">
-                                        ¿Estás seguro de que deseas eliminar este servicio? Esta acción no se puede deshacer.
-                                    </p>
-                                </div>
-                            </div>
+                        <div v-if="services.length > 0" class="text-muted-foreground border-t px-5 py-3 text-xs">
+                            {{ services.length }} {{ services.length === 1 ? 'servicio registrado' : 'servicios registrados' }}
                         </div>
                     </div>
-                    <div class="bg-gray-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
-                        <button
-                            type="button"
-                            @click="deleteService"
-                            class="inline-flex w-full justify-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-red-700 focus:ring-2 focus:ring-red-500 focus:ring-offset-2 focus:outline-none sm:ml-3 sm:w-auto sm:text-sm"
+                </div>
+
+                <!-- Vista cards -->
+                <div v-else class="md:col-span-3">
+                    <div v-if="services.length > 0" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                        <Card
+                            v-for="service in services"
+                            :key="service.id"
+                            class="border-sidebar-border/50 dark:border-sidebar-border/70 group rounded-2xl border shadow-sm transition hover:shadow-md"
                         >
-                            Eliminar
-                        </button>
-                        <button
-                            type="button"
-                            @click="showDeleteModal = false"
-                            class="mt-3 inline-flex w-full justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:outline-none sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
-                        >
-                            Cancelar
-                        </button>
+                            <div class="flex flex-col gap-3 p-4">
+                                <!-- Header de la card -->
+                                <div class="flex items-start justify-between gap-2">
+                                    <span
+                                        class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold"
+                                        :class="typeConfig[service.type]?.classes ?? 'bg-gray-100 text-gray-600'"
+                                    >
+                                        <component :is="typeConfig[service.type]?.icon" class="h-3.5 w-3.5" />
+                                        {{ typeConfig[service.type]?.label ?? service.type }}
+                                    </span>
+                                    <span class="bg-muted rounded px-2 py-0.5 font-mono text-xs font-medium">
+                                        {{ service.code }}
+                                    </span>
+                                </div>
+
+                                <!-- Nombre -->
+                                <h3 class="text-foreground text-base font-semibold leading-tight">
+                                    {{ service.name }}
+                                </h3>
+
+                                <!-- Descripción -->
+                                <p class="text-muted-foreground line-clamp-2 text-sm">
+                                    {{ service.description || '—' }}
+                                </p>
+
+                                <!-- Acciones -->
+                                <div class="flex items-center justify-end gap-1 border-t pt-2">
+                                    <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger as-child>
+                                                <Button variant="ghost" size="icon" class="h-8 w-8 text-blue-600 hover:bg-blue-50 hover:text-blue-700" @click="openServiceModal(service)">
+                                                    <Pencil class="h-4 w-4" />
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>Editar</TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                    <TooltipProvider>
+                                        <Tooltip>
+                                            <TooltipTrigger as-child>
+                                                <Button variant="ghost" size="icon" class="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-600" @click="confirmDelete(service.id)">
+                                                    <Trash2 class="h-4 w-4" />
+                                                </Button>
+                                            </TooltipTrigger>
+                                            <TooltipContent>Eliminar</TooltipContent>
+                                        </Tooltip>
+                                    </TooltipProvider>
+                                </div>
+                            </div>
+                        </Card>
+                    </div>
+
+                    <!-- Empty state cards -->
+                    <div v-else class="bg-card flex flex-col items-center justify-center gap-2 rounded-xl border py-16 shadow-sm">
+                        <ServerOff class="text-muted-foreground h-10 w-10 opacity-40" />
+                        <span class="text-muted-foreground text-sm">No hay servicios registrados</span>
+                    </div>
+
+                    <div v-if="services.length > 0" class="text-muted-foreground mt-2 text-xs">
+                        {{ services.length }} {{ services.length === 1 ? 'servicio registrado' : 'servicios registrados' }}
                     </div>
                 </div>
             </div>

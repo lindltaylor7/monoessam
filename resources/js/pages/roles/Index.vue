@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Card } from '@/components/ui/card';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Area, Permission, Role, User } from '@/types';
 import { Head } from '@inertiajs/vue3';
@@ -18,9 +19,7 @@ defineProps<Props>();
     <Head title="Roles" />
     <AppLayout>
         <div class="flex h-full flex-1 flex-col gap-4 rounded-xl p-4">
-            <div
-                class="flex h-12 w-full items-center justify-start gap-3 rounded-lg bg-gradient-to-r from-blue-50 to-purple-50 p-2 shadow-sm dark:from-gray-700 dark:to-gray-700"
-            >
+            <div class="flex h-12 w-full items-center justify-start gap-3 rounded-lg bg-muted/50 p-2 shadow-sm">
                 <RoleModal :areas="areas" />
             </div>
             <div class="grid w-full grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

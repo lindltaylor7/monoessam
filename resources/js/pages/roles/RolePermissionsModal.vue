@@ -15,8 +15,6 @@ const props = defineProps<Props>();
 
 const open = ref(false);
 
-console.log(props.role);
-
 // Lista de IDs seleccionados
 const form = useForm({
     role_id: props.role?.id,

@@ -34,7 +34,6 @@ watch(
 );
 
 // Composables
-// Composables
 const { filteredStaff, searchQuery, selectedUnitId } = useStaffFilter(localStaff);
 
 const { deleteStaff } = useStaffActions((id) => {

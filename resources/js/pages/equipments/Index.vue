@@ -5,7 +5,7 @@ import { Head, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import {
     AlertTriangle, CheckCircle2, ClipboardList, Clock, History,
-    Laptop, Monitor, Pencil, Plus, Search, Trash2, UtensilsCrossed,
+    Laptop, Monitor, Pencil, Plus, Search, Trash2, Truck, UtensilsCrossed,
 } from 'lucide-vue-next';
 import { computed, reactive, ref } from 'vue';
 
@@ -17,15 +17,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface StaffRef { id: number; name: string }
+
+interface HQRef { id: number; name: string }
 
 interface ComputerEquipment {
     id: number; name: string; brand: string | null; model: string | null;
     description: string | null; presentation: string | null; color: string | null;
     series: string | null; code: string | null; status: number;
     responsible_id: number | null; responsible: StaffRef | null;
+    storage_headquarter_id: number | null; storage_headquarter: HQRef | null;
     histories_count: number;
 }
 
@@ -35,6 +39,7 @@ interface KitchenEquipment {
     current_type: string | null; series: string | null; manual: string | null;
     code: string | null; status: number;
     responsible_id: number | null; responsible: StaffRef | null;
+    storage_headquarter_id: number | null; storage_headquarter: HQRef | null;
     histories_count: number;
 }
 
@@ -44,10 +49,13 @@ interface HistoryEntry {
     created_at: string;
 }
 
+interface HQRef { id: number; name: string }
+
 const props = defineProps<{
     computerEquipments: ComputerEquipment[];
     kitchenEquipments:  KitchenEquipment[];
     staff: StaffRef[];
+    headquarters: HQRef[];
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Equipos', href: '/equipments' }];
@@ -88,6 +96,7 @@ const form = useForm({
     name: '', brand: '', model: '', description: '', color: '',
     series: '', code: '', presentation: '', size: '', current_type: '', manual: '',
     status: '0', responsible_id: 'none' as string | number,
+    storage_headquarter_id: 'none' as string | number,
 });
 
 // History sheet
@@ -138,8 +147,9 @@ function openEdit(item: ComputerEquipment | KitchenEquipment, type: 'computer' |
     form.color          = item.color ?? '';
     form.series         = item.series ?? '';
     form.code           = item.code ?? '';
-    form.status         = String(item.status ?? 0);
-    form.responsible_id = item.responsible_id ? String(item.responsible_id) : 'none';
+    form.status                  = String(item.status ?? 0);
+    form.responsible_id          = item.responsible_id ? String(item.responsible_id) : 'none';
+    form.storage_headquarter_id  = item.storage_headquarter_id ? String(item.storage_headquarter_id) : 'none';
     if (type === 'computer') {
         form.presentation = (item as ComputerEquipment).presentation ?? '';
         form.size = ''; form.current_type = ''; form.manual = '';
@@ -153,6 +163,7 @@ function openEdit(item: ComputerEquipment | KitchenEquipment, type: 'computer' |
 
 function submitForm() {
     if (form.responsible_id === 'none') form.responsible_id = '';
+    if (form.storage_headquarter_id === 'none') form.storage_headquarter_id = '';
     const opts = {
         preserveScroll: true,
         onSuccess: () => { showForm.value = false; form.reset(); },
@@ -237,12 +248,17 @@ function fmtDate(d: string) {
             <!-- ── Header ──────────────────────────────────────────────── -->
             <div class="flex items-center justify-between">
                 <div>
-                    <h1 class="text-xl font-bold text-gray-900 dark:text-white">Gestión de Equipos</h1>
-                    <p class="mt-0.5 text-sm text-gray-500 dark:text-gray-400">Tecnológicos y de menaje · Estado, responsable e historial</p>
+                    <h1 class="text-2xl font-semibold tracking-tight">Gestión de Equipos</h1>
+                    <p class="text-muted-foreground mt-0.5 text-sm">Tecnológicos y de menaje · Estado, responsable e historial</p>
                 </div>
-                <Button class="bg-red-600 hover:bg-red-700" @click="openCreate">
-                    <Plus class="mr-1.5 h-4 w-4" /> Nuevo equipo
-                </Button>
+                <div class="flex items-center gap-2">
+                    <Button variant="outline" @click="router.visit(route('equipment-dispatches.index'))">
+                        <Truck class="mr-1.5 h-4 w-4" /> Despachos
+                    </Button>
+                    <Button class="bg-red-600 hover:bg-red-700" @click="openCreate">
+                        <Plus class="mr-1.5 h-4 w-4" /> Nuevo equipo
+                    </Button>
+                </div>
             </div>
 
             <!-- ── Tabs ────────────────────────────────────────────────── -->
@@ -250,13 +266,13 @@ function fmtDate(d: string) {
                 <TabsList class="mb-1">
                     <TabsTrigger value="computer" class="flex items-center gap-1.5">
                         <Laptop class="h-4 w-4" /> Tecnológico
-                        <span class="ml-1 rounded-full bg-gray-200 px-1.5 py-0.5 text-[10px] font-bold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                        <span class="bg-muted text-muted-foreground ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold">
                             {{ computerEquipments.length }}
                         </span>
                     </TabsTrigger>
                     <TabsTrigger value="kitchen" class="flex items-center gap-1.5">
                         <UtensilsCrossed class="h-4 w-4" /> Menaje / Cocina
-                        <span class="ml-1 rounded-full bg-gray-200 px-1.5 py-0.5 text-[10px] font-bold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                        <span class="bg-muted text-muted-foreground ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold">
                             {{ kitchenEquipments.length }}
                         </span>
                     </TabsTrigger>
@@ -264,58 +280,62 @@ function fmtDate(d: string) {
 
                 <!-- ─ Tab: Tecnológico ─────────────────────────────────── -->
                 <TabsContent value="computer">
-                    <div class="rounded-xl border border-gray-100 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                        <div class="flex items-center gap-2 border-b border-gray-100 px-4 py-3 dark:border-gray-700">
-                            <Search class="h-4 w-4 flex-shrink-0 text-gray-400" />
-                            <Input v-model="searchComputer" placeholder="Buscar por nombre, marca, modelo, código…" class="border-0 shadow-none focus-visible:ring-0 dark:bg-transparent" />
+                    <div class="bg-card overflow-hidden rounded-xl border shadow-sm">
+                        <div class="flex items-center gap-2 border-b px-4 py-3">
+                            <Search class="text-muted-foreground h-4 w-4 flex-shrink-0" />
+                            <Input v-model="searchComputer" placeholder="Buscar por nombre, marca, modelo, código…" class="border-0 shadow-none focus-visible:ring-0" />
                         </div>
                         <div class="overflow-x-auto">
-                            <table class="w-full text-sm">
-                                <thead class="bg-gray-50 dark:bg-gray-700/50">
-                                    <tr class="text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                                        <th class="px-4 py-3">Código</th>
-                                        <th class="px-4 py-3">Equipo</th>
-                                        <th class="px-4 py-3">Marca / Modelo</th>
-                                        <th class="px-4 py-3">Serie</th>
-                                        <th class="px-4 py-3">Estado</th>
-                                        <th class="px-4 py-3">Responsable</th>
-                                        <th class="px-4 py-3 text-center">Historial</th>
-                                        <th class="px-4 py-3 text-center">Acciones</th>
+                            <table class="w-full table-auto border-collapse">
+                                <thead class="bg-muted/50">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold">Código</th>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold">Equipo</th>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold">Marca / Modelo</th>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold">Serie</th>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold">Estado</th>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold">Responsable</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold">Historial</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold">Acciones</th>
                                     </tr>
                                 </thead>
-                                <tbody class="divide-y divide-gray-50 dark:divide-gray-700">
+                                <tbody>
                                     <tr v-if="filteredComputer.length === 0">
-                                        <td colspan="8" class="px-4 py-14 text-center text-gray-400">
+                                        <td colspan="8" class="text-muted-foreground py-14 text-center">
                                             <Monitor class="mx-auto mb-2 h-8 w-8 opacity-30" />
                                             <p class="text-sm">No hay equipos tecnológicos registrados</p>
                                         </td>
                                     </tr>
-                                    <tr v-for="item in filteredComputer" :key="item.id" class="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                                        <td class="px-4 py-3 font-mono text-xs text-gray-500">{{ item.code || '—' }}</td>
+                                    <tr v-for="item in filteredComputer" :key="item.id" class="hover:bg-muted/30 border-t transition">
                                         <td class="px-4 py-3">
-                                            <p class="font-medium text-gray-900 dark:text-white">{{ item.name }}</p>
-                                            <p v-if="item.presentation" class="text-xs text-gray-400">{{ item.presentation }}</p>
+                                            <span class="bg-muted rounded px-2 py-0.5 font-mono text-xs">{{ item.code || '—' }}</span>
                                         </td>
-                                        <td class="px-4 py-3 text-gray-600 dark:text-gray-300">
+                                        <td class="px-4 py-3">
+                                            <p class="text-sm font-semibold">{{ item.name }}</p>
+                                            <p v-if="item.presentation" class="text-muted-foreground text-xs">{{ item.presentation }}</p>
+                                        </td>
+                                        <td class="text-muted-foreground px-4 py-3 text-sm">
                                             {{ [item.brand, item.model].filter(Boolean).join(' · ') || '—' }}
                                         </td>
-                                        <td class="px-4 py-3 font-mono text-xs text-gray-500">{{ item.series || '—' }}</td>
+                                        <td class="px-4 py-3">
+                                            <span class="text-muted-foreground font-mono text-xs">{{ item.series || '—' }}</span>
+                                        </td>
                                         <td class="px-4 py-3">
                                             <span :class="['inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', statusInfo(item.status).cls]">
                                                 {{ statusInfo(item.status).label }}
                                             </span>
                                         </td>
                                         <td class="px-4 py-3">
-                                            <span v-if="item.responsible" class="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300">
+                                            <span v-if="item.responsible" class="flex items-center gap-1.5 text-sm">
                                                 <CheckCircle2 class="h-3.5 w-3.5 text-green-500" />{{ item.responsible.name }}
                                             </span>
-                                            <span v-else class="flex items-center gap-1 text-xs text-gray-400">
+                                            <span v-else class="text-muted-foreground flex items-center gap-1 text-xs">
                                                 <AlertTriangle class="h-3.5 w-3.5 text-amber-400" /> Sin asignar
                                             </span>
                                         </td>
                                         <td class="px-4 py-3 text-center">
                                             <button
-                                                class="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600 dark:bg-gray-700 dark:text-gray-300"
+                                                class="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors hover:bg-red-50 hover:text-red-600"
                                                 @click="openHistory(item, 'computer')"
                                             >
                                                 <History class="h-3 w-3" /> {{ item.histories_count }}
@@ -323,12 +343,22 @@ function fmtDate(d: string) {
                                         </td>
                                         <td class="px-4 py-3">
                                             <div class="flex items-center justify-center gap-1">
-                                                <button class="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-blue-50 hover:text-blue-600" title="Editar" @click="openEdit(item, 'computer')">
-                                                    <Pencil class="h-4 w-4" />
-                                                </button>
-                                                <button class="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600" title="Eliminar" @click="confirmDelete(item, 'computer')">
-                                                    <Trash2 class="h-4 w-4" />
-                                                </button>
+                                                <TooltipProvider><Tooltip>
+                                                    <TooltipTrigger as-child>
+                                                        <Button variant="ghost" size="icon" class="h-8 w-8 text-blue-600 hover:bg-blue-50 hover:text-blue-700" @click="openEdit(item, 'computer')">
+                                                            <Pencil class="h-4 w-4" />
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>Editar</TooltipContent>
+                                                </Tooltip></TooltipProvider>
+                                                <TooltipProvider><Tooltip>
+                                                    <TooltipTrigger as-child>
+                                                        <Button variant="ghost" size="icon" class="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-600" @click="confirmDelete(item, 'computer')">
+                                                            <Trash2 class="h-4 w-4" />
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>Eliminar</TooltipContent>
+                                                </Tooltip></TooltipProvider>
                                             </div>
                                         </td>
                                     </tr>
@@ -340,58 +370,62 @@ function fmtDate(d: string) {
 
                 <!-- ─ Tab: Menaje ──────────────────────────────────────── -->
                 <TabsContent value="kitchen">
-                    <div class="rounded-xl border border-gray-100 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
-                        <div class="flex items-center gap-2 border-b border-gray-100 px-4 py-3 dark:border-gray-700">
-                            <Search class="h-4 w-4 flex-shrink-0 text-gray-400" />
-                            <Input v-model="searchKitchen" placeholder="Buscar por nombre, marca, modelo, código…" class="border-0 shadow-none focus-visible:ring-0 dark:bg-transparent" />
+                    <div class="bg-card overflow-hidden rounded-xl border shadow-sm">
+                        <div class="flex items-center gap-2 border-b px-4 py-3">
+                            <Search class="text-muted-foreground h-4 w-4 flex-shrink-0" />
+                            <Input v-model="searchKitchen" placeholder="Buscar por nombre, marca, modelo, código…" class="border-0 shadow-none focus-visible:ring-0" />
                         </div>
                         <div class="overflow-x-auto">
-                            <table class="w-full text-sm">
-                                <thead class="bg-gray-50 dark:bg-gray-700/50">
-                                    <tr class="text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                                        <th class="px-4 py-3">Código</th>
-                                        <th class="px-4 py-3">Equipo</th>
-                                        <th class="px-4 py-3">Marca / Modelo</th>
-                                        <th class="px-4 py-3">Serie</th>
-                                        <th class="px-4 py-3">Estado</th>
-                                        <th class="px-4 py-3">Responsable</th>
-                                        <th class="px-4 py-3 text-center">Historial</th>
-                                        <th class="px-4 py-3 text-center">Acciones</th>
+                            <table class="w-full table-auto border-collapse">
+                                <thead class="bg-muted/50">
+                                    <tr>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold">Código</th>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold">Equipo</th>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold">Marca / Modelo</th>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold">Serie</th>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold">Estado</th>
+                                        <th class="px-4 py-3 text-left text-xs font-semibold">Responsable</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold">Historial</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold">Acciones</th>
                                     </tr>
                                 </thead>
-                                <tbody class="divide-y divide-gray-50 dark:divide-gray-700">
+                                <tbody>
                                     <tr v-if="filteredKitchen.length === 0">
-                                        <td colspan="8" class="px-4 py-14 text-center text-gray-400">
+                                        <td colspan="8" class="text-muted-foreground py-14 text-center">
                                             <UtensilsCrossed class="mx-auto mb-2 h-8 w-8 opacity-30" />
                                             <p class="text-sm">No hay equipos de menaje registrados</p>
                                         </td>
                                     </tr>
-                                    <tr v-for="item in filteredKitchen" :key="item.id" class="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                                        <td class="px-4 py-3 font-mono text-xs text-gray-500">{{ item.code || '—' }}</td>
+                                    <tr v-for="item in filteredKitchen" :key="item.id" class="hover:bg-muted/30 border-t transition">
                                         <td class="px-4 py-3">
-                                            <p class="font-medium text-gray-900 dark:text-white">{{ item.name }}</p>
-                                            <p v-if="item.size" class="text-xs text-gray-400">{{ item.size }}</p>
+                                            <span class="bg-muted rounded px-2 py-0.5 font-mono text-xs">{{ item.code || '—' }}</span>
                                         </td>
-                                        <td class="px-4 py-3 text-gray-600 dark:text-gray-300">
+                                        <td class="px-4 py-3">
+                                            <p class="text-sm font-semibold">{{ item.name }}</p>
+                                            <p v-if="item.size" class="text-muted-foreground text-xs">{{ item.size }}</p>
+                                        </td>
+                                        <td class="text-muted-foreground px-4 py-3 text-sm">
                                             {{ [item.brand, item.model].filter(Boolean).join(' · ') || '—' }}
                                         </td>
-                                        <td class="px-4 py-3 font-mono text-xs text-gray-500">{{ item.series || '—' }}</td>
+                                        <td class="px-4 py-3">
+                                            <span class="text-muted-foreground font-mono text-xs">{{ item.series || '—' }}</span>
+                                        </td>
                                         <td class="px-4 py-3">
                                             <span :class="['inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', statusInfo(item.status).cls]">
                                                 {{ statusInfo(item.status).label }}
                                             </span>
                                         </td>
                                         <td class="px-4 py-3">
-                                            <span v-if="item.responsible" class="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300">
+                                            <span v-if="item.responsible" class="flex items-center gap-1.5 text-sm">
                                                 <CheckCircle2 class="h-3.5 w-3.5 text-green-500" />{{ item.responsible.name }}
                                             </span>
-                                            <span v-else class="flex items-center gap-1 text-xs text-gray-400">
+                                            <span v-else class="text-muted-foreground flex items-center gap-1 text-xs">
                                                 <AlertTriangle class="h-3.5 w-3.5 text-amber-400" /> Sin asignar
                                             </span>
                                         </td>
                                         <td class="px-4 py-3 text-center">
                                             <button
-                                                class="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 transition-colors hover:bg-red-50 hover:text-red-600 dark:bg-gray-700 dark:text-gray-300"
+                                                class="bg-muted text-muted-foreground inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium transition-colors hover:bg-red-50 hover:text-red-600"
                                                 @click="openHistory(item, 'kitchen')"
                                             >
                                                 <History class="h-3 w-3" /> {{ item.histories_count }}
@@ -399,12 +433,22 @@ function fmtDate(d: string) {
                                         </td>
                                         <td class="px-4 py-3">
                                             <div class="flex items-center justify-center gap-1">
-                                                <button class="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-blue-50 hover:text-blue-600" title="Editar" @click="openEdit(item, 'kitchen')">
-                                                    <Pencil class="h-4 w-4" />
-                                                </button>
-                                                <button class="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600" title="Eliminar" @click="confirmDelete(item, 'kitchen')">
-                                                    <Trash2 class="h-4 w-4" />
-                                                </button>
+                                                <TooltipProvider><Tooltip>
+                                                    <TooltipTrigger as-child>
+                                                        <Button variant="ghost" size="icon" class="h-8 w-8 text-blue-600 hover:bg-blue-50 hover:text-blue-700" @click="openEdit(item, 'kitchen')">
+                                                            <Pencil class="h-4 w-4" />
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>Editar</TooltipContent>
+                                                </Tooltip></TooltipProvider>
+                                                <TooltipProvider><Tooltip>
+                                                    <TooltipTrigger as-child>
+                                                        <Button variant="ghost" size="icon" class="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-600" @click="confirmDelete(item, 'kitchen')">
+                                                            <Trash2 class="h-4 w-4" />
+                                                        </Button>
+                                                    </TooltipTrigger>
+                                                    <TooltipContent>Eliminar</TooltipContent>
+                                                </Tooltip></TooltipProvider>
                                             </div>
                                         </td>
                                     </tr>
@@ -523,6 +567,16 @@ function fmtDate(d: string) {
                             </SelectContent>
                         </Select>
                     </div>
+                    <div class="grid gap-1.5">
+                        <Label>Almacén de Almacenamiento</Label>
+                        <Select v-model="form.storage_headquarter_id">
+                            <SelectTrigger><SelectValue placeholder="Sin sede asignada" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">Sin sede asignada</SelectItem>
+                                <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">{{ hq.name }}</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </div>
             </div>
 
@@ -542,12 +596,12 @@ function fmtDate(d: string) {
                 <SheetTitle class="flex items-center gap-2">
                     <History class="h-5 w-5 text-red-600" /> Historial del equipo
                 </SheetTitle>
-                <p class="mt-0.5 truncate text-sm text-gray-500 dark:text-gray-400">{{ historyItem?.name }}</p>
+                <p class="text-muted-foreground mt-0.5 truncate text-sm">{{ historyItem?.name }}</p>
             </SheetHeader>
 
             <!-- Add entry form -->
-            <div class="border-b bg-gray-50 px-5 py-4 dark:bg-gray-800/60">
-                <p class="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Nueva entrada</p>
+            <div class="bg-muted/30 border-b px-5 py-4">
+                <p class="text-muted-foreground mb-3 text-xs font-semibold uppercase tracking-wide">Nueva entrada</p>
                 <div class="grid gap-2.5">
                     <div class="grid grid-cols-2 gap-2">
                         <div class="grid gap-1">
@@ -600,7 +654,7 @@ function fmtDate(d: string) {
                     <div class="absolute top-2 bottom-2 left-2 w-px bg-gray-200 dark:bg-gray-600" />
                     <div v-for="entry in historyList" :key="entry.id" class="relative mb-4">
                         <div :class="['absolute -left-[13px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-gray-900', ACTION_COLORS[entry.action]?.split(' ')[0]?.replace('-100', '-400') ?? 'bg-gray-400']" />
-                        <div class="rounded-lg border border-gray-100 bg-white p-3 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                        <div class="bg-card rounded-lg border p-3 shadow-sm">
                             <div class="flex items-start justify-between gap-2">
                                 <span :class="['inline-block rounded-full px-2 py-0.5 text-[10px] font-bold', ACTION_COLORS[entry.action] ?? 'bg-gray-100 text-gray-600']">
                                     {{ entry.action }}

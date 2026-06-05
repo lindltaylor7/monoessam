@@ -62,9 +62,9 @@ const onChangeStatus = () => {
 <template>
     <div class="space-y-4">
         <!-- Acciones Masivas -->
-        <div v-if="selectedStaffIds.length > 0" class="mb-4 flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 p-4">
+        <div v-if="selectedStaffIds.length > 0" class="bg-muted/50 mb-4 flex items-center justify-between rounded-lg border p-4">
             <div class="flex items-center gap-3">
-                <span class="text-sm font-medium text-blue-700"> {{ selectedStaffIds.length }} seleccionados </span>
+                <span class="text-foreground text-sm font-medium"> {{ selectedStaffIds.length }} seleccionados </span>
             </div>
             <div class="flex items-center gap-2">
                 <MassSCTRDialog :selected-ids="selectedStaffIds" @complete="onMassActionComplete" />
@@ -93,7 +93,7 @@ const onChangeStatus = () => {
                     <tr
                         v-for="staff in staffList"
                         :key="staff.id"
-                        :class="['hover:bg-muted/30 border-t transition', selectedStaffIds.includes(staff.id) ? 'bg-blue-50/30' : '']"
+                        :class="['hover:bg-muted/30 border-t transition', selectedStaffIds.includes(staff.id) ? 'bg-primary/5' : '']"
                     >
                         <td class="p-4">
                             <Checkbox

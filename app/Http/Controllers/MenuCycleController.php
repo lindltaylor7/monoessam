@@ -2,12 +2,28 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Dish_category;
+use App\Models\Level;
 use App\Models\MenuCycle;
+use App\Models\Mine;
+use App\Models\Structure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
 
 class MenuCycleController extends Controller
 {
+    public function index()
+    {
+        return Inertia::render('cycles/Index', [
+            'mines'          => Mine::with(['units', 'units.cafes', 'units.cafes.services'])->get(),
+            'structures'     => Structure::with('costs')->get(),
+            'savedCycles'    => MenuCycle::orderBy('id', 'desc')->get(),
+            'dishCategories' => Dish_category::all(),
+            'levels'         => Level::all(),
+        ]);
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([

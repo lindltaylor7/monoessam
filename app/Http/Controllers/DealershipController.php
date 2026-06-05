@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Business;
 use App\Models\Dealership;
+use App\Models\Headquarter;
+use App\Models\Service;
 use App\Models\Subdealership;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -15,8 +18,11 @@ class DealershipController extends Controller
     public function index()
     {
         return Inertia::render('dealerships/Index', [
-            'dealerships' => Dealership::all(),
+            'dealerships'    => Dealership::all(),
             'subdealerships' => Subdealership::all(),
+            'businesses'     => Business::with('headquarters')->get(),
+            'headquarters'   => Headquarter::with('business')->get(),
+            'services'       => Service::all(),
         ]);
     }
 

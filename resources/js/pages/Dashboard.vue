@@ -117,7 +117,7 @@ const kpiCards = computed(() => {
             label:     'Ventas hoy',
             value:     props.salesStats!.todayCount.toLocaleString('es-PE'),
             sub:       `S/ ${props.salesStats!.todayAmount.toLocaleString('es-PE', { minimumFractionDigits: 2 })}`,
-            subColor:  'text-gray-700 dark:text-gray-300 font-semibold',
+            subColor:  'text-foreground/80 font-semibold',
             subIcon:   null,
             iconBg:    'bg-red-50 dark:bg-red-900/30',
             iconColor: 'text-red-600 dark:text-red-400',
@@ -293,17 +293,17 @@ function fmtDate(d: string) {
             >
                 <div
                     v-for="card in kpiCards" :key="card.key"
-                    class="rounded-xl border border-gray-100 bg-white p-5 shadow-sm transition-shadow hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+                    class="bg-card rounded-xl border p-5 shadow-sm transition-shadow hover:shadow-md"
                 >
                     <div class="flex items-center justify-between">
-                        <span class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                        <span class="text-muted-foreground text-xs font-semibold uppercase tracking-wider">
                             {{ card.label }}
                         </span>
                         <div :class="['rounded-lg p-2', card.iconBg]">
                             <component :is="card.icon" :class="['h-4 w-4', card.iconColor]" />
                         </div>
                     </div>
-                    <p class="mt-3 text-3xl font-bold text-gray-900 dark:text-white">{{ card.value }}</p>
+                    <p class="mt-3 text-3xl font-bold">{{ card.value }}</p>
                     <p class="mt-1 flex items-center gap-1 text-xs dark:text-gray-400" :class="card.subColor">
                         <component :is="card.subIcon" v-if="card.subIcon" class="h-3 w-3" />
                         {{ card.sub }}
@@ -317,14 +317,14 @@ function fmtDate(d: string) {
                 <!-- Sales chart (only for sales roles) -->
                 <div
                     v-if="hasSalesSection && salesChart"
-                    class="lg:col-span-3 rounded-xl border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800"
+                    class="bg-card lg:col-span-3 rounded-xl border p-5 shadow-sm"
                 >
                     <div class="mb-3 flex items-start justify-between">
                         <div>
-                            <h2 class="font-bold text-gray-800 dark:text-white">Ventas — últimos 7 días</h2>
-                            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                            <h2 class="font-semibold">Ventas — últimos 7 días</h2>
+                            <p class="mt-0.5 text-xs text-muted-foreground">
                                 {{ weekTotals.count.toLocaleString('es-PE') }} transacciones ·
-                                <span class="font-semibold text-gray-700 dark:text-gray-300">
+                                <span class="font-semibold text-foreground/80">
                                     S/ {{ weekTotals.amount.toLocaleString('es-PE', { minimumFractionDigits: 2 }) }}
                                 </span>
                             </p>
@@ -340,22 +340,22 @@ function fmtDate(d: string) {
                 <!-- Quick access modules -->
                 <div
                     :class="[
-                        'rounded-xl border border-gray-100 bg-white p-5 shadow-sm dark:border-gray-700 dark:bg-gray-800',
+                        'bg-card rounded-xl border p-5 shadow-sm',
                         hasSalesSection ? 'lg:col-span-2' : 'lg:col-span-full',
                     ]"
                 >
-                    <h2 class="mb-4 font-bold text-gray-800 dark:text-white">Mis módulos</h2>
+                    <h2 class="mb-4 font-semibold">Mis módulos</h2>
 
                     <div v-if="quickLinks.length > 0" class="grid gap-2.5" :class="hasSalesSection ? 'grid-cols-2' : 'grid-cols-3 sm:grid-cols-4 lg:grid-cols-5'">
                         <a
                             v-for="link in quickLinks" :key="link.href"
                             :href="link.href"
-                            class="group flex flex-col items-center gap-2 rounded-xl border border-gray-100 p-3 text-center transition-all hover:border-red-200 hover:bg-red-50 dark:border-gray-700 dark:hover:border-red-800 dark:hover:bg-red-900/20"
+                            class="group flex flex-col items-center gap-2 rounded-xl border p-3 text-center transition-all hover:border-red-200 hover:bg-red-50 dark:hover:border-red-800 dark:hover:bg-red-900/20"
                         >
-                            <div class="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-600 transition-colors group-hover:bg-red-600 group-hover:text-white dark:bg-gray-700 dark:text-gray-300">
+                            <div class="bg-muted text-muted-foreground flex h-10 w-10 items-center justify-center rounded-lg transition-colors group-hover:bg-red-600 group-hover:text-white">
                                 <component :is="link.icon" class="h-5 w-5" />
                             </div>
-                            <span class="text-xs font-medium leading-tight text-gray-700 dark:text-gray-300">
+                            <span class="text-xs font-medium leading-tight text-foreground/80">
                                 {{ link.title }}
                             </span>
                         </a>
@@ -365,8 +365,8 @@ function fmtDate(d: string) {
                     <div v-else class="flex flex-col items-center justify-center gap-3 py-8 text-center text-gray-400">
                         <LayoutGrid class="h-10 w-10 opacity-30" />
                         <div>
-                            <p class="text-sm font-medium text-gray-600 dark:text-gray-300">Sin módulos asignados</p>
-                            <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                            <p class="text-muted-foreground text-sm font-medium">Sin módulos asignados</p>
+                            <p class="mt-1 text-xs text-muted-foreground">
                                 Contacta al administrador para solicitar acceso a los módulos correspondientes a tu rol.
                             </p>
                         </div>
@@ -377,16 +377,16 @@ function fmtDate(d: string) {
             <!-- ── DOC ALERTS (only for headcount roles) ──────────────────── -->
             <div
                 v-if="hasHeadcountSection && docAlerts && docAlerts.length > 0"
-                class="rounded-xl border border-amber-100 bg-white shadow-sm dark:border-amber-900/30 dark:bg-gray-800"
+                class="bg-card rounded-xl border border-amber-100 shadow-sm dark:border-amber-900/30"
             >
-                <div class="flex items-center justify-between border-b border-gray-100 px-5 py-4 dark:border-gray-700">
+                <div class="flex items-center justify-between border-b px-5 py-4">
                     <div class="flex items-center gap-2.5">
                         <div class="rounded-lg bg-amber-100 p-1.5 dark:bg-amber-900/40">
                             <FileWarning class="h-4 w-4 text-amber-600 dark:text-amber-400" />
                         </div>
                         <div>
-                            <h2 class="font-bold text-gray-800 dark:text-white">Documentos próximos a vencer</h2>
-                            <p class="text-xs text-gray-500 dark:text-gray-400">
+                            <h2 class="font-semibold">Documentos próximos a vencer</h2>
+                            <p class="text-xs text-muted-foreground">
                                 Próximos 30 días · {{ staffStats!.expiring }} documento(s)
                             </p>
                         </div>
@@ -407,12 +407,12 @@ function fmtDate(d: string) {
                         <div class="flex items-center gap-3">
                             <span :class="['h-2 w-2 flex-shrink-0 rounded-full', alertDotClass(alert.days_left)]" />
                             <div>
-                                <p class="text-sm font-semibold text-gray-800 dark:text-white">{{ alert.staff_name }}</p>
-                                <p class="text-xs text-gray-500 dark:text-gray-400">{{ alert.file_type }}</p>
+                                <p class="text-sm font-semibold">{{ alert.staff_name }}</p>
+                                <p class="text-xs text-muted-foreground">{{ alert.file_type }}</p>
                             </div>
                         </div>
                         <div class="text-right">
-                            <p class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ fmtDate(alert.expiration_date) }}</p>
+                            <p class="text-xs font-medium text-foreground/80">{{ fmtDate(alert.expiration_date) }}</p>
                             <span :class="['inline-block rounded-full border px-2 py-0.5 text-[10px] font-bold', alertBadgeClass(alert.days_left)]">
                                 {{ alert.days_left === 0 ? 'Vence hoy' : `${alert.days_left}d restantes` }}
                             </span>

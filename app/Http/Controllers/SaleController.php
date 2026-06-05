@@ -14,16 +14,11 @@ use App\Models\Service;
 use App\Models\Subdealership;
 use App\Models\Ticket;
 use App\Models\Ticket_detail;
-use App\Models\User;
-use Barryvdh\DomPDF\Facade\Pdf as FacadePdf;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Bus;
-use Mike42\Escpos\PrintConnectors\WindowsPrintConnector;
-use Mike42\Escpos\Printer;
-use Barryvdh\DomPDF\Facades\Pdf;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
-use phpDocumentor\Reflection\DocBlock\Tags\Return_;
+use Mike42\Escpos\PrintConnectors\WindowsPrintConnector;
+use Mike42\Escpos\Printer;
 
 class SaleController extends Controller
 {
@@ -391,7 +386,7 @@ class SaleController extends Controller
 
     public function search(string $word, string $id)
     {
-        $dinners = Dinner::where(function ($query) use ($word) {
+        return Dinner::where(function ($query) use ($word) {
             $query->where('name', 'like', '%' . $word . '%')
                 ->orWhere('dni', 'like', '%' . $word . '%');
         })
@@ -399,10 +394,6 @@ class SaleController extends Controller
             ->with(['cafe', 'cafe.unit', 'subdealership'])
             ->take(8)
             ->get();
-
-        $this->printTest();
-
-        return $dinners;
     }
 
     public function excel(Request $request)
@@ -424,21 +415,10 @@ class SaleController extends Controller
     public function printTest()
     {
         try {
-            $nombreImpresora = "EPSON TM-T20II Receipt";
+            $connector = new WindowsPrintConnector("EPSON TM-T20II Receipt");
+            $printer   = new Printer($connector);
 
-            $connector = new WindowsPrintConnector($nombreImpresora);
-
-            $printer = new Printer($connector);
-
-            $printer->text("Hello World\n");
-            $printer->text("SOY DIEGO\n");
-            $printer->text("SOY DIEGO\n");
-            $printer->text("SOY DIEGO\n");
-            $printer->text("SOY DIEGO\n");
-            $printer->text("SOY DIEGO\n");
-            $printer->text("SOY DIEGO\n");
-            $printer->text("SOY DIEGO\n");
-            $printer->text("SOY DIEGO\n");
+            $printer->text("--- Test de impresora ---\n");
             $printer->cut();
             $printer->close();
 

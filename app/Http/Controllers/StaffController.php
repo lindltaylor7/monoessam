@@ -22,458 +22,164 @@ use Spatie\Permission\Models\Role;
 
 class StaffController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
     public function index()
     {
-        // Get all clothes with roles to map which role needs which clothes
-        $clothes = Cloth::with('roles')->get();
-
-        // Organize clothes by role and cafe for easier frontend consumption
-        $roleClothes = [];
-        foreach ($clothes as $cloth) {
-            foreach ($cloth->roles as $role) {
-                $roleId = $role->id;
-                $cafeId = $role->pivot->cafe_id;
-
-                if (!isset($roleClothes[$roleId])) {
-                    $roleClothes[$roleId] = [];
-                }
-
-                $key = $cafeId ?: 'all';
-                if (!isset($roleClothes[$roleId][$key])) {
-                    $roleClothes[$roleId][$key] = [];
-                }
-                $roleClothes[$roleId][$key][] = $cloth;
-            }
-        }
-
         return Inertia::render('staff/Index', [
-            'cafes' => Cafe::with('unit')->get(),
-            'staff' => Staff::with([
+            'cafes'       => Cafe::with('unit')->get(),
+            'staff'       => Staff::with([
                 'photo',
                 'staff_files',
                 'staff_financial',
                 'staff_clothes',
-                'observations' => function ($query) {
-                    $query->orderBy('created_at', 'desc');
-                },
+                'observations'   => fn($q) => $q->orderBy('created_at', 'desc'),
                 'observations.user',
-                'staffable' => function ($query) {
-                    $query->morphWith([
-                        Cafe::class => ['unit'], // Solo cargará 'unit' si el modelo es Cafe
-                        Area::class => ['headquarters', 'headquarters.business'],       // No carga nada extra si es Area
-                    ]);
-                },
-                'guardRole.guardSelected'
+                'staffable'      => fn($q) => $q->morphWith([
+                    Cafe::class => ['unit'],
+                    Area::class => ['headquarters', 'headquarters.business'],
+                ]),
+                'guardRole.guardSelected',
             ])->orderBy('id', 'desc')->get(),
-            'roles' => Role::all(),
-            'units' => Unit::with(['cafes', 'mine'])->get(),
-            'businneses' => Business::with(['headquarters', 'headquarters.areas'])->get(),
-            'roleClothes' => $roleClothes
+            'roles'       => Role::all(),
+            'units'       => Unit::with(['cafes', 'mine'])->get(),
+            'businneses'  => Business::with(['headquarters', 'headquarters.areas'])->get(),
+            'roleClothes' => $this->buildRoleClothesMap(),
         ]);
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        //
-    }
+    public function create() {}
 
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(Request $request)
     {
-
-        $validatedData = $request->validate([
+        $request->validate([
             'name' => 'required',
-            'dni' => 'required|unique:staff|max:8',
-            'cell' => 'required'
+            'dni'  => 'required|unique:staff|max:8',
+            'cell' => 'required',
         ]);
 
-        if ($request->cafeId && !$request->areaId) {
-            $cafe = Cafe::find($request->cafeId);
-
-            $staff = $cafe->staffs()->create([
-                'name' => $request->name,
-                'dni' => $request->dni,
-                'cell' => $request->cell,
-                'birthdate' => $request->birthdate,
-                'age' => $request->age,
-                'sex' => $request->sex,
-                'email' => $request->email,
-                'country' => $request->country,
-                'civilstatus' => $request->civilstatus,
-                'contactname' => $request->contactname,
-                'contactcell' => $request->contactcell,
-                'status' => 1,
-                'user_id' => Auth::id(),
-                'role_id' => $request->roleId
-            ]);
-
-            $guard =  Guard::firstOrCreate([
-                'cafe_id' => $cafe->id,
-                'name' => $request->guard,
-            ]);
-
-            DB::table('guard_roles')->insert([
-                'guard_id' => $guard->id,
-                'role_id' => $request->roleId,
-                'staff_id' => $staff->id,
-            ]);
-        } else if ($request->areaId  && !$request->cafeId) {
-            $area = Area::find($request->areaId);
-
-            $staff = $area->staffs()->create([
-                'name' => $request->name,
-                'dni' => $request->dni,
-                'cell' => $request->cell,
-                'birthdate' => $request->birthdate,
-                'age' => $request->age,
-                'sex' => $request->sex,
-                'email' => $request->email,
-                'country' => $request->country,
-                'civilstatus' => $request->civilstatus,
-                'contactname' => $request->contactname,
-                'contactcell' => $request->contactcell,
-                'status' => 1,
-                'user_id' => Auth::id(),
-                'role_id' => $request->roleId
-            ]);
-
-            $guard = Guard::firstOrCreate([
-                'name' => $request->guard,
-            ]);
-
-            DB::table('guard_roles')->insert([
-                'guard_id' => $guard->id,
-                'role_id' => $request->roleId,
-                'staff_id' => $staff->id,
-            ]);
-        } else {
-            $staff = Staff::create([
-                'name' => $request->name,
-                'dni' => $request->dni,
-                'cell' => $request->cell,
-                'birthdate' => $request->birthdate,
-                'age' => $request->age,
-                'sex' => $request->sex,
-                'email' => $request->email,
-                'country' => $request->country,
-                'civilstatus' => $request->civilstatus,
-                'contactname' => $request->contactname,
-                'contactcell' => $request->contactcell,
-                'status' => 1,
-                'user_id' => Auth::id()
-            ]);
-        }
-
-
-        if ($request->hasFile('files')) {
-            foreach ($request->file('files') as $index => $file) {
-                $originalName = $file->getClientOriginalName();
-                $chunksName = explode("_", $originalName);
-
-                $fileName = time() . '_' . $originalName;
-                $filePath = $file->storeAs('files', $fileName, 'public');
-
-                $label = 'default'; // Default or extract from filename
-
-                $staff_file = Staff_file::create([
-                    'staff_id' => $staff->id,
-                    'file_type' => $chunksName[0], // You need to determine this differently
-                    'file_path' => $filePath,
-                    'expiration_date' => $request->filesData[$index]['expirationDate'] == '-' ? null : $request->filesData[$index]['expirationDate']
-                ]);
-            }
-        }
-
-        if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('photos', 'public');
-            $staff->photo()->create([
-                'url' => $path
-            ]);
-        }
-
-        $staff_financial = Staff_financial::create([
-            'staff_id' => $staff->id,
-            'district' => $request->district,
-            'province' => $request->province,
-            'department' => $request->department,
-            'start_date' => $request->startDate,
-            'children' => $request->children,
-            'afp' => $request->afp,
-            'onp' => $request->onp,
-            'address' => $request->address,
-            'account_number' => $request->account_number,
-            'system_work' => $request->workSystem,
-            'replacement' => $request->replacement,
-            'salary' => $request->salary,
-            'observations' => $request->observations,
-            'account_number' => $request->cc,
-            'bank_entity' => $request->bankEntity,
-            'pensioncontribution' => $request->pensioncontrbution,
-            'cci' => $request->cci,
-            'contract_end_date' => $request->contractEndDate
-        ]);
-
-
-        foreach ($request->prendas as $clothe) {
-            if ($clothe['talla']) {
-                $staff_clothes = Staff_clothes::create([
-                    'staff_id' => $staff->id,
-                    'clothe_name' => $clothe['label'],
-                    'clothing_size' => $clothe['talla'],
-                    'cloth_id' => isset($clothe['id']) ? $clothe['id'] : null,
-                ]);
-            }
-        }
+        $staff = $this->createStaff($request);
+        $this->syncGuardRole($request, $staff);
+        $this->handleStaffFiles($request, $staff);
+        $this->handleStaffPhoto($request, $staff);
+        Staff_financial::create(['staff_id' => $staff->id] + $this->buildFinancialAttributes($request));
+        $this->syncStaffClothes($request, $staff);
 
         return redirect()->route('staff.index');
     }
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
-    {
-        //
-    }
+    public function show(string $id) {}
 
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(string $id)
-    {
-        //
-    }
+    public function edit(string $id) {}
 
-    /**
-     * Update the specified resource in storage.
-     */
     public function update(Request $request, string $id)
     {
+        $staff = Staff::with(['staff_financial', 'staff_clothes', 'photo'])->findOrFail($id);
 
-        $staff = Staff::with(['staff_financial', 'staff_clothes', 'photo'])->find($id);
-
-        if ($request->hasFile('photo')) {
-            $path = $request->file('photo')->store('photos', 'public');
-            if ($staff->photo) {
-                Storage::disk('public')->delete($staff->photo->url);
-                $staff->photo()->update([
-                    'url' => $path
-                ]);
-            } else {
-                $staff->photo()->create([
-                    'url' => $path
-                ]);
-            }
-        }
+        $this->handleStaffPhoto($request, $staff, replacing: true);
 
         $staff->update([
-            'name' => $request->name,
-            'dni' => $request->dni,
-            'cell' => $request->cell,
-            'birthdate' =>
-            empty($request->birthdate) || $request->birthdate === 'null'
-                ? null
-                : $request->birthdate,
-            'age' => $request->age,
-            'sex' => $request->sex,
-            'email' => $request->email,
-            'country' => $request->country,
+            'name'        => $request->name,
+            'dni'         => $request->dni,
+            'cell'        => $request->cell,
+            'birthdate'   => $this->nullIfEmpty($request->birthdate),
+            'age'         => $request->age,
+            'sex'         => $request->sex,
+            'email'       => $request->email,
+            'country'     => $request->country,
             'civilstatus' => $request->civilstatus,
             'contactname' => $request->contactname,
             'contactcell' => $request->contactcell,
-            'role_id' => $request->roleId,
-            'user_id' => Auth::id()
+            'role_id'     => $request->roleId,
+            'user_id'     => Auth::id(),
         ]);
 
-        if ($request->workplace == 1 && $request->areaId) {
-            $staff->staffable_id = $request->areaId;
-            $staff->staffable_type = Area::class;
-            $staff->save();
-        } else if ($request->workplace == 2 && $request->cafeId) {
-            $staff->staffable_id = $request->cafeId;
-            $staff->staffable_type = Cafe::class;
-            $staff->save();
-        }
-
-        if ($request->cafeId && !$request->areaId) {
-            $staff->staffable_id = $request->cafeId;
-            $staff->staffable_type = Cafe::class;
-            $staff->save();
-
-
-            $guard = Guard::firstOrCreate([
-                'cafe_id' => $request->cafeId,
-                'name' => $request->guard,
-            ]);
-
-            DB::table('guard_roles')->insert([
-                'guard_id' => $guard->id,
-                'role_id' => $request->roleId,
-                'staff_id' => $staff->id,
-            ]);
-        } else if ($request->areaId && !$request->cafeId) {
-            $staff->staffable_id = $request->areaId;
-            $staff->staffable_type = Area::class;
-            $staff->save();
-        }
+        $this->updateStaffable($request, $staff);
 
         if ($staff->staff_financial) {
-            $staff->staff_financial->update([
-                'district' => $request->district,
-                'province' => $request->province,
-                'department' => $request->department,
-                'start_date' => $request->fechaIngreso,
-                'children' => $request->children,
-                'afp' => $request->afp,
-                'onp' => $request->onp,
-                'address' => $request->address,
-                'account_number' => $request->account_number,
-                'system_work' => $request->workSystem,
-                'replacement' => $request->replacement,
-                'salary' => $request->salary,
-                'observations' => $request->observations,
-                'account_number' => $request->cc,
-                'bank_entity' => empty($request->bankEntity) || $request->bankEntity === 'null'
-                    ? null
-                    : $request->bankEntity,
-                'pensioncontribution' => $request->pensioncontrbution,
-                'cci' => $request->cci,
-                'contract_end_date' => empty($request->contractEndDate) || $request->contractEndDate === 'null'
-                    ? null
-                    : $request->contractEndDate
-            ]);
+            $staff->staff_financial->update(
+                $this->buildFinancialAttributes($request, isUpdate: true)
+            );
         }
-
-
 
         $staff->staff_clothes->each->delete();
-
-        foreach ($request->prendas as $clothe) {
-            if ($clothe['talla']) {
-                $staff_clothes = Staff_clothes::create([
-                    'staff_id' => $staff->id,
-                    'clothe_name' => $clothe['label'],
-                    'clothing_size' => $clothe['talla'],
-                    'cloth_id' => isset($clothe['id']) ? $clothe['id'] : null,
-                ]);
-            }
-        }
+        $this->syncStaffClothes($request, $staff);
 
         return redirect()->route('staff.index');
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
     public function destroy(string $id)
     {
-        $staff = Staff::find($id);
-        $staff_files = Staff_file::where('staff_id', $id)->get();
+        $staff      = Staff::findOrFail($id);
+        $staffFiles = Staff_file::where('staff_id', $id)->get();
+
         if ($staff->photo) {
             Storage::disk('public')->delete($staff->photo->url);
             $staff->photo()->delete();
         }
-        foreach ($staff_files as $file) {
+
+        foreach ($staffFiles as $file) {
             Storage::disk('public')->delete($file->file_path);
         }
-        $staff_files->each->delete();
+
+        $staffFiles->each->delete();
         $staff->delete();
     }
 
     public function banStaff(string $id)
     {
-        $staff_files = Staff_file::where('staff_id', $id)->get();
-        $staff_financial = Staff_financial::where('staff_id', $id)->first();
-        $staff_clothes = Staff_clothes::where('staff_id', $id)->get();
+        $staffFiles     = Staff_file::where('staff_id', $id)->get();
+        $staffFinancial = Staff_financial::where('staff_id', $id)->first();
+        $staffClothes   = Staff_clothes::where('staff_id', $id)->get();
 
-        foreach ($staff_files as $file) {
+        foreach ($staffFiles as $file) {
             Storage::disk('public')->delete($file->file_path);
         }
+        $staffFiles->each->delete();
+        $staffFinancial?->delete();
+        $staffClothes->each->delete();
 
-        $staff_files->each->delete();
-
-        if ($staff_financial) {
-            $staff_financial->delete();
-        }
-
-        $staff_clothes->each->delete();
-
-        $staff = Staff::find($id);
-        $staff->update([
-            'status' => 0
-        ]);
+        Staff::findOrFail($id)->update(['status' => 0]);
 
         return response()->json([
             'cafes' => Cafe::with('unit')->get(),
-            Staff::with(['staff_files', 'observations', 'observations.user'])->where('status', '!=', 0)->get(),
-            'roles' => Role::all()
+            'staff' => Staff::with(['staff_files', 'observations', 'observations.user'])->where('status', '!=', 0)->get(),
+            'roles' => Role::all(),
         ]);
     }
 
     public function updateStatusStaff(Request $request)
     {
-        $staff = Staff::find($request->staff_id);
-        $staff->update([
-            'status' => $request->status
-        ]);
+        Staff::findOrFail($request->staff_id)->update(['status' => $request->status]);
 
-        if ($request->observation != '') {
-            $observation = Observation::create([
-                'staff_id' => $request->staff_id,
-                'user_id' => $request->user_id,
+        if ($request->observation !== '') {
+            Observation::create([
+                'staff_id'    => $request->staff_id,
+                'user_id'     => $request->user_id,
                 'observation' => $request->observation,
-                'date' => date('Y-m-d')
+                'date'        => date('Y-m-d'),
             ]);
         }
     }
 
     public function uploadFile(Request $request)
     {
-
         if ($request->fileId == 0) {
-
             if ($request->hasFile('file')) {
-                $originalName = $request->file->getClientOriginalName();
-                $chunksName = explode("_", $originalName);
-
-                $fileName = time() . '_' . $request->fileTypeKey . '_' . $originalName;
-                $filePath = $request->file->storeAs('files', $fileName, 'public');
-
-                $label = 'default'; // Default or extract from filename
-
-                $staff_file = Staff_file::create([
-                    'staff_id' => $request->staffId,
-                    'file_type' => $request->fileTypeKey, // You need to determine this differently
-                    'file_path' => $filePath,
-                    'expiration_date' => $request->expirationDate
+                Staff_file::create([
+                    'staff_id'        => $request->staffId,
+                    'file_type'       => $request->fileTypeKey,
+                    'file_path'       => $this->storeUploadedFile($request),
+                    'expiration_date' => $request->expirationDate,
                 ]);
             }
         } else {
-            $staff_file = Staff_file::find($request->fileId);
-
-            Storage::disk('public')->delete($staff_file->file_path);
+            $staffFile = Staff_file::findOrFail($request->fileId);
+            Storage::disk('public')->delete($staffFile->file_path);
 
             if ($request->hasFile('file')) {
-                $originalName = $request->file->getClientOriginalName();
-                $chunksName = explode("_", $originalName);
-
-                $fileName = time() . '_' . $request->fileTypeKey . '_' . $originalName;
-                $filePath = $request->file->storeAs('files', $fileName, 'public');
-
-                $label = 'default'; // Default or extract from filename
-
-                $staff_file->update([
-                    'file_type' => $request->fileTypeKey, // You need to determine this differently
-                    'file_path' => $filePath,
-                    'expiration_date' => $request->expirationDate
+                $staffFile->update([
+                    'file_type'       => $request->fileTypeKey,
+                    'file_path'       => $this->storeUploadedFile($request),
+                    'expiration_date' => $request->expirationDate,
                 ]);
             }
         }
@@ -481,78 +187,238 @@ class StaffController extends Controller
 
     public function uploadFileDate(Request $request)
     {
-        $staff_file = Staff_file::find($request->fileId);
-
-        $staff_file->update([
-            'expiration_date' => $request->expirationDate
+        Staff_file::findOrFail($request->fileId)->update([
+            'expiration_date' => $request->expirationDate,
         ]);
     }
 
     public function updateFileStatus(Request $request)
     {
-        $staff_file = Staff_file::find($request->fileId);
-
-        if ($staff_file) {
-            $staff_file->update([
-                'status' => $request->status
-            ]);
-        }
+        $staffFile = Staff_file::find($request->fileId);
+        $staffFile?->update(['status' => $request->status]);
     }
 
-    public function deleteFile($id)
+    public function deleteFile(string $id)
     {
-        $staff_file = Staff_file::find($id);
-        Storage::disk('public')->delete($staff_file->file_path);
-        $staff_file->delete();
+        $staffFile = Staff_file::findOrFail($id);
+        Storage::disk('public')->delete($staffFile->file_path);
+        $staffFile->delete();
     }
 
     public function massUploadSctr(Request $request)
     {
         $request->validate([
-            'staffIds' => 'required|array',
-            'sctr_vida_ley' => 'nullable|file|mimes:pdf',
-            'sctr_vida_ley_exp' => 'nullable|date',
-            'sctr_pension_salud' => 'nullable|file|mimes:pdf',
+            'staffIds'              => 'required|array',
+            'sctr_vida_ley'         => 'nullable|file|mimes:pdf',
+            'sctr_vida_ley_exp'     => 'nullable|date',
+            'sctr_pension_salud'    => 'nullable|file|mimes:pdf',
             'sctr_pension_salud_exp' => 'nullable|date',
-            'sctr_socavon' => 'nullable|file|mimes:pdf',
-            'sctr_socavon_exp' => 'nullable|date'
+            'sctr_socavon'          => 'nullable|file|mimes:pdf',
+            'sctr_socavon_exp'      => 'nullable|date',
         ]);
 
         $config = [
-            'SCTR Vida Ley' => [
-                'file' => $request->file('sctr_vida_ley'),
-                'exp' => $request->sctr_vida_ley_exp
-            ],
-            'SCTR Pensión y Salud' => [
-                'file' => $request->file('sctr_pension_salud'),
-                'exp' => $request->sctr_pension_salud_exp
-            ],
-            'SCTR Socavón' => [
-                'file' => $request->file('sctr_socavon'),
-                'exp' => $request->sctr_socavon_exp
-            ],
+            'SCTR Vida Ley'        => ['file' => $request->file('sctr_vida_ley'),      'exp' => $request->sctr_vida_ley_exp],
+            'SCTR Pensión y Salud' => ['file' => $request->file('sctr_pension_salud'), 'exp' => $request->sctr_pension_salud_exp],
+            'SCTR Socavón'         => ['file' => $request->file('sctr_socavon'),        'exp' => $request->sctr_socavon_exp],
         ];
 
         foreach ($config as $type => $data) {
-            if ($data['file']) {
-                $fileName = time() . '_' . str_replace(' ', '_', $type) . '.pdf';
-                $filePath = $data['file']->storeAs('files', $fileName, 'public');
+            if (!$data['file']) {
+                continue;
+            }
 
-                foreach ($request->staffIds as $staffId) {
-                    Staff_file::updateOrCreate(
-                        [
-                            'staff_id' => $staffId,
-                            'file_type' => $type,
-                        ],
-                        [
-                            'file_path' => $filePath,
-                            'expiration_date' => $data['exp']
-                        ]
-                    );
-                }
+            $filePath = $data['file']->storeAs(
+                'files',
+                time() . '_' . str_replace(' ', '_', $type) . '.pdf',
+                'public'
+            );
+
+            foreach ($request->staffIds as $staffId) {
+                Staff_file::updateOrCreate(
+                    ['staff_id' => $staffId, 'file_type' => $type],
+                    ['file_path' => $filePath, 'expiration_date' => $data['exp']]
+                );
             }
         }
 
         return back()->with('success', 'Documentos cargados exitosamente');
+    }
+
+    // ── Private helpers ───────────────────────────────────────────────────────
+
+    private function buildRoleClothesMap(): array
+    {
+        $map = [];
+        foreach (Cloth::with('roles')->get() as $cloth) {
+            foreach ($cloth->roles as $role) {
+                $key = $role->pivot->cafe_id ?: 'all';
+                $map[$role->id][$key][] = $cloth;
+            }
+        }
+        return $map;
+    }
+
+    private function buildStaffAttributes(Request $request): array
+    {
+        return [
+            'name'        => $request->name,
+            'dni'         => $request->dni,
+            'cell'        => $request->cell,
+            'birthdate'   => $request->birthdate,
+            'age'         => $request->age,
+            'sex'         => $request->sex,
+            'email'       => $request->email,
+            'country'     => $request->country,
+            'civilstatus' => $request->civilstatus,
+            'contactname' => $request->contactname,
+            'contactcell' => $request->contactcell,
+            'status'      => 1,
+            'user_id'     => Auth::id(),
+        ];
+    }
+
+    private function createStaff(Request $request): Staff
+    {
+        $attributes = $this->buildStaffAttributes($request) + ['role_id' => $request->roleId];
+
+        if ($request->cafeId && !$request->areaId) {
+            return Cafe::findOrFail($request->cafeId)->staffs()->create($attributes);
+        }
+
+        if ($request->areaId && !$request->cafeId) {
+            return Area::findOrFail($request->areaId)->staffs()->create($attributes);
+        }
+
+        return Staff::create($this->buildStaffAttributes($request));
+    }
+
+    private function syncGuardRole(Request $request, Staff $staff): void
+    {
+        if (!$request->cafeId && !$request->areaId) {
+            return;
+        }
+
+        $guardData = $request->cafeId
+            ? ['cafe_id' => $request->cafeId, 'name' => $request->guard]
+            : ['name' => $request->guard];
+
+        $guard = Guard::firstOrCreate($guardData);
+
+        DB::table('guard_roles')->insert([
+            'guard_id' => $guard->id,
+            'role_id'  => $request->roleId,
+            'staff_id' => $staff->id,
+        ]);
+    }
+
+    private function handleStaffFiles(Request $request, Staff $staff): void
+    {
+        if (!$request->hasFile('files')) {
+            return;
+        }
+
+        foreach ($request->file('files') as $index => $file) {
+            $originalName = $file->getClientOriginalName();
+            $filePath     = $file->storeAs('files', time() . '_' . $originalName, 'public');
+
+            Staff_file::create([
+                'staff_id'        => $staff->id,
+                'file_type'       => explode('_', $originalName)[0],
+                'file_path'       => $filePath,
+                'expiration_date' => $request->filesData[$index]['expirationDate'] === '-'
+                    ? null
+                    : $request->filesData[$index]['expirationDate'],
+            ]);
+        }
+    }
+
+    private function handleStaffPhoto(Request $request, Staff $staff, bool $replacing = false): void
+    {
+        if (!$request->hasFile('photo')) {
+            return;
+        }
+
+        $path = $request->file('photo')->store('photos', 'public');
+
+        if ($replacing && $staff->photo) {
+            Storage::disk('public')->delete($staff->photo->url);
+            $staff->photo()->update(['url' => $path]);
+        } else {
+            $staff->photo()->create(['url' => $path]);
+        }
+    }
+
+    private function buildFinancialAttributes(Request $request, bool $isUpdate = false): array
+    {
+        return [
+            'district'            => $request->district,
+            'province'            => $request->province,
+            'department'          => $request->department,
+            'start_date'          => $isUpdate ? $request->fechaIngreso : $request->startDate,
+            'children'            => $request->children,
+            'afp'                 => $request->afp,
+            'onp'                 => $request->onp,
+            'address'             => $request->address,
+            'account_number'      => $request->cc,
+            'system_work'         => $request->workSystem,
+            'replacement'         => $request->replacement,
+            'salary'              => $request->salary,
+            'observations'        => $request->observations,
+            'bank_entity'         => $this->nullIfEmpty($request->bankEntity),
+            'pensioncontribution' => $request->pensioncontrbution,
+            'cci'                 => $request->cci,
+            'contract_end_date'   => $this->nullIfEmpty($request->contractEndDate),
+        ];
+    }
+
+    private function syncStaffClothes(Request $request, Staff $staff): void
+    {
+        foreach ($request->prendas as $clothe) {
+            if (empty($clothe['talla'])) {
+                continue;
+            }
+            Staff_clothes::create([
+                'staff_id'      => $staff->id,
+                'clothe_name'   => $clothe['label'],
+                'clothing_size' => $clothe['talla'],
+                'cloth_id'      => $clothe['id'] ?? null,
+            ]);
+        }
+    }
+
+    private function updateStaffable(Request $request, Staff $staff): void
+    {
+        if ($request->cafeId && !$request->areaId) {
+            $staff->staffable_id   = $request->cafeId;
+            $staff->staffable_type = Cafe::class;
+            $staff->save();
+
+            $guard = Guard::firstOrCreate(['cafe_id' => $request->cafeId, 'name' => $request->guard]);
+            DB::table('guard_roles')->insert([
+                'guard_id' => $guard->id,
+                'role_id'  => $request->roleId,
+                'staff_id' => $staff->id,
+            ]);
+        } elseif ($request->areaId && !$request->cafeId) {
+            $staff->staffable_id   = $request->areaId;
+            $staff->staffable_type = Area::class;
+            $staff->save();
+        }
+    }
+
+    private function storeUploadedFile(Request $request): string
+    {
+        $originalName = $request->file->getClientOriginalName();
+        return $request->file->storeAs(
+            'files',
+            time() . '_' . $request->fileTypeKey . '_' . $originalName,
+            'public'
+        );
+    }
+
+    private function nullIfEmpty(mixed $value): mixed
+    {
+        return empty($value) || $value === 'null' ? null : $value;
     }
 }

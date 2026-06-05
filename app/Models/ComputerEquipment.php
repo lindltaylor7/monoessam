@@ -13,11 +13,17 @@ class ComputerEquipment extends Model
     protected $fillable = [
         'name', 'description', 'brand', 'model', 'presentation',
         'color', 'series', 'code', 'status', 'responsible_id',
+        'storage_headquarter_id',
     ];
 
     public function responsible(): BelongsTo
     {
         return $this->belongsTo(Staff::class, 'responsible_id');
+    }
+
+    public function storageHeadquarter(): BelongsTo
+    {
+        return $this->belongsTo(Headquarter::class, 'storage_headquarter_id');
     }
 
     public function histories(): MorphMany
@@ -28,5 +34,10 @@ class ComputerEquipment extends Model
     public function stocks(): MorphMany
     {
         return $this->morphMany(InventoryStock::class, 'stockable');
+    }
+
+    public function dispatches(): MorphMany
+    {
+        return $this->morphMany(EquipmentDispatch::class, 'equipable')->latest();
     }
 }

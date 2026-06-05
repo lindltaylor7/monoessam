@@ -121,7 +121,7 @@ const deleteUser = (id: number) => {
         <div class="p-6">
             <div class="mb-6 flex items-center justify-between">
                 <div>
-                    <h1 class="text-2xl font-bold tracking-tight">Usuarios</h1>
+                    <h1 class="text-2xl font-semibold tracking-tight">Usuarios</h1>
                     <p class="text-muted-foreground text-sm">Administra los usuarios del sistema, sus roles, áreas y unidades.</p>
                 </div>
                 <Button @click="openCreateModal">
