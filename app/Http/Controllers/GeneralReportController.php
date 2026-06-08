@@ -3,10 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Cafe;
-use App\Models\Dinner;
 use App\Models\Mine;
 use App\Models\Sale;
-use App\Models\Subdealership;
 use App\Models\Ticket_detail;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -63,13 +61,23 @@ class GeneralReportController extends Controller
                 'revenue' => round((float) $r->revenue, 2),
             ]);
 
-        /* ── Revenue by mine ── */
-        $revenueByMine = Mine::with(['units.cafes'])->get()->map(function ($mine) use ($startDate, $endDate) {
-            $cIds = $mine->units->flatMap->cafes->pluck('id');
-            $rev  = Sale::whereIn('cafe_id', $cIds)->whereBetween('date', [$startDate, $endDate])->sum('total');
-            $cnt  = Sale::whereIn('cafe_id', $cIds)->whereBetween('date', [$startDate, $endDate])->count();
-            return ['mine' => $mine->name, 'revenue' => round((float) $rev, 2), 'sales' => $cnt];
-        })->filter(fn($r) => $r['sales'] > 0)->values();
+        /* ── Revenue by mine (single JOIN query instead of N+1) ── */
+        $revenueByMine = DB::table('sales')
+            ->join('cafes', 'sales.cafe_id', '=', 'cafes.id')
+            ->join('units', 'cafes.unit_id', '=', 'units.id')
+            ->join('mines', 'units.mine_id', '=', 'mines.id')
+            ->whereBetween('sales.date', [$startDate, $endDate])
+            ->selectRaw('mines.name as mine, sum(sales.total) as revenue, count(*) as sales')
+            ->groupBy('mines.id', 'mines.name')
+            ->orderByDesc('revenue')
+            ->get()
+            ->filter(fn($r) => $r->sales > 0)
+            ->map(fn($r) => [
+                'mine'    => $r->mine,
+                'revenue' => round((float) $r->revenue, 2),
+                'sales'   => (int) $r->sales,
+            ])
+            ->values();
 
         /* ── Revenue by cafe ── */
         $revenueByCafe = Sale::whereIn('cafe_id', $cafeIds)

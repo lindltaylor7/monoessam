@@ -1,0 +1,45 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
+
+class EquipmentDispatch extends Model
+{
+    protected $fillable = [
+        'equipable_type', 'equipable_id',
+        'origin_headquarter_id',
+        'destination_type', 'destination_id',
+        'staff_id', 'description',
+        'dispatch_number', 'status',
+        'dispatched_at', 'returned_at',
+        'dispatched_by',
+    ];
+
+    protected $casts = [
+        'dispatched_at' => 'datetime',
+        'returned_at'   => 'datetime',
+    ];
+
+    public function equipable(): MorphTo
+    {
+        return $this->morphTo();
+    }
+
+    public function origin(): BelongsTo
+    {
+        return $this->belongsTo(Headquarter::class, 'origin_headquarter_id');
+    }
+
+    public function staff(): BelongsTo
+    {
+        return $this->belongsTo(Staff::class);
+    }
+
+    public function dispatcher(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'dispatched_by');
+    }
+}

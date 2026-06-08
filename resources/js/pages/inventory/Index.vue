@@ -13,13 +13,16 @@ import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
 import {
     AlertCircle,
+    AlertTriangle,
     ArrowDownRight,
     ArrowUpRight,
     Box,
     Building2,
     Check,
+    CheckCircle2,
     ChevronDown,
     ChevronRight,
+    ExternalLink,
     FileText,
     History,
     LayoutGrid,
@@ -38,6 +41,22 @@ import {
     Utensils,
 } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
+
+interface StaffRef { id: number; name: string }
+
+interface ComputerEquipment {
+    id: number; name: string; brand: string | null; model: string | null;
+    presentation: string | null; color: string | null; series: string | null;
+    code: string | null; status: number;
+    responsible: StaffRef | null;
+}
+
+interface KitchenEquipment {
+    id: number; name: string; brand: string | null; model: string | null;
+    size: string | null; color: string | null; series: string | null;
+    code: string | null; status: number;
+    responsible: StaffRef | null;
+}
 
 const props = defineProps<{
     colors: Array<{ id: number; name: string; hex_code?: string }>;
@@ -65,6 +84,8 @@ const props = defineProps<{
     epps: Array<{ id: number; name: string }>;
     units: Array<{ id: number; name: string; mine: { name: string } }>;
     transfers: Array<any>;
+    computerEquipments: ComputerEquipment[];
+    kitchenEquipments: KitchenEquipment[];
 }>();
 
 const activeTab = ref('clothes');
@@ -441,6 +462,35 @@ const getItemIcon = (type: string) => {
     }
 };
 
+// ── Equipment tab helpers ───────────────────────────────────────────────────
+const EQUIPMENT_STATUSES = [
+    { value: 0, label: 'Nuevo',   cls: 'bg-blue-100 text-blue-700 border-blue-200'        },
+    { value: 1, label: 'Bueno',   cls: 'bg-green-100 text-green-700 border-green-200'     },
+    { value: 2, label: 'Regular', cls: 'bg-yellow-100 text-yellow-700 border-yellow-200'  },
+    { value: 3, label: 'Dañado',  cls: 'bg-red-100 text-red-700 border-red-200'           },
+    { value: 4, label: 'Baja',    cls: 'bg-gray-100 text-gray-600 border-gray-200'        },
+];
+
+function equipmentStatusInfo(val: number) {
+    return EQUIPMENT_STATUSES.find(s => s.value === val) ?? EQUIPMENT_STATUSES[0];
+}
+
+const filteredComputerEquipments = computed(() => {
+    const q = searchQuery.value.toLowerCase();
+    if (!q) return props.computerEquipments;
+    return props.computerEquipments.filter(e =>
+        [e.name, e.brand, e.model, e.code, e.series].some(f => f?.toLowerCase().includes(q))
+    );
+});
+
+const filteredKitchenEquipments = computed(() => {
+    const q = searchQuery.value.toLowerCase();
+    if (!q) return props.kitchenEquipments;
+    return props.kitchenEquipments.filter(e =>
+        [e.name, e.brand, e.model, e.code, e.series].some(f => f?.toLowerCase().includes(q))
+    );
+});
+
 // --- New Invoice Logic moved to Invoices/Index.vue ---
 </script>
 
@@ -453,11 +503,11 @@ const getItemIcon = (type: string) => {
             { title: 'Inventario', href: route('inventory.index') },
         ]"
     >
-        <div class="flex h-full w-full flex-col gap-6 overflow-hidden bg-slate-50/50 p-4 sm:p-6">
+        <div class="flex h-full w-full flex-col gap-6 overflow-hidden p-4 sm:p-6">
             <!-- Header Section -->
             <div class="flex flex-none flex-col items-start justify-between gap-4 md:flex-row md:items-center">
                 <div class="min-w-0 flex-1">
-                    <h1 class="flex items-center gap-3 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
+                    <h1 class="flex items-center gap-3 text-2xl font-semibold tracking-tight">
                         <div class="bg-primary/10 rounded-xl p-2">
                             <Package class="text-primary h-8 w-8" />
                         </div>
@@ -468,7 +518,7 @@ const getItemIcon = (type: string) => {
                 <div class="flex flex-wrap gap-2">
                     <Dialog v-model:open="isNewColorOpen">
                         <DialogTrigger as-child>
-                            <Button variant="outline" size="sm" class="gap-2 border-slate-200 bg-white shadow-sm">
+                            <Button variant="outline" size="sm" class="gap-2 shadow-sm">
                                 <Palette class="h-4 w-4" />
                                 Colores
                             </Button>
@@ -519,7 +569,7 @@ const getItemIcon = (type: string) => {
 
                     <Dialog v-model:open="isNewItemOpen">
                         <DialogTrigger as-child>
-                            <Button variant="outline" size="sm" class="gap-2 border-slate-200 bg-white shadow-sm">
+                            <Button variant="outline" size="sm" class="gap-2 shadow-sm">
                                 <Plus class="h-4 w-4" />
                                 Nuevo Equipo
                             </Button>
@@ -741,50 +791,50 @@ const getItemIcon = (type: string) => {
 
             <!-- Dashboard Stats Summary -->
             <div class="grid flex-none grid-cols-2 gap-4 md:grid-cols-4">
-                <Card class="border-slate-200 bg-white">
+                <Card class="bg-card">
                     <CardContent class="flex items-center gap-4 p-4">
                         <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50">
                             <Box class="h-5 w-5 text-indigo-600" />
                         </div>
                         <div>
-                            <p class="text-xs font-semibold text-slate-500 uppercase">Items Registrados</p>
-                            <p class="text-xl font-bold text-slate-900">{{ stocks.length }}</p>
+                            <p class="text-muted-foreground text-xs font-semibold uppercase">Items Registrados</p>
+                            <p class="text-xl font-bold">{{ stocks.length }}</p>
                         </div>
                     </CardContent>
                 </Card>
 
-                <Card class="border-slate-200 bg-white">
+                <Card class="bg-card">
                     <CardContent class="flex items-center gap-4 p-4">
                         <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-50">
                             <AlertCircle class="h-5 w-5 text-rose-600" />
                         </div>
                         <div>
-                            <p class="text-xs font-semibold text-slate-500 uppercase">Sin Stock</p>
-                            <p class="text-xl font-bold text-slate-900">{{ stocks.filter((s) => s.quantity <= 0).length }}</p>
+                            <p class="text-muted-foreground text-xs font-semibold uppercase">Sin Stock</p>
+                            <p class="text-xl font-bold">{{ stocks.filter((s) => s.quantity <= 0).length }}</p>
                         </div>
                     </CardContent>
                 </Card>
 
-                <Card class="border-slate-200 bg-white">
+                <Card class="bg-card">
                     <CardContent class="flex items-center gap-4 p-4">
                         <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50">
                             <Building2 class="h-5 w-5 text-amber-600" />
                         </div>
                         <div>
-                            <p class="text-xs font-semibold text-slate-500 uppercase">Sedes Activas</p>
-                            <p class="text-xl font-bold text-slate-900">{{ headquarters.length }}</p>
+                            <p class="text-muted-foreground text-xs font-semibold uppercase">Sedes Activas</p>
+                            <p class="text-xl font-bold">{{ headquarters.length }}</p>
                         </div>
                     </CardContent>
                 </Card>
 
-                <Card class="border-slate-200 bg-white">
+                <Card class="bg-card">
                     <CardContent class="flex items-center gap-4 p-4">
                         <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50">
                             <Settings2 class="h-5 w-5 text-emerald-600" />
                         </div>
                         <div>
-                            <p class="text-xs font-semibold text-slate-500 uppercase">Existencias Totales</p>
-                            <p class="text-xl font-bold text-slate-900">{{ stocks.reduce((acc, s) => acc + Number(s.quantity), 0) }}</p>
+                            <p class="text-muted-foreground text-xs font-semibold uppercase">Existencias Totales</p>
+                            <p class="text-xl font-bold">{{ stocks.reduce((acc, s) => acc + Number(s.quantity), 0) }}</p>
                         </div>
                     </CardContent>
                 </Card>
@@ -793,7 +843,7 @@ const getItemIcon = (type: string) => {
             <!-- Tabs and Filters Section -->
             <div class="flex flex-1 flex-col gap-4 overflow-hidden">
                 <div
-                    class="flex flex-none flex-col items-start justify-between gap-4 rounded-2xl border bg-white p-3 shadow-sm sm:flex-row sm:items-center"
+                    class="bg-card flex flex-none flex-col items-start justify-between gap-4 rounded-2xl border p-3 shadow-sm sm:flex-row sm:items-center"
                 >
                     <Tabs v-model="activeTab" class="w-full sm:w-auto">
                         <TabsList class="bg-slate-100 p-1">
@@ -860,7 +910,7 @@ const getItemIcon = (type: string) => {
 
                         <div class="flex gap-2">
                             <Select v-model="selectedHeadquarterId">
-                                <SelectTrigger class="h-10 w-[140px] rounded-xl bg-white">
+                                <SelectTrigger class="h-10 w-[140px] rounded-xl">
                                     <SelectValue placeholder="Sedes" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -872,7 +922,7 @@ const getItemIcon = (type: string) => {
                             </Select>
 
                             <Select v-model="selectedCafeId">
-                                <SelectTrigger class="h-10 w-[140px] rounded-xl bg-white">
+                                <SelectTrigger class="h-10 w-[140px] rounded-xl">
                                     <SelectValue placeholder="Cafés" />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -888,14 +938,135 @@ const getItemIcon = (type: string) => {
 
                 <!-- Content Grid / Table -->
                 <div class="custom-scrollbar flex-1 overflow-y-auto pr-2">
+
+                    <!-- ── Equipos IT ───────────────────────────────────── -->
+                    <template v-if="activeTab === 'computer'">
+                        <div class="mb-3 flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50 px-4 py-2.5">
+                            <div class="flex items-center gap-2 text-sm font-medium text-blue-700">
+                                <Monitor class="h-4 w-4" />
+                                {{ filteredComputerEquipments.length }} equipos tecnológicos registrados
+                            </div>
+                            <a :href="route('equipments.index')" class="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800">
+                                Gestionar equipos <ExternalLink class="h-3.5 w-3.5" />
+                            </a>
+                        </div>
+                        <div v-if="filteredComputerEquipments.length === 0" class="bg-muted/20 flex h-48 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed">
+                            <Monitor class="h-8 w-8 text-slate-300" />
+                            <p class="text-sm font-semibold text-slate-400">Sin equipos tecnológicos</p>
+                        </div>
+                        <div v-else class="bg-card mb-6 overflow-hidden rounded-2xl border shadow-sm">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow class="bg-muted/50 hover:bg-muted/50">
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Código</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Equipo</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Marca / Modelo</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">N° Serie</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Estado</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Responsable</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    <TableRow v-for="eq in filteredComputerEquipments" :key="eq.id" class="hover:bg-muted/30 transition-colors">
+                                        <TableCell class="font-mono text-xs text-slate-400">{{ eq.code || '—' }}</TableCell>
+                                        <TableCell>
+                                            <div class="flex flex-col">
+                                                <span class="font-bold text-foreground">{{ eq.name }}</span>
+                                                <span v-if="eq.presentation" class="text-[11px] text-slate-400">{{ eq.presentation }}</span>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell class="text-sm text-slate-600">
+                                            {{ [eq.brand, eq.model].filter(Boolean).join(' · ') || '—' }}
+                                        </TableCell>
+                                        <TableCell class="font-mono text-xs text-slate-400">{{ eq.series || '—' }}</TableCell>
+                                        <TableCell>
+                                            <span :class="['inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', equipmentStatusInfo(eq.status).cls]">
+                                                {{ equipmentStatusInfo(eq.status).label }}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell>
+                                            <span v-if="eq.responsible" class="flex items-center gap-1.5 text-sm text-slate-700">
+                                                <CheckCircle2 class="h-3.5 w-3.5 text-green-500" /> {{ eq.responsible.name }}
+                                            </span>
+                                            <span v-else class="flex items-center gap-1 text-xs text-slate-400">
+                                                <AlertTriangle class="h-3.5 w-3.5 text-amber-400" /> Sin asignar
+                                            </span>
+                                        </TableCell>
+                                    </TableRow>
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </template>
+
+                    <!-- ── Equipos Cocina ────────────────────────────────── -->
+                    <template v-else-if="activeTab === 'kitchen'">
+                        <div class="mb-3 flex items-center justify-between rounded-xl border border-orange-100 bg-orange-50 px-4 py-2.5">
+                            <div class="flex items-center gap-2 text-sm font-medium text-orange-700">
+                                <Utensils class="h-4 w-4" />
+                                {{ filteredKitchenEquipments.length }} equipos de cocina registrados
+                            </div>
+                            <a :href="route('equipments.index')" class="flex items-center gap-1 text-xs font-semibold text-orange-600 hover:text-orange-800">
+                                Gestionar equipos <ExternalLink class="h-3.5 w-3.5" />
+                            </a>
+                        </div>
+                        <div v-if="filteredKitchenEquipments.length === 0" class="bg-muted/20 flex h-48 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed">
+                            <Utensils class="h-8 w-8 text-slate-300" />
+                            <p class="text-sm font-semibold text-slate-400">Sin equipos de cocina</p>
+                        </div>
+                        <div v-else class="bg-card mb-6 overflow-hidden rounded-2xl border shadow-sm">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow class="bg-muted/50 hover:bg-muted/50">
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Código</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Equipo</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Marca / Modelo</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">N° Serie</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Estado</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Responsable</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    <TableRow v-for="eq in filteredKitchenEquipments" :key="eq.id" class="hover:bg-muted/30 transition-colors">
+                                        <TableCell class="font-mono text-xs text-slate-400">{{ eq.code || '—' }}</TableCell>
+                                        <TableCell>
+                                            <div class="flex flex-col">
+                                                <span class="font-bold text-foreground">{{ eq.name }}</span>
+                                                <span v-if="eq.size" class="text-[11px] text-slate-400">{{ eq.size }}</span>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell class="text-sm text-slate-600">
+                                            {{ [eq.brand, eq.model].filter(Boolean).join(' · ') || '—' }}
+                                        </TableCell>
+                                        <TableCell class="font-mono text-xs text-slate-400">{{ eq.series || '—' }}</TableCell>
+                                        <TableCell>
+                                            <span :class="['inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', equipmentStatusInfo(eq.status).cls]">
+                                                {{ equipmentStatusInfo(eq.status).label }}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell>
+                                            <span v-if="eq.responsible" class="flex items-center gap-1.5 text-sm text-slate-700">
+                                                <CheckCircle2 class="h-3.5 w-3.5 text-green-500" /> {{ eq.responsible.name }}
+                                            </span>
+                                            <span v-else class="flex items-center gap-1 text-xs text-slate-400">
+                                                <AlertTriangle class="h-3.5 w-3.5 text-amber-400" /> Sin asignar
+                                            </span>
+                                        </TableCell>
+                                    </TableRow>
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </template>
+
+                    <!-- ── Stock: Ropa / EPPs / Insumos ─────────────────── -->
+                    <template v-else>
                     <div
                         v-if="filteredStocks.length === 0"
-                        class="flex h-64 flex-col items-center justify-center rounded-3xl border-2 border-dashed border-slate-200 bg-white/50"
+                        class="bg-muted/20 flex h-64 flex-col items-center justify-center rounded-3xl border-2 border-dashed"
                     >
                         <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
                             <Package class="h-8 w-8 text-slate-300" />
                         </div>
-                        <p class="text-lg font-semibold text-slate-500">Sin resultados</p>
+                        <p class="text-lg font-semibold text-muted-foreground">Sin resultados</p>
                         <p class="mt-1 text-sm text-slate-400">No hay existencias registradas para esta categoría</p>
                     </div>
 
@@ -905,7 +1076,7 @@ const getItemIcon = (type: string) => {
                             <Card
                                 v-for="item in filteredStocks"
                                 :key="item.id"
-                                class="group flex flex-col overflow-hidden rounded-2xl border-slate-200 bg-white transition-all duration-500 hover:shadow-xl hover:shadow-slate-200/50"
+                                class="bg-card group flex flex-col overflow-hidden rounded-2xl border transition-all duration-300 hover:shadow-lg"
                             >
                                 <div class="h-1.5 w-full bg-slate-100">
                                     <div v-if="item.stockable_type.includes('Cloth')" class="bg-primary/40 h-full"></div>
@@ -935,10 +1106,10 @@ const getItemIcon = (type: string) => {
                                             </div>
                                             <div class="min-w-0">
                                                 <CardTitle
-                                                    class="line-clamp-2 flex min-h-[40px] items-center text-[14px] leading-tight font-black break-words text-slate-900"
+                                                    class="line-clamp-2 flex min-h-[40px] items-center text-[14px] leading-tight font-black break-words text-foreground"
                                                     >{{ item.stockable?.name }}</CardTitle
                                                 >
-                                                <CardDescription class="mt-0.5 flex items-center gap-1.5 text-xs whitespace-normal text-slate-500">
+                                                <CardDescription class="mt-0.5 flex items-center gap-1.5 text-xs whitespace-normal text-muted-foreground">
                                                     <template v-if="activeTab === 'clothes'">
                                                         <Palette class="h-3 w-3" /> Prendas de Personal
                                                     </template>
@@ -973,7 +1144,7 @@ const getItemIcon = (type: string) => {
                                     >
                                         <div>
                                             <p class="mb-1 text-[10px] font-bold tracking-widest text-slate-400 uppercase">Stock Disponible</p>
-                                            <div class="flex items-baseline gap-1.5 text-slate-900">
+                                            <div class="flex items-baseline gap-1.5 text-foreground">
                                                 <span class="text-3xl leading-none font-black">{{ item.quantity }}</span>
                                                 <span class="text-xs font-bold text-slate-400 uppercase">Unidades</span>
                                             </div>
@@ -1008,7 +1179,7 @@ const getItemIcon = (type: string) => {
                                 </CardContent>
 
                                 <div
-                                    class="flex items-center justify-between border-t border-slate-100 bg-slate-50/10 px-5 py-4 transition-colors group-hover:bg-slate-50/50"
+                                    class="flex items-center justify-between border-t px-5 py-4 transition-colors group-hover:bg-muted/30"
                                 >
                                     <div class="flex -space-x-1.5 overflow-hidden">
                                         <div
@@ -1035,23 +1206,23 @@ const getItemIcon = (type: string) => {
                         <!-- Table View -->
                         <div
                             v-else-if="viewMode === 'table' && activeTab !== 'units_transfers'"
-                            class="mb-6 overflow-hidden rounded-2xl border bg-white shadow-sm"
+                            class="bg-card mb-6 overflow-hidden rounded-2xl border shadow-sm"
                         >
                             <Table>
                                 <TableHeader>
-                                    <TableRow class="bg-slate-50/50 hover:bg-slate-50/50">
-                                        <TableHead class="w-[300px] text-[10px] font-bold text-slate-500 uppercase">Item / Catálogo</TableHead>
-                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Atributos</TableHead>
-                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Gestión / Ubicación</TableHead>
-                                        <TableHead class="text-center text-[10px] font-bold text-slate-500 uppercase">Disponible</TableHead>
-                                        <TableHead class="text-center text-[10px] font-bold text-slate-500 uppercase">Estado</TableHead>
+                                    <TableRow class="bg-muted/50 hover:bg-muted/50">
+                                        <TableHead class="w-[300px] text-[10px] font-bold text-muted-foreground uppercase">Item / Catálogo</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Atributos</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Gestión / Ubicación</TableHead>
+                                        <TableHead class="text-center text-[10px] font-bold text-muted-foreground uppercase">Disponible</TableHead>
+                                        <TableHead class="text-center text-[10px] font-bold text-muted-foreground uppercase">Estado</TableHead>
                                         <TableHead class="w-[80px]"></TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     <template v-for="item in filteredStocks" :key="item.key">
                                         <!-- Main EPP Row -->
-                                        <TableRow class="group cursor-pointer transition-colors hover:bg-slate-50/50" @click="toggleRow(item.key)">
+                                        <TableRow class="group cursor-pointer hover:bg-muted/30 transition-colors" @click="toggleRow(item.key)">
                                             <TableCell>
                                                 <div class="flex items-center gap-3">
                                                     <div class="p-1">
@@ -1075,7 +1246,7 @@ const getItemIcon = (type: string) => {
                                                         <component :is="getItemIcon(activeTab)" class="h-4 w-4" />
                                                     </div>
                                                     <div class="flex flex-col">
-                                                        <span class="font-bold text-slate-900"
+                                                        <span class="font-bold text-foreground"
                                                             >{{ item.stockable?.name }} ({{ item.nestedSizes.length }} tallas)</span
                                                         >
                                                         <span class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
@@ -1088,14 +1259,14 @@ const getItemIcon = (type: string) => {
                                                 <div class="flex flex-col gap-1">
                                                     <template v-if="activeTab === 'computer'">
                                                         <span class="text-xs font-semibold text-slate-700">{{ item.stockable?.brand }}</span>
-                                                        <span class="text-[10px] text-slate-500">{{ item.stockable?.model || 'Sin Modelo' }}</span>
+                                                        <span class="text-[10px] text-muted-foreground">{{ item.stockable?.model || 'Sin Modelo' }}</span>
                                                     </template>
                                                     <template v-else-if="activeTab === 'kitchen'">
                                                         <span class="text-xs font-semibold text-slate-700">{{ item.stockable?.brand }}</span>
-                                                        <span class="text-[10px] text-slate-500">{{ item.stockable?.size }}</span>
+                                                        <span class="text-[10px] text-muted-foreground">{{ item.stockable?.size }}</span>
                                                     </template>
                                                     <template v-else>
-                                                        <span class="text-xs text-slate-500 italic">Desglosado por tallas</span>
+                                                        <span class="text-xs text-muted-foreground italic">Desglosado por tallas</span>
                                                     </template>
                                                 </div>
                                             </TableCell>
@@ -1107,7 +1278,7 @@ const getItemIcon = (type: string) => {
                                                     </div>
                                                 </div>
                                             </TableCell>
-                                            <TableCell class="text-center text-lg font-black text-slate-900">
+                                            <TableCell class="text-center text-lg font-black text-foreground">
                                                 {{ item.quantity }}
                                             </TableCell>
                                             <TableCell class="text-center">
@@ -1189,13 +1360,13 @@ const getItemIcon = (type: string) => {
                                                                     v-for="rec in colorData.records"
                                                                     :key="rec.id"
                                                                     variant="outline"
-                                                                    class="border-slate-200 bg-white px-1 py-0 text-[9px] text-slate-400"
+                                                                    class="border bg-card px-1 py-0 text-[9px] text-slate-400"
                                                                 >
                                                                     {{ rec.headquarter?.name || rec.cafe?.name || 'N/A' }}: {{ rec.quantity }}
                                                                 </Badge>
                                                             </div>
                                                         </TableCell>
-                                                        <TableCell class="text-center font-black text-slate-900">
+                                                        <TableCell class="text-center font-black text-foreground">
                                                             {{ colorData.quantity }}
                                                         </TableCell>
                                                         <TableCell colspan="2"></TableCell>
@@ -1210,15 +1381,15 @@ const getItemIcon = (type: string) => {
 
                         <!-- Transfers Tab Content -->
                         <div v-else-if="activeTab === 'units_transfers'" class="space-y-6">
-                            <div class="mb-6 overflow-hidden rounded-2xl border bg-white shadow-sm">
+                            <div class="bg-card mb-6 overflow-hidden rounded-2xl border shadow-sm">
                                 <Table>
                                     <TableHeader>
                                         <TableRow class="bg-indigo-50/30">
-                                            <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Fecha Envío</TableHead>
-                                            <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Destino (Unidad)</TableHead>
-                                            <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Personal Asignado</TableHead>
-                                            <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Items</TableHead>
-                                            <TableHead class="text-center text-[10px] font-bold text-slate-500 uppercase">Estado</TableHead>
+                                            <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Fecha Envío</TableHead>
+                                            <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Destino (Unidad)</TableHead>
+                                            <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Personal Asignado</TableHead>
+                                            <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Items</TableHead>
+                                            <TableHead class="text-center text-[10px] font-bold text-muted-foreground uppercase">Estado</TableHead>
                                             <TableHead class="w-[120px]"></TableHead>
                                         </TableRow>
                                     </TableHeader>
@@ -1226,7 +1397,7 @@ const getItemIcon = (type: string) => {
                                         <TableRow
                                             v-for="transfer in transfers"
                                             :key="transfer.id"
-                                            class="group transition-colors hover:bg-slate-50/50"
+                                            class="group hover:bg-muted/30 transition-colors"
                                         >
                                             <TableCell class="text-xs font-medium text-slate-600">
                                                 {{ new Date(transfer.created_at).toLocaleDateString() }}
@@ -1240,7 +1411,7 @@ const getItemIcon = (type: string) => {
                                                         <Building2 class="h-3.5 w-3.5" />
                                                     </div>
                                                     <div class="flex flex-col">
-                                                        <span class="leading-tight font-bold text-slate-900">{{ transfer.unit?.name }}</span>
+                                                        <span class="leading-tight font-bold text-foreground">{{ transfer.unit?.name }}</span>
                                                         <span class="text-[10px] font-black tracking-tighter text-slate-400 uppercase">{{
                                                             transfer.unit?.mine?.name
                                                         }}</span>
@@ -1259,7 +1430,7 @@ const getItemIcon = (type: string) => {
                                                         v-for="item in transfer.items"
                                                         :key="item.id"
                                                         variant="outline"
-                                                        class="border-slate-200 bg-white px-1.5 py-0 text-[10px] text-slate-500 lowercase"
+                                                        class="border bg-card px-1.5 py-0 text-[10px] text-muted-foreground lowercase"
                                                     >
                                                         {{ item.quantity }}x {{ item.stockable?.name }} ({{ item.size || 'U' }})
                                                     </Badge>
@@ -1283,7 +1454,7 @@ const getItemIcon = (type: string) => {
                                                     @click="openReturnModal(transfer)"
                                                     variant="outline"
                                                     size="sm"
-                                                    class="h-8 gap-1 rounded-lg border-slate-200 bg-white text-[10px] font-black tracking-tighter uppercase transition-all hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                                                    class="h-8 gap-1 rounded-lg border bg-card text-[10px] font-black tracking-tighter uppercase transition-all hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
                                                 >
                                                     <History class="h-3.5 w-3.5" /> DEVOLVER
                                                 </Button>
@@ -1294,13 +1465,14 @@ const getItemIcon = (type: string) => {
                             </div>
                         </div>
                     </template>
+                    </template>
                 </div>
             </div>
         </div>
 
         <!-- Footer Metrics -->
         <div
-            class="flex flex-none flex-col items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-4 text-xs text-slate-500 shadow-sm sm:flex-row"
+            class="bg-card text-muted-foreground flex flex-none flex-col items-center justify-between gap-4 rounded-2xl border p-4 text-xs shadow-sm sm:flex-row"
         >
             <div class="flex items-center gap-6">
                 <div class="flex items-center gap-2">
@@ -1382,7 +1554,7 @@ const getItemIcon = (type: string) => {
                         <div v-else class="custom-scrollbar max-h-[350px] divide-y divide-slate-100 overflow-y-auto">
                             <div v-for="group in filteredStockSizes" :key="group.title" class="space-y-3 px-4 py-4">
                                 <div class="mb-2 flex items-center gap-2">
-                                    <div class="rounded border border-slate-200 bg-slate-100 p-1 px-2 text-[9px] font-black text-slate-500 uppercase">
+                                    <div class="rounded border border-slate-200 bg-slate-100 p-1 px-2 text-[9px] font-black text-muted-foreground uppercase">
                                         {{ group.hq }} - {{ group.cafe }}
                                     </div>
                                 </div>
@@ -1402,12 +1574,12 @@ const getItemIcon = (type: string) => {
                                                 class="h-2.5 w-2.5 rounded-full border border-slate-200 shadow-sm"
                                                 :style="{ backgroundColor: sz.color.hex_code }"
                                             ></div>
-                                            <span class="text-[10px] font-bold text-slate-500 uppercase">{{ sz.color.name }}</span>
+                                            <span class="text-[10px] font-bold text-muted-foreground uppercase">{{ sz.color.name }}</span>
                                         </div>
                                     </div>
                                     <Badge
                                         variant="secondary"
-                                        class="rounded-lg border border-slate-200 bg-white px-2.5 py-0.5 font-mono text-xs font-black"
+                                        class="bg-card rounded-lg border px-2.5 py-0.5 font-mono text-xs font-black"
                                     >
                                         {{ sz.quantity }}
                                     </Badge>
@@ -1453,7 +1625,7 @@ const getItemIcon = (type: string) => {
                 </div>
 
                 <DialogFooter class="flex gap-3 border-t bg-slate-50 p-6 sm:justify-center">
-                    <Button variant="ghost" @click="isReturnModalOpen = false" class="text-[10px] font-bold text-slate-500 uppercase">
+                    <Button variant="ghost" @click="isReturnModalOpen = false" class="text-[10px] font-bold text-muted-foreground uppercase">
                         Cancelar
                     </Button>
                     <Button

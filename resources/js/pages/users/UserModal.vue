@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm } from '@inertiajs/vue3';
+import { User } from 'lucide-vue-next';
 import { computed, watch } from 'vue';
 
 interface User {
@@ -148,13 +149,12 @@ const toggleUnit = (unitId: number) => {
                     </DialogDescription>
                 </DialogHeader>
                 <div class="bg-background absolute right-6 -bottom-5 flex h-10 w-10 items-center justify-center rounded-full border shadow-md">
-                    <Icon :name="user ? 'user-cog' : 'user-plus'" class="text-primary h-5 w-5" />
+                    <User class="h-5 w-5 text-gray-950" />
                 </div>
             </div>
 
             <form @submit.prevent="submit" class="bg-background px-6 pt-8 pb-5">
                 <div class="custom-scrollbar max-h-[65vh] space-y-5 overflow-y-auto pr-1">
-
                     <!-- Datos personales -->
                     <div class="space-y-3">
                         <p class="text-[10px] font-black tracking-widest text-slate-400 uppercase">Datos personales</p>
@@ -166,23 +166,29 @@ const toggleUnit = (unitId: number) => {
                                 v-model="form.name"
                                 placeholder="Ej. Juan Pérez"
                                 :class="{ 'border-destructive': form.errors.name }"
-                                class="border-slate-200 focus-visible:ring-primary h-10 text-sm"
+                                class="focus-visible:ring-primary h-10 border-slate-200 text-sm"
                             />
-                            <p v-if="form.errors.name" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">{{ form.errors.name }}</p>
+                            <p v-if="form.errors.name" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">
+                                {{ form.errors.name }}
+                            </p>
                         </div>
 
                         <div class="grid grid-cols-2 gap-3">
                             <div class="grid gap-1.5">
-                                <Label for="email" class="text-muted-foreground text-[11px] font-bold tracking-wider uppercase">Correo electrónico</Label>
+                                <Label for="email" class="text-muted-foreground text-[11px] font-bold tracking-wider uppercase"
+                                    >Correo electrónico</Label
+                                >
                                 <Input
                                     id="email"
                                     type="email"
                                     v-model="form.email"
                                     placeholder="juan@empresa.com"
                                     :class="{ 'border-destructive': form.errors.email }"
-                                    class="border-slate-200 focus-visible:ring-primary h-10 text-sm"
+                                    class="focus-visible:ring-primary h-10 border-slate-200 text-sm"
                                 />
-                                <p v-if="form.errors.email" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">{{ form.errors.email }}</p>
+                                <p v-if="form.errors.email" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">
+                                    {{ form.errors.email }}
+                                </p>
                             </div>
 
                             <div class="grid gap-1.5">
@@ -195,9 +201,11 @@ const toggleUnit = (unitId: number) => {
                                     type="password"
                                     v-model="form.password"
                                     :class="{ 'border-destructive': form.errors.password }"
-                                    class="border-slate-200 focus-visible:ring-primary h-10 text-sm"
+                                    class="focus-visible:ring-primary h-10 border-slate-200 text-sm"
                                 />
-                                <p v-if="form.errors.password" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">{{ form.errors.password }}</p>
+                                <p v-if="form.errors.password" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">
+                                    {{ form.errors.password }}
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -212,55 +220,81 @@ const toggleUnit = (unitId: number) => {
                             <div class="grid gap-1.5">
                                 <Label for="role_id" class="text-muted-foreground text-[11px] font-bold tracking-wider uppercase">Rol asignado</Label>
                                 <Select v-model="form.role_id">
-                                    <SelectTrigger :class="{ 'border-destructive': form.errors.role_id }" class="border-slate-200 focus:ring-primary h-10 text-sm">
+                                    <SelectTrigger
+                                        :class="{ 'border-destructive': form.errors.role_id }"
+                                        class="focus:ring-primary h-10 border-slate-200 text-sm"
+                                    >
                                         <SelectValue placeholder="Seleccionar" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem v-for="role in roles" :key="role.id" :value="role.id.toString()">{{ role.name }}</SelectItem>
                                     </SelectContent>
                                 </Select>
-                                <p v-if="form.errors.role_id" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">{{ form.errors.role_id }}</p>
+                                <p v-if="form.errors.role_id" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">
+                                    {{ form.errors.role_id }}
+                                </p>
                             </div>
 
                             <div class="grid gap-1.5">
-                                <Label for="area_id" class="text-muted-foreground text-[11px] font-bold tracking-wider uppercase">Área principal</Label>
+                                <Label for="area_id" class="text-muted-foreground text-[11px] font-bold tracking-wider uppercase"
+                                    >Área principal</Label
+                                >
                                 <Select v-model="form.area_id">
-                                    <SelectTrigger :class="{ 'border-destructive': form.errors.area_id }" class="border-slate-200 focus:ring-primary h-10 text-sm">
+                                    <SelectTrigger
+                                        :class="{ 'border-destructive': form.errors.area_id }"
+                                        class="focus:ring-primary h-10 border-slate-200 text-sm"
+                                    >
                                         <SelectValue placeholder="Seleccionar" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem v-for="area in areas" :key="area.id" :value="area.id.toString()">{{ area.name }}</SelectItem>
                                     </SelectContent>
                                 </Select>
-                                <p v-if="form.errors.area_id" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">{{ form.errors.area_id }}</p>
+                                <p v-if="form.errors.area_id" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">
+                                    {{ form.errors.area_id }}
+                                </p>
                             </div>
                         </div>
 
                         <div class="grid grid-cols-2 gap-3">
                             <div class="grid gap-1.5">
-                                <Label for="mine_id" class="text-muted-foreground text-[11px] font-bold tracking-wider uppercase">Mina asignada</Label>
+                                <Label for="mine_id" class="text-muted-foreground text-[11px] font-bold tracking-wider uppercase"
+                                    >Mina asignada</Label
+                                >
                                 <Select v-model="form.mine_id">
-                                    <SelectTrigger :class="{ 'border-destructive': form.errors.mine_id }" class="border-slate-200 focus:ring-primary h-10 text-sm">
+                                    <SelectTrigger
+                                        :class="{ 'border-destructive': form.errors.mine_id }"
+                                        class="focus:ring-primary h-10 border-slate-200 text-sm"
+                                    >
                                         <SelectValue placeholder="Seleccionar mina" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem v-for="mine in mines" :key="mine.id" :value="mine.id.toString()">{{ mine.name }}</SelectItem>
                                     </SelectContent>
                                 </Select>
-                                <p v-if="form.errors.mine_id" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">{{ form.errors.mine_id }}</p>
+                                <p v-if="form.errors.mine_id" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">
+                                    {{ form.errors.mine_id }}
+                                </p>
                             </div>
 
                             <div class="grid gap-1.5">
                                 <Label for="business_id" class="text-muted-foreground text-[11px] font-bold tracking-wider uppercase">Empresa</Label>
                                 <Select v-model="form.business_id">
-                                    <SelectTrigger :class="{ 'border-destructive': form.errors.business_id }" class="border-slate-200 focus:ring-primary h-10 text-sm">
+                                    <SelectTrigger
+                                        :class="{ 'border-destructive': form.errors.business_id }"
+                                        class="focus:ring-primary h-10 border-slate-200 text-sm"
+                                    >
                                         <SelectValue placeholder="Seleccionar empresa" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem v-for="business in businesses" :key="business.id" :value="business.id.toString()">{{ business.name }}</SelectItem>
+                                        <SelectItem v-for="business in businesses" :key="business.id" :value="business.id.toString()">{{
+                                            business.name
+                                        }}</SelectItem>
                                     </SelectContent>
                                 </Select>
-                                <p v-if="form.errors.business_id" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">{{ form.errors.business_id }}</p>
+                                <p v-if="form.errors.business_id" class="text-destructive text-[0.65rem] font-semibold tracking-tight uppercase">
+                                    {{ form.errors.business_id }}
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -271,15 +305,15 @@ const toggleUnit = (unitId: number) => {
                     <div class="space-y-2.5">
                         <div class="flex items-center justify-between">
                             <p class="text-[10px] font-black tracking-widest text-slate-400 uppercase">Unidades de acceso</p>
-                            <span
-                                v-if="form.unit_ids.length > 0"
-                                class="bg-primary/10 text-primary rounded-full px-2.5 py-0.5 text-[10px] font-bold"
-                            >
+                            <span v-if="form.unit_ids.length > 0" class="bg-primary/10 text-primary rounded-full px-2.5 py-0.5 text-[10px] font-bold">
                                 {{ form.unit_ids.length }} seleccionada{{ form.unit_ids.length !== 1 ? 's' : '' }}
                             </span>
                         </div>
 
-                        <div v-if="filteredUnits.length > 0" class="custom-scrollbar max-h-[150px] overflow-y-auto rounded-xl border border-slate-200 p-2">
+                        <div
+                            v-if="filteredUnits.length > 0"
+                            class="custom-scrollbar max-h-[150px] overflow-y-auto rounded-xl border border-slate-200 p-2"
+                        >
                             <div class="grid grid-cols-2 gap-2">
                                 <button
                                     v-for="unit in filteredUnits"
@@ -290,7 +324,7 @@ const toggleUnit = (unitId: number) => {
                                     :class="
                                         form.unit_ids.includes(unit.id)
                                             ? 'border-primary bg-primary text-white shadow-sm'
-                                            : 'border-slate-200 bg-white text-slate-600 hover:border-primary/40 hover:bg-primary/5'
+                                            : 'hover:border-primary/40 hover:bg-primary/5 border-slate-200 bg-white text-slate-600'
                                     "
                                 >
                                     <span class="truncate">{{ unit.name }}</span>

@@ -5,18 +5,9 @@ import NavUser from '@/components/NavUser.vue';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem } from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
-import { Building2, ClipboardList, HandHelping, House, User, Users, Utensils } from 'lucide-vue-next';
+import * as LucideIcons from 'lucide-vue-next';
+import { House } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
-
-const iconMap = {
-    House,
-    User,
-    Utensils,
-    ClipboardList,
-    Building2,
-    HandHelping,
-    Users,
-};
 
 const page = usePage();
 
@@ -31,11 +22,10 @@ const mainNavItems: NavItem[] = [
 ];
 
 permissions.forEach((permission: any) => {
-    const IconComponent = iconMap[permission.icon_class] || House;
+    const IconComponent = (LucideIcons as Record<string, any>)[permission.icon_class] ?? House;
 
     if (permission.route_name != null) {
-        const newPermission = { title: permission.sidebar_name, href: '/' + permission.route_name, icon: IconComponent };
-        mainNavItems.push(newPermission);
+        mainNavItems.push({ title: permission.sidebar_name, href: '/' + permission.route_name, icon: IconComponent });
     }
 });
 

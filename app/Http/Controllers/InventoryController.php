@@ -53,6 +53,9 @@ class InventoryController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
+        $computerEquipments = ComputerEquipment::with('responsible')->get();
+        $kitchenEquipments  = KitchenEquipment::with('responsible')->get();
+
         return Inertia::render('inventory/Index', [
             'colors' => $colors,
             'cafes' => $cafes,
@@ -63,7 +66,9 @@ class InventoryController extends Controller
             'clothes' => $clothes,
             'epps' => $epps,
             'units' => $units,
-            'transfers' => $transfers
+            'transfers' => $transfers,
+            'computerEquipments' => $computerEquipments,
+            'kitchenEquipments'  => $kitchenEquipments,
         ]);
     }
 
