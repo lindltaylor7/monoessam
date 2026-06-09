@@ -1,0 +1,1 @@
+import{_ as o}from"./SubdealershipsTable.vue_vue_type_script_setup_true_lang-DWbbJ1qZ.js";import"./trash-CtaZyN2q.js";import"./createLucideIcon-CslCInxs.js";import"./app-C8ZMJFPf.js";export{o as default};

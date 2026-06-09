@@ -13,7 +13,7 @@ class KitchenEquipment extends Model
     protected $fillable = [
         'name', 'brand', 'model', 'size', 'description', 'color',
         'current_type', 'series', 'manual', 'code', 'status', 'responsible_id',
-        'storage_headquarter_id',
+        'storage_headquarter_id', 'equipment_invoice_id', 'unit_price',
     ];
 
     public function responsible(): BelongsTo
@@ -39,5 +39,10 @@ class KitchenEquipment extends Model
     public function dispatches(): MorphMany
     {
         return $this->morphMany(EquipmentDispatch::class, 'equipable')->latest();
+    }
+
+    public function invoice(): BelongsTo
+    {
+        return $this->belongsTo(EquipmentInvoice::class, 'equipment_invoice_id');
     }
 }

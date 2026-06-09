@@ -2,12 +2,17 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Business;
 use App\Models\ComputerEquipment;
 use App\Models\EquipmentHistory;
+use App\Models\EquipmentInvoice;
 use App\Models\Headquarter;
 use App\Models\KitchenEquipment;
+use App\Models\Provider;
 use App\Models\Staff;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
@@ -33,8 +38,10 @@ class EquipmentController extends Controller
                 ->withCount('histories')
                 ->latest()
                 ->get(),
-            'staff'        => Staff::where('status', '!=', 0)->select('id', 'name')->orderBy('name')->get(),
-            'headquarters' => Headquarter::select('id', 'name')->get(),
+            'staff'          => Staff::where('status', '!=', 0)->select('id', 'name')->orderBy('name')->get(),
+            'headquarters'   => Headquarter::select('id', 'name')->get(),
+            'businesses'         => Business::select('id', 'name')->orderBy('name')->get(),
+            'equipmentProviders' => Provider::where('type', 'equipment')->select('id', 'name')->orderBy('name')->get(),
         ]);
     }
 
@@ -88,6 +95,91 @@ class EquipmentController extends Controller
         ]);
 
         return back();
+    }
+
+    public function storeInvoice(Request $request)
+    {
+        $validated = $request->validate([
+            'business_id'  => 'nullable|exists:businesses,id',
+            'provider_id'  => 'nullable|exists:providers,id',
+            'document_type'      => 'nullable|string',
+            'invoice_number'     => 'nullable|string|max:100',
+            'date'               => 'required|date',
+            'notes'              => 'nullable|string',
+            'invoice_image'      => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:10240',
+            'items'              => 'required|array|min:1',
+            'items.*.type'       => 'required|in:computer,kitchen',
+            'items.*.name'       => 'required|string|max:255',
+            'items.*.brand'      => 'nullable|string|max:255',
+            'items.*.model'      => 'nullable|string|max:255',
+            'items.*.code'       => 'nullable|string|max:100',
+            'items.*.series'     => 'nullable|string|max:255',
+            'items.*.color'      => 'nullable|string|max:100',
+            'items.*.status'     => 'nullable|integer|between:0,4',
+            'items.*.unit_price' => 'required|numeric|min:0',
+        ]);
+
+        $imagePath = null;
+        if ($request->hasFile('invoice_image')) {
+            $path = $request->file('invoice_image')->store('equipment_invoices', 'public');
+            $imagePath = '/storage/' . $path;
+        }
+
+        $totalAmount = collect($validated['items'])->sum('unit_price');
+
+        DB::transaction(function () use ($validated, $imagePath, $totalAmount, $request) {
+            $invoice = EquipmentInvoice::create([
+                'business_id' => $validated['business_id'] ?? null,
+                'provider_id' => $validated['provider_id'] ?? null,
+                'document_type'     => $validated['document_type'] ?? null,
+                'invoice_number'    => $validated['invoice_number'] ?? null,
+                'date'              => $validated['date'],
+                'notes'             => $validated['notes'] ?? null,
+                'invoice_image'     => $imagePath,
+                'total_amount'      => $totalAmount,
+                'user_id'           => Auth::id(),
+            ]);
+
+            foreach ($validated['items'] as $item) {
+                $equipmentData = [
+                    'name'                 => $item['name'],
+                    'brand'                => $item['brand'] ?? null,
+                    'model'                => $item['model'] ?? null,
+                    'code'                 => $item['code'] ?? null,
+                    'series'               => $item['series'] ?? null,
+                    'color'                => $item['color'] ?? null,
+                    'status'               => $item['status'] ?? 0,
+                    'unit_price'           => $item['unit_price'],
+                    'equipment_invoice_id' => $invoice->id,
+                ];
+
+                $modelClass = $item['type'] === 'computer' ? ComputerEquipment::class : KitchenEquipment::class;
+                $equipment  = $modelClass::create($equipmentData);
+
+                EquipmentHistory::create([
+                    'equipable_id'   => $equipment->id,
+                    'equipable_type' => get_class($equipment),
+                    'action'         => 'Registro',
+                    'notes'          => 'Registrado vía factura ' . ($validated['invoice_number'] ?? 'S/N'),
+                    'user_id'        => Auth::id(),
+                ]);
+            }
+        });
+
+        return back()->with('success', 'Equipos ingresados con factura correctamente.');
+    }
+
+    public function storeEquipmentProvider(Request $request)
+    {
+        $data = $request->validate([
+            'name'  => 'required|string|max:255',
+            'email' => 'nullable|email|max:255',
+            'phone' => 'nullable|string|max:50',
+        ]);
+
+        $provider = Provider::create([...$data, 'type' => 'equipment']);
+
+        return back()->with('newEquipmentProvider', $provider->only('id', 'name'));
     }
 
     public function update(Request $request, string $type, int $id)

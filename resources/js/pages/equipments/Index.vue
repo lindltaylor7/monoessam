@@ -4,7 +4,7 @@ import { type BreadcrumbItem } from '@/types';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import {
-    AlertTriangle, CheckCircle2, ClipboardList, Clock, History,
+    AlertTriangle, CheckCircle2, ClipboardList, Clock, FileText, History,
     Laptop, Monitor, Pencil, Plus, Search, Trash2, Truck, UtensilsCrossed,
 } from 'lucide-vue-next';
 import { computed, reactive, ref } from 'vue';
@@ -51,11 +51,16 @@ interface HistoryEntry {
 
 interface HQRef { id: number; name: string }
 
+interface ProviderRef { id: number; name: string }
+interface BusinessRef { id: number; name: string }
+
 const props = defineProps<{
-    computerEquipments: ComputerEquipment[];
-    kitchenEquipments:  KitchenEquipment[];
-    staff: StaffRef[];
-    headquarters: HQRef[];
+    computerEquipments:  ComputerEquipment[];
+    kitchenEquipments:   KitchenEquipment[];
+    staff:               StaffRef[];
+    headquarters:        HQRef[];
+    businesses:          BusinessRef[];
+    equipmentProviders:  ProviderRef[];
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Equipos', href: '/equipments' }];
@@ -231,6 +236,92 @@ function doDelete() {
     });
 }
 
+// ── Equipment Invoice ──────────────────────────────────────────────────────
+const showInvoiceModal    = ref(false);
+const showNewProviderForm = ref(false);
+const newProviderName     = ref('');
+const localEquipmentProviders = ref([...props.equipmentProviders]);
+
+function saveNewProvider() {
+    if (!newProviderName.value.trim()) return;
+    router.post(route('equipments.providers.store'), { name: newProviderName.value.trim() }, {
+        preserveScroll: true,
+        onSuccess: (page) => {
+            const flash = (page.props as any).flash?.newEquipmentProvider;
+            if (flash) {
+                localEquipmentProviders.value.push(flash);
+                invoiceForm.value.provider_id = String(flash.id);
+            }
+            showNewProviderForm.value = false;
+            newProviderName.value = '';
+        },
+    });
+}
+
+const invoiceForm = ref({
+    business_id:       '',
+    provider_id: '',
+    document_type:     'factura' as string,
+    invoice_number:    '',
+    date:              new Date().toISOString().split('T')[0],
+    notes:             '',
+    invoice_image:     null as File | null,
+    items: [{ type: 'computer' as 'computer' | 'kitchen', name: '', brand: '', model: '', code: '', series: '', color: '', status: '0', unit_price: 0 }],
+});
+
+function addInvoiceItem() {
+    invoiceForm.value.items.push({ type: activeTab.value, name: '', brand: '', model: '', code: '', series: '', color: '', status: '0', unit_price: 0 });
+}
+
+function removeInvoiceItem(index: number) {
+    if (invoiceForm.value.items.length > 1) invoiceForm.value.items.splice(index, 1);
+}
+
+function handleInvoiceImageUpload(e: Event) {
+    const target = e.target as HTMLInputElement;
+    invoiceForm.value.invoice_image = target.files?.[0] || null;
+}
+
+const invoiceSubtotal = computed(() => {
+    const total = invoiceForm.value.items.reduce((acc, i) => acc + Number(i.unit_price), 0);
+    return invoiceForm.value.document_type === 'factura' ? total / 1.18 : total;
+});
+
+const invoiceIgv = computed(() => {
+    const total = invoiceForm.value.items.reduce((acc, i) => acc + Number(i.unit_price), 0);
+    return total - invoiceSubtotal.value;
+});
+
+const invoiceTotal = computed(() => invoiceForm.value.items.reduce((acc, i) => acc + Number(i.unit_price), 0));
+
+const isInvoiceSubmitDisabled = computed(() =>
+    !invoiceForm.value.date ||
+    invoiceForm.value.items.some(i => !i.name.trim() || Number(i.unit_price) < 0),
+);
+
+function resetInvoiceForm() {
+    invoiceForm.value = {
+        business_id: '', provider_id: '', document_type: 'factura',
+        invoice_number: '', date: new Date().toISOString().split('T')[0],
+        notes: '', invoice_image: null,
+        items: [{ type: activeTab.value, name: '', brand: '', model: '', code: '', series: '', color: '', status: '0', unit_price: 0 }],
+    };
+}
+
+function submitInvoice() {
+    if (isInvoiceSubmitDisabled.value) return;
+
+    router.post(route('equipments.invoice.store'), {
+        ...invoiceForm.value,
+        items: invoiceForm.value.items.map(i => ({ ...i, unit_price: Number(i.unit_price) })),
+    }, {
+        forceFormData: true,
+        preserveScroll: true,
+        onSuccess: () => { showInvoiceModal.value = false; resetInvoiceForm(); },
+        onError: (e) => { console.error(e); alert('Error al guardar la factura. Revise los campos.'); },
+    });
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 function fmtDate(d: string) {
     return new Date(d).toLocaleDateString('es-PE', {
@@ -254,6 +345,9 @@ function fmtDate(d: string) {
                 <div class="flex items-center gap-2">
                     <Button variant="outline" @click="router.visit(route('equipment-dispatches.index'))">
                         <Truck class="mr-1.5 h-4 w-4" /> Despachos
+                    </Button>
+                    <Button variant="outline" class="gap-2 border-indigo-200 text-indigo-600 hover:bg-indigo-50" @click="showInvoiceModal = true">
+                        <FileText class="h-4 w-4" /> Ingresar con Factura
                     </Button>
                     <Button class="bg-red-600 hover:bg-red-700" @click="openCreate">
                         <Plus class="mr-1.5 h-4 w-4" /> Nuevo equipo
@@ -676,6 +770,244 @@ function fmtDate(d: string) {
             </div>
         </SheetContent>
     </Sheet>
+
+    <!-- ══ DIALOG: Ingresar Equipos con Factura ══════════════════════════ -->
+    <Dialog v-model:open="showInvoiceModal">
+        <DialogContent class="max-h-[100vh] overflow-y-auto sm:max-w-[1300px]">
+            <DialogHeader>
+                <DialogTitle class="flex items-center gap-2">
+                    <FileText class="h-5 w-5 text-indigo-600" />
+                    Ingresar Equipos con Factura
+                </DialogTitle>
+            </DialogHeader>
+
+            <div class="grid gap-6 py-4">
+                <!-- Invoice header -->
+                <div class="grid grid-cols-1 gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-3">
+                    <div class="space-y-2">
+                        <Label class="text-xs font-bold uppercase text-slate-500">Empresa</Label>
+                        <Select v-model="invoiceForm.business_id">
+                            <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem v-for="b in businesses" :key="b.id" :value="String(b.id)">{{ b.name }}</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                            <Label class="text-xs font-bold uppercase text-slate-500">Proveedor de Equipos</Label>
+                            <button
+                                type="button"
+                                class="flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-800"
+                                @click="showNewProviderForm = !showNewProviderForm"
+                            >
+                                <Plus class="h-3 w-3" /> Nuevo
+                            </button>
+                        </div>
+                        <!-- Inline new provider form -->
+                        <div v-if="showNewProviderForm" class="flex gap-1.5 rounded-xl border border-indigo-100 bg-indigo-50/50 p-2">
+                            <Input v-model="newProviderName" placeholder="Nombre del proveedor" class="h-8 flex-1 bg-white text-xs" />
+                            <Button size="sm" class="h-8 bg-indigo-600 px-3 text-xs hover:bg-indigo-700" @click="saveNewProvider">
+                                Guardar
+                            </Button>
+                            <Button size="sm" variant="ghost" class="h-8 px-2 text-xs" @click="showNewProviderForm = false; newProviderName = ''">
+                                ✕
+                            </Button>
+                        </div>
+                        <Select v-model="invoiceForm.provider_id">
+                            <SelectTrigger class="bg-white">
+                                <SelectValue placeholder="Seleccionar proveedor" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem v-if="localEquipmentProviders.length === 0" value="__none__" disabled>
+                                    Sin proveedores — crea uno arriba
+                                </SelectItem>
+                                <SelectItem v-for="p in localEquipmentProviders" :key="p.id" :value="String(p.id)">{{ p.name }}</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div class="space-y-2">
+                        <Label class="text-xs font-bold uppercase text-slate-500">Tipo de Documento</Label>
+                        <Select v-model="invoiceForm.document_type">
+                            <SelectTrigger class="bg-white"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="factura">Factura (Con IGV)</SelectItem>
+                                <SelectItem value="boleta">Boleta (Sin IGV)</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <div class="space-y-2">
+                        <Label class="text-xs font-bold uppercase text-slate-500">Nº Documento</Label>
+                        <Input v-model="invoiceForm.invoice_number" placeholder="Ej: F-001-123" class="bg-white" />
+                    </div>
+                    <div class="space-y-2">
+                        <Label class="text-xs font-bold uppercase text-slate-500">Fecha</Label>
+                        <Input v-model="invoiceForm.date" type="date" class="bg-white" />
+                    </div>
+                    <div class="space-y-2">
+                        <Label class="text-xs font-bold uppercase text-slate-500">Notas</Label>
+                        <Input v-model="invoiceForm.notes" placeholder="Observaciones..." class="bg-white" />
+                    </div>
+                    <div class="space-y-2">
+                        <Label class="text-xs font-bold uppercase text-slate-500">Evidencia (Opcional)</Label>
+                        <Input
+                            type="file"
+                            @change="handleInvoiceImageUpload"
+                            accept="image/*,.pdf"
+                            class="bg-white text-xs file:mr-4 file:rounded-full file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-xs file:font-semibold hover:file:bg-slate-200"
+                        />
+                    </div>
+                </div>
+
+                <!-- Items table -->
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between px-1">
+                        <h3 class="flex items-center gap-2 text-sm font-bold text-slate-700">
+                            <Laptop class="h-4 w-4 text-indigo-500" /> Equipos a Registrar
+                        </h3>
+                        <Button
+                            @click="addInvoiceItem"
+                            size="sm"
+                            variant="outline"
+                            class="h-8 gap-1.5 border-indigo-200 text-xs font-bold text-indigo-600 hover:bg-indigo-50"
+                        >
+                            <Plus class="h-3.5 w-3.5" /> Agregar Fila
+                        </Button>
+                    </div>
+
+                    <div class="overflow-hidden rounded-2xl border shadow-sm">
+                        <table class="w-full text-sm">
+                            <thead class="border-b bg-slate-50">
+                                <tr class="text-left text-[10px] font-black uppercase text-slate-400">
+                                    <th class="px-3 py-3">Tipo</th>
+                                    <th class="px-3 py-3">Nombre <span class="text-red-400">*</span></th>
+                                    <th class="px-3 py-3">Marca</th>
+                                    <th class="px-3 py-3">Modelo</th>
+                                    <th class="px-3 py-3">Código</th>
+                                    <th class="px-3 py-3">N° Serie</th>
+                                    <th class="px-3 py-3">Estado</th>
+                                    <th class="w-28 px-3 py-3">P. Unitario</th>
+                                    <th v-if="invoiceForm.document_type === 'factura'" class="w-24 px-3 py-3 text-right">IGV (18%)</th>
+                                    <th class="w-28 px-3 py-3 text-right">Total</th>
+                                    <th class="w-10 px-3 py-3"></th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y">
+                                <tr v-for="(item, index) in invoiceForm.items" :key="index" class="group transition-colors hover:bg-slate-50/50">
+                                    <td class="p-2">
+                                        <Select v-model="item.type">
+                                            <SelectTrigger class="h-9 w-[120px] border-none shadow-none focus:ring-1">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="computer"><span class="flex items-center gap-1.5"><Laptop class="h-3.5 w-3.5" /> Tecnológico</span></SelectItem>
+                                                <SelectItem value="kitchen"><span class="flex items-center gap-1.5"><UtensilsCrossed class="h-3.5 w-3.5" /> Menaje</span></SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </td>
+                                    <td class="p-2">
+                                        <Input v-model="item.name" placeholder="Nombre..." class="h-9 border-none shadow-none focus:ring-1" />
+                                    </td>
+                                    <td class="p-2">
+                                        <Input v-model="item.brand" placeholder="Marca..." class="h-9 border-none shadow-none focus:ring-1" />
+                                    </td>
+                                    <td class="p-2">
+                                        <Input v-model="item.model" placeholder="Modelo..." class="h-9 border-none shadow-none focus:ring-1" />
+                                    </td>
+                                    <td class="p-2">
+                                        <Input v-model="item.code" placeholder="Código..." class="h-9 border-none shadow-none focus:ring-1" />
+                                    </td>
+                                    <td class="p-2">
+                                        <Input v-model="item.series" placeholder="Serie..." class="h-9 border-none shadow-none focus:ring-1" />
+                                    </td>
+                                    <td class="p-2">
+                                        <Select v-model="item.status">
+                                            <SelectTrigger class="h-9 w-[100px] border-none shadow-none focus:ring-1"><SelectValue /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem v-for="s in STATUSES" :key="s.value" :value="s.value">{{ s.label }}</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </td>
+                                    <td class="p-2">
+                                        <div class="relative">
+                                            <span class="absolute top-2 left-2 text-xs text-slate-400">S/.</span>
+                                            <Input
+                                                type="number"
+                                                v-model="item.unit_price"
+                                                step="0.01"
+                                                min="0"
+                                                class="h-9 border-none pl-6 font-bold text-indigo-600 shadow-none focus:ring-1"
+                                            />
+                                        </div>
+                                    </td>
+                                    <td v-if="invoiceForm.document_type === 'factura'" class="p-2 text-right text-xs font-medium text-indigo-500">
+                                        S/.{{ (Number(item.unit_price) - Number(item.unit_price) / 1.18).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                    </td>
+                                    <td class="p-2 text-right text-xs font-bold text-slate-900">
+                                        S/.{{ Number(item.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                    </td>
+                                    <td class="p-2 text-center">
+                                        <Button
+                                            @click="removeInvoiceItem(index)"
+                                            variant="ghost"
+                                            size="sm"
+                                            class="h-8 w-8 rounded-full p-0 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600"
+                                        >
+                                            <Trash2 class="h-4 w-4" />
+                                        </Button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                            <tfoot class="border-t border-slate-200 bg-slate-50">
+                                <tr>
+                                    <td :colspan="invoiceForm.document_type === 'factura' ? 8 : 7" rowspan="3" class="px-4 py-3 align-top">
+                                        <div class="rounded-xl border border-dashed border-slate-200 bg-white p-3 text-[10px] text-slate-400">
+                                            <p class="mb-1 font-bold uppercase tracking-widest">Notas de Cálculo:</p>
+                                            <p v-if="invoiceForm.document_type === 'factura'">• Los precios ingresados ya incluyen IGV.</p>
+                                            <p v-if="invoiceForm.document_type === 'factura'">• Se extrae el 18% para mostrar la base imponible.</p>
+                                            <p v-else>• Las boletas no desglosan impuestos; el total es el monto bruto.</p>
+                                        </div>
+                                    </td>
+                                    <td class="px-4 py-2 text-right text-[11px] font-bold uppercase tracking-wider text-slate-500">Subtotal Gravado</td>
+                                    <td class="px-4 py-2 text-right font-mono font-bold text-slate-700">
+                                        S/.{{ invoiceSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                    </td>
+                                    <td></td>
+                                </tr>
+                                <tr>
+                                    <td class="px-4 py-2 text-right text-[11px] font-bold uppercase tracking-wider text-slate-500">IGV (18%)</td>
+                                    <td class="px-4 py-2 text-right font-mono font-bold text-slate-600">
+                                        S/.{{ invoiceIgv.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                    </td>
+                                    <td></td>
+                                </tr>
+                                <tr class="bg-indigo-50/50">
+                                    <td class="px-4 py-3 text-right text-[12px] font-black uppercase tracking-widest text-indigo-900">Total Factura</td>
+                                    <td class="px-4 py-3 text-right">
+                                        <span class="font-mono text-xl font-black text-indigo-700">
+                                            S/.{{ invoiceTotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                        </span>
+                                    </td>
+                                    <td></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <DialogFooter class="-mx-6 mt-4 -mb-6 rounded-b-lg border-t bg-slate-50 p-6">
+                <Button variant="ghost" @click="showInvoiceModal = false; resetInvoiceForm()" class="font-bold">Cancelar</Button>
+                <Button
+                    @click="submitInvoice"
+                    :disabled="isInvoiceSubmitDisabled"
+                    class="bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700"
+                >
+                    Guardar y Registrar Equipos
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
 
     <!-- ══ DIALOG: Confirmar eliminación ══════════════════════════════════ -->
     <Dialog :open="!!deleteTarget" @update:open="v => { if (!v) deleteTarget = null }">
