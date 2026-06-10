@@ -389,6 +389,16 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
 
     Route::get('generalreport', [GeneralReportController::class, 'index'])->name('generalreport.index');
 
+    // ========================================================================
+    // SATISFACCIÓN DE USUARIOS (NPS por comedor)
+    // ========================================================================
+    Route::prefix('satisfaction')->name('satisfaction.')->group(function () {
+        Route::get('/', [App\Http\Controllers\SatisfactionController::class, 'index'])->name('index');
+        Route::post('/', [App\Http\Controllers\SatisfactionController::class, 'store'])
+            ->middleware('throttle:20,1')
+            ->name('store');
+    });
+
     Route::prefix('reportsales')->name('reportsales.')->group(function () {
         Route::get('/', [ReportSalesController::class, 'index'])->name('index');
         Route::delete('{id}', [ReportSalesController::class, 'destroy'])->name('destroy');

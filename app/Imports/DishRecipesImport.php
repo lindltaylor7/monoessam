@@ -15,13 +15,9 @@ class DishRecipesImport implements ToCollection, WithHeadingRow
 {
     public function collection(Collection $rows)
     {
-        // 1. Pre-fetch default levels to avoid repeated queries
-        $defaultLevelNames = ['Master', 'Staff', 'Empleado', 'Obrero'];
-        $levels = [];
-        foreach ($defaultLevelNames as $name) {
-            $levels[] = Level::firstOrCreate(['name' => $name]);
-        }
-        $levelIds = collect($levels)->pluck('id')->toArray();
+        // 1. The imported recipe is stored at the Master application level,
+        // matching how the UI keys recipes by (dish_id, level_id)
+        $masterLevel = Level::firstOrCreate(['name' => 'Master']);
 
         // 2. Local cache for ingredients to avoid repeated firstOrCreate
         $ingredientCache = [];
@@ -40,10 +36,12 @@ class DishRecipesImport implements ToCollection, WithHeadingRow
                 ['description' => 'Importado de Excel']
             );
 
-            // 2. Find or create/update the main Recipe
+            // 2. Find or create the recipe keyed by level (same key the UI uses),
+            // so re-imports and UI edits never create duplicates
             $recipe = $dish->recipes()->firstOrCreate(
-                ['name' => 'Receta ' . $dish->name],
+                ['level_id' => $masterLevel->id],
                 [
+                    'name' => 'Receta ' . $dish->name,
                     'total_gross_weight' => 0,
                     'total_waste_weight' => 0,
                     'total_calories' => 0,
@@ -51,13 +49,6 @@ class DishRecipesImport implements ToCollection, WithHeadingRow
                     'total_net_weight' => 0,
                 ]
             );
-
-            // 3. Attach default levels (only if not already attached)
-            $existingLevelIds = $recipe->levels()->pluck('level_id')->toArray();
-            $levelsToAttach = array_diff($levelIds, $existingLevelIds);
-            if (!empty($levelsToAttach)) {
-                $recipe->levels()->attach($levelsToAttach);
-            }
 
             // 4. Process Ingredients
             $ingredientsSync = [];

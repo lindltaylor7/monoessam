@@ -3,13 +3,14 @@ import { Badge } from '@/components/ui/badge';
 import Button from '@/components/ui/button/Button.vue';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dish, Ingredient } from '@/types';
 import { router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
-import { Check, ChevronDown, Copy, FileUp, Plus, Search, Trash } from 'lucide-vue-next';
+import { Check, ChevronDown, Copy, FileUp, ListFilter, Loader2, Plus, Search, Trash, X } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import CalcPopover from './CalcPopover.vue';
 
 const props = defineProps<{
@@ -22,6 +23,8 @@ const props = defineProps<{
 // State
 const searchQuery = ref('');
 const dishesSearched = ref<Dish[]>(props.dishes || []);
+const isSearchingDishes = ref(false);
+const categoryFilter = ref<string>('all');
 
 watch(
     () => props.dishes,
@@ -33,8 +36,43 @@ watch(
     { deep: true },
 );
 const ingredientsFounded = ref<Ingredient[]>([]);
+const isSearchingIngredients = ref(false);
+const ingredientSearchDone = ref(false);
 const isCreating = ref(false);
 const activeLevelTab = ref<number | null>(null);
+
+// Snapshot to detect unsaved changes in the form
+const formSnapshot = ref<string | null>(null);
+
+const takeSnapshot = () => {
+    formSnapshot.value = JSON.stringify(form.data());
+};
+
+const hasUnsavedChanges = () => {
+    if (form.id === null && !isCreating.value) return false;
+    if (formSnapshot.value === null) return false;
+    return JSON.stringify(form.data()) !== formSnapshot.value;
+};
+
+const confirmDiscard = async (): Promise<boolean> => {
+    if (!hasUnsavedChanges()) return true;
+    const result = await Swal.fire({
+        title: 'Cambios sin guardar',
+        text: 'Tiene cambios sin guardar en este plato. ¿Desea descartarlos?',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        confirmButtonText: 'Sí, descartar',
+        cancelButtonText: 'Seguir editando',
+    });
+    return result.isConfirmed;
+};
+
+const filteredDishes = computed(() => {
+    if (categoryFilter.value === 'all') return dishesSearched.value;
+    const catId = Number(categoryFilter.value);
+    return dishesSearched.value.filter((d: any) => d.dish_categories?.some((c: any) => c.id === catId));
+});
 
 // Form State
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -192,21 +230,32 @@ const toggleLevel = (id: number) => {
 };
 
 // List Logic
+let dishSearchTimer: ReturnType<typeof setTimeout> | null = null;
 const searchDish = (e: Event) => {
     const value = (e.target as HTMLInputElement).value;
+    searchQuery.value = value;
+    if (dishSearchTimer) clearTimeout(dishSearchTimer);
+
     if (!value) {
+        isSearchingDishes.value = false;
         dishesSearched.value = props.dishes || [];
         return;
     }
 
-    axios
-        .get(route('dishes.search', value))
-        .then((result) => {
-            dishesSearched.value = result.data;
-        })
-        .catch((err) => {
-            console.error(err);
-        });
+    isSearchingDishes.value = true;
+    dishSearchTimer = setTimeout(() => {
+        axios
+            .get(route('dishes.search', value))
+            .then((result) => {
+                dishesSearched.value = result.data;
+            })
+            .catch((err) => {
+                console.error(err);
+            })
+            .finally(() => {
+                isSearchingDishes.value = false;
+            });
+    }, 300);
 };
 
 const calculateIngredientCalories = (ingredient: any) => {
@@ -220,6 +269,11 @@ const calculateIngredientCalories = (ingredient: any) => {
     }
     return ingredient?.dosification?.energy || ingredient?.energy || 0;
 };
+
+// If a dish has duplicate recipes for the same level (legacy data), keep the one
+// with the most ingredients so it wins when loading the form
+const sortedRecipes = (dish: any) =>
+    [...(dish.recipes || [])].sort((a: any, b: any) => (b.ingredients?.length || 0) - (a.ingredients?.length || 0));
 
 const getDishIngredientsCount = (dish: any) => {
     if (!dish.recipes || dish.recipes.length === 0) return 0;
@@ -262,7 +316,9 @@ const copyIngredientsFromMaster = () => {
     }
 };
 
-const editDish = (dish: Dish) => {
+const editDish = async (dish: Dish) => {
+    if (form.id === dish.id) return;
+    if (!(await confirmDiscard())) return;
     form.clearErrors();
     isCreating.value = false;
 
@@ -272,11 +328,16 @@ const editDish = (dish: Dish) => {
     // @ts-ignore
     form.dish_categories = dish.dish_categories || [];
 
+    loadRecipesIntoForm(dish);
+    takeSnapshot();
+};
+
+const loadRecipesIntoForm = (dish: Dish) => {
     form.mesearument_unit = [];
     form.recipes = {};
 
     if (dish.recipes && dish.recipes.length > 0) {
-        dish.recipes.forEach((recipe: any) => {
+        sortedRecipes(dish).forEach((recipe: any) => {
             const levelId = recipe.level_id;
             if (!levelId) return;
             if (form.mesearument_unit.includes(levelId)) return;
@@ -317,7 +378,8 @@ const editDish = (dish: Dish) => {
     }
 };
 
-const duplicateDish = (dish: Dish) => {
+const duplicateDish = async (dish: Dish) => {
+    if (!(await confirmDiscard())) return;
     form.clearErrors();
     isCreating.value = true;
 
@@ -327,52 +389,12 @@ const duplicateDish = (dish: Dish) => {
     // @ts-ignore
     form.dish_categories = dish.dish_categories || [];
 
-    form.mesearument_unit = [];
-    form.recipes = {};
-
-    if (dish.recipes && dish.recipes.length > 0) {
-        dish.recipes.forEach((recipe: any) => {
-            const levelId = recipe.level_id;
-            if (!levelId) return;
-            if (form.mesearument_unit.includes(levelId)) return;
-            form.mesearument_unit.push(levelId);
-
-            form.recipes[levelId] = {
-                total_gross_weight: recipe.total_gross_weight || 0,
-                total_waste_weight: recipe.total_waste_weight || 0,
-                total_calories: recipe.total_calories || 0,
-                total_cost: recipe.total_cost || 0,
-                total_net_weight: recipe.total_net_weight || 0,
-                ingredients: (recipe.ingredients || []).map((ing: any) => {
-                    const fullIng = props.ingredients?.find((i) => i.id === ing.id);
-                    const newIng = {
-                        ...ing,
-                        gross_weight: parseFloat(ing.gross_weight) || 0,
-                        solid_waste: parseFloat(ing.solid_waste) || 0,
-                        liquid_waste: parseFloat(ing.liquid_waste) || 0,
-                        calories: parseFloat(ing.calories) || 0,
-                        cost: parseFloat(ing.cost) || 0,
-                        final_product: parseFloat(ing.final_product) || 0,
-                        unit_price: parseFloat(ing.unit_price) || 0,
-                        selected_unit: 'g',
-                        input_quantity: parseFloat(ing.gross_weight) || 0,
-                        originalValues: {
-                            waste: ing.waste || fullIng?.waste || 0,
-                            calories: calculateIngredientCalories(fullIng || ing),
-                        },
-                    };
-                    newIng.calories = (newIng.gross_weight * newIng.originalValues.calories) / 100;
-                    return newIng;
-                }),
-            };
-        });
-        activeLevelTab.value = form.mesearument_unit[0];
-    } else {
-        activeLevelTab.value = null;
-    }
+    loadRecipesIntoForm(dish);
+    takeSnapshot();
 };
 
-const createDish = () => {
+const createDish = async () => {
+    if (!(await confirmDiscard())) return;
     form.clearErrors();
     form.reset();
     form.id = null;
@@ -381,12 +403,15 @@ const createDish = () => {
     form.recipes = {};
     activeLevelTab.value = null;
     isCreating.value = true;
+    takeSnapshot();
 };
 
-const resetView = () => {
+const resetView = async (skipConfirm = false) => {
+    if (!skipConfirm && !(await confirmDiscard())) return;
     form.reset();
     form.id = null;
     isCreating.value = false;
+    formSnapshot.value = null;
 };
 
 const deleteDish = (id: number) => {
@@ -404,7 +429,7 @@ const deleteDish = (id: number) => {
                 onSuccess: () => {
                     dishesSearched.value = dishesSearched.value.filter((d) => d.id !== id);
                     if (form.id === id) {
-                        resetView();
+                        resetView(true);
                     }
                 },
             });
@@ -426,21 +451,39 @@ const recalculateTotals = () => {
     recipe.total_net_weight = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.final_product) || 0), 0);
 };
 
+let ingredientSearchTimer: ReturnType<typeof setTimeout> | null = null;
 const searchIngredients = (e: Event) => {
     const value = (e.target as HTMLInputElement).value;
+    if (ingredientSearchTimer) clearTimeout(ingredientSearchTimer);
+
     if (!value) {
         ingredientsFounded.value = [];
+        ingredientSearchDone.value = false;
+        isSearchingIngredients.value = false;
         return;
     }
 
-    axios
-        .get(route('dishes.search-ingredients', value))
-        .then((result) => {
-            ingredientsFounded.value = result.data;
-        })
-        .catch((err) => {
-            console.error(err);
-        });
+    isSearchingIngredients.value = true;
+    ingredientSearchTimer = setTimeout(() => {
+        axios
+            .get(route('dishes.search-ingredients', value))
+            .then((result) => {
+                ingredientsFounded.value = result.data;
+                ingredientSearchDone.value = true;
+            })
+            .catch((err) => {
+                console.error(err);
+            })
+            .finally(() => {
+                isSearchingIngredients.value = false;
+            });
+    }, 300);
+};
+
+const closeIngredientSearch = (e?: Event) => {
+    ingredientsFounded.value = [];
+    ingredientSearchDone.value = false;
+    if (e) (e.target as HTMLInputElement).value = '';
 };
 
 const selectIngredient = (ingredient: Ingredient) => {
@@ -528,6 +571,14 @@ const onWeightInput = (ingredient: any) => {
 };
 
 const submit = () => {
+    if (!form.name.trim()) {
+        Swal.fire({ title: 'Falta el nombre', text: 'Ingrese un nombre para el plato antes de guardar.', icon: 'warning' });
+        return;
+    }
+    if (form.mesearument_unit.length === 0) {
+        Swal.fire({ title: 'Sin niveles', text: 'Seleccione al menos un nivel de aplicación para configurar la receta.', icon: 'warning' });
+        return;
+    }
     const data = {
         ...form.data(),
         dish_categories: form.dish_categories.map((c) => c.id),
@@ -535,7 +586,7 @@ const submit = () => {
 
     const options = {
         onSuccess: () => {
-            resetView();
+            resetView(true);
             Swal.fire({
                 title: form.id ? '¡Actualizado!' : '¡Creado!',
                 text: `El quebrado se ha ${form.id ? 'guardado' : 'creado'} exitosamente.`,
@@ -573,13 +624,14 @@ const submit = () => {
     >
         <!-- LEFT PANEL: Dish List -->
         <div
-            class="z-10 flex w-full flex-col gap-4 border-r bg-white pr-0 md:w-1/3 md:pr-4 dark:bg-zinc-950"
+            class="z-10 flex w-full min-w-0 flex-col gap-4 border-r bg-white pr-0 md:w-1/3 md:pr-4 dark:bg-zinc-950"
             :class="{ 'hidden md:flex': form.id !== null || isCreating }"
         >
             <div class="flex items-center gap-2 border-b p-4 md:border-0 md:p-0">
                 <div class="relative flex-1">
-                    <Search class="absolute top-2.5 left-2.5 h-4 w-4 text-zinc-500" />
-                    <Input @keyup="searchDish" placeholder="Buscar plato..." class="w-full pl-9" />
+                    <Search v-if="!isSearchingDishes" class="absolute top-2.5 left-2.5 h-4 w-4 text-zinc-500" />
+                    <Loader2 v-else class="absolute top-2.5 left-2.5 h-4 w-4 animate-spin text-zinc-500" />
+                    <Input @input="searchDish" placeholder="Buscar plato..." class="w-full pl-9" />
                 </div>
                 <input type="file" ref="fileInput" class="hidden" accept=".xlsx,.xls,.csv" @change="handleFileUpload" />
                 <Button
@@ -596,9 +648,50 @@ const submit = () => {
                 </Button>
             </div>
 
+            <!-- Category filter -->
+            <div class="flex min-w-0 items-center gap-2 px-4 md:px-0">
+                <Select v-model="categoryFilter">
+                    <SelectTrigger class="h-9 min-w-0 flex-1 text-xs" title="Filtrar por categoría">
+                        <div class="flex min-w-0 items-center gap-2">
+                            <ListFilter class="h-3.5 w-3.5 shrink-0 text-zinc-400" />
+                            <span class="truncate">
+                                <SelectValue placeholder="Todas las categorías" />
+                            </span>
+                        </div>
+                    </SelectTrigger>
+                    <SelectContent class="max-h-72">
+                        <SelectItem value="all">Todas las categorías</SelectItem>
+                        <SelectItem v-for="cat in dishCategories" :key="cat.id" :value="String(cat.id)">
+                            {{ cat.name }}
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
+                <Button
+                    v-if="categoryFilter !== 'all'"
+                    @click="categoryFilter = 'all'"
+                    variant="ghost"
+                    size="icon"
+                    class="h-9 w-9 shrink-0 text-zinc-400 hover:text-zinc-700"
+                    title="Quitar filtro de categoría"
+                >
+                    <X class="h-4 w-4" />
+                </Button>
+                <span class="text-muted-foreground shrink-0 text-[11px] whitespace-nowrap">
+                    {{ filteredDishes.length }} plato{{ filteredDishes.length === 1 ? '' : 's' }}
+                </span>
+            </div>
+
             <div class="scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800 flex-1 space-y-1 overflow-y-auto p-2 pr-2">
                 <div
-                    v-for="dish in dishesSearched"
+                    v-if="filteredDishes.length === 0"
+                    class="text-muted-foreground flex h-40 flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-center text-sm"
+                >
+                    <Search class="h-5 w-5 opacity-40" />
+                    <span v-if="searchQuery || categoryFilter !== 'all'">No se encontraron platos con los filtros actuales.</span>
+                    <span v-else>Aún no hay platos registrados. Cree el primero con el botón +.</span>
+                </div>
+                <div
+                    v-for="dish in filteredDishes"
                     :key="dish.id"
                     @click="editDish(dish)"
                     class="group relative cursor-pointer rounded-lg border p-3 transition-all hover:bg-zinc-100 dark:hover:bg-zinc-900"
@@ -663,13 +756,23 @@ const submit = () => {
             <div v-if="form.id !== null || isCreating" class="flex h-full flex-col">
                 <div class="flex shrink-0 items-center justify-between rounded-t-xl border-b bg-white p-4 dark:bg-zinc-950">
                     <div>
-                        <h3 class="text-lg leading-none font-bold">{{ form.id ? 'Editar Plato' : 'Nuevo Plato' }}</h3>
+                        <h3 class="flex items-center gap-2 text-lg leading-none font-bold">
+                            {{ form.id ? 'Editar Plato' : 'Nuevo Plato' }}
+                            <span
+                                v-if="hasUnsavedChanges()"
+                                class="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-600 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+                                title="Hay cambios sin guardar"
+                            >
+                                Sin guardar
+                            </span>
+                        </h3>
                         <p class="text-muted-foreground mt-1 text-xs">Configure los ingredientes y valores del plato.</p>
                     </div>
                     <div class="flex gap-2">
-                        <Button type="button" variant="ghost" size="sm" @click="resetView">Cancelar</Button>
+                        <Button type="button" variant="ghost" size="sm" @click="resetView()">Cancelar</Button>
                         <Button type="button" size="sm" @click="submit" :disabled="form.processing">
-                            {{ form.id ? 'Guardar' : 'Crear' }}
+                            <Loader2 v-if="form.processing" class="mr-1 h-3.5 w-3.5 animate-spin" />
+                            {{ form.processing ? 'Guardando...' : form.id ? 'Guardar' : 'Crear' }}
                         </Button>
                     </div>
                 </div>
@@ -803,11 +906,17 @@ const submit = () => {
                         <div class="flex items-center justify-between">
                             <h4 class="text-sm font-semibold">Ingredientes - {{ localLevels.find((l) => l.id === activeLevelTab)?.name }}</h4>
                             <div class="relative w-full max-w-xs">
-                                <Search class="absolute top-2 left-2 h-3.5 w-3.5 text-zinc-400" />
-                                <Input placeholder="Buscar ingrediente..." @keyup="searchIngredients" class="h-8 pl-8 text-xs" />
+                                <Search v-if="!isSearchingIngredients" class="absolute top-2 left-2 h-3.5 w-3.5 text-zinc-400" />
+                                <Loader2 v-else class="absolute top-2 left-2 h-3.5 w-3.5 animate-spin text-zinc-400" />
+                                <Input
+                                    placeholder="Buscar ingrediente... (Esc para cerrar)"
+                                    @input="searchIngredients"
+                                    @keyup.esc="closeIngredientSearch"
+                                    class="h-8 pl-8 text-xs"
+                                />
                                 <!-- Dropdown Results -->
                                 <div
-                                    v-if="ingredientsFounded.length > 0"
+                                    v-if="ingredientsFounded.length > 0 || (ingredientSearchDone && !isSearchingIngredients)"
                                     class="absolute top-full right-0 left-0 z-50 mt-1 max-h-48 overflow-y-auto rounded-md border bg-white p-1 shadow-lg dark:bg-zinc-900"
                                 >
                                     <div
@@ -819,11 +928,17 @@ const submit = () => {
                                         <Plus class="text-primary h-3 w-3" />
                                         <span>{{ ingredient.name }}</span>
                                     </div>
+                                    <div
+                                        v-if="ingredientsFounded.length === 0"
+                                        class="text-muted-foreground p-3 text-center text-xs italic"
+                                    >
+                                        No se encontraron ingredientes con ese nombre.
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="overflow-hidden rounded-md border bg-white dark:bg-zinc-950">
+                        <div class="scrollbar-thin scrollbar-thumb-zinc-200 overflow-x-auto rounded-md border bg-white dark:bg-zinc-950">
                             <Table>
                                 <TableHeader class="sticky top-0 z-20 bg-zinc-50 dark:bg-zinc-900">
                                     <TableRow class="border-none hover:bg-transparent">

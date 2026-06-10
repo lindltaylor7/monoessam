@@ -151,8 +151,22 @@ class DishController extends Controller
 
                 foreach ($levelIds as $levelId) {
                     $levelRecipe = $recipesData[$levelId] ?? [];
-                    
-                    $recipe = $dish->recipes()->where('level_id', $levelId)->first();
+
+                    // Si existen recetas duplicadas para este nivel, conservar la que
+                    // tiene más ingredientes y eliminar las sobrantes
+                    $levelRecipes = $dish->recipes()
+                        ->where('level_id', $levelId)
+                        ->withCount('ingredients')
+                        ->orderByDesc('ingredients_count')
+                        ->orderByDesc('id')
+                        ->get();
+
+                    $recipe = $levelRecipes->first();
+                    foreach ($levelRecipes->slice(1) as $duplicate) {
+                        $duplicate->ingredients()->detach();
+                        $duplicate->delete();
+                    }
+
                     if (!$recipe) {
                         $recipe = DishRecipe::create([
                             'dish_id' => $dish->id,

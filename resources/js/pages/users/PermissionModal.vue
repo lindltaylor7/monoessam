@@ -1,11 +1,10 @@
 <script lang="ts" setup>
 import Icon from '@/components/Icon.vue';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useForm } from '@inertiajs/vue3';
-import { Shield } from 'lucide-vue-next';
-import { watch } from 'vue';
+import { ShieldCheck } from 'lucide-vue-next';
+import { ref, watch } from 'vue';
 
 interface Permission {
     id: number;
@@ -32,12 +31,13 @@ const props = defineProps<{
 
 const emit = defineEmits(['update:open']);
 
+const activeIds = ref<number[]>([]);
+
 const form = useForm({
     permissions: [] as number[],
     user_id: null as number | null,
 });
 
-// Accessing route globally from Ziggy
 declare const route: any;
 
 watch(
@@ -46,96 +46,119 @@ watch(
         if (newVal && props.user) {
             form.user_id = props.user.id;
 
-            // Obtener IDs de permisos directos
-            const directPermissionIds = props.user.permissions.map((p) => p.id);
-
-            // Obtener IDs de permisos de todos los roles
-            const rolePermissionIds = props.user.roles.flatMap((role) => role.permissions.map((p) => p.id));
-
-            // Unir y eliminar duplicados usando un Set
-            form.permissions = [...new Set([...directPermissionIds, ...rolePermissionIds])];
+            const directIds = props.user.permissions.map((p) => p.id);
+            const roleIds = props.user.roles.flatMap((role) => role.permissions.map((p) => p.id));
+            activeIds.value = [...new Set([...directIds, ...roleIds])];
         }
     },
 );
 
-const isSelected = (id: number) => form.permissions.includes(id);
+const isSelected = (id: number) => activeIds.value.includes(id);
 
 const togglePermission = (id: number) => {
-    const permissions = [...form.permissions];
-    const index = permissions.indexOf(id);
-    if (index > -1) {
-        permissions.splice(index, 1);
-    } else {
-        permissions.push(id);
-    }
-    form.permissions = permissions;
+    const idx = activeIds.value.indexOf(id);
+    if (idx > -1) activeIds.value.splice(idx, 1);
+    else activeIds.value.push(id);
 };
 
 const submit = () => {
     if (!props.user) return;
-
+    form.permissions = [...activeIds.value];
     form.post(route('permissions.user.update', props.user.id), {
         preserveScroll: true,
-        onSuccess: () => {
-            emit('update:open', false);
-        },
+        onSuccess: () => emit('update:open', false),
     });
 };
 </script>
 
 <template>
     <Dialog :open="open" @update:open="$emit('update:open', $event)">
-        <DialogContent class="gap-0 overflow-hidden border-none p-0 shadow-2xl sm:max-w-[700px]">
-            <div class="relative bg-orange-600 px-6 py-8 text-white">
+        <DialogContent class="flex max-h-[85vh] flex-col gap-0 overflow-hidden border-none p-0 shadow-2xl sm:max-w-[500px]">
+
+            <!-- Header naranja -->
+            <div class="relative bg-orange-600 px-6 py-6 text-white">
                 <DialogHeader>
-                    <DialogTitle class="text-2xl font-bold">Permisos de Usuario</DialogTitle>
+                    <DialogTitle class="text-xl font-bold">Permisos de Usuario</DialogTitle>
                     <DialogDescription class="text-orange-100">
-                        Gestiona los permisos específicos para <span class="font-bold text-white">{{ user?.name }}</span
-                        >.
+                        Gestiona los permisos para
+                        <span class="font-bold text-white">{{ user?.name }}</span>.
                     </DialogDescription>
                 </DialogHeader>
-                <div class="bg-background absolute right-6 -bottom-6 flex h-12 w-12 items-center justify-center rounded-full border shadow-lg">
-                    <Shield class="h-6 w-6 text-orange-600" />
+                <div class="bg-background absolute right-6 -bottom-5 flex h-10 w-10 items-center justify-center rounded-full border shadow-lg">
+                    <ShieldCheck class="h-5 w-5 text-orange-600" />
                 </div>
             </div>
 
-            <div class="bg-background px-6 pt-10 pb-6">
-                <div class="mb-4 flex items-center justify-between">
-                    <h3 class="text-muted-foreground text-sm font-bold tracking-wider uppercase">Listado de Permisos</h3>
-                    <div class="text-muted-foreground text-xs">
-                        <span class="font-bold text-orange-600">{{ form.permissions.length }}</span> seleccionados
-                    </div>
-                </div>
+            <!-- Info bar -->
+            <div class="border-b bg-orange-50 px-6 py-2.5 dark:bg-orange-950/20">
+                <p class="text-xs text-orange-600 dark:text-orange-400">
+                    <span class="font-semibold">{{ activeIds.length }}</span> de
+                    <span class="font-semibold">{{ permissions.length }}</span> permisos activos
+                </p>
+            </div>
 
+            <!-- Lista de permisos -->
+            <div class="custom-scrollbar flex-1 divide-y overflow-y-auto">
                 <div
-                    class="custom-scrollbar bg-muted/5 grid max-h-[50vh] grid-cols-1 gap-3 overflow-y-auto rounded-xl border p-4 pr-2 md:grid-cols-2 lg:grid-cols-3"
+                    v-for="permission in permissions"
+                    :key="permission.id"
+                    class="flex cursor-pointer items-center justify-between gap-3 px-5 py-3.5 transition-colors hover:bg-muted/40"
+                    @click="togglePermission(permission.id)"
                 >
-                    <div
-                        v-for="permission in permissions"
-                        :key="permission.id"
-                        class="hover:bg-muted/10 flex items-center space-x-3 rounded-lg border border-transparent p-2 transition-colors"
-                        :class="{ 'border-orange-100 bg-orange-50': isSelected(permission.id) }"
-                    >
-                        <Checkbox :id="'perm-' + permission.id" :checked="isSelected(permission.id)" @click="togglePermission(permission.id)" />
-                        <label :for="'perm-' + permission.id" class="flex-1 cursor-pointer text-sm leading-none font-medium">
-                            {{ permission.sidebar_name || permission.name }}
-                        </label>
+                    <div class="flex min-w-0 items-center gap-3">
+                        <div
+                            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors"
+                            :class="isSelected(permission.id) ? 'bg-orange-100 dark:bg-orange-950' : 'bg-muted'"
+                        >
+                            <ShieldCheck
+                                class="h-4 w-4 transition-colors"
+                                :class="isSelected(permission.id) ? 'text-orange-500' : 'text-muted-foreground'"
+                            />
+                        </div>
+                        <div class="min-w-0">
+                            <p class="truncate text-sm font-medium leading-snug">
+                                {{ permission.sidebar_name || permission.name }}
+                            </p>
+                            <p v-if="permission.sidebar_name" class="text-muted-foreground truncate text-xs leading-snug">
+                                {{ permission.name }}
+                            </p>
+                        </div>
                     </div>
-                </div>
 
-                <DialogFooter class="flex gap-2 pt-8">
-                    <Button type="button" variant="ghost" @click="$emit('update:open', false)" class="border">Cancelar</Button>
+                    <!-- Toggle nativo -->
+                    <button
+                        type="button"
+                        role="switch"
+                        :aria-checked="isSelected(permission.id)"
+                        class="relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2"
+                        :class="isSelected(permission.id) ? 'bg-orange-500' : 'bg-input dark:bg-input/80'"
+                        @click.stop="togglePermission(permission.id)"
+                    >
+                        <span
+                            class="pointer-events-none block h-5 w-5 rounded-full bg-white shadow-md ring-0 transition-transform duration-200"
+                            :class="isSelected(permission.id) ? 'translate-x-5' : 'translate-x-0'"
+                        />
+                    </button>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <DialogFooter class="border-t px-6 py-4">
+                <div class="flex w-full gap-2">
+                    <Button type="button" variant="ghost" class="border" @click="$emit('update:open', false)">
+                        Cancelar
+                    </Button>
                     <Button
-                        @click="submit"
-                        :disabled="form.processing"
                         class="flex-1 bg-orange-600 font-semibold text-white shadow-md hover:bg-orange-700"
+                        :disabled="form.processing"
+                        @click="submit"
                     >
                         <Icon v-if="form.processing" name="loader-2" class="mr-2 h-4 w-4 animate-spin" />
                         <Icon v-else name="save" class="mr-2 h-4 w-4" />
                         Sincronizar Permisos
                     </Button>
-                </DialogFooter>
-            </div>
+                </div>
+            </DialogFooter>
         </DialogContent>
     </Dialog>
 </template>

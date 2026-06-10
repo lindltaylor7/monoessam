@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router } from '@inertiajs/vue3';
 import {
+    Angry,
     ArrowDownRight,
     ArrowUpRight,
     BarChart3,
@@ -14,8 +15,13 @@ import {
     Coffee,
     DollarSign,
     Filter,
+    Frown,
+    Laugh,
+    Meh,
     Moon,
     ShoppingBag,
+    Smile,
+    SmilePlus,
     Sunrise,
     TrendingUp,
     UserCheck,
@@ -26,6 +32,13 @@ import { computed, ref } from 'vue';
 import VueApexCharts from 'vue3-apexcharts';
 
 interface Mine { id: number; name: string }
+interface Satisfaction {
+    total_votes: number;
+    avg_score: number | null;
+    by_score: Record<string, number>;
+    by_cafe: { cafe: string; avg_score: number; votes: number }[];
+    trend: { date: string; avg_score: number; votes: number }[];
+}
 interface Filters { start_date: string; end_date: string; mine_id: string | null }
 interface Kpis {
     total_revenue: number; total_sales: number; total_diners: number;
@@ -43,6 +56,7 @@ const props = defineProps<{
     by_subdealership: any[];
     top_diners: any[];
     visitor_ratio: any[];
+    satisfaction: Satisfaction;
 }>();
 
 /* ── Filters ── */
@@ -165,6 +179,45 @@ const ratioSeries = computed(() => props.visitor_ratio.map(r => r.count));
 
 /* ── KPI growth badge ── */
 const growthIcon = (v: number | null) => v !== null && v >= 0 ? ArrowUpRight : ArrowDownRight;
+
+/* ── Satisfacción ── */
+const satFaces = [
+    { score: 1, icon: Angry, label: 'Muy insatisfecho', color: '#ef4444', bg: 'bg-red-50',    text: 'text-red-600' },
+    { score: 2, icon: Frown, label: 'Insatisfecho',     color: '#fb923c', bg: 'bg-orange-50', text: 'text-orange-500' },
+    { score: 3, icon: Meh,   label: 'Neutral',          color: '#facc15', bg: 'bg-yellow-50', text: 'text-yellow-500' },
+    { score: 4, icon: Smile, label: 'Satisfecho',       color: '#4ade80', bg: 'bg-green-50',  text: 'text-green-500' },
+    { score: 5, icon: Laugh, label: 'Muy satisfecho',   color: '#22c55e', bg: 'bg-green-50',  text: 'text-green-600' },
+];
+
+const satDistribution = computed(() => {
+    const total = props.satisfaction.total_votes || 0;
+    return satFaces.map(f => {
+        const count = Number(props.satisfaction.by_score?.[String(f.score)] ?? 0);
+        return { ...f, count, pct: total > 0 ? Math.round((count / total) * 100) : 0 };
+    });
+});
+
+const faceForScore = (score: number | null) => {
+    if (score === null) return satFaces[2];
+    const idx = Math.min(4, Math.max(0, Math.round(score) - 1));
+    return satFaces[idx];
+};
+
+const satTrendOptions = computed(() => ({
+    chart: { type: 'area' as const, toolbar: { show: false }, sparkline: { enabled: true }, fontFamily: 'inherit' },
+    stroke: { curve: 'smooth' as const, width: 2.5 },
+    fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0.02 } },
+    colors: ['#22c55e'],
+    yaxis: { min: 1, max: 5 },
+    tooltip: {
+        x: { show: false },
+        y: { formatter: (v: number) => v.toFixed(2) + ' / 5' },
+    },
+    xaxis: { categories: props.satisfaction.trend.map(t => t.date) },
+}));
+const satTrendSeries = computed(() => [
+    { name: 'Promedio', data: props.satisfaction.trend.map(t => t.avg_score) },
+]);
 </script>
 
 <template>
@@ -446,6 +499,106 @@ const growthIcon = (v: number | null) => v !== null && v >= 0 ? ArrowUpRight : A
                                     <p class="text-[9px] font-semibold text-slate-400">{{ fmt(d.spent) }}</p>
                                 </div>
                             </div>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <!-- ── Row 5: Satisfacción de usuarios ── -->
+            <div class="grid gap-4 lg:grid-cols-3">
+                <!-- Resumen -->
+                <Card class="border-slate-200 shadow-sm">
+                    <CardHeader class="pb-2">
+                        <CardTitle class="flex items-center gap-2 text-sm font-bold text-slate-700">
+                            <SmilePlus class="h-4 w-4 text-green-500" />
+                            Satisfacción Promedio
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div v-if="satisfaction.total_votes > 0" class="flex flex-col items-center gap-2 py-2">
+                            <span
+                                class="flex h-16 w-16 items-center justify-center rounded-full"
+                                :class="faceForScore(satisfaction.avg_score).bg"
+                            >
+                                <component
+                                    :is="faceForScore(satisfaction.avg_score).icon"
+                                    class="h-10 w-10"
+                                    :class="faceForScore(satisfaction.avg_score).text"
+                                    stroke-width="1.75"
+                                />
+                            </span>
+                            <p class="text-3xl font-black text-slate-800">{{ satisfaction.avg_score?.toFixed(2) }}<span class="text-base font-bold text-slate-400"> / 5</span></p>
+                            <p class="text-xs font-semibold text-slate-500">
+                                {{ faceForScore(satisfaction.avg_score).label }} · {{ satisfaction.total_votes.toLocaleString() }} opiniones
+                            </p>
+                            <div v-if="satisfaction.trend.length > 1" class="mt-2 w-full">
+                                <VueApexCharts type="area" height="60" :options="satTrendOptions" :series="satTrendSeries" />
+                                <p class="mt-1 text-center text-[10px] text-slate-400">Tendencia diaria del período</p>
+                            </div>
+                        </div>
+                        <div v-else class="flex h-40 items-center justify-center text-sm text-slate-400">
+                            Sin opiniones en el período
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <!-- Distribución -->
+                <Card class="border-slate-200 shadow-sm">
+                    <CardHeader class="pb-2">
+                        <CardTitle class="flex items-center gap-2 text-sm font-bold text-slate-700">
+                            <BarChart3 class="h-4 w-4 text-indigo-500" />
+                            Distribución de Opiniones
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div class="space-y-2.5">
+                            <div v-for="face in satDistribution" :key="face.score" class="flex items-center gap-3">
+                                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" :class="face.bg">
+                                    <component :is="face.icon" class="h-5 w-5" :class="face.text" stroke-width="1.75" />
+                                </span>
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex items-center justify-between text-[11px]">
+                                        <span class="font-semibold text-slate-600">{{ face.label }}</span>
+                                        <span class="font-black text-slate-700">{{ face.count }} <span class="font-semibold text-slate-400">({{ face.pct }}%)</span></span>
+                                    </div>
+                                    <div class="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
+                                        <div class="h-full rounded-full transition-all" :style="{ width: face.pct + '%', backgroundColor: face.color }"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
+                <!-- Ranking por comedor -->
+                <Card class="border-slate-200 shadow-sm">
+                    <CardHeader class="pb-2">
+                        <CardTitle class="flex items-center gap-2 text-sm font-bold text-slate-700">
+                            <Coffee class="h-4 w-4 text-amber-500" />
+                            Satisfacción por Comedor
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent class="max-h-72 overflow-y-auto">
+                        <div v-if="satisfaction.by_cafe.length" class="space-y-2">
+                            <div
+                                v-for="row in satisfaction.by_cafe"
+                                :key="row.cafe"
+                                class="flex items-center gap-3 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2.5"
+                            >
+                                <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full" :class="faceForScore(row.avg_score).bg">
+                                    <component :is="faceForScore(row.avg_score).icon" class="h-5 w-5" :class="faceForScore(row.avg_score).text" stroke-width="1.75" />
+                                </span>
+                                <div class="min-w-0 flex-1">
+                                    <p class="truncate text-[12px] font-bold text-slate-700">{{ row.cafe }}</p>
+                                    <p class="text-[10px] text-slate-400">{{ row.votes }} opiniones</p>
+                                </div>
+                                <span class="shrink-0 text-[13px] font-black" :class="faceForScore(row.avg_score).text">
+                                    {{ row.avg_score.toFixed(2) }}
+                                </span>
+                            </div>
+                        </div>
+                        <div v-else class="flex h-40 items-center justify-center text-sm text-slate-400">
+                            Sin opiniones en el período
                         </div>
                     </CardContent>
                 </Card>

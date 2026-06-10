@@ -28,7 +28,7 @@ const props = defineProps<Props>();
 
 const meals: MealType[] = ['Desayuno', 'Almuerzo', 'Cena', 'Refrigerio'];
 const startDate = ref(dayjs().startOf('week').add(1, 'day').format('YYYY-MM-DD'));
-const daysCount = ref(0);
+const daysCount = ref(7);
 
 const form = useForm({
     cafe_id: '',
@@ -130,20 +130,22 @@ const dates = computed(() => {
     return Array.from({ length: daysCount.value }, (_, i) => dayjs(form.start_date).add(i, 'days').format('YYYY-MM-DD'));
 });
 
-// Initialize items and portions
+// Initialize items and portions, preserving values already entered for dates that remain
 const initializeGrid = () => {
+    const oldPortions = { ...portionsGrid.value };
+    const oldItems = { ...itemsGrid.value };
     portionsGrid.value = {};
     itemsGrid.value = {};
 
     dates.value.forEach((date) => {
         meals.forEach((meal) => {
             const portKey = `${date}_${meal}`;
-            portionsGrid.value[portKey] = 0;
+            portionsGrid.value[portKey] = oldPortions[portKey] !== undefined ? oldPortions[portKey] : 0;
 
             const structureForMeal = localMenuStructure.value.filter((s) => s.meal_type === meal);
             structureForMeal.forEach((s) => {
                 const itemKey = `${date}_${meal}_${s.id}`;
-                itemsGrid.value[itemKey] = '';
+                itemsGrid.value[itemKey] = oldItems[itemKey] || '';
             });
         });
     });
@@ -182,7 +184,17 @@ const decreaseDays = () => {
 
 initializeGrid();
 
-const submit = () => {
+const submit = async () => {
+    if (!form.cafe_id) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Falta el comedor',
+            text: 'Seleccione mina, unidad y café/comedor en el panel de configuración antes de guardar.',
+            confirmButtonColor: '#FF5A1F',
+        });
+        return;
+    }
+
     // Sync local grid to form arrays before posting
     form.end_date = dayjs(form.start_date)
         .add(daysCount.value - 1, 'days')
@@ -211,7 +223,59 @@ const submit = () => {
         });
     }
 
-    form.post(route('planning.store'));
+    if (form.items.length === 0) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Matriz vacía',
+            text: 'No hay categorías en la estructura del menú para planificar. Cargue un ciclo de menú o configure la estructura primero.',
+            confirmButtonColor: '#FF5A1F',
+        });
+        return;
+    }
+
+    const assignedDishes = form.items.filter((i) => i.dish_id).length;
+    if (assignedDishes === 0) {
+        const result = await Swal.fire({
+            icon: 'question',
+            title: 'Sin platos asignados',
+            text: 'No ha asignado ningún plato en la matriz. ¿Desea guardar la planificación de todas formas?',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, guardar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#FF5A1F',
+        });
+        if (!result.isConfirmed) return;
+    }
+
+    form.post(route('planning.store'), {
+        onSuccess: () => {
+            Swal.fire({
+                icon: 'success',
+                title: 'Planificación guardada',
+                text: `Se guardó el plan con ${assignedDishes} platos asignados.`,
+                timer: 2000,
+                showConfirmButton: false,
+            });
+        },
+        onError: (errors) => {
+            const msg = Object.values(errors).flat().join('\n') || 'Revise los datos ingresados.';
+            Swal.fire({
+                icon: 'error',
+                title: 'No se pudo guardar',
+                text: msg,
+                confirmButtonColor: '#FF5A1F',
+            });
+        },
+    });
+};
+
+// Copy the first day's portions to every day of the active service
+const replicatePortions = (meal: string) => {
+    if (dates.value.length === 0) return;
+    const firstVal = portionsGrid.value[`${dates.value[0]}_${meal}`] || 0;
+    dates.value.forEach((date) => {
+        portionsGrid.value[`${date}_${meal}`] = firstVal;
+    });
 };
 
 const importForm = useForm({
@@ -260,6 +324,22 @@ const handleRelFileImport = (event: Event) => {
             },
         });
     }
+};
+
+const generatePO = (program: WeeklyProgram) => {
+    Swal.fire({
+        title: '¿Generar Quebrado (PO)?',
+        text: `Se generará la orden de compra para "${program.cafe?.name}" del ${dayjs(program.start_date).format('DD/MM')} al ${dayjs(program.end_date).format('DD/MM')}.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, generar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#FF5A1F',
+    }).then((result) => {
+        if (result.isConfirmed) {
+            router.post(route('planning.generate-po', program.id));
+        }
+    });
 };
 
 const getDishesForCell = (date: string, meal: string, struct: any) => {
@@ -410,7 +490,7 @@ const loadMenuCycle = (cycleIdStr: string) => {
                         :disabled="form.processing"
                         class="rounded-xl bg-[#FF5A1F] text-white shadow-sm shadow-orange-500/20 hover:bg-[#e04a17]"
                     >
-                        Guardar Planificación
+                        {{ form.processing ? 'Guardando...' : 'Guardar Planificación' }}
                     </Button>
                 </div>
             </div>
@@ -745,7 +825,19 @@ const loadMenuCycle = (cycleIdStr: string) => {
                             <TableBody>
                                 <template v-for="meal in [activeMealType].filter(Boolean)" :key="meal">
                                     <TableRow class="bg-slate-50/30">
-                                        <TableCell class="font-bold text-slate-700">Raciones del Servicio</TableCell>
+                                        <TableCell class="font-bold text-slate-700">
+                                            <div class="flex flex-col gap-1">
+                                                <span>Raciones del Servicio</span>
+                                                <button
+                                                    type="button"
+                                                    @click="replicatePortions(meal)"
+                                                    class="w-fit rounded-md border border-dashed border-slate-300 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-slate-500 uppercase transition-colors hover:border-[#FF5A1F] hover:text-[#FF5A1F]"
+                                                    title="Copia las raciones del primer día a todos los días"
+                                                >
+                                                    Replicar 1er día →
+                                                </button>
+                                            </div>
+                                        </TableCell>
                                         <TableCell v-for="date in dates" :key="date" class="min-w-[160px] border-l border-slate-100/55 p-2">
                                             <div class="mx-auto flex max-w-[140px] flex-col gap-1">
                                                 <label class="text-center text-[9px] font-bold tracking-wider text-slate-400 uppercase"
@@ -809,7 +901,13 @@ const loadMenuCycle = (cycleIdStr: string) => {
 
             <div class="mt-8">
                 <h2 class="mb-4 text-xl font-bold">Programaciones Guardadas</h2>
-                <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div
+                    v-if="programs.length === 0"
+                    class="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400"
+                >
+                    Aún no hay programaciones guardadas. Complete la matriz superior y presione "Guardar Planificación".
+                </div>
+                <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                     <Card v-for="program in programs" :key="program.id" class="rounded-2xl border-none shadow-sm">
                         <CardHeader>
                             <CardTitle class="text-lg">{{ program.cafe?.name }}</CardTitle>
@@ -824,9 +922,7 @@ const loadMenuCycle = (cycleIdStr: string) => {
                                     <span class="text-muted-foreground">Estado:</span>
                                     <span class="capitalize">{{ program.status }}</span>
                                 </div>
-                                <Button @click="router.post(route('planning.generate-po', program.id))" class="mt-4 rounded-xl" variant="secondary">
-                                    Generar Quebrado (PO)
-                                </Button>
+                                <Button @click="generatePO(program)" class="mt-4 rounded-xl" variant="secondary"> Generar Quebrado (PO) </Button>
                             </div>
                         </CardContent>
                     </Card>

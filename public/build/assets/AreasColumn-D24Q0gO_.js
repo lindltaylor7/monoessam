@@ -1,0 +1,1 @@
+import{_ as m}from"./AreasColumn.vue_vue_type_script_setup_true_lang-CDOW4sPg.js";import"./app-kJ_KC_4E.js";export{m as default};
