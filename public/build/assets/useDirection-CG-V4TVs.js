@@ -1,1 +1,0 @@
-import{i as r}from"./Teleport-BaisN52C.js";import{p as n,c}from"./app-kJ_KC_4E.js";function a(t){const e=r({dir:n("ltr")});return c(()=>{var o;return(t==null?void 0:t.value)||((o=e.dir)==null?void 0:o.value)||"ltr"})}export{a as u};
