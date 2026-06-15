@@ -44,12 +44,30 @@ const serviceTypes = [
     { value: '5', label: 'Descartables' },
 ];
 
-const typeConfig: Record<string, { label: string; icon: unknown; classes: string }> = {
-    '1': { label: 'Desayuno',    icon: Sunrise,  classes: 'bg-amber-100  text-amber-700  dark:bg-amber-900/30  dark:text-amber-400' },
-    '2': { label: 'Almuerzo',    icon: Utensils, classes: 'bg-green-100  text-green-700  dark:bg-green-900/30  dark:text-green-400' },
-    '3': { label: 'Cena',        icon: Moon,     classes: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400' },
-    '4': { label: 'Refrigerio',  icon: Coffee,   classes: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
-    '5': { label: 'Descartables',icon: Package,  classes: 'bg-gray-100   text-gray-600   dark:bg-gray-700      dark:text-gray-300' },
+const typeConfig: Record<string, {
+    label: string; icon: unknown; classes: string;
+    gradient: string; emoji: string; emoji2: string;
+}> = {
+    '1': {
+        label: 'Desayuno',     icon: Sunrise,  classes: 'bg-amber-100  text-amber-700  dark:bg-amber-900/30  dark:text-amber-400',
+        gradient: 'from-amber-400 via-orange-400 to-amber-500', emoji: '🍳', emoji2: '☕',
+    },
+    '2': {
+        label: 'Almuerzo',     icon: Utensils, classes: 'bg-green-100  text-green-700  dark:bg-green-900/30  dark:text-green-400',
+        gradient: 'from-emerald-400 via-green-400 to-teal-500',  emoji: '🍽️', emoji2: '🥗',
+    },
+    '3': {
+        label: 'Cena',         icon: Moon,     classes: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
+        gradient: 'from-indigo-500 via-violet-500 to-purple-600', emoji: '🍷', emoji2: '🌙',
+    },
+    '4': {
+        label: 'Refrigerio',   icon: Coffee,   classes: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+        gradient: 'from-yellow-300 via-amber-400 to-orange-400',  emoji: '☕', emoji2: '🥐',
+    },
+    '5': {
+        label: 'Descartables', icon: Package,  classes: 'bg-gray-100   text-gray-600   dark:bg-gray-700      dark:text-gray-300',
+        gradient: 'from-slate-400 via-gray-500 to-zinc-600',      emoji: '📦', emoji2: '🥡',
+    },
 };
 
 // Cargar servicios al montar el componente
@@ -251,11 +269,37 @@ const confirmDelete = (id: number) => {
                         <Card
                             v-for="service in services"
                             :key="service.id"
-                            class="border-sidebar-border/50 dark:border-sidebar-border/70 group rounded-2xl border shadow-sm transition hover:shadow-md"
+                            class="border-sidebar-border/50 dark:border-sidebar-border/70 group overflow-hidden rounded-2xl border shadow-sm transition hover:shadow-lg"
                         >
-                            <div class="flex flex-col gap-3 p-4">
-                                <!-- Header de la card -->
-                                <div class="flex items-start justify-between gap-2">
+                            <!-- ── Foto / Banner ────────────────────────── -->
+                            <div
+                                class="relative flex h-36 items-center justify-center overflow-hidden bg-gradient-to-br"
+                                :class="typeConfig[service.type]?.gradient ?? 'from-gray-400 to-slate-500'"
+                            >
+                                <!-- Círculos decorativos de fondo -->
+                                <div class="absolute -right-6 -top-6 h-28 w-28 rounded-full bg-white/10" />
+                                <div class="absolute -bottom-4 -left-4 h-20 w-20 rounded-full bg-black/10" />
+                                <div class="absolute right-6 bottom-4 h-10 w-10 rounded-full bg-white/15" />
+
+                                <!-- Emoji secundario — decorativo -->
+                                <span
+                                    class="absolute top-3 right-4 text-3xl opacity-50 transition-all duration-500 group-hover:opacity-70 group-hover:rotate-6 select-none"
+                                >
+                                    {{ typeConfig[service.type]?.emoji2 ?? '🍴' }}
+                                </span>
+
+                                <!-- Emoji principal -->
+                                <span
+                                    class="relative z-10 text-6xl drop-shadow transition-transform duration-500 group-hover:scale-110 select-none"
+                                >
+                                    {{ typeConfig[service.type]?.emoji ?? '🍽️' }}
+                                </span>
+                            </div>
+
+                            <!-- ── Contenido ────────────────────────────── -->
+                            <div class="flex flex-col gap-2.5 p-4">
+                                <!-- Badges -->
+                                <div class="flex items-center justify-between gap-2">
                                     <span
                                         class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold"
                                         :class="typeConfig[service.type]?.classes ?? 'bg-gray-100 text-gray-600'"
@@ -274,7 +318,7 @@ const confirmDelete = (id: number) => {
                                 </h3>
 
                                 <!-- Descripción -->
-                                <p class="text-muted-foreground line-clamp-2 text-sm">
+                                <p class="text-muted-foreground line-clamp-2 min-h-[2.5rem] text-sm">
                                     {{ service.description || '—' }}
                                 </p>
 

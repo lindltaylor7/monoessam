@@ -3,6 +3,7 @@
 use App\Http\Controllers\AreaController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EquipmentController;
+use App\Http\Controllers\InvoicesController;
 use App\Http\Controllers\EquipmentDispatchController;
 use App\Http\Controllers\BusinessController;
 use App\Http\Controllers\CafeController;
@@ -366,6 +367,8 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     Route::prefix('equipments')->name('equipments.')->group(function () {
         Route::get('/', [EquipmentController::class, 'index'])->name('index');
         Route::post('/', [EquipmentController::class, 'store'])->name('store');
+        Route::post('/invoice', [EquipmentController::class, 'storeInvoice'])->name('invoice.store');
+        Route::post('/providers', [EquipmentController::class, 'storeEquipmentProvider'])->name('providers.store');
         Route::put('{type}/{id}', [EquipmentController::class, 'update'])->name('update');
         Route::delete('{type}/{id}', [EquipmentController::class, 'destroy'])->name('destroy');
         Route::get('{type}/{id}/history', [EquipmentController::class, 'history'])->name('history');
@@ -379,7 +382,22 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('{id}/pdf', [EquipmentDispatchController::class, 'pdf'])->name('pdf');
     });
 
+    // ========================================================================
+    // FACTURAS UNIFICADAS
+    // ========================================================================
+    Route::get('invoices', [InvoicesController::class, 'index'])->name('invoices.index');
+
     Route::get('generalreport', [GeneralReportController::class, 'index'])->name('generalreport.index');
+
+    // ========================================================================
+    // SATISFACCIÓN DE USUARIOS (NPS por comedor)
+    // ========================================================================
+    Route::prefix('satisfaction')->name('satisfaction.')->group(function () {
+        Route::get('/', [App\Http\Controllers\SatisfactionController::class, 'index'])->name('index');
+        Route::post('/', [App\Http\Controllers\SatisfactionController::class, 'store'])
+            ->middleware('throttle:20,1')
+            ->name('store');
+    });
 
     Route::prefix('reportsales')->name('reportsales.')->group(function () {
         Route::get('/', [ReportSalesController::class, 'index'])->name('index');

@@ -13,7 +13,7 @@ class ComputerEquipment extends Model
     protected $fillable = [
         'name', 'description', 'brand', 'model', 'presentation',
         'color', 'series', 'code', 'status', 'responsible_id',
-        'storage_headquarter_id',
+        'storage_headquarter_id', 'equipment_invoice_id', 'unit_price',
     ];
 
     public function responsible(): BelongsTo
@@ -39,5 +39,10 @@ class ComputerEquipment extends Model
     public function dispatches(): MorphMany
     {
         return $this->morphMany(EquipmentDispatch::class, 'equipable')->latest();
+    }
+
+    public function invoice(): BelongsTo
+    {
+        return $this->belongsTo(EquipmentInvoice::class, 'equipment_invoice_id');
     }
 }

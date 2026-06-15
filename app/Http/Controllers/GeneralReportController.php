@@ -146,6 +146,42 @@ class GeneralReportController extends Controller
             ['label' => 'Visitantes',  'count' => Sale::whereIn('cafe_id', $cafeIds)->whereBetween('date', [$startDate, $endDate])->where('is_visitor', true)->count()],
         ];
 
+        /* ── Satisfacción de usuarios (NPS por comedor) ── */
+        $satisfactionBase = \App\Models\CafeSatisfaction::whereIn('cafe_id', $cafeIds)
+            ->whereBetween('date', [$startDate, $endDate]);
+
+        $satisfactionTotal = (clone $satisfactionBase)->count();
+        $satisfactionAvg = $satisfactionTotal > 0 ? round((clone $satisfactionBase)->avg('score'), 2) : null;
+
+        $satisfactionByScore = (clone $satisfactionBase)
+            ->selectRaw('score, COUNT(*) as total')
+            ->groupBy('score')
+            ->pluck('total', 'score');
+
+        $satisfactionByCafe = \App\Models\CafeSatisfaction::whereIn('cafe_satisfactions.cafe_id', $cafeIds)
+            ->whereBetween('date', [$startDate, $endDate])
+            ->join('cafes', 'cafe_satisfactions.cafe_id', '=', 'cafes.id')
+            ->selectRaw('cafes.name as cafe, AVG(score) as avg_score, COUNT(*) as votes')
+            ->groupBy('cafes.id', 'cafes.name')
+            ->orderByDesc('avg_score')
+            ->get()
+            ->map(fn($r) => [
+                'cafe' => $r->cafe,
+                'avg_score' => round((float) $r->avg_score, 2),
+                'votes' => (int) $r->votes,
+            ]);
+
+        $satisfactionTrend = (clone $satisfactionBase)
+            ->selectRaw('date, AVG(score) as avg_score, COUNT(*) as votes')
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get()
+            ->map(fn($r) => [
+                'date' => Carbon::parse($r->date)->format('d/m'),
+                'avg_score' => round((float) $r->avg_score, 2),
+                'votes' => (int) $r->votes,
+            ]);
+
         /* ── Previous period comparison (same duration, shifted back) ── */
         $days    = Carbon::parse($startDate)->diffInDays(Carbon::parse($endDate)) + 1;
         $prevEnd = Carbon::parse($startDate)->subDay()->toDateString();
@@ -176,6 +212,13 @@ class GeneralReportController extends Controller
             'by_subdealership'   => $bySubdealership,
             'top_diners'         => $topDiners,
             'visitor_ratio'      => $visitorRatio,
+            'satisfaction'       => [
+                'total_votes' => $satisfactionTotal,
+                'avg_score'   => $satisfactionAvg,
+                'by_score'    => $satisfactionByScore,
+                'by_cafe'     => $satisfactionByCafe,
+                'trend'       => $satisfactionTrend,
+            ],
         ]);
     }
 }

@@ -4,7 +4,7 @@ import Input from '@/components/ui/input/Input.vue';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { router } from '@inertiajs/vue3';
-import { ChevronDown, ChevronUp, Save, Search, Trash } from 'lucide-vue-next';
+import { ChevronDown, ChevronUp, FolderOpen, Save, Search, Trash } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
 import { computed, ref, watch } from 'vue';
 
@@ -19,24 +19,29 @@ const searchQuery = ref('');
 const open = ref(false);
 const structureName = ref('');
 const sellingPrice = ref<number | null>(null);
+const loadedStructureId = ref<number | null>(null);
 
 watch(
     () => props.serviceableId,
-    (newId) => {
-        if (newId) {
-            const structure = props.structures?.find((s) => String(s.serviceable_id) === String(newId));
-            if (structure) {
-                loadStructure(structure);
-            } else {
-                categoriesSelected.value = [];
-                structureName.value = '';
-                sellingPrice.value = null;
-            }
-        } else {
-            categoriesSelected.value = [];
-            structureName.value = '';
-            sellingPrice.value = null;
+    async (newId) => {
+        if (!newId) return;
+        const structure = props.structures?.find((s) => String(s.serviceable_id) === String(newId));
+        if (!structure) return;
+
+        // Don't silently wipe work in progress when switching service
+        if (categoriesSelected.value.length > 0 && loadedStructureId.value !== structure.id) {
+            const result = await Swal.fire({
+                title: 'Estructura guardada encontrada',
+                text: `Este servicio ya tiene la estructura "${structure.name}". ¿Desea cargarla? Se reemplazará la configuración actual.`,
+                icon: 'question',
+                showCancelButton: true,
+                confirmButtonText: 'Sí, cargar',
+                cancelButtonText: 'Mantener actual',
+                confirmButtonColor: '#4f46e5',
+            });
+            if (!result.isConfirmed) return;
         }
+        loadStructure(structure);
     },
     { immediate: true },
 );
@@ -70,6 +75,19 @@ const costMargin = computed(() => {
     const cost = parseFloat(totalSuperiorCost.value) || 0;
     if (price <= 0) return '0.00';
     return ((cost / price) * 100).toFixed(2);
+});
+
+// Color the margin: low cost ratio = healthy, near/over 100% = losing money
+const marginClass = computed(() => {
+    const m = parseFloat(costMargin.value) || 0;
+    if (m === 0) return 'text-slate-900 dark:text-white';
+    if (m <= 70) return 'text-emerald-600 dark:text-emerald-400';
+    if (m <= 90) return 'text-amber-600 dark:text-amber-400';
+    return 'text-rose-600 dark:text-rose-400';
+});
+
+const totalRation = computed(() => {
+    return categoriesSelected.value.reduce((acc, cat) => acc + (parseFloat(cat.ration) || 0), 0).toFixed(2);
 });
 watch(
     categoriesSelected,
@@ -107,7 +125,16 @@ watch(
 );
 
 const selectCategory = (category: any) => {
-    console.log(category);
+    if (categoriesSelected.value.some((c) => c.id === category.id)) {
+        Swal.fire({
+            title: 'Categoría duplicada',
+            text: `"${category.name}" ya está en la estructura.`,
+            icon: 'info',
+            timer: 1800,
+            showConfirmButton: false,
+        });
+        return;
+    }
     // Ensure the unit is properly mapped when adding
     const newCategory = { ...category, measurement_unit: category.mesearument_unit || category.measurement_unit || 'UNID' };
     categoriesSelected.value.push(newCategory);
@@ -136,6 +163,7 @@ const moveCategoryDown = (index: number) => {
 };
 
 const loadStructure = (struct: any) => {
+    loadedStructureId.value = struct.id;
     structureName.value = struct.name;
     sellingPrice.value = struct.selling_price || null;
     categoriesSelected.value = struct.costs.map((cost: any) => ({
@@ -166,6 +194,9 @@ const deleteStructure = (id: number) => {
             router.delete(route('food.structure.destroy', id), {
                 preserveScroll: true,
                 onSuccess: () => {
+                    if (loadedStructureId.value === id) {
+                        clearStructure();
+                    }
                     Swal.fire('¡Eliminado!', 'La estructura ha sido eliminada.', 'success');
                 },
             });
@@ -173,19 +204,41 @@ const deleteStructure = (id: number) => {
     });
 };
 
+const clearStructure = () => {
+    loadedStructureId.value = null;
+    structureName.value = '';
+    sellingPrice.value = null;
+    categoriesSelected.value = [];
+};
+
 const saveStructure = () => {
     if (!props.serviceableId) {
         Swal.fire({
             title: 'Atención',
-            text: 'Debe seleccionar un servicio primero.',
+            text: 'Debe seleccionar mina, unidad, comedor y servicio en la parte superior antes de guardar.',
             icon: 'warning',
             confirmButtonText: 'Entendido',
         });
         return;
     }
 
-    if (!structureName.value) {
-        alert('Por favor, ingrese un nombre para la estructura.');
+    if (!structureName.value.trim()) {
+        Swal.fire({
+            title: 'Falta el nombre',
+            text: 'Por favor, ingrese un nombre para la estructura.',
+            icon: 'warning',
+            confirmButtonText: 'Entendido',
+        });
+        return;
+    }
+
+    if (categoriesSelected.value.length === 0) {
+        Swal.fire({
+            title: 'Estructura vacía',
+            text: 'Añada al menos una categoría a la estructura antes de guardar.',
+            icon: 'warning',
+            confirmButtonText: 'Entendido',
+        });
         return;
     }
 
@@ -214,9 +267,7 @@ const saveStructure = () => {
                 }
             },
             onSuccess: () => {
-                structureName.value = '';
-                sellingPrice.value = null;
-                categoriesSelected.value = [];
+                clearStructure();
                 Swal.fire({
                     title: '¡Éxito!',
                     text: 'Estructura guardada correctamente',
@@ -284,9 +335,9 @@ const saveStructure = () => {
                             placeholder="0.00"
                         />
                     </div>
-                    <div class="flex items-center gap-2">
-                        <span class="text-[10px] font-bold text-indigo-600 uppercase dark:text-indigo-400">Margen</span>
-                        <span class="text-sm font-black text-slate-900 dark:text-white">{{ costMargin }}%</span>
+                    <div class="flex items-center gap-2" title="Costo superior / Precio de venta. Verde: saludable, ámbar: ajustado, rojo: pérdida.">
+                        <span class="text-[10px] font-bold text-indigo-600 uppercase dark:text-indigo-400">Costo/Precio</span>
+                        <span class="text-sm font-black" :class="marginClass">{{ costMargin }}%</span>
                     </div>
                 </div>
             </div>
@@ -308,6 +359,40 @@ const saveStructure = () => {
                 </Button>
             </div>
         </div>
+
+        <!-- Saved structures -->
+        <div
+            v-if="(structures?.length || 0) > 0"
+            class="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950"
+        >
+            <span class="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase">
+                <FolderOpen class="h-3.5 w-3.5" /> Estructuras guardadas
+            </span>
+            <div
+                v-for="struct in structures"
+                :key="struct.id"
+                class="group flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold transition-all"
+                :class="
+                    loadedStructureId === struct.id
+                        ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm'
+                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300'
+                "
+            >
+                <button type="button" @click="loadStructure(struct)" :title="`Cargar estructura (${struct.costs?.length || 0} categorías)`">
+                    {{ struct.name }}
+                    <span v-if="struct.selling_price" class="ml-1 opacity-70">S/. {{ Number(struct.selling_price).toFixed(2) }}</span>
+                </button>
+                <button
+                    type="button"
+                    @click.stop="deleteStructure(struct.id)"
+                    class="ml-1 opacity-0 transition-opacity group-hover:opacity-100"
+                    :class="loadedStructureId === struct.id ? 'text-white/80 hover:text-white' : 'text-slate-400 hover:text-red-500'"
+                    title="Eliminar estructura"
+                >
+                    <Trash class="h-3 w-3" />
+                </button>
+            </div>
+        </div>
         <Table>
             <TableHeader>
                 <TableRow class="hover:bg-transparent">
@@ -323,6 +408,16 @@ const saveStructure = () => {
                 </TableRow>
             </TableHeader>
             <TableBody>
+                <TableRow v-if="(categoriesSelected?.length || 0) === 0" class="hover:bg-transparent">
+                    <TableCell colspan="9" class="text-muted-foreground h-32 text-center text-sm">
+                        <div class="flex flex-col items-center gap-1">
+                            <span class="font-medium">La estructura está vacía.</span>
+                            <span class="text-xs"
+                                >Use "Añadir Categoría a Estructura" para armarla, o cargue una estructura guardada desde la lista superior.</span
+                            >
+                        </div>
+                    </TableCell>
+                </TableRow>
                 <TableRow
                     v-for="(category, index) in categoriesSelected || []"
                     :key="category?.id"
@@ -418,7 +513,23 @@ const saveStructure = () => {
             </TableBody>
             <TableFooter v-if="(categoriesSelected?.length || 0) > 0">
                 <TableRow class="bg-slate-50/50 hover:bg-transparent dark:bg-slate-900/10">
-                    <TableCell colspan="5" class="pr-4 text-right text-xs font-bold text-slate-500 uppercase">Resumen de Costos:</TableCell>
+                    <TableCell colspan="3" class="pr-4 text-right text-xs font-bold text-slate-500 uppercase">Resumen:</TableCell>
+                    <TableCell class="p-2 text-right">
+                        <div class="flex flex-col items-center" :title="totalRation !== '100.00' ? 'La suma de % ración no llega a 100%' : ''">
+                            <span class="mb-0.5 text-[9px] font-black text-sky-600 uppercase">% Ración Total</span>
+                            <div
+                                class="flex h-8 w-full items-center justify-center rounded border-2 text-center text-sm font-bold shadow-sm"
+                                :class="
+                                    totalRation === '100.00'
+                                        ? 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/50 dark:bg-sky-900/30 dark:text-sky-400'
+                                        : 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-900/50 dark:bg-amber-900/30 dark:text-amber-400'
+                                "
+                            >
+                                {{ totalRation }}%
+                            </div>
+                        </div>
+                    </TableCell>
+                    <TableCell></TableCell>
                     <TableCell class="p-2 text-right">
                         <div class="flex flex-col items-center">
                             <span class="mb-0.5 text-[9px] font-black text-rose-600 uppercase">Costo Inferior</span>

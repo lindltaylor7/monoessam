@@ -52,9 +52,7 @@ const emits = defineEmits<{
                             </div>
                             <div>
                                 <h3 class="text-lg font-bold tracking-tight">Servicio ya consumido</h3>
-                                <p class="mt-0.5 text-sm text-amber-100/90">
-                                    {{ data.dinner.name }} · DNI {{ data.dinner.dni }}
-                                </p>
+                                <p class="mt-0.5 text-sm text-amber-100/90">{{ data.dinner.name }} · DNI {{ data.dinner.dni }}</p>
                             </div>
                         </div>
                         <button
@@ -67,9 +65,7 @@ const emits = defineEmits<{
 
                     <!-- Body -->
                     <div class="p-5">
-                        <p class="mb-3 text-sm text-slate-500">
-                            Este comensal ya consumió los siguientes servicios hoy:
-                        </p>
+                        <p class="mb-3 text-sm text-slate-500">Este comensal ya consumió los siguientes servicios hoy:</p>
 
                         <div class="overflow-hidden rounded-xl border border-amber-100">
                             <div class="bg-amber-50 px-4 py-2">
@@ -86,7 +82,7 @@ const emits = defineEmits<{
                                 >
                                     <div>
                                         <p class="text-sm font-semibold text-slate-800">{{ conflict.service_name }}</p>
-                                        <p class="text-[11px] text-slate-400 font-mono">{{ conflict.service_code }}</p>
+                                        <p class="font-mono text-[11px] text-slate-400">{{ conflict.service_code }}</p>
                                     </div>
                                     <span class="rounded-full bg-slate-100 px-2.5 py-1 text-right text-[11px] font-semibold text-slate-600">
                                         {{ conflict.cafe_name }}
@@ -95,9 +91,7 @@ const emits = defineEmits<{
                             </div>
                         </div>
 
-                        <p class="mt-4 text-sm text-slate-500">
-                            ¿Desea permitir el registro de todas formas?
-                        </p>
+                        <p class="mt-4 text-sm text-slate-500">¿Desea permitir el registro de todas formas?</p>
                     </div>
 
                     <!-- Footer -->
@@ -108,12 +102,12 @@ const emits = defineEmits<{
                         >
                             Cancelar
                         </button>
-                        <button
+                        <!--  <button
                             @click="emits('confirm')"
                             class="rounded-lg bg-amber-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600 active:scale-95"
                         >
                             Permitir de todas formas
-                        </button>
+                        </button> -->
                     </div>
                 </div>
             </Transition>

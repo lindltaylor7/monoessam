@@ -26,7 +26,12 @@ watch(
 
 <template>
     <div class="border-sidebar-border/70 dark:border-sidebar-border relative col-span-1 flex flex-col gap-4 overflow-hidden rounded-xl border p-4">
-        <p>Seleccione una mina, unidad y comedor</p>
+        <div class="flex flex-col gap-0.5">
+            <p class="text-sm font-semibold">Paso 1 · Seleccione mina, unidad, comedor y servicio</p>
+            <p class="text-muted-foreground text-xs">
+                La estructura de menú se guarda asociada al servicio elegido. Si el servicio ya tiene una estructura, se cargará automáticamente.
+            </p>
+        </div>
         <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
             <Select class="w-full" v-model="selectedOptions.mine">
                 <SelectTrigger class="w-full">
