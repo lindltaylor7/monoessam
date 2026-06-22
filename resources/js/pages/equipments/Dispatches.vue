@@ -208,9 +208,17 @@ function downloadPdf(id: number) {
                         <p class="text-muted-foreground mt-0.5 text-sm">Control de almacenes Lima / Huancayo y destinos</p>
                     </div>
                 </div>
-                <Button class="bg-red-600 hover:bg-red-700" @click="openCreate">
-                    <Plus class="mr-1.5 h-4 w-4" /> Nuevo Despacho
-                </Button>
+                <div class="flex items-center gap-2">
+                    <a :href="route('equipment-dispatches.receptions')">
+                        <Button variant="outline" size="sm" class="gap-1.5">
+                            <PackageCheck class="h-4 w-4" />
+                            Recepción por Destino
+                        </Button>
+                    </a>
+                    <Button class="bg-red-600 hover:bg-red-700" @click="openCreate">
+                        <Plus class="mr-1.5 h-4 w-4" /> Nuevo Despacho
+                    </Button>
+                </div>
             </div>
 
             <!-- ── Stats ───────────────────────────────────────────── -->

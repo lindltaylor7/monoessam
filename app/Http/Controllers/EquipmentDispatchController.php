@@ -92,6 +92,41 @@ class EquipmentDispatchController extends Controller
         return back()->with('success', "Despacho {$dispatchNumber} registrado correctamente.");
     }
 
+    public function receptions()
+    {
+        $dispatches = EquipmentDispatch::with(['equipable', 'origin', 'staff', 'dispatcher', 'receiver'])
+            ->where('status', 'active')
+            ->latest()
+            ->get()
+            ->map(fn ($d) => $this->transform($d));
+
+        return Inertia::render('equipments/Receptions', [
+            'dispatches'  => $dispatches,
+            'mines'       => Mine::with(['units.cafes'])->orderBy('name')->get(),
+            'headquarters'=> Headquarter::with('business:id,name')->select('id', 'name', 'business_id')->orderBy('name')->get(),
+        ]);
+    }
+
+    public function markReceived(int $id)
+    {
+        $dispatch = EquipmentDispatch::findOrFail($id);
+
+        if ($dispatch->status !== 'active') {
+            return back()->withErrors(['dispatch' => 'Este despacho no está activo.']);
+        }
+
+        if ($dispatch->received_at) {
+            return back()->withErrors(['dispatch' => 'Este despacho ya fue confirmado como recibido.']);
+        }
+
+        $dispatch->update([
+            'received_at' => now(),
+            'received_by' => Auth::id(),
+        ]);
+
+        return back()->with('success', "Despacho {$dispatch->dispatch_number} confirmado como recibido.");
+    }
+
     public function markReturned(int $id)
     {
         $dispatch = EquipmentDispatch::with('equipable')->findOrFail($id);
@@ -165,6 +200,8 @@ class EquipmentDispatchController extends Controller
             'dispatched_at'    => $d->dispatched_at?->format('d/m/Y H:i'),
             'dispatched_at_raw'=> $d->dispatched_at?->toISOString(),
             'returned_at'      => $d->returned_at?->format('d/m/Y H:i'),
+            'received_at'      => $d->received_at?->format('d/m/Y H:i'),
+            'received_by'      => $d->receiver?->name,
         ];
     }
 }

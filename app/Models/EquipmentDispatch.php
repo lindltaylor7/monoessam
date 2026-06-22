@@ -15,12 +15,13 @@ class EquipmentDispatch extends Model
         'staff_id', 'description',
         'dispatch_number', 'status',
         'dispatched_at', 'returned_at',
-        'dispatched_by',
+        'dispatched_by', 'received_at', 'received_by',
     ];
 
     protected $casts = [
         'dispatched_at' => 'datetime',
         'returned_at'   => 'datetime',
+        'received_at'   => 'datetime',
     ];
 
     public function equipable(): MorphTo
@@ -41,5 +42,10 @@ class EquipmentDispatch extends Model
     public function dispatcher(): BelongsTo
     {
         return $this->belongsTo(User::class, 'dispatched_by');
+    }
+
+    public function receiver(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'received_by');
     }
 }

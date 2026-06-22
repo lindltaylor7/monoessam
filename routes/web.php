@@ -379,8 +379,10 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
 
     Route::prefix('equipment-dispatches')->name('equipment-dispatches.')->group(function () {
         Route::get('/', [EquipmentDispatchController::class, 'index'])->name('index');
+        Route::get('/receptions', [EquipmentDispatchController::class, 'receptions'])->name('receptions');
         Route::post('/', [EquipmentDispatchController::class, 'store'])->name('store');
         Route::put('{id}/return', [EquipmentDispatchController::class, 'markReturned'])->name('return');
+        Route::put('{id}/receive', [EquipmentDispatchController::class, 'markReceived'])->name('receive');
         Route::get('{id}/pdf', [EquipmentDispatchController::class, 'pdf'])->name('pdf');
     });
 
