@@ -155,6 +155,9 @@ class EquipmentController extends Controller
                     'unit_price'           => $item['unit_price'],
                     'quantity'             => $item['quantity'] ?? 1,
                     'equipment_invoice_id' => $invoice->id,
+                    // kitchen-specific (ignored by ComputerEquipment's $fillable)
+                    'size'                 => $item['size'] ?? null,
+                    'description'          => $item['description'] ?? null,
                 ];
 
                 $modelClass = $item['type'] === 'computer' ? ComputerEquipment::class : KitchenEquipment::class;
