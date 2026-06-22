@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 class EquipmentDispatch extends Model
 {
     protected $fillable = [
-        'equipable_type', 'equipable_id',
+        'equipable_type', 'equipable_id', 'quantity',
         'origin_headquarter_id',
         'destination_type', 'destination_id',
         'staff_id', 'description',

@@ -40,6 +40,7 @@ interface StaffRef {
 interface HQRef {
     id: number;
     name: string;
+    business: { id: number; name: string } | null;
 }
 
 interface ComputerEquipment {
@@ -94,6 +95,7 @@ interface HistoryEntry {
 interface HQRef {
     id: number;
     name: string;
+    business: { id: number; name: string } | null;
 }
 
 interface ProviderRef {
@@ -856,7 +858,9 @@ function fmtDate(d: string) {
                             <SelectTrigger><SelectValue placeholder="Sin sede asignada" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="none">Sin sede asignada</SelectItem>
-                                <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">{{ hq.name }}</SelectItem>
+                                <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">
+                                    {{ hq.name }}{{ hq.business ? ` · ${hq.business.name}` : '' }}
+                                </SelectItem>
                             </SelectContent>
                         </Select>
                     </div>

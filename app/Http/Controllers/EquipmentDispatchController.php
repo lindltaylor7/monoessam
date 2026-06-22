@@ -24,24 +24,15 @@ class EquipmentDispatchController extends Controller
             ->get()
             ->map(fn ($d) => $this->transform($d));
 
-        // IDs of equipment currently dispatched (active)
-        $activeIds = EquipmentDispatch::where('status', 'active')
-            ->get(['equipable_type', 'equipable_id'])
-            ->map(fn ($d) => [
-                'type' => str_contains($d->equipable_type, 'Computer') ? 'computer' : 'kitchen',
-                'id'   => $d->equipable_id,
-            ]);
-
         return Inertia::render('equipments/Dispatches', [
             'dispatches'         => $dispatches,
-            'activeIds'          => $activeIds,
             'computerEquipments' => ComputerEquipment::with('storageHeadquarter:id,name', 'responsible:id,name')
-                ->select('id', 'name', 'brand', 'model', 'code', 'series', 'status', 'storage_headquarter_id', 'responsible_id')
+                ->select('id', 'name', 'brand', 'model', 'code', 'series', 'status', 'quantity', 'storage_headquarter_id', 'responsible_id')
                 ->get(),
             'kitchenEquipments'  => KitchenEquipment::with('storageHeadquarter:id,name', 'responsible:id,name')
-                ->select('id', 'name', 'brand', 'model', 'code', 'series', 'status', 'storage_headquarter_id', 'responsible_id')
+                ->select('id', 'name', 'brand', 'model', 'code', 'series', 'status', 'quantity', 'storage_headquarter_id', 'responsible_id')
                 ->get(),
-            'headquarters'       => Headquarter::select('id', 'name')->get(),
+            'headquarters'       => Headquarter::with('business:id,name')->select('id', 'name', 'business_id')->get(),
             'cafes'              => Cafe::with('unit:id,name,mine_id', 'unit.mine:id,name')
                 ->select('id', 'name', 'unit_id')
                 ->get(),
@@ -58,6 +49,7 @@ class EquipmentDispatchController extends Controller
         $validated = $request->validate([
             'equipable_type'        => 'required|in:computer,kitchen',
             'equipable_id'          => 'required|integer|min:1',
+            'quantity'              => 'required|integer|min:1',
             'origin_headquarter_id' => 'required|exists:headquarters,id',
             'destination_type'      => 'required|in:headquarter,cafe,unit,mine',
             'destination_id'        => 'required|integer|min:1',
@@ -70,27 +62,22 @@ class EquipmentDispatchController extends Controller
             'kitchen'  => KitchenEquipment::class,
         ];
 
-        // Prevent double-dispatch of same equipment
-        $alreadyActive = EquipmentDispatch::where('status', 'active')
-            ->where('equipable_type', $modelMap[$validated['equipable_type']])
-            ->where('equipable_id', $validated['equipable_id'])
-            ->exists();
+        $modelClass = $modelMap[$validated['equipable_type']];
+        $equipment  = $modelClass::findOrFail($validated['equipable_id']);
 
-        if ($alreadyActive) {
-            return back()->withErrors(['equipable_id' => 'Este equipo ya tiene un despacho activo.']);
+        if ($equipment->quantity < $validated['quantity']) {
+            return back()->withErrors(['quantity' => "Solo hay {$equipment->quantity} unidades disponibles."]);
         }
 
         $seq = EquipmentDispatch::whereYear('created_at', now()->year)->count() + 1;
         $dispatchNumber = 'DESP-' . now()->year . '-' . str_pad($seq, 4, '0', STR_PAD_LEFT);
 
-        // Update equipment's home warehouse silently
-        $modelClass = $modelMap[$validated['equipable_type']];
-        $modelClass::where('id', $validated['equipable_id'])
-            ->update(['storage_headquarter_id' => $validated['origin_headquarter_id']]);
+        $equipment->decrement('quantity', $validated['quantity']);
 
         EquipmentDispatch::create([
             'equipable_type'        => $modelClass,
             'equipable_id'          => $validated['equipable_id'],
+            'quantity'              => $validated['quantity'],
             'origin_headquarter_id' => $validated['origin_headquarter_id'],
             'destination_type'      => $validated['destination_type'],
             'destination_id'        => $validated['destination_id'],
@@ -107,7 +94,13 @@ class EquipmentDispatchController extends Controller
 
     public function markReturned(int $id)
     {
-        $dispatch = EquipmentDispatch::findOrFail($id);
+        $dispatch = EquipmentDispatch::with('equipable')->findOrFail($id);
+
+        if ($dispatch->status === 'returned') {
+            return back()->withErrors(['dispatch' => 'Este despacho ya fue retornado.']);
+        }
+
+        $dispatch->equipable?->increment('quantity', $dispatch->quantity);
         $dispatch->update(['status' => 'returned', 'returned_at' => now()]);
 
         return back()->with('success', 'Equipo retornado al almacén correctamente.');
@@ -152,6 +145,7 @@ class EquipmentDispatchController extends Controller
             'status'           => $d->status,
             'equipable_type'   => $equipType,
             'equipable_id'     => $d->equipable_id,
+            'quantity'         => $d->quantity,
             'equipment_name'   => $d->equipable?->name ?? '—',
             'equipment_brand'  => $d->equipable?->brand,
             'equipment_model'  => $d->equipable?->model,

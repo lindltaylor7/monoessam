@@ -39,7 +39,7 @@ class EquipmentController extends Controller
                 ->latest()
                 ->get(),
             'staff'          => Staff::where('status', '!=', 0)->select('id', 'name')->orderBy('name')->get(),
-            'headquarters'   => Headquarter::select('id', 'name')->get(),
+            'headquarters'   => Headquarter::with('business:id,name')->select('id', 'name', 'business_id')->get(),
             'businesses'         => Business::select('id', 'name')->orderBy('name')->get(),
             'equipmentProviders' => Provider::where('type', 'equipment')->select('id', 'name', 'ruc', 'email', 'phone')->orderBy('name')->get(),
         ]);
