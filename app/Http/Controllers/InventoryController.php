@@ -379,6 +379,7 @@ class InventoryController extends Controller
         return Inertia::render('inventory/Invoices/Index', [
             'invoices' => $invoices,
             'clothProviders' => $clothProviders,
+            'equipmentProviders' => Provider::where('type', 'equipment')->select('id', 'name', 'ruc', 'email', 'phone')->orderBy('name')->get(),
             'businesses' => Business::all(),
             'headquarters' => Headquarter::with('business')->get(),
             'cafes' => Cafe::with('unit')->get(),

@@ -369,6 +369,8 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('/', [EquipmentController::class, 'store'])->name('store');
         Route::post('/invoice', [EquipmentController::class, 'storeInvoice'])->name('invoice.store');
         Route::post('/providers', [EquipmentController::class, 'storeEquipmentProvider'])->name('providers.store');
+        Route::put('/providers/{id}', [EquipmentController::class, 'updateEquipmentProvider'])->name('providers.update');
+        Route::delete('/providers/{id}', [EquipmentController::class, 'destroyEquipmentProvider'])->name('providers.destroy');
         Route::put('{type}/{id}', [EquipmentController::class, 'update'])->name('update');
         Route::delete('{type}/{id}', [EquipmentController::class, 'destroy'])->name('destroy');
         Route::get('{type}/{id}/history', [EquipmentController::class, 'history'])->name('history');

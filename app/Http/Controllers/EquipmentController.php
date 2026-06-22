@@ -41,7 +41,7 @@ class EquipmentController extends Controller
             'staff'          => Staff::where('status', '!=', 0)->select('id', 'name')->orderBy('name')->get(),
             'headquarters'   => Headquarter::select('id', 'name')->get(),
             'businesses'         => Business::select('id', 'name')->orderBy('name')->get(),
-            'equipmentProviders' => Provider::where('type', 'equipment')->select('id', 'name')->orderBy('name')->get(),
+            'equipmentProviders' => Provider::where('type', 'equipment')->select('id', 'name', 'ruc', 'email', 'phone')->orderBy('name')->get(),
         ]);
     }
 
@@ -60,6 +60,7 @@ class EquipmentController extends Controller
                 'series'                 => 'nullable|string|max:255',
                 'code'                   => 'nullable|string|max:100',
                 'status'                 => 'nullable|integer|between:0,4',
+                'quantity'               => 'nullable|integer|min:1',
                 'responsible_id'         => 'nullable|exists:staff,id',
                 'storage_headquarter_id' => 'nullable|exists:headquarters,id',
             ]);
@@ -78,6 +79,7 @@ class EquipmentController extends Controller
                 'manual'                 => 'nullable|string|max:100',
                 'code'                   => 'nullable|string|max:100',
                 'status'                 => 'nullable|integer|between:0,4',
+                'quantity'               => 'nullable|integer|min:1',
                 'responsible_id'         => 'nullable|exists:staff,id',
                 'storage_headquarter_id' => 'nullable|exists:headquarters,id',
             ]);
@@ -117,6 +119,7 @@ class EquipmentController extends Controller
             'items.*.color'      => 'nullable|string|max:100',
             'items.*.status'     => 'nullable|integer|between:0,4',
             'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.quantity'   => 'nullable|integer|min:1',
         ]);
 
         $imagePath = null;
@@ -125,7 +128,7 @@ class EquipmentController extends Controller
             $imagePath = '/storage/' . $path;
         }
 
-        $totalAmount = collect($validated['items'])->sum('unit_price');
+        $totalAmount = collect($validated['items'])->sum(fn($i) => $i['unit_price'] * ($i['quantity'] ?? 1));
 
         DB::transaction(function () use ($validated, $imagePath, $totalAmount, $request) {
             $invoice = EquipmentInvoice::create([
@@ -150,6 +153,7 @@ class EquipmentController extends Controller
                     'color'                => $item['color'] ?? null,
                     'status'               => $item['status'] ?? 0,
                     'unit_price'           => $item['unit_price'],
+                    'quantity'             => $item['quantity'] ?? 1,
                     'equipment_invoice_id' => $invoice->id,
                 ];
 
@@ -173,6 +177,7 @@ class EquipmentController extends Controller
     {
         $data = $request->validate([
             'name'  => 'required|string|max:255',
+            'ruc'   => 'nullable|string|size:11',
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:50',
         ]);
@@ -180,6 +185,27 @@ class EquipmentController extends Controller
         $provider = Provider::create([...$data, 'type' => 'equipment']);
 
         return back()->with('newEquipmentProvider', $provider->only('id', 'name'));
+    }
+
+    public function updateEquipmentProvider(Request $request, int $id)
+    {
+        $data = $request->validate([
+            'name'  => 'required|string|max:255',
+            'ruc'   => 'nullable|string|size:11',
+            'email' => 'nullable|email|max:255',
+            'phone' => 'nullable|string|max:50',
+        ]);
+
+        Provider::where('type', 'equipment')->findOrFail($id)->update($data);
+
+        return back();
+    }
+
+    public function destroyEquipmentProvider(int $id)
+    {
+        Provider::where('type', 'equipment')->findOrFail($id)->delete();
+
+        return back();
     }
 
     public function update(Request $request, string $type, int $id)
@@ -198,6 +224,7 @@ class EquipmentController extends Controller
                 'series'                 => 'nullable|string|max:255',
                 'code'                   => 'nullable|string|max:100',
                 'status'                 => 'nullable|integer|between:0,4',
+                'quantity'               => 'nullable|integer|min:1',
                 'responsible_id'         => 'nullable|exists:staff,id',
                 'storage_headquarter_id' => 'nullable|exists:headquarters,id',
             ]);
@@ -214,6 +241,7 @@ class EquipmentController extends Controller
                 'manual'                 => 'nullable|string|max:100',
                 'code'                   => 'nullable|string|max:100',
                 'status'                 => 'nullable|integer|between:0,4',
+                'quantity'               => 'nullable|integer|min:1',
                 'responsible_id'         => 'nullable|exists:staff,id',
                 'storage_headquarter_id' => 'nullable|exists:headquarters,id',
             ]);

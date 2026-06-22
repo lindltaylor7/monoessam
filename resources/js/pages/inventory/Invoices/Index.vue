@@ -10,12 +10,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router } from '@inertiajs/vue3';
-import { Box, Building, Edit2, FileText, Loader2, MoreHorizontal, Plus, Search, Shirt, Tags, Trash2, Truck } from 'lucide-vue-next';
+import { Box, Building, Edit2, ExternalLink, FileText, Laptop, Loader2, MoreHorizontal, Plus, Search, Shirt, Tags, Trash2, Truck } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
+
+interface EquipmentProvider {
+    id: number;
+    name: string;
+    ruc: string | null;
+    email: string | null;
+    phone: string | null;
+}
 
 interface Props {
     invoices: any[];
     clothProviders: any[];
+    equipmentProviders: EquipmentProvider[];
     businesses: any[];
     headquarters: any[];
     cafes: any[];
@@ -246,6 +255,39 @@ const handleProviderSubmit = () => {
 const deleteProvider = (id: number) => {
     if (confirm('¿Estás seguro de eliminar este proveedor?')) {
         router.delete(route('inventory.providers.destroy', id));
+    }
+};
+
+// --- Equipment Provider CRUD Logic ---
+const isEqProviderModalOpen = ref(false);
+const editingEqProvider = ref<EquipmentProvider | null>(null);
+const eqProviderForm = ref({ name: '', ruc: '', email: '', phone: '' });
+
+const openEqProviderModal = (provider: EquipmentProvider | null = null) => {
+    editingEqProvider.value = provider;
+    eqProviderForm.value = provider
+        ? { name: provider.name, ruc: provider.ruc ?? '', email: provider.email ?? '', phone: provider.phone ?? '' }
+        : { name: '', ruc: '', email: '', phone: '' };
+    isEqProviderModalOpen.value = true;
+};
+
+const handleEqProviderSubmit = () => {
+    if (editingEqProvider.value) {
+        router.put(route('equipments.providers.update', editingEqProvider.value.id), eqProviderForm.value, {
+            preserveScroll: true,
+            onSuccess: () => (isEqProviderModalOpen.value = false),
+        });
+    } else {
+        router.post(route('equipments.providers.store'), eqProviderForm.value, {
+            preserveScroll: true,
+            onSuccess: () => (isEqProviderModalOpen.value = false),
+        });
+    }
+};
+
+const deleteEqProvider = (id: number) => {
+    if (confirm('¿Estás seguro de eliminar este proveedor de equipos?')) {
+        router.delete(route('equipments.providers.destroy', id), { preserveScroll: true });
     }
 };
 
@@ -855,6 +897,8 @@ const saveInlinePrice = (cp: any) => {
                     <TabsTrigger value="invoices" class="gap-2"> <FileText class="h-4 w-4" /> Facturas Recientes </TabsTrigger>
                     <TabsTrigger value="providers" class="gap-2"> <Truck class="h-4 w-4" /> Proveedores de Ropa </TabsTrigger>
                     <TabsTrigger value="epps" class="gap-2"> <Box class="h-4 w-4" /> Catálogo de EPP </TabsTrigger>
+                    <TabsTrigger value="equipment-providers" class="gap-2"> <Building class="h-4 w-4" /> Proveedores de Equipos </TabsTrigger>
+                    <TabsTrigger value="equipments" class="gap-2"> <Laptop class="h-4 w-4" /> Gestión de Equipos </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="invoices">
@@ -1080,6 +1124,88 @@ const saveInlinePrice = (cp: any) => {
                         </CardContent>
                     </Card>
                 </TabsContent>
+
+                <TabsContent value="equipment-providers">
+                    <Card class="overflow-hidden rounded-2xl border-slate-200 bg-white shadow-sm">
+                        <CardHeader class="flex flex-row items-center justify-between border-b bg-slate-50/50">
+                            <CardTitle class="text-lg">Proveedores de Equipos Tecnológicos</CardTitle>
+                            <Button @click="openEqProviderModal()" size="sm" class="gap-2 bg-blue-600 text-white hover:bg-blue-700">
+                                <Plus class="h-4 w-4" /> Nuevo Proveedor
+                            </Button>
+                        </CardHeader>
+                        <CardContent class="p-0">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow class="bg-slate-50/50 hover:bg-slate-50/50">
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Nombre / Razón Social</TableHead>
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">RUC</TableHead>
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Email</TableHead>
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Teléfono</TableHead>
+                                        <TableHead class="w-[100px]"></TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    <TableRow v-for="prov in equipmentProviders" :key="prov.id" class="group transition-colors">
+                                        <TableCell class="font-bold text-slate-900">{{ prov.name }}</TableCell>
+                                        <TableCell class="font-mono text-slate-600">{{ prov.ruc || '—' }}</TableCell>
+                                        <TableCell class="text-slate-600">{{ prov.email || '—' }}</TableCell>
+                                        <TableCell class="text-slate-600">{{ prov.phone || '—' }}</TableCell>
+                                        <TableCell class="flex justify-end gap-1">
+                                            <Button
+                                                @click="openEqProviderModal(prov)"
+                                                variant="ghost"
+                                                size="sm"
+                                                class="h-8 w-8 p-0 text-slate-400 hover:text-blue-600"
+                                            >
+                                                <Edit2 class="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                                @click="deleteEqProvider(prov.id)"
+                                                variant="ghost"
+                                                size="sm"
+                                                class="h-8 w-8 p-0 text-slate-400 hover:text-rose-600"
+                                            >
+                                                <Trash2 class="h-4 w-4" />
+                                            </Button>
+                                        </TableCell>
+                                    </TableRow>
+                                    <TableRow v-if="equipmentProviders.length === 0">
+                                        <TableCell colspan="5" class="h-32 text-center text-slate-400 italic">
+                                            No hay proveedores de equipos registrados.
+                                        </TableCell>
+                                    </TableRow>
+                                </TableBody>
+                            </Table>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
+
+                <TabsContent value="equipments">
+                    <Card class="overflow-hidden rounded-2xl border-slate-200 bg-white shadow-sm">
+                        <CardHeader class="border-b bg-slate-50/50">
+                            <CardTitle class="text-lg">Gestión de Equipos Tecnológicos</CardTitle>
+                        </CardHeader>
+                        <CardContent class="flex flex-col items-center justify-center gap-6 py-16">
+                            <div class="flex h-20 w-20 items-center justify-center rounded-2xl bg-blue-50">
+                                <Laptop class="h-10 w-10 text-blue-600" />
+                            </div>
+                            <div class="text-center">
+                                <h3 class="text-lg font-bold text-slate-800">Equipos Tecnológicos y de Menaje</h3>
+                                <p class="mt-1 max-w-sm text-sm text-slate-500">
+                                    Gestiona el inventario completo de equipos tecnológicos y de menaje: estado, responsable, historial y despachos.
+                                </p>
+                            </div>
+                            <Button
+                                @click="router.visit(route('equipments.index'))"
+                                class="gap-2 bg-blue-600 px-6 shadow-lg shadow-blue-200 hover:bg-blue-700"
+                            >
+                                <Laptop class="h-4 w-4" />
+                                Ir a Gestión de Equipos
+                                <ExternalLink class="h-4 w-4" />
+                            </Button>
+                        </CardContent>
+                    </Card>
+                </TabsContent>
             </Tabs>
 
             <!-- Provider CRUD Modal -->
@@ -1107,6 +1233,47 @@ const saveInlinePrice = (cp: any) => {
                         <Button variant="ghost" @click="isProviderModalOpen = false">Cancelar</Button>
                         <Button @click="handleProviderSubmit" class="bg-indigo-600 text-white hover:bg-indigo-700">
                             {{ editingProvider ? 'Actualizar' : 'Registrar Proveedor' }}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <!-- Equipment Provider CRUD Modal -->
+            <Dialog v-model:open="isEqProviderModalOpen">
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle class="flex items-center gap-2">
+                            <Building class="h-5 w-5 text-blue-600" />
+                            {{ editingEqProvider ? 'Editar Proveedor de Equipos' : 'Nuevo Proveedor de Equipos' }}
+                        </DialogTitle>
+                        <DialogDescription>Complete los datos del proveedor de equipos tecnológicos.</DialogDescription>
+                    </DialogHeader>
+                    <div class="grid gap-4 py-4">
+                        <div class="grid gap-2">
+                            <Label>Nombre / Razón Social <span class="text-red-500">*</span></Label>
+                            <Input v-model="eqProviderForm.name" placeholder="Ej: TechSupply S.A.C." />
+                        </div>
+                        <div class="grid gap-2">
+                            <Label>RUC</Label>
+                            <Input v-model="eqProviderForm.ruc" placeholder="Ej: 20123456789" maxlength="11" class="font-mono" />
+                        </div>
+                        <div class="grid gap-2">
+                            <Label>Email</Label>
+                            <Input v-model="eqProviderForm.email" type="email" placeholder="ventas@techsupply.com" />
+                        </div>
+                        <div class="grid gap-2">
+                            <Label>Teléfono</Label>
+                            <Input v-model="eqProviderForm.phone" placeholder="+51 999 999 999" />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="ghost" @click="isEqProviderModalOpen = false">Cancelar</Button>
+                        <Button
+                            @click="handleEqProviderSubmit"
+                            :disabled="!eqProviderForm.name.trim()"
+                            class="bg-blue-600 text-white hover:bg-blue-700"
+                        >
+                            {{ editingEqProvider ? 'Guardar cambios' : 'Registrar Proveedor' }}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
