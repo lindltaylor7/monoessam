@@ -119,6 +119,12 @@ const filteredStaff = computed(() => {
     return filtered;
 });
 
+const salaryTypeLabel = (type?: string | null) => {
+    if (type === 'monthly') return '/ mes';
+    if (type === 'daily')   return '/ día';
+    return '';
+};
+
 const exportToExcel = () => {
     if (!startDateFilter.value && !endDateFilter.value) return;
 
@@ -135,7 +141,7 @@ const exportToExcel = () => {
             DNI: staff.dni,
             Cargo: staff.role?.name || 'Sin asignar',
             'Comedor/Unidad': location,
-            Sueldo: staff.staff_financial?.salary || '0.00',
+            Sueldo: `S/. ${staff.staff_financial?.salary || '0.00'} ${salaryTypeLabel(staff.staff_financial?.salary_type)}`.trim(),
             'Fecha de Inicio': formatDate(getStartDate(staff)),
             'Fecha de Término': formatDate(getEndDate(staff)),
             'Estado de Contrato': getContractStatus(staff),
@@ -306,8 +312,11 @@ const exportToExcel = () => {
                                     </div>
                                 </td>
                                 <td class="p-4">
-                                    <div class="inline-block rounded-md bg-green-50 px-2 py-0.5 text-sm font-medium text-green-700">
+                                    <div class="inline-flex items-baseline gap-1 rounded-md bg-green-50 px-2 py-0.5 text-sm font-medium text-green-700">
                                         S/. {{ staff.staff_financial?.salary || '0.00' }}
+                                        <span v-if="staff.staff_financial?.salary_type" class="text-xs font-normal text-green-500">
+                                            {{ salaryTypeLabel(staff.staff_financial.salary_type) }}
+                                        </span>
                                     </div>
                                 </td>
                                 <td class="p-4">
