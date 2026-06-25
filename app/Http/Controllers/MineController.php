@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Mine;
 use App\Http\Requests\StoreMineRequest;
-use App\Http\Requests\UpdateMineRequest;
 use Illuminate\Http\Request;
 
 class MineController extends Controller
@@ -31,9 +30,18 @@ class MineController extends Controller
     public function store(Request $request)
     {
         $mine = Mine::create([
-            'name' => $request->name
+            'name'      => $request->name,
+            'latitude'  => $request->latitude  ?? null,
+            'longitude' => $request->longitude ?? null,
+            'address'   => $request->address   ?? null,
         ]);
 
+        return response()->json($mine);
+    }
+
+    public function update(Request $request, Mine $mine)
+    {
+        $mine->update($request->only(['name', 'latitude', 'longitude', 'address']));
         return response()->json($mine);
     }
 
@@ -49,14 +57,6 @@ class MineController extends Controller
      * Show the form for editing the specified resource.
      */
     public function edit(Mine $mine)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(UpdateMineRequest $request, Mine $mine)
     {
         //
     }

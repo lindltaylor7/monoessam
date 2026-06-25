@@ -11,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Headquarter extends Model
 {
     use HasFactory;
-    protected $fillable = ['name', 'business_id'];
+    protected $fillable = ['name', 'business_id', 'latitude', 'longitude', 'address'];
 
     public function business(): BelongsTo
     {

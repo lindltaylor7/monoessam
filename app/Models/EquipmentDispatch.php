@@ -13,7 +13,7 @@ class EquipmentDispatch extends Model
         'origin_headquarter_id',
         'destination_type', 'destination_id',
         'staff_id', 'description',
-        'dispatch_number', 'status',
+        'dispatch_number', 'guide_number', 'status',
         'dispatched_at', 'returned_at',
         'dispatched_by', 'received_at', 'received_by',
     ];

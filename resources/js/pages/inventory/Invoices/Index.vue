@@ -2,7 +2,7 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,7 +10,25 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router } from '@inertiajs/vue3';
-import { Box, Building, Edit2, ExternalLink, FileText, Laptop, Loader2, MoreHorizontal, Plus, Search, Shirt, Tags, Trash2, Truck } from 'lucide-vue-next';
+import {
+    Box,
+    Building,
+    ChefHat,
+    Edit2,
+    ExternalLink,
+    FileText,
+    Filter,
+    Laptop,
+    Loader2,
+    MoreHorizontal,
+    Package,
+    Plus,
+    Search,
+    Shirt,
+    Tags,
+    Trash2,
+    Truck,
+} from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
 interface EquipmentProvider {
@@ -23,6 +41,7 @@ interface EquipmentProvider {
 
 interface Props {
     invoices: any[];
+    equipmentInvoices: any[];
     clothProviders: any[];
     equipmentProviders: EquipmentProvider[];
     businesses: any[];
@@ -37,6 +56,43 @@ interface Props {
 }
 
 const props = defineProps<Props>();
+
+// ── Invoice type filter ────────────────────────────────────────────────────
+type InvoiceCategory = 'all' | 'epp' | 'ropa' | 'equipos' | 'menaje' | 'insumos';
+
+const invoiceTypeFilter = ref<InvoiceCategory>('all');
+
+const CATEGORY_META: Record<string, { label: string; icon: any; cls: string }> = {
+    epp: { label: 'EPPs', icon: Box, cls: 'bg-amber-100 text-amber-700 border-amber-300' },
+    ropa: { label: 'Ropa', icon: Shirt, cls: 'bg-purple-100 text-purple-700 border-purple-300' },
+    equipos: { label: 'Equipos Tecnológicos', icon: Laptop, cls: 'bg-blue-100 text-blue-700 border-blue-300' },
+    menaje: { label: 'Menaje', icon: ChefHat, cls: 'bg-orange-100 text-orange-700 border-orange-300' },
+    insumos: { label: 'Insumos', icon: Package, cls: 'bg-green-100 text-green-700 border-green-300' },
+};
+
+const allInvoices = computed(() => {
+    const clothList = (props.invoices ?? []).map((inv: any) => {
+        const items = inv.items ?? [];
+        const hasEpp = items.some((i: any) => i.epp_id);
+        const hasCloth = items.some((i: any) => i.cloth_id);
+        const category = hasEpp ? 'epp' : hasCloth ? 'ropa' : 'ropa';
+        return { ...inv, _category: category, _source: 'cloth' };
+    });
+
+    const equipList = (props.equipmentInvoices ?? []).map((inv: any) => {
+        const hasComputer = (inv.computer_equipments ?? []).length > 0;
+        const hasKitchen = (inv.kitchen_equipments ?? []).length > 0;
+        const category = hasComputer ? 'equipos' : hasKitchen ? 'menaje' : 'equipos';
+        return { ...inv, _category: category, _source: 'equipment' };
+    });
+
+    return [...clothList, ...equipList].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+});
+
+const filteredInvoices = computed(() => {
+    if (invoiceTypeFilter.value === 'all') return allInvoices.value;
+    return allInvoices.value.filter((inv: any) => inv._category === invoiceTypeFilter.value);
+});
 
 // --- Invoice Form Logic ---
 const isInvoiceModalOpen = ref(false);
@@ -215,6 +271,103 @@ const resetInvoiceForm = () => {
         items: [{ cloth_id: '', epp_id: '', color_id: '', size: '', quantity: 1, unit_price: 0 }],
     };
 };
+
+// --- Equipment Invoice Modal ---
+const isEquipmentInvoiceModalOpen = ref(false);
+
+const emptyEquipItem = (type: 'computer' | 'kitchen') => ({
+    type,
+    name: '', brand: '', model: '', code: '',
+    series: '', color: '', status: 0,
+    unit_price: 0, quantity: 1,
+});
+
+const equipInvoiceForm = ref({
+    business_id:    '',
+    provider_id:    '',
+    headquarter_id: '',
+    document_type:  'factura',
+    invoice_number: '',
+    date:           new Date().toISOString().split('T')[0],
+    notes:          '',
+    invoice_image:  null as File | null,
+    items:          [emptyEquipItem('computer')],
+});
+
+const filteredEquipHeadquarters = computed(() => {
+    if (!equipInvoiceForm.value.business_id) return [];
+    return props.headquarters.filter((hq) => String(hq.business_id) === equipInvoiceForm.value.business_id);
+});
+
+const equipItemType = computed<'computer' | 'kitchen'>(() =>
+    invoiceTypeFilter.value === 'menaje' ? 'kitchen' : 'computer'
+);
+
+function openInvoiceModal() {
+    if (invoiceTypeFilter.value === 'equipos' || invoiceTypeFilter.value === 'menaje') {
+        equipInvoiceForm.value = {
+            business_id: '', provider_id: '', headquarter_id: '', document_type: 'factura',
+            invoice_number: '', date: new Date().toISOString().split('T')[0],
+            notes: '', invoice_image: null,
+            items: [emptyEquipItem(equipItemType.value)],
+        };
+        isEquipmentInvoiceModalOpen.value = true;
+    } else if (invoiceTypeFilter.value !== 'insumos') {
+        isInvoiceModalOpen.value = true;
+    }
+}
+
+function addEquipItem() {
+    equipInvoiceForm.value.items.push(emptyEquipItem(equipItemType.value));
+}
+
+function removeEquipItem(index: number) {
+    if (equipInvoiceForm.value.items.length > 1) {
+        equipInvoiceForm.value.items.splice(index, 1);
+    }
+}
+
+const equipTotal = computed(() =>
+    equipInvoiceForm.value.items.reduce((s, i) => s + i.quantity * i.unit_price, 0)
+);
+
+const equipSubtotal = computed(() =>
+    equipInvoiceForm.value.document_type === 'factura' ? equipTotal.value / 1.18 : equipTotal.value
+);
+
+const equipIgv = computed(() => equipTotal.value - equipSubtotal.value);
+
+const isEquipSubmitDisabled = computed(() =>
+    !equipInvoiceForm.value.business_id ||
+    equipInvoiceForm.value.items.some(i => !i.name || i.unit_price <= 0 || i.quantity < 1)
+);
+
+function handleEquipImageUpload(e: Event) {
+    equipInvoiceForm.value.invoice_image = (e.target as HTMLInputElement).files?.[0] ?? null;
+}
+
+function handleEquipInvoiceSubmit() {
+    if (isEquipSubmitDisabled.value) return;
+    const fd = new FormData();
+    const f = equipInvoiceForm.value;
+    fd.append('business_id',    f.business_id);
+    if (f.provider_id)    fd.append('provider_id',    f.provider_id);
+    if (f.headquarter_id) fd.append('headquarter_id', f.headquarter_id);
+    fd.append('document_type',  f.document_type);
+    fd.append('invoice_number', f.invoice_number);
+    fd.append('date',           f.date);
+    fd.append('notes',          f.notes);
+    if (f.invoice_image) fd.append('invoice_image', f.invoice_image);
+    f.items.forEach((item, i) => {
+        Object.entries(item).forEach(([k, v]) => fd.append(`items[${i}][${k}]`, String(v)));
+    });
+    router.post(route('equipments.invoice.store'), fd, {
+        forceFormData: true,
+        onSuccess: () => { isEquipmentInvoiceModalOpen.value = false; },
+        onError: () => { alert('Error al guardar. Revise los campos requeridos.'); },
+        preserveScroll: true,
+    });
+}
 
 // --- Provider CRUD Logic ---
 const isProviderModalOpen = ref(false);
@@ -400,6 +553,15 @@ const handleAssignmentSubmit = () => {
     );
 };
 
+// --- View Equipment Invoice Details ---
+const isViewEquipInvoiceModalOpen = ref(false);
+const selectedEquipInvoice = ref<any>(null);
+
+const viewEquipInvoiceDetails = (invoice: any) => {
+    selectedEquipInvoice.value = invoice;
+    isViewEquipInvoiceModalOpen.value = true;
+};
+
 // --- View Invoice Details ---
 const isViewInvoiceModalOpen = ref(false);
 const selectedInvoice = ref<any>(null);
@@ -536,359 +698,6 @@ const saveInlinePrice = (cp: any) => {
                     <Button @click="openProviderModal()" variant="outline" class="gap-2 border-slate-200 bg-white">
                         <Truck class="h-4 w-4" /> Nuevo Proveedor
                     </Button>
-                    <Dialog v-model:open="isInvoiceModalOpen">
-                        <DialogTrigger as-child>
-                            <Button class="gap-2 bg-indigo-600 shadow-lg shadow-indigo-200 hover:bg-indigo-700">
-                                <Plus class="h-4 w-4" /> Ingresar Factura
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent class="max-h-[100vh] overflow-y-auto sm:max-w-[1400px]">
-                            <DialogHeader>
-                                <DialogTitle class="flex items-center gap-2">
-                                    <FileText class="h-5 w-5 text-indigo-600" />
-                                    Nueva Factura de Stock
-                                </DialogTitle>
-                                <DialogDescription>Registre el ingreso de prendas detallando proveedores, costos y colores.</DialogDescription>
-                            </DialogHeader>
-
-                            <div class="grid gap-6 py-4">
-                                <div class="grid grid-cols-1 gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-3">
-                                    <div class="space-y-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">Empresa (Business)</Label>
-                                        <Select v-model="invoiceForm.business_id">
-                                            <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem v-for="b in businesses" :key="b.id" :value="String(b.id)">{{ b.name }}</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div class="space-y-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">Sede (Correspondiente)</Label>
-                                        <Select v-model="invoiceForm.headquarter_id" :disabled="!invoiceForm.business_id">
-                                            <SelectTrigger class="bg-white"><SelectValue placeholder="Elegir Sede" /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem v-for="hq in filteredHeadquarters" :key="hq.id" :value="String(hq.id)">{{
-                                                    hq.name
-                                                }}</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                    <div class="space-y-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">Proveedor</Label>
-                                        <Select v-model="invoiceForm.cloth_provider_id">
-                                            <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem v-for="p in clothProviders" :key="p.id" :value="String(p.id)">{{ p.name }}</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    <div class="space-y-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">Tipo de Documento</Label>
-                                        <Select v-model="invoiceForm.document_type">
-                                            <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="factura">Factura (Con IGV)</SelectItem>
-                                                <SelectItem value="boleta">Boleta (Sin IGV)</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    <div class="space-y-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">Nº Documento</Label>
-                                        <Input v-model="invoiceForm.invoice_number" placeholder="Ej: F-001-123" class="bg-white" />
-                                    </div>
-                                    <div class="space-y-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">Fecha</Label>
-                                        <Input v-model="invoiceForm.date" type="date" class="bg-white" />
-                                    </div>
-                                    <div class="space-y-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">Notas Adicionales</Label>
-                                        <Input v-model="invoiceForm.notes" placeholder="..." class="bg-white" />
-                                    </div>
-                                    <div class="space-y-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">Evidencia (Opcional)</Label>
-                                        <Input
-                                            type="file"
-                                            @change="handleInvoiceImageUpload"
-                                            accept="image/*,.pdf"
-                                            class="bg-white text-xs file:mr-4 file:rounded-full file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-xs file:font-semibold hover:file:bg-slate-200"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div class="space-y-4">
-                                    <div class="flex items-center justify-between px-1">
-                                        <h3 class="flex items-center gap-2 text-sm font-bold text-slate-700">
-                                            <Shirt class="h-4 w-4 text-indigo-500" />
-                                            Prendas Incluidas
-                                        </h3>
-                                        <Button
-                                            @click="addInvoiceItem"
-                                            size="sm"
-                                            variant="outline"
-                                            class="h-8 gap-1.5 border-indigo-200 text-xs font-bold text-indigo-600 hover:bg-indigo-50"
-                                        >
-                                            <Plus class="h-3.5 w-3.5" /> Agregar Fila
-                                        </Button>
-                                    </div>
-
-                                    <div class="overflow-hidden rounded-2xl border shadow-sm">
-                                        <table class="w-full text-sm">
-                                            <thead class="border-b bg-slate-50">
-                                                <tr class="text-left text-[10px] font-black text-slate-400 uppercase">
-                                                    <th class="px-4 py-3">Item (Prenda/EPP)</th>
-                                                    <th class="px-4 py-3">Talla</th>
-                                                    <th class="px-4 py-3">Color</th>
-                                                    <th class="w-24 px-4 py-3">Cant.</th>
-                                                    <th class="w-24 px-4 py-3">P. Unitario</th>
-                                                    <th class="w-24 px-4 py-3 text-right">Subtotal</th>
-                                                    <th v-if="invoiceForm.document_type === 'factura'" class="w-24 px-4 py-3 text-right">
-                                                        IGV (18%)
-                                                    </th>
-                                                    <th class="w-28 px-4 py-3 text-right">Total</th>
-                                                    <th class="w-10 px-4 py-3 text-center"></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody class="divide-y">
-                                                <tr
-                                                    v-for="(item, index) in invoiceForm.items"
-                                                    :key="index"
-                                                    class="group transition-colors hover:bg-slate-50/50"
-                                                >
-                                                    <td class="p-3">
-                                                        <Select
-                                                            :model-value="getItemUniqueId(item)"
-                                                            @update:model-value="onItemSelect($event as string, index)"
-                                                        >
-                                                            <SelectTrigger class="h-9 w-[200px] justify-start border-none shadow-none focus:ring-1">
-                                                                <SelectValue placeholder="Elegir..." class="truncate" />
-                                                            </SelectTrigger>
-
-                                                            <SelectContent>
-                                                                <SelectItem
-                                                                    v-for="c in getAvailableClothes(invoiceForm.cloth_provider_id)"
-                                                                    :key="c.unique_id"
-                                                                    :value="c.unique_id"
-                                                                >
-                                                                    <div class="flex items-center gap-2">
-                                                                        <component
-                                                                            :is="c.type === 'cloth' ? Shirt : Box"
-                                                                            class="h-3.5 w-3.5 text-slate-400"
-                                                                        />
-                                                                        <span class="truncate">{{ c.name }}</span>
-                                                                    </div>
-                                                                </SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </td>
-                                                    <td class="p-3">
-                                                        <div v-if="getSizesForItem(getItemUniqueId(item)).length > 0">
-                                                            <Select v-model="item.size">
-                                                                <SelectTrigger class="h-9 border-none shadow-none focus:ring-1"
-                                                                    ><SelectValue placeholder="Talla"
-                                                                /></SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem
-                                                                        v-for="s in getSizesForItem(getItemUniqueId(item))"
-                                                                        :key="s.id"
-                                                                        :value="s.size"
-                                                                    >
-                                                                        {{ s.size }}
-                                                                    </SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                        </div>
-                                                        <div
-                                                            v-else-if="item.epp_id"
-                                                            class="flex flex-col items-center justify-center rounded-lg border border-rose-100 bg-rose-50 p-1"
-                                                        >
-                                                            <span class="mb-1 text-center text-[8px] leading-tight font-black text-rose-600 uppercase"
-                                                                >Requiere<br />asignar tallas</span
-                                                            >
-                                                            <Button
-                                                                @click="openSizeModal(props.epps.find((e) => String(e.id) === String(item.epp_id)))"
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                class="h-5 p-0 text-[8px] font-bold text-indigo-600 hover:bg-transparent hover:text-indigo-700"
-                                                            >
-                                                                Configurar
-                                                            </Button>
-                                                        </div>
-                                                        <Input
-                                                            v-else
-                                                            v-model="item.size"
-                                                            placeholder="Talla..."
-                                                            class="h-9 border-none shadow-none focus:ring-1"
-                                                        />
-                                                    </td>
-                                                    <td class="p-3">
-                                                        <Select v-model="item.color_id">
-                                                            <SelectTrigger class="h-9 border-none shadow-none focus:ring-1"
-                                                                ><SelectValue placeholder="Ninguno"
-                                                            /></SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="none">Ninguno</SelectItem>
-                                                                <SelectItem v-for="color in colors" :key="color.id" :value="String(color.id)">
-                                                                    <div class="flex items-center gap-2">
-                                                                        <div
-                                                                            class="h-3 w-3 rounded-full border border-slate-200"
-                                                                            :style="{ backgroundColor: color.hex_code }"
-                                                                        ></div>
-                                                                        {{ color.name }}
-                                                                    </div>
-                                                                </SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </td>
-                                                    <td class="p-3">
-                                                        <Input
-                                                            type="number"
-                                                            v-model="item.quantity"
-                                                            min="1"
-                                                            class="h-9 border-none text-center font-bold shadow-none focus:ring-1"
-                                                        />
-                                                    </td>
-                                                    <td class="p-3">
-                                                        <div
-                                                            v-if="
-                                                                item.epp_id &&
-                                                                getAvailablePrices(item.epp_id, invoiceForm.cloth_provider_id).length > 0
-                                                            "
-                                                            class="flex flex-col gap-1"
-                                                        >
-                                                            <Select v-model="item.unit_price">
-                                                                <SelectTrigger
-                                                                    class="h-9 border-none text-xs font-bold text-indigo-600 shadow-none focus:ring-1"
-                                                                >
-                                                                    <SelectValue placeholder="Elegir Precio" />
-                                                                </SelectTrigger>
-                                                                <SelectContent>
-                                                                    <SelectItem
-                                                                        v-for="cp in getAvailablePrices(item.epp_id, invoiceForm.cloth_provider_id)"
-                                                                        :key="cp.id"
-                                                                        :value="Number(cp.cost_price)"
-                                                                    >
-                                                                        S/.{{ Number(cp.cost_price).toFixed(2) }} ({{ cp.city?.name }})
-                                                                    </SelectItem>
-                                                                </SelectContent>
-                                                            </Select>
-                                                        </div>
-                                                        <div v-else class="relative">
-                                                            <span class="absolute top-2 left-2 text-xs text-slate-400">S/.</span>
-                                                            <Input
-                                                                type="number"
-                                                                v-model="item.unit_price"
-                                                                step="0.01"
-                                                                class="h-9 border-none pl-6 font-bold text-indigo-600 shadow-none focus:ring-1"
-                                                            />
-                                                        </div>
-                                                    </td>
-                                                    <!-- Subtotal Item (Base Imponible si es factura) -->
-                                                    <td class="p-3 text-right text-xs font-medium text-slate-600">
-                                                        S/.{{
-                                                            (invoiceForm.document_type === 'factura'
-                                                                ? (item.quantity * item.unit_price) / 1.18
-                                                                : item.quantity * item.unit_price
-                                                            ).toLocaleString(undefined, { minimumFractionDigits: 2 })
-                                                        }}
-                                                    </td>
-                                                    <!-- IGV Item (Desglosado si es factura) -->
-                                                    <td
-                                                        v-if="invoiceForm.document_type === 'factura'"
-                                                        class="p-3 text-right text-xs font-medium text-indigo-500"
-                                                    >
-                                                        S/.{{
-                                                            (
-                                                                item.quantity * item.unit_price -
-                                                                (item.quantity * item.unit_price) / 1.18
-                                                            ).toLocaleString(undefined, { minimumFractionDigits: 2 })
-                                                        }}
-                                                    </td>
-                                                    <!-- Total Item (Precio real ingresado) -->
-                                                    <td class="p-3 text-right text-xs font-bold text-slate-900">
-                                                        S/.{{
-                                                            (item.quantity * item.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 })
-                                                        }}
-                                                    </td>
-                                                    <td class="p-3 text-center">
-                                                        <Button
-                                                            @click="removeInvoiceItem(index)"
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            class="h-8 w-8 rounded-full p-0 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600"
-                                                        >
-                                                            <Trash2 class="h-4 w-4" />
-                                                        </Button>
-                                                    </td>
-                                                </tr>
-                                            </tbody>
-                                            <tfoot class="border-t border-slate-200 bg-slate-50">
-                                                <tr>
-                                                    <td
-                                                        :colspan="invoiceForm.document_type === 'factura' ? 6 : 5"
-                                                        rowspan="3"
-                                                        class="px-4 py-3 align-top"
-                                                    >
-                                                        <div
-                                                            class="rounded-xl border border-dashed border-slate-200 bg-white p-3 text-[10px] text-slate-400"
-                                                        >
-                                                            <p class="mb-1 font-bold tracking-widest uppercase">Notas de Cálculo:</p>
-                                                            <p v-if="invoiceForm.document_type === 'factura'">
-                                                                • Los precios ingresados ya **incluyen** IGV.
-                                                            </p>
-                                                            <p v-if="invoiceForm.document_type === 'factura'">
-                                                                • Se extrae el 18% para mostrar la base imponible.
-                                                            </p>
-                                                            <p v-else>• Las boletas no desglosan impuestos; el total es el monto bruto.</p>
-                                                        </div>
-                                                    </td>
-                                                    <td class="px-4 py-2 text-right text-[11px] font-bold tracking-wider text-slate-500 uppercase">
-                                                        Subtotal Gravado
-                                                    </td>
-                                                    <td class="px-4 py-2 text-right font-mono font-bold text-slate-700">
-                                                        S/.{{ subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
-                                                    </td>
-                                                    <td></td>
-                                                </tr>
-                                                <tr>
-                                                    <td class="px-4 py-2 text-right text-[11px] font-bold tracking-wider text-slate-500 uppercase">
-                                                        IGV (18%)
-                                                    </td>
-                                                    <td class="px-4 py-2 text-right font-mono font-bold text-slate-600">
-                                                        S/.{{ igv.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
-                                                    </td>
-                                                    <td></td>
-                                                </tr>
-                                                <tr class="bg-indigo-50/50">
-                                                    <td class="px-4 py-3 text-right text-[12px] font-black tracking-widest text-indigo-900 uppercase">
-                                                        Total Factura
-                                                    </td>
-                                                    <td class="px-4 py-3 text-right">
-                                                        <span class="font-mono text-xl font-black text-indigo-700">
-                                                            S/.{{ totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
-                                                        </span>
-                                                    </td>
-                                                    <td></td>
-                                                </tr>
-                                            </tfoot>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <DialogFooter class="-mx-6 mt-4 -mb-6 rounded-b-lg border-t bg-slate-50 p-6">
-                                <Button variant="ghost" @click="isInvoiceModalOpen = false" class="font-bold">Cancelar</Button>
-                                <Button
-                                    @click="handleInvoiceSubmit"
-                                    :disabled="isInvoiceSubmitDisabled"
-                                    class="bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700"
-                                >
-                                    Guardar e Ingresar Stock
-                                </Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
                 </div>
             </div>
 
@@ -898,19 +707,697 @@ const saveInlinePrice = (cp: any) => {
                     <TabsTrigger value="providers" class="gap-2"> <Truck class="h-4 w-4" /> Proveedores de Ropa </TabsTrigger>
                     <TabsTrigger value="epps" class="gap-2"> <Box class="h-4 w-4" /> Catálogo de EPP </TabsTrigger>
                     <TabsTrigger value="equipment-providers" class="gap-2"> <Building class="h-4 w-4" /> Proveedores de Equipos </TabsTrigger>
-                    <TabsTrigger value="equipments" class="gap-2"> <Laptop class="h-4 w-4" /> Gestión de Equipos </TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="invoices">
                     <Card class="overflow-hidden rounded-2xl border-slate-200 bg-white shadow-sm">
                         <CardHeader class="border-b bg-slate-50/50">
-                            <CardTitle class="text-lg">Historial de Facturación</CardTitle>
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <CardTitle class="text-lg">Historial de Facturación</CardTitle>
+                                <div class="flex items-center gap-2">
+                                    <Filter class="h-4 w-4 text-slate-400" />
+                                    <Select v-model="invoiceTypeFilter">
+                                        <SelectTrigger class="h-8 w-52 text-sm">
+                                            <SelectValue placeholder="Todos los tipos" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="all">Todos los tipos</SelectItem>
+                                            <SelectItem value="epp">
+                                                <span class="flex items-center gap-1.5"><Box class="h-3.5 w-3.5 text-amber-600" /> EPPs</span>
+                                            </SelectItem>
+                                            <SelectItem value="ropa">
+                                                <span class="flex items-center gap-1.5"><Shirt class="h-3.5 w-3.5 text-purple-600" /> Ropa</span>
+                                            </SelectItem>
+                                            <SelectItem value="equipos">
+                                                <span class="flex items-center gap-1.5"
+                                                    ><Laptop class="h-3.5 w-3.5 text-blue-600" /> Equipos Tecnológicos</span
+                                                >
+                                            </SelectItem>
+                                            <SelectItem value="menaje">
+                                                <span class="flex items-center gap-1.5"><ChefHat class="h-3.5 w-3.5 text-orange-600" /> Menaje</span>
+                                            </SelectItem>
+                                            <SelectItem value="insumos">
+                                                <span class="flex items-center gap-1.5"><Package class="h-3.5 w-3.5 text-green-600" /> Insumos</span>
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <span class="text-muted-foreground text-xs">
+                                        {{ filteredInvoices.length }} resultado{{ filteredInvoices.length !== 1 ? 's' : '' }}
+                                    </span>
+                                    <!-- Dynamic invoice button -->
+                                    <Button
+                                        @click="openInvoiceModal"
+                                        :disabled="invoiceTypeFilter === 'insumos'"
+                                        :class="['gap-2 shadow-lg transition-colors',
+                                            invoiceTypeFilter === 'equipos'
+                                                ? 'bg-blue-600 shadow-blue-200 hover:bg-blue-700'
+                                                : invoiceTypeFilter === 'menaje'
+                                                ? 'bg-orange-600 shadow-orange-200 hover:bg-orange-700'
+                                                : invoiceTypeFilter === 'insumos'
+                                                ? 'cursor-not-allowed bg-slate-400 shadow-slate-200'
+                                                : 'bg-indigo-600 shadow-indigo-200 hover:bg-indigo-700']"
+                                    >
+                                        <Plus class="h-4 w-4" />
+                                        <span v-if="invoiceTypeFilter === 'equipos'">Factura Equipos</span>
+                                        <span v-else-if="invoiceTypeFilter === 'menaje'">Factura Menaje</span>
+                                        <span v-else-if="invoiceTypeFilter === 'insumos'">Insumos (próx.)</span>
+                                        <span v-else>Ingresar Factura</span>
+                                    </Button>
+
+                                    <!-- ClothInvoice Dialog (EPPs / Ropa) -->
+                                    <Dialog v-model:open="isInvoiceModalOpen">
+                                        <DialogContent class="max-h-[100vh] overflow-y-auto sm:max-w-[1400px]">
+                                            <DialogHeader>
+                                                <DialogTitle class="flex items-center gap-2">
+                                                    <FileText class="h-5 w-5 text-indigo-600" />
+                                                    Nueva Factura de Stock
+                                                </DialogTitle>
+                                                <DialogDescription
+                                                    >Registre el ingreso de prendas detallando proveedores, costos y colores.</DialogDescription
+                                                >
+                                            </DialogHeader>
+
+                                            <div class="grid gap-6 py-4">
+                                                <div
+                                                    class="grid grid-cols-1 gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-3"
+                                                >
+                                                    <div class="space-y-2">
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Empresa (Business)</Label>
+                                                        <Select v-model="invoiceForm.business_id">
+                                                            <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem v-for="b in businesses" :key="b.id" :value="String(b.id)">{{
+                                                                    b.name
+                                                                }}</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div class="space-y-2">
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Sede (Correspondiente)</Label>
+                                                        <Select v-model="invoiceForm.headquarter_id" :disabled="!invoiceForm.business_id">
+                                                            <SelectTrigger class="bg-white"><SelectValue placeholder="Elegir Sede" /></SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem v-for="hq in filteredHeadquarters" :key="hq.id" :value="String(hq.id)">{{
+                                                                    hq.name
+                                                                }}</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div class="space-y-2">
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Proveedor</Label>
+                                                        <Select v-model="invoiceForm.cloth_provider_id">
+                                                            <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem v-for="p in clothProviders" :key="p.id" :value="String(p.id)">{{
+                                                                    p.name
+                                                                }}</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+
+                                                    <div class="space-y-2">
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Tipo de Documento</Label>
+                                                        <Select v-model="invoiceForm.document_type">
+                                                            <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="factura">Factura (Con IGV)</SelectItem>
+                                                                <SelectItem value="boleta">Boleta (Sin IGV)</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+
+                                                    <div class="space-y-2">
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Nº Documento</Label>
+                                                        <Input v-model="invoiceForm.invoice_number" placeholder="Ej: F-001-123" class="bg-white" />
+                                                    </div>
+                                                    <div class="space-y-2">
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Fecha</Label>
+                                                        <Input v-model="invoiceForm.date" type="date" class="bg-white" />
+                                                    </div>
+                                                    <div class="space-y-2">
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Notas Adicionales</Label>
+                                                        <Input v-model="invoiceForm.notes" placeholder="..." class="bg-white" />
+                                                    </div>
+                                                    <div class="space-y-2">
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Evidencia (Opcional)</Label>
+                                                        <Input
+                                                            type="file"
+                                                            @change="handleInvoiceImageUpload"
+                                                            accept="image/*,.pdf"
+                                                            class="bg-white text-xs file:mr-4 file:rounded-full file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-xs file:font-semibold hover:file:bg-slate-200"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div class="space-y-4">
+                                                    <div class="flex items-center justify-between px-1">
+                                                        <h3 class="flex items-center gap-2 text-sm font-bold text-slate-700">
+                                                            <Shirt class="h-4 w-4 text-indigo-500" />
+                                                            Prendas Incluidas
+                                                        </h3>
+                                                        <Button
+                                                            @click="addInvoiceItem"
+                                                            size="sm"
+                                                            variant="outline"
+                                                            class="h-8 gap-1.5 border-indigo-200 text-xs font-bold text-indigo-600 hover:bg-indigo-50"
+                                                        >
+                                                            <Plus class="h-3.5 w-3.5" /> Agregar Fila
+                                                        </Button>
+                                                    </div>
+
+                                                    <div class="overflow-hidden rounded-2xl border shadow-sm">
+                                                        <table class="w-full text-sm">
+                                                            <thead class="border-b bg-slate-50">
+                                                                <tr class="text-left text-[10px] font-black text-slate-400 uppercase">
+                                                                    <th class="px-4 py-3">Item (Prenda/EPP)</th>
+                                                                    <th class="px-4 py-3">Talla</th>
+                                                                    <th class="px-4 py-3">Color</th>
+                                                                    <th class="w-24 px-4 py-3">Cant.</th>
+                                                                    <th class="w-24 px-4 py-3">P. Unitario</th>
+                                                                    <th class="w-24 px-4 py-3 text-right">Subtotal</th>
+                                                                    <th
+                                                                        v-if="invoiceForm.document_type === 'factura'"
+                                                                        class="w-24 px-4 py-3 text-right"
+                                                                    >
+                                                                        IGV (18%)
+                                                                    </th>
+                                                                    <th class="w-28 px-4 py-3 text-right">Total</th>
+                                                                    <th class="w-10 px-4 py-3 text-center"></th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody class="divide-y">
+                                                                <tr
+                                                                    v-for="(item, index) in invoiceForm.items"
+                                                                    :key="index"
+                                                                    class="group transition-colors hover:bg-slate-50/50"
+                                                                >
+                                                                    <td class="p-3">
+                                                                        <Select
+                                                                            :model-value="getItemUniqueId(item)"
+                                                                            @update:model-value="onItemSelect($event as string, index)"
+                                                                        >
+                                                                            <SelectTrigger
+                                                                                class="h-9 w-[200px] justify-start border-none shadow-none focus:ring-1"
+                                                                            >
+                                                                                <SelectValue placeholder="Elegir..." class="truncate" />
+                                                                            </SelectTrigger>
+
+                                                                            <SelectContent>
+                                                                                <SelectItem
+                                                                                    v-for="c in getAvailableClothes(invoiceForm.cloth_provider_id)"
+                                                                                    :key="c.unique_id"
+                                                                                    :value="c.unique_id"
+                                                                                >
+                                                                                    <div class="flex items-center gap-2">
+                                                                                        <component
+                                                                                            :is="c.type === 'cloth' ? Shirt : Box"
+                                                                                            class="h-3.5 w-3.5 text-slate-400"
+                                                                                        />
+                                                                                        <span class="truncate">{{ c.name }}</span>
+                                                                                    </div>
+                                                                                </SelectItem>
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                    </td>
+                                                                    <td class="p-3">
+                                                                        <div v-if="getSizesForItem(getItemUniqueId(item)).length > 0">
+                                                                            <Select v-model="item.size">
+                                                                                <SelectTrigger class="h-9 border-none shadow-none focus:ring-1"
+                                                                                    ><SelectValue placeholder="Talla"
+                                                                                /></SelectTrigger>
+                                                                                <SelectContent>
+                                                                                    <SelectItem
+                                                                                        v-for="s in getSizesForItem(getItemUniqueId(item))"
+                                                                                        :key="s.id"
+                                                                                        :value="s.size"
+                                                                                    >
+                                                                                        {{ s.size }}
+                                                                                    </SelectItem>
+                                                                                </SelectContent>
+                                                                            </Select>
+                                                                        </div>
+                                                                        <div
+                                                                            v-else-if="item.epp_id"
+                                                                            class="flex flex-col items-center justify-center rounded-lg border border-rose-100 bg-rose-50 p-1"
+                                                                        >
+                                                                            <span
+                                                                                class="mb-1 text-center text-[8px] leading-tight font-black text-rose-600 uppercase"
+                                                                                >Requiere<br />asignar tallas</span
+                                                                            >
+                                                                            <Button
+                                                                                @click="
+                                                                                    openSizeModal(
+                                                                                        props.epps.find((e) => String(e.id) === String(item.epp_id)),
+                                                                                    )
+                                                                                "
+                                                                                variant="ghost"
+                                                                                size="sm"
+                                                                                class="h-5 p-0 text-[8px] font-bold text-indigo-600 hover:bg-transparent hover:text-indigo-700"
+                                                                            >
+                                                                                Configurar
+                                                                            </Button>
+                                                                        </div>
+                                                                        <Input
+                                                                            v-else
+                                                                            v-model="item.size"
+                                                                            placeholder="Talla..."
+                                                                            class="h-9 border-none shadow-none focus:ring-1"
+                                                                        />
+                                                                    </td>
+                                                                    <td class="p-3">
+                                                                        <Select v-model="item.color_id">
+                                                                            <SelectTrigger class="h-9 border-none shadow-none focus:ring-1"
+                                                                                ><SelectValue placeholder="Ninguno"
+                                                                            /></SelectTrigger>
+                                                                            <SelectContent>
+                                                                                <SelectItem value="none">Ninguno</SelectItem>
+                                                                                <SelectItem
+                                                                                    v-for="color in colors"
+                                                                                    :key="color.id"
+                                                                                    :value="String(color.id)"
+                                                                                >
+                                                                                    <div class="flex items-center gap-2">
+                                                                                        <div
+                                                                                            class="h-3 w-3 rounded-full border border-slate-200"
+                                                                                            :style="{ backgroundColor: color.hex_code }"
+                                                                                        ></div>
+                                                                                        {{ color.name }}
+                                                                                    </div>
+                                                                                </SelectItem>
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                    </td>
+                                                                    <td class="p-3">
+                                                                        <Input
+                                                                            type="number"
+                                                                            v-model="item.quantity"
+                                                                            min="1"
+                                                                            class="h-9 border-none text-center font-bold shadow-none focus:ring-1"
+                                                                        />
+                                                                    </td>
+                                                                    <td class="p-3">
+                                                                        <div
+                                                                            v-if="
+                                                                                item.epp_id &&
+                                                                                getAvailablePrices(item.epp_id, invoiceForm.cloth_provider_id)
+                                                                                    .length > 0
+                                                                            "
+                                                                            class="flex flex-col gap-1"
+                                                                        >
+                                                                            <Select v-model="item.unit_price">
+                                                                                <SelectTrigger
+                                                                                    class="h-9 border-none text-xs font-bold text-indigo-600 shadow-none focus:ring-1"
+                                                                                >
+                                                                                    <SelectValue placeholder="Elegir Precio" />
+                                                                                </SelectTrigger>
+                                                                                <SelectContent>
+                                                                                    <SelectItem
+                                                                                        v-for="cp in getAvailablePrices(
+                                                                                            item.epp_id,
+                                                                                            invoiceForm.cloth_provider_id,
+                                                                                        )"
+                                                                                        :key="cp.id"
+                                                                                        :value="Number(cp.cost_price)"
+                                                                                    >
+                                                                                        S/.{{ Number(cp.cost_price).toFixed(2) }} ({{
+                                                                                            cp.city?.name
+                                                                                        }})
+                                                                                    </SelectItem>
+                                                                                </SelectContent>
+                                                                            </Select>
+                                                                        </div>
+                                                                        <div v-else class="relative">
+                                                                            <span class="absolute top-2 left-2 text-xs text-slate-400">S/.</span>
+                                                                            <Input
+                                                                                type="number"
+                                                                                v-model="item.unit_price"
+                                                                                step="0.01"
+                                                                                class="h-9 border-none pl-6 font-bold text-indigo-600 shadow-none focus:ring-1"
+                                                                            />
+                                                                        </div>
+                                                                    </td>
+                                                                    <!-- Subtotal Item (Base Imponible si es factura) -->
+                                                                    <td class="p-3 text-right text-xs font-medium text-slate-600">
+                                                                        S/.{{
+                                                                            (invoiceForm.document_type === 'factura'
+                                                                                ? (item.quantity * item.unit_price) / 1.18
+                                                                                : item.quantity * item.unit_price
+                                                                            ).toLocaleString(undefined, { minimumFractionDigits: 2 })
+                                                                        }}
+                                                                    </td>
+                                                                    <!-- IGV Item (Desglosado si es factura) -->
+                                                                    <td
+                                                                        v-if="invoiceForm.document_type === 'factura'"
+                                                                        class="p-3 text-right text-xs font-medium text-indigo-500"
+                                                                    >
+                                                                        S/.{{
+                                                                            (
+                                                                                item.quantity * item.unit_price -
+                                                                                (item.quantity * item.unit_price) / 1.18
+                                                                            ).toLocaleString(undefined, { minimumFractionDigits: 2 })
+                                                                        }}
+                                                                    </td>
+                                                                    <!-- Total Item (Precio real ingresado) -->
+                                                                    <td class="p-3 text-right text-xs font-bold text-slate-900">
+                                                                        S/.{{
+                                                                            (item.quantity * item.unit_price).toLocaleString(undefined, {
+                                                                                minimumFractionDigits: 2,
+                                                                            })
+                                                                        }}
+                                                                    </td>
+                                                                    <td class="p-3 text-center">
+                                                                        <Button
+                                                                            @click="removeInvoiceItem(index)"
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            class="h-8 w-8 rounded-full p-0 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600"
+                                                                        >
+                                                                            <Trash2 class="h-4 w-4" />
+                                                                        </Button>
+                                                                    </td>
+                                                                </tr>
+                                                            </tbody>
+                                                            <tfoot class="border-t border-slate-200 bg-slate-50">
+                                                                <tr>
+                                                                    <td
+                                                                        :colspan="invoiceForm.document_type === 'factura' ? 6 : 5"
+                                                                        rowspan="3"
+                                                                        class="px-4 py-3 align-top"
+                                                                    >
+                                                                        <div
+                                                                            class="rounded-xl border border-dashed border-slate-200 bg-white p-3 text-[10px] text-slate-400"
+                                                                        >
+                                                                            <p class="mb-1 font-bold tracking-widest uppercase">Notas de Cálculo:</p>
+                                                                            <p v-if="invoiceForm.document_type === 'factura'">
+                                                                                • Los precios ingresados ya **incluyen** IGV.
+                                                                            </p>
+                                                                            <p v-if="invoiceForm.document_type === 'factura'">
+                                                                                • Se extrae el 18% para mostrar la base imponible.
+                                                                            </p>
+                                                                            <p v-else>
+                                                                                • Las boletas no desglosan impuestos; el total es el monto bruto.
+                                                                            </p>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td
+                                                                        class="px-4 py-2 text-right text-[11px] font-bold tracking-wider text-slate-500 uppercase"
+                                                                    >
+                                                                        Subtotal Gravado
+                                                                    </td>
+                                                                    <td class="px-4 py-2 text-right font-mono font-bold text-slate-700">
+                                                                        S/.{{ subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                                    </td>
+                                                                    <td></td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td
+                                                                        class="px-4 py-2 text-right text-[11px] font-bold tracking-wider text-slate-500 uppercase"
+                                                                    >
+                                                                        IGV (18%)
+                                                                    </td>
+                                                                    <td class="px-4 py-2 text-right font-mono font-bold text-slate-600">
+                                                                        S/.{{ igv.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                                    </td>
+                                                                    <td></td>
+                                                                </tr>
+                                                                <tr class="bg-indigo-50/50">
+                                                                    <td
+                                                                        class="px-4 py-3 text-right text-[12px] font-black tracking-widest text-indigo-900 uppercase"
+                                                                    >
+                                                                        Total Factura
+                                                                    </td>
+                                                                    <td class="px-4 py-3 text-right">
+                                                                        <span class="font-mono text-xl font-black text-indigo-700">
+                                                                            S/.{{
+                                                                                totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })
+                                                                            }}
+                                                                        </span>
+                                                                    </td>
+                                                                    <td></td>
+                                                                </tr>
+                                                            </tfoot>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <DialogFooter class="-mx-6 mt-4 -mb-6 rounded-b-lg border-t bg-slate-50 p-6">
+                                                <Button variant="ghost" @click="isInvoiceModalOpen = false" class="font-bold">Cancelar</Button>
+                                                <Button
+                                                    @click="handleInvoiceSubmit"
+                                                    :disabled="isInvoiceSubmitDisabled"
+                                                    class="bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700"
+                                                >
+                                                    Guardar e Ingresar Stock
+                                                </Button>
+                                            </DialogFooter>
+                                        </DialogContent>
+                                    </Dialog>
+
+                                    <!-- EquipmentInvoice Dialog (Equipos / Menaje) -->
+                                    <Dialog v-model:open="isEquipmentInvoiceModalOpen">
+                                        <DialogContent class="max-h-[100vh] overflow-y-auto sm:max-w-[1300px]">
+                                            <DialogHeader>
+                                                <DialogTitle class="flex items-center gap-2">
+                                                    <component
+                                                        :is="equipItemType === 'kitchen' ? ChefHat : Laptop"
+                                                        class="h-5 w-5"
+                                                        :class="equipItemType === 'kitchen' ? 'text-orange-600' : 'text-blue-600'"
+                                                    />
+                                                    Nueva Factura de {{ equipItemType === 'kitchen' ? 'Menaje' : 'Equipos Tecnológicos' }}
+                                                </DialogTitle>
+                                                <DialogDescription>
+                                                    Registre el ingreso de equipos detallando proveedor, costos e identificadores.
+                                                </DialogDescription>
+                                            </DialogHeader>
+
+                                            <div class="grid gap-6 py-4">
+                                                <!-- Header fields -->
+                                                <div class="grid grid-cols-1 gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-3">
+                                                    <div class="space-y-2">
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Empresa <span class="text-red-500">*</span></Label>
+                                                        <Select v-model="equipInvoiceForm.business_id" @update:model-value="equipInvoiceForm.headquarter_id = ''">
+                                                            <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem v-for="b in businesses" :key="b.id" :value="String(b.id)">{{ b.name }}</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div class="space-y-2">
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Sede / Almacén <span class="text-red-500">*</span></Label>
+                                                        <Select v-model="equipInvoiceForm.headquarter_id" :disabled="!equipInvoiceForm.business_id">
+                                                            <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar sede" /></SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem v-for="hq in filteredEquipHeadquarters" :key="hq.id" :value="String(hq.id)">{{ hq.name }}</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div class="space-y-2">
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Proveedor de Equipos</Label>
+                                                        <Select v-model="equipInvoiceForm.provider_id">
+                                                            <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem v-for="p in equipmentProviders" :key="p.id" :value="String(p.id)">{{ p.name }}</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div class="space-y-2">
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Tipo de Documento</Label>
+                                                        <Select v-model="equipInvoiceForm.document_type">
+                                                            <SelectTrigger class="bg-white"><SelectValue /></SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="factura">Factura (Con IGV)</SelectItem>
+                                                                <SelectItem value="boleta">Boleta (Sin IGV)</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div class="space-y-2">
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Nº Documento</Label>
+                                                        <Input v-model="equipInvoiceForm.invoice_number" placeholder="Ej: F-001-0012" class="bg-white" />
+                                                    </div>
+                                                    <div class="space-y-2">
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Fecha <span class="text-red-500">*</span></Label>
+                                                        <Input v-model="equipInvoiceForm.date" type="date" class="bg-white" />
+                                                    </div>
+                                                    <div class="space-y-2">
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Notas</Label>
+                                                        <Input v-model="equipInvoiceForm.notes" placeholder="..." class="bg-white" />
+                                                    </div>
+                                                    <div class="space-y-2">
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Evidencia (Opcional)</Label>
+                                                        <Input
+                                                            type="file"
+                                                            @change="handleEquipImageUpload"
+                                                            accept="image/*,.pdf"
+                                                            class="bg-white text-xs file:mr-4 file:rounded-full file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-xs file:font-semibold hover:file:bg-slate-200"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <!-- Items table -->
+                                                <div class="space-y-3">
+                                                    <div class="flex items-center justify-between px-1">
+                                                        <h3 class="flex items-center gap-2 text-sm font-bold text-slate-700">
+                                                            <component :is="equipItemType === 'kitchen' ? ChefHat : Laptop" class="h-4 w-4" :class="equipItemType === 'kitchen' ? 'text-orange-500' : 'text-blue-500'" />
+                                                            Equipos Incluidos
+                                                        </h3>
+                                                        <Button @click="addEquipItem" size="sm" variant="outline" class="h-8 gap-1.5 border-blue-200 text-xs font-bold text-blue-600 hover:bg-blue-50">
+                                                            <Plus class="h-3.5 w-3.5" /> Agregar Fila
+                                                        </Button>
+                                                    </div>
+
+                                                    <div class="overflow-hidden rounded-2xl border shadow-sm">
+                                                        <table class="w-full text-sm">
+                                                            <thead class="border-b bg-slate-50">
+                                                                <tr class="text-left text-[10px] font-black text-slate-400 uppercase">
+                                                                    <th class="px-3 py-3">Tipo</th>
+                                                                    <th class="px-3 py-3">Nombre <span class="text-red-500">*</span></th>
+                                                                    <th class="px-3 py-3">Marca</th>
+                                                                    <th class="px-3 py-3">Modelo</th>
+                                                                    <th class="px-3 py-3">Código</th>
+                                                                    <th class="px-3 py-3">Serie</th>
+                                                                    <th class="px-3 py-3">Color</th>
+                                                                    <th class="px-3 py-3">Estado</th>
+                                                                    <th class="w-28 px-3 py-3">P. Unit. <span class="text-red-500">*</span></th>
+                                                                    <th class="w-24 px-3 py-3">Cant. <span class="text-red-500">*</span></th>
+                                                                    <th class="w-28 px-3 py-3 text-right">Total</th>
+                                                                    <th class="w-10 px-3 py-3"></th>
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody class="divide-y">
+                                                                <tr
+                                                                    v-for="(item, idx) in equipInvoiceForm.items"
+                                                                    :key="idx"
+                                                                    class="group transition-colors hover:bg-slate-50/50"
+                                                                >
+                                                                    <td class="p-2">
+                                                                        <Select v-model="item.type">
+                                                                            <SelectTrigger class="h-8 w-28 border-none shadow-none text-xs focus:ring-1">
+                                                                                <SelectValue />
+                                                                            </SelectTrigger>
+                                                                            <SelectContent>
+                                                                                <SelectItem value="computer">
+                                                                                    <span class="flex items-center gap-1"><Laptop class="h-3 w-3 text-blue-500" /> IT</span>
+                                                                                </SelectItem>
+                                                                                <SelectItem value="kitchen">
+                                                                                    <span class="flex items-center gap-1"><ChefHat class="h-3 w-3 text-orange-500" /> Menaje</span>
+                                                                                </SelectItem>
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                    </td>
+                                                                    <td class="p-2">
+                                                                        <Input v-model="item.name" placeholder="Nombre*" class="h-8 min-w-[120px] border-none shadow-none focus:ring-1" />
+                                                                    </td>
+                                                                    <td class="p-2">
+                                                                        <Input v-model="item.brand" placeholder="Marca" class="h-8 w-24 border-none shadow-none focus:ring-1" />
+                                                                    </td>
+                                                                    <td class="p-2">
+                                                                        <Input v-model="item.model" placeholder="Modelo" class="h-8 w-24 border-none shadow-none focus:ring-1" />
+                                                                    </td>
+                                                                    <td class="p-2">
+                                                                        <Input v-model="item.code" placeholder="Código" class="h-8 w-24 border-none shadow-none focus:ring-1" />
+                                                                    </td>
+                                                                    <td class="p-2">
+                                                                        <Input v-model="item.series" placeholder="Serie" class="h-8 w-24 border-none shadow-none focus:ring-1" />
+                                                                    </td>
+                                                                    <td class="p-2">
+                                                                        <Input v-model="item.color" placeholder="Color" class="h-8 w-20 border-none shadow-none focus:ring-1" />
+                                                                    </td>
+                                                                    <td class="p-2">
+                                                                        <Select v-model="item.status">
+                                                                            <SelectTrigger class="h-8 w-24 border-none shadow-none text-xs focus:ring-1"><SelectValue /></SelectTrigger>
+                                                                            <SelectContent>
+                                                                                <SelectItem :value="0">Nuevo</SelectItem>
+                                                                                <SelectItem :value="1">Bueno</SelectItem>
+                                                                                <SelectItem :value="2">Regular</SelectItem>
+                                                                                <SelectItem :value="3">Malo</SelectItem>
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                    </td>
+                                                                    <td class="p-2">
+                                                                        <div class="relative">
+                                                                            <span class="absolute top-2 left-2.5 text-xs text-slate-400 select-none">S/.</span>
+                                                                            <Input
+                                                                                type="number"
+                                                                                v-model="item.unit_price"
+                                                                                step="0.01"
+                                                                                min="0"
+                                                                                placeholder="0.00"
+                                                                                class="h-9 w-28 rounded-md border border-slate-200 bg-white pl-8 font-bold text-indigo-600 shadow-none focus:ring-1"
+                                                                            />
+                                                                        </div>
+                                                                    </td>
+                                                                    <td class="p-2">
+                                                                        <Input
+                                                                            type="number"
+                                                                            v-model="item.quantity"
+                                                                            min="1"
+                                                                            placeholder="1"
+                                                                            class="h-9 w-20 rounded-md border border-slate-200 bg-white text-center font-bold shadow-none focus:ring-1"
+                                                                        />
+                                                                    </td>
+                                                                    <td class="p-2 text-right text-xs font-bold text-slate-900">
+                                                                        S/.{{ (item.quantity * item.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                                    </td>
+                                                                    <td class="p-2 text-center">
+                                                                        <Button @click="removeEquipItem(idx)" variant="ghost" size="sm" class="h-7 w-7 rounded-full p-0 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600">
+                                                                            <Trash2 class="h-3.5 w-3.5" />
+                                                                        </Button>
+                                                                    </td>
+                                                                </tr>
+                                                            </tbody>
+                                                            <tfoot class="border-t border-slate-200 bg-slate-50">
+                                                                <tr>
+                                                                    <td colspan="10" rowspan="3" class="px-4 py-3 align-top">
+                                                                        <div class="rounded-xl border border-dashed border-slate-200 bg-white p-3 text-[10px] text-slate-400">
+                                                                            <p class="mb-1 font-bold tracking-widest uppercase">Notas de Cálculo:</p>
+                                                                            <p v-if="equipInvoiceForm.document_type === 'factura'">• Los precios ingresados ya incluyen IGV (18%).</p>
+                                                                            <p v-else>• Boleta: el total es el monto bruto sin desglose de impuestos.</p>
+                                                                        </div>
+                                                                    </td>
+                                                                    <td class="px-4 py-2 text-right text-[11px] font-bold tracking-wider text-slate-500 uppercase">Subtotal Gravado</td>
+                                                                    <td class="px-4 py-2 text-right font-mono font-bold text-slate-700">S/.{{ equipSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</td>
+                                                                    <td></td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td class="px-4 py-2 text-right text-[11px] font-bold tracking-wider text-slate-500 uppercase">IGV (18%)</td>
+                                                                    <td class="px-4 py-2 text-right font-mono font-bold text-slate-600">S/.{{ equipIgv.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</td>
+                                                                    <td></td>
+                                                                </tr>
+                                                                <tr class="bg-blue-50/40">
+                                                                    <td class="px-4 py-3 text-right text-[12px] font-black tracking-widest text-blue-900 uppercase">Total Factura</td>
+                                                                    <td class="px-4 py-3 text-right">
+                                                                        <span class="font-mono text-xl font-black text-blue-700">S/.{{ equipTotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</span>
+                                                                    </td>
+                                                                    <td></td>
+                                                                </tr>
+                                                            </tfoot>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <DialogFooter class="-mx-6 mt-4 -mb-6 rounded-b-lg border-t bg-slate-50 p-6">
+                                                <Button variant="ghost" @click="isEquipmentInvoiceModalOpen = false" class="font-bold">Cancelar</Button>
+                                                <Button
+                                                    @click="handleEquipInvoiceSubmit"
+                                                    :disabled="isEquipSubmitDisabled"
+                                                    :class="['font-bold text-white shadow-lg', equipItemType === 'kitchen' ? 'bg-orange-600 shadow-orange-200 hover:bg-orange-700' : 'bg-blue-600 shadow-blue-200 hover:bg-blue-700']"
+                                                >
+                                                    Guardar e Ingresar Equipos
+                                                </Button>
+                                            </DialogFooter>
+                                        </DialogContent>
+                                    </Dialog>
+                                </div>
+                            </div>
                         </CardHeader>
                         <CardContent class="p-0">
                             <Table>
                                 <TableHeader>
                                     <TableRow class="bg-slate-50/50 hover:bg-slate-50/50">
                                         <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Nº Factura</TableHead>
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Tipo</TableHead>
                                         <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Empresa / Sede</TableHead>
                                         <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Proveedor</TableHead>
                                         <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Fecha</TableHead>
@@ -920,8 +1407,19 @@ const saveInlinePrice = (cp: any) => {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    <TableRow v-for="inv in invoices" :key="inv.id" class="group transition-colors">
+                                    <TableRow v-for="inv in filteredInvoices" :key="`${inv._source}-${inv.id}`" class="group transition-colors">
                                         <TableCell class="font-bold text-indigo-600">{{ inv.invoice_number || 'S/N' }}</TableCell>
+                                        <TableCell>
+                                            <span
+                                                :class="[
+                                                    'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+                                                    CATEGORY_META[inv._category]?.cls,
+                                                ]"
+                                            >
+                                                <component :is="CATEGORY_META[inv._category]?.icon" class="h-3 w-3" />
+                                                {{ CATEGORY_META[inv._category]?.label }}
+                                            </span>
+                                        </TableCell>
                                         <TableCell>
                                             <div class="flex flex-col">
                                                 <span class="font-semibold text-slate-900">{{ inv.business?.name }}</span>
@@ -945,6 +1443,7 @@ const saveInlinePrice = (cp: any) => {
                                         </TableCell>
                                         <TableCell>
                                             <Button
+                                                v-if="inv._source === 'cloth'"
                                                 @click="viewInvoiceDetails(inv)"
                                                 variant="ghost"
                                                 size="sm"
@@ -952,11 +1451,24 @@ const saveInlinePrice = (cp: any) => {
                                             >
                                                 <MoreHorizontal class="h-4 w-4" />
                                             </Button>
+                                            <Button
+                                                v-else-if="inv._source === 'equipment'"
+                                                @click="viewEquipInvoiceDetails(inv)"
+                                                variant="ghost"
+                                                size="sm"
+                                                class="h-8 w-8 p-0 text-slate-400 transition-colors hover:text-blue-600"
+                                            >
+                                                <MoreHorizontal class="h-4 w-4" />
+                                            </Button>
                                         </TableCell>
                                     </TableRow>
-                                    <TableRow v-if="invoices.length === 0">
-                                        <TableCell colspan="6" class="h-32 text-center text-slate-400 italic">
-                                            No se han registrado facturas aún.
+                                    <TableRow v-if="filteredInvoices.length === 0">
+                                        <TableCell colspan="8" class="h-32 text-center text-slate-400 italic">
+                                            {{
+                                                invoiceTypeFilter === 'all'
+                                                    ? 'No se han registrado facturas aún.'
+                                                    : `No hay facturas de tipo "${CATEGORY_META[invoiceTypeFilter]?.label ?? invoiceTypeFilter}".`
+                                            }}
                                         </TableCell>
                                     </TableRow>
                                 </TableBody>
@@ -1646,6 +2158,157 @@ const saveInlinePrice = (cp: any) => {
                         <Button
                             variant="outline"
                             @click="isViewInvoiceModalOpen = false"
+                            class="h-10 rounded-xl border-slate-200 text-[10px] font-bold tracking-widest uppercase"
+                        >
+                            Cerrar Detalle
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <!-- Equipment Invoice Detail Modal -->
+            <Dialog v-model:open="isViewEquipInvoiceModalOpen">
+                <DialogContent class="flex max-h-[90vh] flex-col overflow-hidden p-0 sm:max-w-[800px]">
+                    <DialogHeader class="border-b bg-slate-50/50 p-6">
+                        <DialogTitle class="flex items-center gap-2 text-xl font-black text-slate-900">
+                            <component
+                                :is="selectedEquipInvoice?._category === 'menaje' ? ChefHat : Laptop"
+                                class="h-5 w-5"
+                                :class="selectedEquipInvoice?._category === 'menaje' ? 'text-orange-600' : 'text-blue-600'"
+                            />
+                            Factura #{{ selectedEquipInvoice?.invoice_number || 'S/N' }}
+                        </DialogTitle>
+                        <DialogDescription class="mt-1">
+                            {{ selectedEquipInvoice?.provider?.name || 'Sin proveedor' }} •
+                            {{ selectedEquipInvoice?.date }} •
+                            Reg. por: {{ selectedEquipInvoice?.user?.name || 'Sistema' }}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div class="flex-1 space-y-6 overflow-y-auto p-6">
+                        <!-- Info cards -->
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                <p class="mb-2 text-[10px] font-black tracking-widest text-slate-400 uppercase">Empresa</p>
+                                <p class="flex items-center gap-2 text-sm font-bold text-slate-800">
+                                    <Building class="h-3.5 w-3.5 flex-shrink-0" />
+                                    {{ selectedEquipInvoice?.business?.name || '—' }}
+                                </p>
+                                <p class="mt-1 text-[10px] font-black tracking-widest text-slate-400 uppercase">Tipo Documento</p>
+                                <p class="mt-1 text-xs font-semibold text-slate-600 capitalize">
+                                    {{ selectedEquipInvoice?.document_type || '—' }}
+                                </p>
+                            </div>
+                            <div class="rounded-2xl border border-blue-100 bg-blue-50/30 p-4">
+                                <p class="mb-2 text-[10px] font-black tracking-widest text-blue-400 uppercase">Notas / Observaciones</p>
+                                <p class="text-xs leading-relaxed text-slate-600">
+                                    {{ selectedEquipInvoice?.notes || 'Sin observaciones adicionales.' }}
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Equipment items -->
+                        <div class="space-y-3">
+                            <h3 class="flex items-center gap-2 text-xs font-black tracking-widest text-slate-400 uppercase">
+                                <Box class="h-4 w-4" /> Equipos Registrados
+                            </h3>
+                            <div class="overflow-hidden rounded-2xl border border-slate-100">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow class="bg-slate-50/80">
+                                            <TableHead class="text-[10px] font-black text-slate-500 uppercase">Tipo</TableHead>
+                                            <TableHead class="text-[10px] font-black text-slate-500 uppercase">Nombre</TableHead>
+                                            <TableHead class="text-[10px] font-black text-slate-500 uppercase">Marca / Modelo</TableHead>
+                                            <TableHead class="text-[10px] font-black text-slate-500 uppercase">Código</TableHead>
+                                            <TableHead class="text-[10px] font-black text-slate-500 uppercase">Serie</TableHead>
+                                            <TableHead class="text-[10px] font-black text-slate-500 uppercase">Color</TableHead>
+                                            <TableHead class="text-center text-[10px] font-black text-slate-500 uppercase">Cant.</TableHead>
+                                            <TableHead class="text-right text-[10px] font-black text-slate-500 uppercase">P. Unit</TableHead>
+                                            <TableHead class="text-right text-[10px] font-black text-slate-500 uppercase">Total</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        <template v-if="selectedEquipInvoice">
+                                            <TableRow
+                                                v-for="eq in [
+                                                    ...(selectedEquipInvoice.computer_equipments ?? []).map((e: any) => ({ ...e, _type: 'computer' })),
+                                                    ...(selectedEquipInvoice.kitchen_equipments  ?? []).map((e: any) => ({ ...e, _type: 'kitchen'  })),
+                                                ]"
+                                                :key="eq.id"
+                                            >
+                                                <TableCell class="py-2">
+                                                    <span :class="['inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold',
+                                                        eq._type === 'computer' ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-orange-200 bg-orange-50 text-orange-700']">
+                                                        <component :is="eq._type === 'computer' ? Laptop : ChefHat" class="h-2.5 w-2.5" />
+                                                        {{ eq._type === 'computer' ? 'IT' : 'Menaje' }}
+                                                    </span>
+                                                </TableCell>
+                                                <TableCell class="py-2 text-xs font-bold text-slate-800">{{ eq.name || '—' }}</TableCell>
+                                                <TableCell class="py-2 text-xs text-slate-500">
+                                                    {{ [eq.brand, eq.model].filter(Boolean).join(' · ') || '—' }}
+                                                </TableCell>
+                                                <TableCell class="py-2 font-mono text-xs text-slate-500">{{ eq.code || '—' }}</TableCell>
+                                                <TableCell class="py-2 font-mono text-xs text-slate-500">{{ eq.series || '—' }}</TableCell>
+                                                <TableCell class="py-2 text-xs text-slate-500">{{ eq.color || '—' }}</TableCell>
+                                                <TableCell class="py-2 text-center text-xs font-black text-slate-700">{{ eq.quantity ?? 1 }}</TableCell>
+                                                <TableCell class="py-2 text-right text-[10px] font-medium text-slate-500">
+                                                    S/.{{ Number(eq.unit_price ?? 0).toFixed(2) }}
+                                                </TableCell>
+                                                <TableCell class="py-2 text-right text-xs font-black text-blue-600">
+                                                    S/.{{ (Number(eq.unit_price ?? 0) * (eq.quantity ?? 1)).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                </TableCell>
+                                            </TableRow>
+                                        </template>
+
+                                        <!-- Totals row -->
+                                        <TableRow class="bg-slate-50/30">
+                                            <TableCell colspan="7" class="border-t border-slate-100"></TableCell>
+                                            <TableCell colspan="2" class="border-t border-slate-100 p-0">
+                                                <div class="space-y-3 p-4">
+                                                    <div class="flex items-center justify-between px-2">
+                                                        <span class="text-[10px] font-black tracking-widest text-slate-400 uppercase">IGV (18%)</span>
+                                                        <span class="font-mono text-xs font-bold text-slate-600">
+                                                            S/.{{ Number((selectedEquipInvoice?.total_amount / 1.18) * 0.18 || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                        </span>
+                                                    </div>
+                                                    <div class="flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50/50 p-3 shadow-sm">
+                                                        <span class="text-[10px] font-black tracking-widest text-blue-700 uppercase">Total Factura</span>
+                                                        <span class="font-mono text-sm font-black text-blue-700">
+                                                            S/.{{ Number(selectedEquipInvoice?.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+                                        </TableRow>
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </div>
+
+                        <!-- Evidence -->
+                        <div
+                            v-if="selectedEquipInvoice?.invoice_image"
+                            class="flex items-center justify-between rounded-2xl border border-blue-100 bg-blue-50/30 p-4"
+                        >
+                            <p class="text-[10px] font-black tracking-widest text-blue-400 uppercase">Evidencia Adjunta</p>
+                            <a
+                                :href="selectedEquipInvoice.invoice_image"
+                                target="_blank"
+                                class="inline-flex items-center gap-2 text-sm font-bold text-blue-600 transition-colors hover:text-blue-800"
+                            >
+                                <FileText class="h-4 w-4" /> Ver Documento / Imagen
+                            </a>
+                        </div>
+                        <div v-else class="rounded-2xl border border-slate-100 bg-slate-50/30 p-4">
+                            <p class="text-[10px] font-black tracking-widest text-slate-400 uppercase">Sin Evidencia</p>
+                            <p class="mt-1 text-xs text-slate-500">Esta factura no tiene documento o imagen adjunta.</p>
+                        </div>
+                    </div>
+
+                    <DialogFooter class="border-t bg-slate-50/50 p-4">
+                        <Button
+                            variant="outline"
+                            @click="isViewEquipInvoiceModalOpen = false"
                             class="h-10 rounded-xl border-slate-200 text-[10px] font-bold tracking-widest uppercase"
                         >
                             Cerrar Detalle

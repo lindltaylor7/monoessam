@@ -32,6 +32,7 @@ export function useStaffForm() {
         replacement: '',
         unitId: 0,
         salary: 0.0,
+        salaryType: '' as string,
         observations: '',
         bankEntity: 0 as number | string,
         pensioncontribution: '',

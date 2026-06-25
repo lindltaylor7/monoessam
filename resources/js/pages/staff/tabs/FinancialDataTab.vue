@@ -73,8 +73,18 @@ const emit = defineEmits<Emits>();
                     <Input v-model="form.unitSelectedText" readonly />
                 </div> -->
                 <div class="space-y-1">
+                    <Label>Tipo de sueldo</Label>
+                    <Select v-model="form.salaryType">
+                        <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="monthly">Por mes</SelectItem>
+                            <SelectItem value="daily">Por día</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div class="space-y-1">
                     <Label>Sueldo</Label>
-                    <Input v-model="form.salary" />
+                    <Input v-model="form.salary" type="number" step="0.01" />
                 </div>
                 <div class="space-y-1">
                     <Label>Observaciones</Label>

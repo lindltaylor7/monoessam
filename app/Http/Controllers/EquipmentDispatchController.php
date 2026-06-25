@@ -47,14 +47,15 @@ class EquipmentDispatchController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
-            'equipable_type'        => 'required|in:computer,kitchen',
-            'equipable_id'          => 'required|integer|min:1',
-            'quantity'              => 'required|integer|min:1',
-            'origin_headquarter_id' => 'required|exists:headquarters,id',
-            'destination_type'      => 'required|in:headquarter,cafe,unit,mine',
-            'destination_id'        => 'required|integer|min:1',
-            'staff_id'              => 'nullable|exists:staff,id',
-            'description'           => 'nullable|string|max:1000',
+            'items'                         => 'required|array|min:1',
+            'items.*.equipable_type'        => 'required|in:computer,kitchen',
+            'items.*.equipable_id'          => 'required|integer|min:1',
+            'items.*.quantity'              => 'required|integer|min:1',
+            'origin_headquarter_id'         => 'required|exists:headquarters,id',
+            'destination_type'              => 'required|in:headquarter,cafe,unit,mine',
+            'destination_id'               => 'required|integer|min:1',
+            'staff_id'                      => 'nullable|exists:staff,id',
+            'description'                   => 'nullable|string|max:1000',
         ]);
 
         $modelMap = [
@@ -62,34 +63,50 @@ class EquipmentDispatchController extends Controller
             'kitchen'  => KitchenEquipment::class,
         ];
 
-        $modelClass = $modelMap[$validated['equipable_type']];
-        $equipment  = $modelClass::findOrFail($validated['equipable_id']);
-
-        if ($equipment->quantity < $validated['quantity']) {
-            return back()->withErrors(['quantity' => "Solo hay {$equipment->quantity} unidades disponibles."]);
+        // Validate stock for every item before creating any dispatch
+        foreach ($validated['items'] as $i => $item) {
+            $equipment = $modelMap[$item['equipable_type']]::find($item['equipable_id']);
+            $available = $equipment?->quantity ?? 0;
+            if (!$equipment || $available < $item['quantity']) {
+                return back()->withErrors(["items.{$i}.quantity" => "Solo hay {$available} unidades disponibles."]);
+            }
         }
 
-        $seq = EquipmentDispatch::whereYear('created_at', now()->year)->count() + 1;
-        $dispatchNumber = 'DESP-' . now()->year . '-' . str_pad($seq, 4, '0', STR_PAD_LEFT);
+        // One guide number for the whole batch
+        $guideSeq    = EquipmentDispatch::whereYear('created_at', now()->year)->whereNotNull('guide_number')->distinct('guide_number')->count() + 1;
+        $guideNumber = 'GR-' . now()->year . '-' . str_pad($guideSeq, 4, '0', STR_PAD_LEFT);
 
-        $equipment->decrement('quantity', $validated['quantity']);
+        $created = [];
+        foreach ($validated['items'] as $item) {
+            $modelClass = $modelMap[$item['equipable_type']];
+            $equipment  = $modelClass::find($item['equipable_id']);
 
-        EquipmentDispatch::create([
-            'equipable_type'        => $modelClass,
-            'equipable_id'          => $validated['equipable_id'],
-            'quantity'              => $validated['quantity'],
-            'origin_headquarter_id' => $validated['origin_headquarter_id'],
-            'destination_type'      => $validated['destination_type'],
-            'destination_id'        => $validated['destination_id'],
-            'staff_id'              => $validated['staff_id'] ?? null,
-            'description'           => $validated['description'] ?? null,
-            'dispatch_number'       => $dispatchNumber,
-            'status'                => 'active',
-            'dispatched_at'         => now(),
-            'dispatched_by'         => Auth::id(),
-        ]);
+            $seq = EquipmentDispatch::whereYear('created_at', now()->year)->count() + 1;
+            $dispatchNumber = 'DESP-' . now()->year . '-' . str_pad($seq, 4, '0', STR_PAD_LEFT);
 
-        return back()->with('success', "Despacho {$dispatchNumber} registrado correctamente.");
+            $equipment->decrement('quantity', $item['quantity']);
+
+            EquipmentDispatch::create([
+                'equipable_type'        => $modelClass,
+                'equipable_id'          => $item['equipable_id'],
+                'quantity'              => $item['quantity'],
+                'origin_headquarter_id' => $validated['origin_headquarter_id'],
+                'destination_type'      => $validated['destination_type'],
+                'destination_id'        => $validated['destination_id'],
+                'staff_id'              => $validated['staff_id'] ?? null,
+                'description'           => $validated['description'] ?? null,
+                'dispatch_number'       => $dispatchNumber,
+                'guide_number'          => $guideNumber,
+                'status'                => 'active',
+                'dispatched_at'         => now(),
+                'dispatched_by'         => Auth::id(),
+            ]);
+
+            $created[] = $dispatchNumber;
+        }
+
+        $count = count($created);
+        return back()->with('success', "Guía {$guideNumber} — {$count} ítem(s) registrado(s).");
     }
 
     public function receptions()
@@ -154,15 +171,46 @@ class EquipmentDispatchController extends Controller
             ->stream("Despacho_{$data['dispatch_number']}.pdf");
     }
 
+    public function guidePdf(string $guideNumber)
+    {
+        $dispatches = EquipmentDispatch::with(['equipable', 'origin', 'staff', 'dispatcher'])
+            ->where('guide_number', $guideNumber)
+            ->orderBy('id')
+            ->get();
+
+        abort_if($dispatches->isEmpty(), 404);
+
+        $items = $dispatches->map(fn ($d) => $this->transform($d));
+        $first = $items->first();
+
+        $pdf = Pdf::loadView('pdf.equipment_guide', [
+            'guide_number'      => $guideNumber,
+            'items'             => $items,
+            'origin_name'       => $first['origin_name'],
+            'destination_name'  => $first['destination_name'],
+            'destination_label' => $first['destination_label'],
+            'destination_type'  => $first['destination_type'],
+            'dispatched_by'     => $first['dispatched_by'],
+            'dispatched_at'     => $first['dispatched_at'],
+            'staff_name'        => $first['staff_name'],
+            'description'       => $first['description'],
+        ]);
+
+        return $pdf->setPaper('a4', 'portrait')
+            ->stream("Guia_{$guideNumber}.pdf");
+    }
+
     private function transform(EquipmentDispatch $d): array
     {
-        $destinationName = match ($d->destination_type) {
-            'cafe'        => Cafe::find($d->destination_id)?->name,
-            'unit'        => Unit::find($d->destination_id)?->name,
-            'mine'        => Mine::find($d->destination_id)?->name,
-            'headquarter' => Headquarter::find($d->destination_id)?->name,
-            default       => '—',
+        $dest = match ($d->destination_type) {
+            'cafe'        => Cafe::find($d->destination_id),
+            'unit'        => Unit::find($d->destination_id),
+            'mine'        => Mine::find($d->destination_id),
+            'headquarter' => Headquarter::find($d->destination_id),
+            default       => null,
         };
+
+        $destinationName = $dest?->name ?? '—';
 
         $destinationLabel = match ($d->destination_type) {
             'cafe'        => 'Café / Comedor',
@@ -177,6 +225,7 @@ class EquipmentDispatchController extends Controller
         return [
             'id'               => $d->id,
             'dispatch_number'  => $d->dispatch_number,
+            'guide_number'     => $d->guide_number,
             'status'           => $d->status,
             'equipable_type'   => $equipType,
             'equipable_id'     => $d->equipable_id,
@@ -202,6 +251,10 @@ class EquipmentDispatchController extends Controller
             'returned_at'      => $d->returned_at?->format('d/m/Y H:i'),
             'received_at'      => $d->received_at?->format('d/m/Y H:i'),
             'received_by'      => $d->receiver?->name,
+            'origin_lat'       => $d->origin?->latitude  ? (float) $d->origin->latitude  : null,
+            'origin_lng'       => $d->origin?->longitude ? (float) $d->origin->longitude : null,
+            'destination_lat'  => $dest?->latitude  ? (float) $dest->latitude  : null,
+            'destination_lng'  => $dest?->longitude ? (float) $dest->longitude : null,
         ];
     }
 }

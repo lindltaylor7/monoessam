@@ -29,10 +29,18 @@ class UnitController extends Controller
     public function store(Request $request)
     {
         $unit = Unit::create([
-            'name' => $request->name,
-            'mine_id' => $request->mine_id
+            'name'      => $request->name,
+            'mine_id'   => $request->mine_id,
+            'latitude'  => $request->latitude  ?? null,
+            'longitude' => $request->longitude ?? null,
+            'address'   => $request->address   ?? null,
         ]);
+        return response()->json($unit);
+    }
 
+    public function update(Request $request, Unit $unit)
+    {
+        $unit->update($request->only(['name', 'latitude', 'longitude', 'address']));
         return response()->json($unit);
     }
 
@@ -48,14 +56,6 @@ class UnitController extends Controller
      * Show the form for editing the specified resource.
      */
     public function edit(Unit $unit)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, Unit $unit)
     {
         //
     }

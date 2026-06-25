@@ -27,13 +27,34 @@ const isLoading = ref({
 
 const form = useForm({
     mine: '',
+    mineLat: '' as string,
+    mineLng: '' as string,
+    mineAddr: '' as string,
     mineId: 0,
     unit: '',
+    unitLat: '' as string,
+    unitLng: '' as string,
+    unitAddr: '' as string,
     unitId: 0,
     cafe: '',
+    cafeLat: '' as string,
+    cafeLng: '' as string,
+    cafeAddr: '' as string,
     cafeId: 0,
-    businessId: 0, // Se mantiene el ID del negocio para la creación de Cafetería
+    businessId: 0,
 });
+
+function parseCoords(pasteStr: string, latField: 'mineLat'|'unitLat'|'cafeLat', lngField: 'mineLng'|'unitLng'|'cafeLng') {
+    const parts = pasteStr.trim().split(/[\s,]+/);
+    if (parts.length >= 2) {
+        const a = parseFloat(parts[0]);
+        const b = parseFloat(parts[1]);
+        if (!isNaN(a) && !isNaN(b)) {
+            (form as any)[latField] = String(a);
+            (form as any)[lngField] = String(b);
+        }
+    }
+}
 
 // --- WATCHERS PARA LA JERARQUÍA Y LIMPIEZA ---
 
@@ -141,9 +162,13 @@ const insertMine = () => {
 
     isLoading.value.mine = true;
     axios
-        .post('/mines', { name: form.mine })
+        .post('/mines', {
+            name:      form.mine,
+            latitude:  form.mineLat  ? parseFloat(form.mineLat)  : null,
+            longitude: form.mineLng  ? parseFloat(form.mineLng)  : null,
+            address:   form.mineAddr || null,
+        })
         .then((response) => {
-            // Seleccionar inmediatamente la mina recién creada
             selectMine(response.data);
         })
         .catch(console.error)
@@ -155,9 +180,14 @@ const insertUnit = () => {
 
     isLoading.value.unit = true;
     axios
-        .post('/units', { name: form.unit, mine_id: form.mineId })
+        .post('/units', {
+            name:      form.unit,
+            mine_id:   form.mineId,
+            latitude:  form.unitLat  ? parseFloat(form.unitLat)  : null,
+            longitude: form.unitLng  ? parseFloat(form.unitLng)  : null,
+            address:   form.unitAddr || null,
+        })
         .then((response) => {
-            // Seleccionar inmediatamente la unidad recién creada
             selectUnit(response.data);
         })
         .catch(console.error)
@@ -165,12 +195,18 @@ const insertUnit = () => {
 };
 
 const insertCafe = () => {
-    // Si la cafetería existe, no hacemos nada (el botón debe estar deshabilitado)
     if (form.cafe.trim() === '' || form.unitId === 0 || form.businessId === 0) return;
 
     isLoading.value.cafe = true;
     axios
-        .post('/cafes', { name: form.cafe, unit_id: form.unitId, business_id: form.businessId })
+        .post('/cafes', {
+            name:        form.cafe,
+            unit_id:     form.unitId,
+            business_id: form.businessId,
+            latitude:    form.cafeLat  ? parseFloat(form.cafeLat)  : null,
+            longitude:   form.cafeLng  ? parseFloat(form.cafeLng)  : null,
+            address:     form.cafeAddr || null,
+        })
         .then(() => {
             // Mostrar mensaje de éxito y limpiar formulario
             form.reset();
@@ -260,6 +296,30 @@ function debounce(fn: Function, delay: number) {
                             </li>
                         </ul>
                     </div>
+                    <!-- Location fields for mine -->
+                    <div v-if="form.mineId === 0" class="mt-2 space-y-2">
+                        <div>
+                            <label class="mb-0.5 block text-xs text-gray-500">Dirección (opcional)</label>
+                            <Input v-model="form.mineAddr" type="text" placeholder="Av. Principal 123, Huancayo" class="h-8 text-xs" />
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="mb-0.5 block text-xs text-gray-500">Latitud</label>
+                                <Input v-model="form.mineLat" type="number" step="any" placeholder="-12.0516" class="h-8 text-xs" />
+                            </div>
+                            <div>
+                                <label class="mb-0.5 block text-xs text-gray-500">Longitud</label>
+                                <Input v-model="form.mineLng" type="number" step="any" placeholder="-75.2187" class="h-8 text-xs" />
+                            </div>
+                            <div class="col-span-2">
+                                <Input
+                                    type="text" placeholder="Pegar desde Google Maps: -12.0516, -75.2187"
+                                    class="h-8 text-xs"
+                                    @input="(e: any) => parseCoords(e.target.value, 'mineLat', 'mineLng')"
+                                />
+                            </div>
+                        </div>
+                    </div>
                     <div v-if="form.mineId > 0" class="mt-1 text-sm text-green-600">Mina seleccionada: {{ form.mine }}.</div>
                 </div>
 
@@ -298,6 +358,30 @@ function debounce(fn: Function, delay: number) {
                                 {{ unit.name }}
                             </li>
                         </ul>
+                    </div>
+                    <!-- Location fields for unit -->
+                    <div v-if="form.mineId > 0 && form.unitId === 0" class="mt-2 space-y-2">
+                        <div>
+                            <label class="mb-0.5 block text-xs text-gray-500">Dirección (opcional)</label>
+                            <Input v-model="form.unitAddr" type="text" placeholder="Av. Principal 123, Huancayo" class="h-8 text-xs" />
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="mb-0.5 block text-xs text-gray-500">Latitud</label>
+                                <Input v-model="form.unitLat" type="number" step="any" placeholder="-12.0516" class="h-8 text-xs" />
+                            </div>
+                            <div>
+                                <label class="mb-0.5 block text-xs text-gray-500">Longitud</label>
+                                <Input v-model="form.unitLng" type="number" step="any" placeholder="-75.2187" class="h-8 text-xs" />
+                            </div>
+                            <div class="col-span-2">
+                                <Input
+                                    type="text" placeholder="Pegar desde Google Maps: -12.0516, -75.2187"
+                                    class="h-8 text-xs"
+                                    @input="(e: any) => parseCoords(e.target.value, 'unitLat', 'unitLng')"
+                                />
+                            </div>
+                        </div>
                     </div>
                     <div v-if="form.unitId > 0" class="mt-1 text-sm text-green-600">Unidad seleccionada: {{ form.unit }}.</div>
                 </div>
@@ -355,6 +439,30 @@ function debounce(fn: Function, delay: number) {
                         </ul>
                     </div>
 
+                    <!-- Location fields for cafe -->
+                    <div v-if="form.unitId > 0 && form.cafeId === 0" class="mt-2 space-y-2">
+                        <div>
+                            <label class="mb-0.5 block text-xs text-gray-500">Dirección (opcional)</label>
+                            <Input v-model="form.cafeAddr" type="text" placeholder="Av. Principal 123, Huancayo" class="h-8 text-xs" />
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="mb-0.5 block text-xs text-gray-500">Latitud</label>
+                                <Input v-model="form.cafeLat" type="number" step="any" placeholder="-12.0516" class="h-8 text-xs" />
+                            </div>
+                            <div>
+                                <label class="mb-0.5 block text-xs text-gray-500">Longitud</label>
+                                <Input v-model="form.cafeLng" type="number" step="any" placeholder="-75.2187" class="h-8 text-xs" />
+                            </div>
+                            <div class="col-span-2">
+                                <Input
+                                    type="text" placeholder="Pegar desde Google Maps: -12.0516, -75.2187"
+                                    class="h-8 text-xs"
+                                    @input="(e: any) => parseCoords(e.target.value, 'cafeLat', 'cafeLng')"
+                                />
+                            </div>
+                        </div>
+                    </div>
                     <div v-if="form.cafeId > 0" class="mt-1 text-sm font-semibold text-red-500">
                         ⚠️ Esta Cafetería ya existe (ID: {{ form.cafeId }}).
                     </div>

@@ -109,6 +109,7 @@ class EquipmentController extends Controller
             'date'               => 'required|date',
             'notes'              => 'nullable|string',
             'invoice_image'      => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:10240',
+            'headquarter_id'     => 'nullable|exists:headquarters,id',
             'items'              => 'required|array|min:1',
             'items.*.type'       => 'required|in:computer,kitchen',
             'items.*.name'       => 'required|string|max:255',
@@ -145,19 +146,20 @@ class EquipmentController extends Controller
 
             foreach ($validated['items'] as $item) {
                 $equipmentData = [
-                    'name'                 => $item['name'],
-                    'brand'                => $item['brand'] ?? null,
-                    'model'                => $item['model'] ?? null,
-                    'code'                 => $item['code'] ?? null,
-                    'series'               => $item['series'] ?? null,
-                    'color'                => $item['color'] ?? null,
-                    'status'               => $item['status'] ?? 0,
-                    'unit_price'           => $item['unit_price'],
-                    'quantity'             => $item['quantity'] ?? 1,
-                    'equipment_invoice_id' => $invoice->id,
+                    'name'                   => $item['name'],
+                    'brand'                  => $item['brand'] ?? null,
+                    'model'                  => $item['model'] ?? null,
+                    'code'                   => $item['code'] ?? null,
+                    'series'                 => $item['series'] ?? null,
+                    'color'                  => $item['color'] ?? null,
+                    'status'                 => $item['status'] ?? 0,
+                    'unit_price'             => $item['unit_price'],
+                    'quantity'               => $item['quantity'] ?? 1,
+                    'equipment_invoice_id'   => $invoice->id,
+                    'storage_headquarter_id' => $validated['headquarter_id'] ?? null,
                     // kitchen-specific (ignored by ComputerEquipment's $fillable)
-                    'size'                 => $item['size'] ?? null,
-                    'description'          => $item['description'] ?? null,
+                    'size'                   => $item['size'] ?? null,
+                    'description'            => $item['description'] ?? null,
                 ];
 
                 $modelClass = $item['type'] === 'computer' ? ComputerEquipment::class : KitchenEquipment::class;
