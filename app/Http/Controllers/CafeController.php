@@ -32,12 +32,21 @@ class CafeController extends Controller
     public function store(Request $request)
     {
         $cafe = Cafe::create([
-            'name' => $request->name,
-            'unit_id' => $request->unit_id
+            'name'      => $request->name,
+            'unit_id'   => $request->unit_id,
+            'latitude'  => $request->latitude  ?? null,
+            'longitude' => $request->longitude ?? null,
+            'address'   => $request->address   ?? null,
         ]);
 
         $cafe->businesses()->sync([$request->business_id]);
 
+        return response()->json($cafe);
+    }
+
+    public function update(Request $request, Cafe $cafe)
+    {
+        $cafe->update($request->only(['name', 'latitude', 'longitude', 'address']));
         return response()->json($cafe);
     }
 
@@ -110,14 +119,6 @@ class CafeController extends Controller
      * Show the form for editing the specified resource.
      */
     public function edit(Cafe $cafe)
-    {
-        //
-    }
-
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, Cafe $cafe)
     {
         //
     }

@@ -13,7 +13,7 @@ class Unit extends Model
     /** @use HasFactory<\Database\Factories\UnitFactory> */
     use \Illuminate\Database\Eloquent\Factories\HasFactory;
 
-    protected $fillable = ['name', 'mine_id'];
+    protected $fillable = ['name', 'mine_id', 'latitude', 'longitude', 'address'];
 
 
     public function mine(): BelongsTo

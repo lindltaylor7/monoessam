@@ -15,6 +15,7 @@ use App\Http\Controllers\DishController;
 use App\Http\Controllers\FoodController;
 use App\Http\Controllers\GuardController;
 use App\Http\Controllers\HeadcountController;
+use App\Http\Controllers\HeadquarterController;
 use App\Http\Controllers\IngredientCategoryController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\LaboralController;
@@ -143,12 +144,14 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
 
     Route::prefix('mines')->name('mines.')->group(function () {
         Route::post('/', [MineController::class, 'store'])->name('store');
+        Route::patch('{mine}', [MineController::class, 'update'])->name('update');
         Route::get('search/{word?}', [MineController::class, 'search'])->name('search');
         Route::post('serviceables', [MineController::class, 'mineServiceables'])->name('serviceables');
     });
 
     Route::prefix('units')->name('units.')->group(function () {
         Route::post('/', [UnitController::class, 'store'])->name('store');
+        Route::patch('{unit}', [UnitController::class, 'update'])->name('update');
         Route::get('search/{mineId}/{word?}', [UnitController::class, 'search'])->name('search');
         Route::post('serviceables', [UnitController::class, 'unitServiceables'])->name('serviceables');
     });
@@ -157,6 +160,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('/roles', [CafeController::class, 'rolesIndex'])->name('roles.index');
         Route::post('/roles/{id}', [CafeController::class, 'syncRoles'])->name('roles.sync');
         Route::post('/', [CafeController::class, 'store'])->name('store');
+        Route::patch('{cafe}', [CafeController::class, 'update'])->name('update');
         Route::get('{id}', [CafeController::class, 'show'])->name('show');
         Route::get('search/{unitId}/{word?}', [CafeController::class, 'search'])->name('search');
         Route::post('serviceables', [CafeController::class, 'cafeServiceables'])->name('serviceables');
@@ -288,6 +292,8 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('{id}/logo', [BusinessController::class, 'uploadLogo'])->name('logo');
     });
 
+    Route::patch('/headquarters/{headquarter}', [HeadquarterController::class, 'update'])->name('headquarters.update');
+
     // ========================================================================
     // VENTAS
     // ========================================================================
@@ -369,6 +375,8 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('/', [EquipmentController::class, 'store'])->name('store');
         Route::post('/invoice', [EquipmentController::class, 'storeInvoice'])->name('invoice.store');
         Route::post('/providers', [EquipmentController::class, 'storeEquipmentProvider'])->name('providers.store');
+        Route::put('/providers/{id}', [EquipmentController::class, 'updateEquipmentProvider'])->name('providers.update');
+        Route::delete('/providers/{id}', [EquipmentController::class, 'destroyEquipmentProvider'])->name('providers.destroy');
         Route::put('{type}/{id}', [EquipmentController::class, 'update'])->name('update');
         Route::delete('{type}/{id}', [EquipmentController::class, 'destroy'])->name('destroy');
         Route::get('{type}/{id}/history', [EquipmentController::class, 'history'])->name('history');
@@ -377,9 +385,12 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
 
     Route::prefix('equipment-dispatches')->name('equipment-dispatches.')->group(function () {
         Route::get('/', [EquipmentDispatchController::class, 'index'])->name('index');
+        Route::get('/receptions', [EquipmentDispatchController::class, 'receptions'])->name('receptions');
         Route::post('/', [EquipmentDispatchController::class, 'store'])->name('store');
         Route::put('{id}/return', [EquipmentDispatchController::class, 'markReturned'])->name('return');
+        Route::put('{id}/receive', [EquipmentDispatchController::class, 'markReceived'])->name('receive');
         Route::get('{id}/pdf', [EquipmentDispatchController::class, 'pdf'])->name('pdf');
+        Route::get('guide/{guideNumber}/pdf', [EquipmentDispatchController::class, 'guidePdf'])->name('guide-pdf');
     });
 
     // ========================================================================

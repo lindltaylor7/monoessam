@@ -9,18 +9,19 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 class EquipmentDispatch extends Model
 {
     protected $fillable = [
-        'equipable_type', 'equipable_id',
+        'equipable_type', 'equipable_id', 'quantity',
         'origin_headquarter_id',
         'destination_type', 'destination_id',
         'staff_id', 'description',
-        'dispatch_number', 'status',
+        'dispatch_number', 'guide_number', 'status',
         'dispatched_at', 'returned_at',
-        'dispatched_by',
+        'dispatched_by', 'received_at', 'received_by',
     ];
 
     protected $casts = [
         'dispatched_at' => 'datetime',
         'returned_at'   => 'datetime',
+        'received_at'   => 'datetime',
     ];
 
     public function equipable(): MorphTo
@@ -41,5 +42,10 @@ class EquipmentDispatch extends Model
     public function dispatcher(): BelongsTo
     {
         return $this->belongsTo(User::class, 'dispatched_by');
+    }
+
+    public function receiver(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'received_by');
     }
 }

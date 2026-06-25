@@ -4,8 +4,20 @@ import { type BreadcrumbItem } from '@/types';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import {
-    AlertTriangle, CheckCircle2, ClipboardList, Clock, FileText, History,
-    Laptop, Monitor, Pencil, Plus, Search, Trash2, Truck, UtensilsCrossed,
+    AlertTriangle,
+    CheckCircle2,
+    ClipboardList,
+    Clock,
+    FileText,
+    History,
+    Laptop,
+    Monitor,
+    Pencil,
+    Plus,
+    Search,
+    Trash2,
+    Truck,
+    UtensilsCrossed,
 } from 'lucide-vue-next';
 import { computed, reactive, ref } from 'vue';
 
@@ -20,94 +32,150 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 // ── Types ──────────────────────────────────────────────────────────────────
-interface StaffRef { id: number; name: string }
+interface StaffRef {
+    id: number;
+    name: string;
+}
 
-interface HQRef { id: number; name: string }
+interface HQRef {
+    id: number;
+    name: string;
+    business: { id: number; name: string } | null;
+}
 
 interface ComputerEquipment {
-    id: number; name: string; brand: string | null; model: string | null;
-    description: string | null; presentation: string | null; color: string | null;
-    series: string | null; code: string | null; status: number;
-    responsible_id: number | null; responsible: StaffRef | null;
-    storage_headquarter_id: number | null; storage_headquarter: HQRef | null;
+    id: number;
+    name: string;
+    brand: string | null;
+    model: string | null;
+    description: string | null;
+    presentation: string | null;
+    color: string | null;
+    series: string | null;
+    code: string | null;
+    status: number;
+    quantity: number;
+    responsible_id: number | null;
+    responsible: StaffRef | null;
+    storage_headquarter_id: number | null;
+    storage_headquarter: HQRef | null;
     histories_count: number;
 }
 
 interface KitchenEquipment {
-    id: number; name: string; brand: string | null; model: string | null;
-    size: string | null; description: string | null; color: string | null;
-    current_type: string | null; series: string | null; manual: string | null;
-    code: string | null; status: number;
-    responsible_id: number | null; responsible: StaffRef | null;
-    storage_headquarter_id: number | null; storage_headquarter: HQRef | null;
+    id: number;
+    name: string;
+    brand: string | null;
+    model: string | null;
+    size: string | null;
+    description: string | null;
+    color: string | null;
+    current_type: string | null;
+    series: string | null;
+    manual: string | null;
+    code: string | null;
+    status: number;
+    quantity: number;
+    responsible_id: number | null;
+    responsible: StaffRef | null;
+    storage_headquarter_id: number | null;
+    storage_headquarter: HQRef | null;
     histories_count: number;
 }
 
 interface HistoryEntry {
-    id: number; action: string; notes: string | null;
-    staff: StaffRef | null; user: StaffRef | null;
+    id: number;
+    action: string;
+    notes: string | null;
+    staff: StaffRef | null;
+    user: StaffRef | null;
     created_at: string;
 }
 
-interface HQRef { id: number; name: string }
+interface HQRef {
+    id: number;
+    name: string;
+    business: { id: number; name: string } | null;
+}
 
-interface ProviderRef { id: number; name: string }
-interface BusinessRef { id: number; name: string }
+interface ProviderRef {
+    id: number;
+    name: string;
+}
+interface BusinessRef {
+    id: number;
+    name: string;
+}
 
 const props = defineProps<{
-    computerEquipments:  ComputerEquipment[];
-    kitchenEquipments:   KitchenEquipment[];
-    staff:               StaffRef[];
-    headquarters:        HQRef[];
-    businesses:          BusinessRef[];
-    equipmentProviders:  ProviderRef[];
+    computerEquipments: ComputerEquipment[];
+    kitchenEquipments: KitchenEquipment[];
+    staff: StaffRef[];
+    headquarters: HQRef[];
+    businesses: BusinessRef[];
+    equipmentProviders: ProviderRef[];
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Equipos', href: '/equipments' }];
 
 // ── Constants ──────────────────────────────────────────────────────────────
 const STATUSES = [
-    { value: '0', label: 'Nuevo',   cls: 'bg-blue-100 text-blue-700 border-blue-200'     },
-    { value: '1', label: 'Bueno',   cls: 'bg-green-100 text-green-700 border-green-200'  },
+    { value: '0', label: 'Nuevo', cls: 'bg-blue-100 text-blue-700 border-blue-200' },
+    { value: '1', label: 'Bueno', cls: 'bg-green-100 text-green-700 border-green-200' },
     { value: '2', label: 'Regular', cls: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
-    { value: '3', label: 'Dañado',  cls: 'bg-red-100 text-red-700 border-red-200'         },
-    { value: '4', label: 'Baja',    cls: 'bg-gray-100 text-gray-600 border-gray-200'      },
+    { value: '3', label: 'Dañado', cls: 'bg-red-100 text-red-700 border-red-200' },
+    { value: '4', label: 'Baja', cls: 'bg-gray-100 text-gray-600 border-gray-200' },
 ];
 
 const ACTIONS = ['Registro', 'Asignación', 'Mantenimiento', 'Reparación', 'Transferencia', 'Daño', 'Baja', 'Observación'];
 
 const ACTION_COLORS: Record<string, string> = {
-    Registro: 'bg-blue-100 text-blue-700', Asignación: 'bg-purple-100 text-purple-700',
-    Mantenimiento: 'bg-yellow-100 text-yellow-700', Reparación: 'bg-orange-100 text-orange-700',
-    Transferencia: 'bg-cyan-100 text-cyan-700', Daño: 'bg-red-100 text-red-700',
-    Baja: 'bg-gray-100 text-gray-600', Observación: 'bg-green-100 text-green-700',
+    Registro: 'bg-blue-100 text-blue-700',
+    Asignación: 'bg-purple-100 text-purple-700',
+    Mantenimiento: 'bg-yellow-100 text-yellow-700',
+    Reparación: 'bg-orange-100 text-orange-700',
+    Transferencia: 'bg-cyan-100 text-cyan-700',
+    Daño: 'bg-red-100 text-red-700',
+    Baja: 'bg-gray-100 text-gray-600',
+    Observación: 'bg-green-100 text-green-700',
 };
 
 function statusInfo(val: number) {
-    return STATUSES.find(s => s.value === String(val)) ?? STATUSES[0];
+    return STATUSES.find((s) => s.value === String(val)) ?? STATUSES[0];
 }
 
 // ── State ──────────────────────────────────────────────────────────────────
-const activeTab      = ref<'computer' | 'kitchen'>('computer');
+const activeTab = ref<'computer' | 'kitchen'>('computer');
 const searchComputer = ref('');
-const searchKitchen  = ref('');
+const searchKitchen = ref('');
 
 // Form modal
-const showForm   = ref(false);
+const showForm = ref(false);
 const editTarget = ref<(ComputerEquipment | KitchenEquipment) | null>(null);
 
 const form = useForm({
     type: 'computer' as 'computer' | 'kitchen',
-    name: '', brand: '', model: '', description: '', color: '',
-    series: '', code: '', presentation: '', size: '', current_type: '', manual: '',
-    status: '0', responsible_id: 'none' as string | number,
+    name: '',
+    brand: '',
+    model: '',
+    description: '',
+    color: '',
+    series: '',
+    code: '',
+    presentation: '',
+    size: '',
+    current_type: '',
+    manual: '',
+    status: '0',
+    quantity: 1,
+    responsible_id: 'none' as string | number,
     storage_headquarter_id: 'none' as string | number,
 });
 
 // History sheet
-const showHistory    = ref(false);
-const historyItem    = ref<{ id: number; name: string; type: string } | null>(null);
-const historyList    = ref<HistoryEntry[]>([]);
+const showHistory = ref(false);
+const historyItem = ref<{ id: number; name: string; type: string } | null>(null);
+const historyList = ref<HistoryEntry[]>([]);
 const historyLoading = ref(false);
 
 const historyForm = reactive({ action: 'Observación', notes: '', staff_id: 'none', status: 'none' });
@@ -120,16 +188,14 @@ const deleteTarget = ref<{ id: number; type: string; name: string } | null>(null
 const filteredComputer = computed(() => {
     const q = searchComputer.value.toLowerCase();
     return q
-        ? props.computerEquipments.filter(e =>
-            [e.name, e.brand, e.model, e.code, e.series].some(f => f?.toLowerCase().includes(q)))
+        ? props.computerEquipments.filter((e) => [e.name, e.brand, e.model, e.code, e.series].some((f) => f?.toLowerCase().includes(q)))
         : props.computerEquipments;
 });
 
 const filteredKitchen = computed(() => {
     const q = searchKitchen.value.toLowerCase();
     return q
-        ? props.kitchenEquipments.filter(e =>
-            [e.name, e.brand, e.model, e.code, e.series].some(f => f?.toLowerCase().includes(q)))
+        ? props.kitchenEquipments.filter((e) => [e.name, e.brand, e.model, e.code, e.series].some((f) => f?.toLowerCase().includes(q)))
         : props.kitchenEquipments;
 });
 
@@ -144,23 +210,28 @@ function openCreate() {
 
 function openEdit(item: ComputerEquipment | KitchenEquipment, type: 'computer' | 'kitchen') {
     editTarget.value = item;
-    form.type           = type;
-    form.name           = item.name ?? '';
-    form.brand          = item.brand ?? '';
-    form.model          = item.model ?? '';
-    form.description    = item.description ?? '';
-    form.color          = item.color ?? '';
-    form.series         = item.series ?? '';
-    form.code           = item.code ?? '';
-    form.status                  = String(item.status ?? 0);
-    form.responsible_id          = item.responsible_id ? String(item.responsible_id) : 'none';
-    form.storage_headquarter_id  = item.storage_headquarter_id ? String(item.storage_headquarter_id) : 'none';
+    form.type = type;
+    form.name = item.name ?? '';
+    form.brand = item.brand ?? '';
+    form.model = item.model ?? '';
+    form.description = item.description ?? '';
+    form.color = item.color ?? '';
+    form.series = item.series ?? '';
+    form.code = item.code ?? '';
+    form.status = String(item.status ?? 0);
+    form.quantity = item.quantity ?? 1;
+    form.responsible_id = item.responsible_id ? String(item.responsible_id) : 'none';
+    form.storage_headquarter_id = item.storage_headquarter_id ? String(item.storage_headquarter_id) : 'none';
     if (type === 'computer') {
         form.presentation = (item as ComputerEquipment).presentation ?? '';
-        form.size = ''; form.current_type = ''; form.manual = '';
+        form.size = '';
+        form.current_type = '';
+        form.manual = '';
     } else {
         const k = item as KitchenEquipment;
-        form.size = k.size ?? ''; form.current_type = k.current_type ?? ''; form.manual = k.manual ?? '';
+        form.size = k.size ?? '';
+        form.current_type = k.current_type ?? '';
+        form.manual = k.manual ?? '';
         form.presentation = '';
     }
     showForm.value = true;
@@ -171,7 +242,10 @@ function submitForm() {
     if (form.storage_headquarter_id === 'none') form.storage_headquarter_id = '';
     const opts = {
         preserveScroll: true,
-        onSuccess: () => { showForm.value = false; form.reset(); },
+        onSuccess: () => {
+            showForm.value = false;
+            form.reset();
+        },
     };
     if (editTarget.value) {
         form.put(route('equipments.update', { type: form.type, id: editTarget.value.id }), opts);
@@ -182,17 +256,17 @@ function submitForm() {
 
 // ── History ────────────────────────────────────────────────────────────────
 function resetHistoryForm() {
-    historyForm.action   = 'Observación';
-    historyForm.notes    = '';
+    historyForm.action = 'Observación';
+    historyForm.notes = '';
     historyForm.staff_id = 'none';
-    historyForm.status   = 'none';
+    historyForm.status = 'none';
 }
 
 async function openHistory(item: { id: number; name: string }, type: string) {
-    historyItem.value    = { id: item.id, name: item.name, type };
-    historyList.value    = [];
+    historyItem.value = { id: item.id, name: item.name, type };
+    historyList.value = [];
     historyLoading.value = true;
-    showHistory.value    = true;
+    showHistory.value = true;
     resetHistoryForm();
 
     try {
@@ -210,10 +284,10 @@ async function submitHistory() {
     historyProcessing.value = true;
     try {
         await axios.post(route('equipments.history.store', { type: item.type, id: item.id }), {
-            action:     historyForm.action,
-            notes:      historyForm.notes || null,
-            staff_id:   historyForm.staff_id === 'none' ? null : historyForm.staff_id,
-            status:     historyForm.status   === 'none' ? null : historyForm.status,
+            action: historyForm.action,
+            notes: historyForm.notes || null,
+            staff_id: historyForm.staff_id === 'none' ? null : historyForm.staff_id,
+            status: historyForm.status === 'none' ? null : historyForm.status,
         });
         resetHistoryForm();
         router.reload({ only: ['computerEquipments', 'kitchenEquipments'] });
@@ -232,45 +306,75 @@ function doDelete() {
     if (!deleteTarget.value) return;
     router.delete(route('equipments.destroy', { type: deleteTarget.value.type, id: deleteTarget.value.id }), {
         preserveScroll: true,
-        onSuccess: () => { deleteTarget.value = null; },
-    });
-}
-
-// ── Equipment Invoice ──────────────────────────────────────────────────────
-const showInvoiceModal    = ref(false);
-const showNewProviderForm = ref(false);
-const newProviderName     = ref('');
-const localEquipmentProviders = ref([...props.equipmentProviders]);
-
-function saveNewProvider() {
-    if (!newProviderName.value.trim()) return;
-    router.post(route('equipments.providers.store'), { name: newProviderName.value.trim() }, {
-        preserveScroll: true,
-        onSuccess: (page) => {
-            const flash = (page.props as any).flash?.newEquipmentProvider;
-            if (flash) {
-                localEquipmentProviders.value.push(flash);
-                invoiceForm.value.provider_id = String(flash.id);
-            }
-            showNewProviderForm.value = false;
-            newProviderName.value = '';
+        onSuccess: () => {
+            deleteTarget.value = null;
         },
     });
 }
 
+// ── Equipment Invoice ──────────────────────────────────────────────────────
+const showInvoiceModal = ref(false);
+const showNewProviderForm = ref(false);
+const newProviderName = ref('');
+const localEquipmentProviders = ref([...props.equipmentProviders]);
+
+function saveNewProvider() {
+    if (!newProviderName.value.trim()) return;
+    router.post(
+        route('equipments.providers.store'),
+        { name: newProviderName.value.trim() },
+        {
+            preserveScroll: true,
+            onSuccess: (page) => {
+                const flash = (page.props as any).flash?.newEquipmentProvider;
+                if (flash) {
+                    localEquipmentProviders.value.push(flash);
+                    invoiceForm.value.provider_id = String(flash.id);
+                }
+                showNewProviderForm.value = false;
+                newProviderName.value = '';
+            },
+        },
+    );
+}
+
 const invoiceForm = ref({
-    business_id:       '',
+    business_id: '',
     provider_id: '',
-    document_type:     'factura' as string,
-    invoice_number:    '',
-    date:              new Date().toISOString().split('T')[0],
-    notes:             '',
-    invoice_image:     null as File | null,
-    items: [{ type: 'computer' as 'computer' | 'kitchen', name: '', brand: '', model: '', code: '', series: '', color: '', status: '0', unit_price: 0 }],
+    document_type: 'factura' as string,
+    invoice_number: '',
+    date: new Date().toISOString().split('T')[0],
+    notes: '',
+    invoice_image: null as File | null,
+    items: [
+        {
+            type: 'computer' as 'computer' | 'kitchen',
+            name: '',
+            brand: '',
+            model: '',
+            code: '',
+            series: '',
+            color: '',
+            status: '0',
+            unit_price: 0,
+            quantity: 1,
+        },
+    ],
 });
 
 function addInvoiceItem() {
-    invoiceForm.value.items.push({ type: activeTab.value, name: '', brand: '', model: '', code: '', series: '', color: '', status: '0', unit_price: 0 });
+    invoiceForm.value.items.push({
+        type: activeTab.value,
+        name: '',
+        brand: '',
+        model: '',
+        code: '',
+        series: '',
+        color: '',
+        status: '0',
+        unit_price: 0,
+        quantity: 1,
+    });
 }
 
 function removeInvoiceItem(index: number) {
@@ -283,49 +387,66 @@ function handleInvoiceImageUpload(e: Event) {
 }
 
 const invoiceSubtotal = computed(() => {
-    const total = invoiceForm.value.items.reduce((acc, i) => acc + Number(i.unit_price), 0);
+    const total = invoiceForm.value.items.reduce((acc, i) => acc + Number(i.unit_price) * Number(i.quantity), 0);
     return invoiceForm.value.document_type === 'factura' ? total / 1.18 : total;
 });
 
 const invoiceIgv = computed(() => {
-    const total = invoiceForm.value.items.reduce((acc, i) => acc + Number(i.unit_price), 0);
+    const total = invoiceForm.value.items.reduce((acc, i) => acc + Number(i.unit_price) * Number(i.quantity), 0);
     return total - invoiceSubtotal.value;
 });
 
-const invoiceTotal = computed(() => invoiceForm.value.items.reduce((acc, i) => acc + Number(i.unit_price), 0));
+const invoiceTotal = computed(() => invoiceForm.value.items.reduce((acc, i) => acc + Number(i.unit_price) * Number(i.quantity), 0));
 
-const isInvoiceSubmitDisabled = computed(() =>
-    !invoiceForm.value.date ||
-    invoiceForm.value.items.some(i => !i.name.trim() || Number(i.unit_price) < 0),
+const isInvoiceSubmitDisabled = computed(
+    () => !invoiceForm.value.date || invoiceForm.value.items.some((i) => !i.name.trim() || Number(i.unit_price) < 0),
 );
 
 function resetInvoiceForm() {
     invoiceForm.value = {
-        business_id: '', provider_id: '', document_type: 'factura',
-        invoice_number: '', date: new Date().toISOString().split('T')[0],
-        notes: '', invoice_image: null,
-        items: [{ type: activeTab.value, name: '', brand: '', model: '', code: '', series: '', color: '', status: '0', unit_price: 0 }],
+        business_id: '',
+        provider_id: '',
+        document_type: 'factura',
+        invoice_number: '',
+        date: new Date().toISOString().split('T')[0],
+        notes: '',
+        invoice_image: null,
+        items: [{ type: activeTab.value, name: '', brand: '', model: '', code: '', series: '', color: '', status: '0', unit_price: 0, quantity: 1 }],
     };
 }
 
 function submitInvoice() {
     if (isInvoiceSubmitDisabled.value) return;
 
-    router.post(route('equipments.invoice.store'), {
-        ...invoiceForm.value,
-        items: invoiceForm.value.items.map(i => ({ ...i, unit_price: Number(i.unit_price) })),
-    }, {
-        forceFormData: true,
-        preserveScroll: true,
-        onSuccess: () => { showInvoiceModal.value = false; resetInvoiceForm(); },
-        onError: (e) => { console.error(e); alert('Error al guardar la factura. Revise los campos.'); },
-    });
+    router.post(
+        route('equipments.invoice.store'),
+        {
+            ...invoiceForm.value,
+            items: invoiceForm.value.items.map((i) => ({ ...i, unit_price: Number(i.unit_price) })),
+        },
+        {
+            forceFormData: true,
+            preserveScroll: true,
+            onSuccess: () => {
+                showInvoiceModal.value = false;
+                resetInvoiceForm();
+            },
+            onError: (e) => {
+                console.error(e);
+                alert('Error al guardar la factura. Revise los campos.');
+            },
+        },
+    );
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function fmtDate(d: string) {
     return new Date(d).toLocaleDateString('es-PE', {
-        day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
     });
 }
 </script>
@@ -335,7 +456,6 @@ function fmtDate(d: string) {
 
     <AppLayout :breadcrumbs="breadcrumbs">
         <div class="flex flex-col gap-5 p-4 pb-8">
-
             <!-- ── Header ──────────────────────────────────────────────── -->
             <div class="flex items-center justify-between">
                 <div>
@@ -346,12 +466,11 @@ function fmtDate(d: string) {
                     <Button variant="outline" @click="router.visit(route('equipment-dispatches.index'))">
                         <Truck class="mr-1.5 h-4 w-4" /> Despachos
                     </Button>
+
                     <Button variant="outline" class="gap-2 border-indigo-200 text-indigo-600 hover:bg-indigo-50" @click="showInvoiceModal = true">
                         <FileText class="h-4 w-4" /> Ingresar con Factura
                     </Button>
-                    <Button class="bg-red-600 hover:bg-red-700" @click="openCreate">
-                        <Plus class="mr-1.5 h-4 w-4" /> Nuevo equipo
-                    </Button>
+                    <Button class="bg-red-600 hover:bg-red-700" @click="openCreate"> <Plus class="mr-1.5 h-4 w-4" /> Nuevo equipo </Button>
                 </div>
             </div>
 
@@ -377,7 +496,11 @@ function fmtDate(d: string) {
                     <div class="bg-card overflow-hidden rounded-xl border shadow-sm">
                         <div class="flex items-center gap-2 border-b px-4 py-3">
                             <Search class="text-muted-foreground h-4 w-4 flex-shrink-0" />
-                            <Input v-model="searchComputer" placeholder="Buscar por nombre, marca, modelo, código…" class="border-0 shadow-none focus-visible:ring-0" />
+                            <Input
+                                v-model="searchComputer"
+                                placeholder="Buscar por nombre, marca, modelo, código…"
+                                class="border-0 shadow-none focus-visible:ring-0"
+                            />
                         </div>
                         <div class="overflow-x-auto">
                             <table class="w-full table-auto border-collapse">
@@ -387,6 +510,7 @@ function fmtDate(d: string) {
                                         <th class="px-4 py-3 text-left text-xs font-semibold">Equipo</th>
                                         <th class="px-4 py-3 text-left text-xs font-semibold">Marca / Modelo</th>
                                         <th class="px-4 py-3 text-left text-xs font-semibold">Serie</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold">Cantidad</th>
                                         <th class="px-4 py-3 text-left text-xs font-semibold">Estado</th>
                                         <th class="px-4 py-3 text-left text-xs font-semibold">Responsable</th>
                                         <th class="px-4 py-3 text-center text-xs font-semibold">Historial</th>
@@ -395,7 +519,7 @@ function fmtDate(d: string) {
                                 </thead>
                                 <tbody>
                                     <tr v-if="filteredComputer.length === 0">
-                                        <td colspan="8" class="text-muted-foreground py-14 text-center">
+                                        <td colspan="9" class="text-muted-foreground py-14 text-center">
                                             <Monitor class="mx-auto mb-2 h-8 w-8 opacity-30" />
                                             <p class="text-sm">No hay equipos tecnológicos registrados</p>
                                         </td>
@@ -414,8 +538,20 @@ function fmtDate(d: string) {
                                         <td class="px-4 py-3">
                                             <span class="text-muted-foreground font-mono text-xs">{{ item.series || '—' }}</span>
                                         </td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span
+                                                class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 font-mono text-xs font-semibold text-slate-700"
+                                            >
+                                                {{ item.quantity ?? 1 }}
+                                            </span>
+                                        </td>
                                         <td class="px-4 py-3">
-                                            <span :class="['inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', statusInfo(item.status).cls]">
+                                            <span
+                                                :class="[
+                                                    'inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+                                                    statusInfo(item.status).cls,
+                                                ]"
+                                            >
                                                 {{ statusInfo(item.status).label }}
                                             </span>
                                         </td>
@@ -437,22 +573,36 @@ function fmtDate(d: string) {
                                         </td>
                                         <td class="px-4 py-3">
                                             <div class="flex items-center justify-center gap-1">
-                                                <TooltipProvider><Tooltip>
-                                                    <TooltipTrigger as-child>
-                                                        <Button variant="ghost" size="icon" class="h-8 w-8 text-blue-600 hover:bg-blue-50 hover:text-blue-700" @click="openEdit(item, 'computer')">
-                                                            <Pencil class="h-4 w-4" />
-                                                        </Button>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>Editar</TooltipContent>
-                                                </Tooltip></TooltipProvider>
-                                                <TooltipProvider><Tooltip>
-                                                    <TooltipTrigger as-child>
-                                                        <Button variant="ghost" size="icon" class="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-600" @click="confirmDelete(item, 'computer')">
-                                                            <Trash2 class="h-4 w-4" />
-                                                        </Button>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>Eliminar</TooltipContent>
-                                                </Tooltip></TooltipProvider>
+                                                <TooltipProvider
+                                                    ><Tooltip>
+                                                        <TooltipTrigger as-child>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                class="h-8 w-8 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                                                                @click="openEdit(item, 'computer')"
+                                                            >
+                                                                <Pencil class="h-4 w-4" />
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>Editar</TooltipContent>
+                                                    </Tooltip></TooltipProvider
+                                                >
+                                                <TooltipProvider
+                                                    ><Tooltip>
+                                                        <TooltipTrigger as-child>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                class="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-600"
+                                                                @click="confirmDelete(item, 'computer')"
+                                                            >
+                                                                <Trash2 class="h-4 w-4" />
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>Eliminar</TooltipContent>
+                                                    </Tooltip></TooltipProvider
+                                                >
                                             </div>
                                         </td>
                                     </tr>
@@ -467,7 +617,11 @@ function fmtDate(d: string) {
                     <div class="bg-card overflow-hidden rounded-xl border shadow-sm">
                         <div class="flex items-center gap-2 border-b px-4 py-3">
                             <Search class="text-muted-foreground h-4 w-4 flex-shrink-0" />
-                            <Input v-model="searchKitchen" placeholder="Buscar por nombre, marca, modelo, código…" class="border-0 shadow-none focus-visible:ring-0" />
+                            <Input
+                                v-model="searchKitchen"
+                                placeholder="Buscar por nombre, marca, modelo, código…"
+                                class="border-0 shadow-none focus-visible:ring-0"
+                            />
                         </div>
                         <div class="overflow-x-auto">
                             <table class="w-full table-auto border-collapse">
@@ -477,6 +631,7 @@ function fmtDate(d: string) {
                                         <th class="px-4 py-3 text-left text-xs font-semibold">Equipo</th>
                                         <th class="px-4 py-3 text-left text-xs font-semibold">Marca / Modelo</th>
                                         <th class="px-4 py-3 text-left text-xs font-semibold">Serie</th>
+                                        <th class="px-4 py-3 text-center text-xs font-semibold">Cantidad</th>
                                         <th class="px-4 py-3 text-left text-xs font-semibold">Estado</th>
                                         <th class="px-4 py-3 text-left text-xs font-semibold">Responsable</th>
                                         <th class="px-4 py-3 text-center text-xs font-semibold">Historial</th>
@@ -485,7 +640,7 @@ function fmtDate(d: string) {
                                 </thead>
                                 <tbody>
                                     <tr v-if="filteredKitchen.length === 0">
-                                        <td colspan="8" class="text-muted-foreground py-14 text-center">
+                                        <td colspan="9" class="text-muted-foreground py-14 text-center">
                                             <UtensilsCrossed class="mx-auto mb-2 h-8 w-8 opacity-30" />
                                             <p class="text-sm">No hay equipos de menaje registrados</p>
                                         </td>
@@ -504,8 +659,20 @@ function fmtDate(d: string) {
                                         <td class="px-4 py-3">
                                             <span class="text-muted-foreground font-mono text-xs">{{ item.series || '—' }}</span>
                                         </td>
+                                        <td class="px-4 py-3 text-center">
+                                            <span
+                                                class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 font-mono text-xs font-semibold text-slate-700"
+                                            >
+                                                {{ item.quantity ?? 1 }}
+                                            </span>
+                                        </td>
                                         <td class="px-4 py-3">
-                                            <span :class="['inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', statusInfo(item.status).cls]">
+                                            <span
+                                                :class="[
+                                                    'inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+                                                    statusInfo(item.status).cls,
+                                                ]"
+                                            >
                                                 {{ statusInfo(item.status).label }}
                                             </span>
                                         </td>
@@ -527,22 +694,36 @@ function fmtDate(d: string) {
                                         </td>
                                         <td class="px-4 py-3">
                                             <div class="flex items-center justify-center gap-1">
-                                                <TooltipProvider><Tooltip>
-                                                    <TooltipTrigger as-child>
-                                                        <Button variant="ghost" size="icon" class="h-8 w-8 text-blue-600 hover:bg-blue-50 hover:text-blue-700" @click="openEdit(item, 'kitchen')">
-                                                            <Pencil class="h-4 w-4" />
-                                                        </Button>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>Editar</TooltipContent>
-                                                </Tooltip></TooltipProvider>
-                                                <TooltipProvider><Tooltip>
-                                                    <TooltipTrigger as-child>
-                                                        <Button variant="ghost" size="icon" class="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-600" @click="confirmDelete(item, 'kitchen')">
-                                                            <Trash2 class="h-4 w-4" />
-                                                        </Button>
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>Eliminar</TooltipContent>
-                                                </Tooltip></TooltipProvider>
+                                                <TooltipProvider
+                                                    ><Tooltip>
+                                                        <TooltipTrigger as-child>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                class="h-8 w-8 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
+                                                                @click="openEdit(item, 'kitchen')"
+                                                            >
+                                                                <Pencil class="h-4 w-4" />
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>Editar</TooltipContent>
+                                                    </Tooltip></TooltipProvider
+                                                >
+                                                <TooltipProvider
+                                                    ><Tooltip>
+                                                        <TooltipTrigger as-child>
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="icon"
+                                                                class="h-8 w-8 text-red-500 hover:bg-red-50 hover:text-red-600"
+                                                                @click="confirmDelete(item, 'kitchen')"
+                                                            >
+                                                                <Trash2 class="h-4 w-4" />
+                                                            </Button>
+                                                        </TooltipTrigger>
+                                                        <TooltipContent>Eliminar</TooltipContent>
+                                                    </Tooltip></TooltipProvider
+                                                >
                                             </div>
                                         </td>
                                     </tr>
@@ -570,16 +751,22 @@ function fmtDate(d: string) {
                 <div v-if="!editTarget" class="grid grid-cols-2 gap-2">
                     <button
                         type="button"
-                        :class="['flex items-center justify-center gap-2 rounded-lg border-2 py-2.5 text-sm font-medium transition-colors',
-                            form.type === 'computer' ? 'border-red-600 bg-red-50 text-red-700' : 'border-gray-200 text-gray-500 hover:border-gray-300']"
+                        :class="[
+                            'flex items-center justify-center gap-2 rounded-lg border-2 py-2.5 text-sm font-medium transition-colors',
+                            form.type === 'computer'
+                                ? 'border-red-600 bg-red-50 text-red-700'
+                                : 'border-gray-200 text-gray-500 hover:border-gray-300',
+                        ]"
                         @click="form.type = 'computer'"
                     >
                         <Laptop class="h-4 w-4" /> Tecnológico
                     </button>
                     <button
                         type="button"
-                        :class="['flex items-center justify-center gap-2 rounded-lg border-2 py-2.5 text-sm font-medium transition-colors',
-                            form.type === 'kitchen' ? 'border-red-600 bg-red-50 text-red-700' : 'border-gray-200 text-gray-500 hover:border-gray-300']"
+                        :class="[
+                            'flex items-center justify-center gap-2 rounded-lg border-2 py-2.5 text-sm font-medium transition-colors',
+                            form.type === 'kitchen' ? 'border-red-600 bg-red-50 text-red-700' : 'border-gray-200 text-gray-500 hover:border-gray-300',
+                        ]"
                         @click="form.type = 'kitchen'"
                     >
                         <UtensilsCrossed class="h-4 w-4" /> Menaje
@@ -641,7 +828,11 @@ function fmtDate(d: string) {
                         <Label>Descripción</Label>
                         <Textarea v-model="form.description" :rows="2" placeholder="Notas adicionales…" />
                     </div>
-                    <!-- Estado / Responsable -->
+                    <!-- Cantidad / Estado -->
+                    <div class="grid gap-1.5">
+                        <Label>Cantidad</Label>
+                        <Input type="number" v-model="form.quantity" min="1" step="1" placeholder="1" />
+                    </div>
                     <div class="grid gap-1.5">
                         <Label>Estado</Label>
                         <Select v-model="form.status">
@@ -667,7 +858,9 @@ function fmtDate(d: string) {
                             <SelectTrigger><SelectValue placeholder="Sin sede asignada" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="none">Sin sede asignada</SelectItem>
-                                <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">{{ hq.name }}</SelectItem>
+                                <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">
+                                    {{ hq.name }}{{ hq.business ? ` · ${hq.business.name}` : '' }}
+                                </SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -687,15 +880,13 @@ function fmtDate(d: string) {
     <Sheet v-model:open="showHistory">
         <SheetContent class="flex w-full flex-col gap-0 p-0 sm:max-w-md" side="right">
             <SheetHeader class="border-b px-5 py-4">
-                <SheetTitle class="flex items-center gap-2">
-                    <History class="h-5 w-5 text-red-600" /> Historial del equipo
-                </SheetTitle>
+                <SheetTitle class="flex items-center gap-2"> <History class="h-5 w-5 text-red-600" /> Historial del equipo </SheetTitle>
                 <p class="text-muted-foreground mt-0.5 truncate text-sm">{{ historyItem?.name }}</p>
             </SheetHeader>
 
             <!-- Add entry form -->
             <div class="bg-muted/30 border-b px-5 py-4">
-                <p class="text-muted-foreground mb-3 text-xs font-semibold uppercase tracking-wide">Nueva entrada</p>
+                <p class="text-muted-foreground mb-3 text-xs font-semibold tracking-wide uppercase">Nueva entrada</p>
                 <div class="grid gap-2.5">
                     <div class="grid grid-cols-2 gap-2">
                         <div class="grid gap-1">
@@ -747,10 +938,20 @@ function fmtDate(d: string) {
                 <div v-else class="relative pl-5">
                     <div class="absolute top-2 bottom-2 left-2 w-px bg-gray-200 dark:bg-gray-600" />
                     <div v-for="entry in historyList" :key="entry.id" class="relative mb-4">
-                        <div :class="['absolute -left-[13px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white dark:border-gray-900', ACTION_COLORS[entry.action]?.split(' ')[0]?.replace('-100', '-400') ?? 'bg-gray-400']" />
+                        <div
+                            :class="[
+                                'absolute top-1.5 -left-[13px] h-2.5 w-2.5 rounded-full border-2 border-white dark:border-gray-900',
+                                ACTION_COLORS[entry.action]?.split(' ')[0]?.replace('-100', '-400') ?? 'bg-gray-400',
+                            ]"
+                        />
                         <div class="bg-card rounded-lg border p-3 shadow-sm">
                             <div class="flex items-start justify-between gap-2">
-                                <span :class="['inline-block rounded-full px-2 py-0.5 text-[10px] font-bold', ACTION_COLORS[entry.action] ?? 'bg-gray-100 text-gray-600']">
+                                <span
+                                    :class="[
+                                        'inline-block rounded-full px-2 py-0.5 text-[10px] font-bold',
+                                        ACTION_COLORS[entry.action] ?? 'bg-gray-100 text-gray-600',
+                                    ]"
+                                >
                                     {{ entry.action }}
                                 </span>
                                 <time class="flex-shrink-0 text-[10px] text-gray-400">{{ fmtDate(entry.created_at) }}</time>
@@ -760,9 +961,7 @@ function fmtDate(d: string) {
                                 <span v-if="entry.staff" class="flex items-center gap-1">
                                     <CheckCircle2 class="h-3 w-3 text-green-500" /> {{ entry.staff.name }}
                                 </span>
-                                <span class="flex items-center gap-1">
-                                    <Clock class="h-3 w-3" /> por {{ entry.user?.name ?? '—' }}
-                                </span>
+                                <span class="flex items-center gap-1"> <Clock class="h-3 w-3" /> por {{ entry.user?.name ?? '—' }} </span>
                             </div>
                         </div>
                     </div>
@@ -785,7 +984,7 @@ function fmtDate(d: string) {
                 <!-- Invoice header -->
                 <div class="grid grid-cols-1 gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-3">
                     <div class="space-y-2">
-                        <Label class="text-xs font-bold uppercase text-slate-500">Empresa</Label>
+                        <Label class="text-xs font-bold text-slate-500 uppercase">Empresa</Label>
                         <Select v-model="invoiceForm.business_id">
                             <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                             <SelectContent>
@@ -795,7 +994,7 @@ function fmtDate(d: string) {
                     </div>
                     <div class="space-y-2">
                         <div class="flex items-center justify-between">
-                            <Label class="text-xs font-bold uppercase text-slate-500">Proveedor de Equipos</Label>
+                            <Label class="text-xs font-bold text-slate-500 uppercase">Proveedor de Equipos</Label>
                             <button
                                 type="button"
                                 class="flex items-center gap-1 text-[10px] font-bold text-indigo-600 hover:text-indigo-800"
@@ -807,10 +1006,16 @@ function fmtDate(d: string) {
                         <!-- Inline new provider form -->
                         <div v-if="showNewProviderForm" class="flex gap-1.5 rounded-xl border border-indigo-100 bg-indigo-50/50 p-2">
                             <Input v-model="newProviderName" placeholder="Nombre del proveedor" class="h-8 flex-1 bg-white text-xs" />
-                            <Button size="sm" class="h-8 bg-indigo-600 px-3 text-xs hover:bg-indigo-700" @click="saveNewProvider">
-                                Guardar
-                            </Button>
-                            <Button size="sm" variant="ghost" class="h-8 px-2 text-xs" @click="showNewProviderForm = false; newProviderName = ''">
+                            <Button size="sm" class="h-8 bg-indigo-600 px-3 text-xs hover:bg-indigo-700" @click="saveNewProvider"> Guardar </Button>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                class="h-8 px-2 text-xs"
+                                @click="
+                                    showNewProviderForm = false;
+                                    newProviderName = '';
+                                "
+                            >
                                 ✕
                             </Button>
                         </div>
@@ -827,7 +1032,7 @@ function fmtDate(d: string) {
                         </Select>
                     </div>
                     <div class="space-y-2">
-                        <Label class="text-xs font-bold uppercase text-slate-500">Tipo de Documento</Label>
+                        <Label class="text-xs font-bold text-slate-500 uppercase">Tipo de Documento</Label>
                         <Select v-model="invoiceForm.document_type">
                             <SelectTrigger class="bg-white"><SelectValue /></SelectTrigger>
                             <SelectContent>
@@ -837,19 +1042,19 @@ function fmtDate(d: string) {
                         </Select>
                     </div>
                     <div class="space-y-2">
-                        <Label class="text-xs font-bold uppercase text-slate-500">Nº Documento</Label>
+                        <Label class="text-xs font-bold text-slate-500 uppercase">Nº Documento</Label>
                         <Input v-model="invoiceForm.invoice_number" placeholder="Ej: F-001-123" class="bg-white" />
                     </div>
                     <div class="space-y-2">
-                        <Label class="text-xs font-bold uppercase text-slate-500">Fecha</Label>
+                        <Label class="text-xs font-bold text-slate-500 uppercase">Fecha</Label>
                         <Input v-model="invoiceForm.date" type="date" class="bg-white" />
                     </div>
                     <div class="space-y-2">
-                        <Label class="text-xs font-bold uppercase text-slate-500">Notas</Label>
+                        <Label class="text-xs font-bold text-slate-500 uppercase">Notas</Label>
                         <Input v-model="invoiceForm.notes" placeholder="Observaciones..." class="bg-white" />
                     </div>
                     <div class="space-y-2">
-                        <Label class="text-xs font-bold uppercase text-slate-500">Evidencia (Opcional)</Label>
+                        <Label class="text-xs font-bold text-slate-500 uppercase">Evidencia (Opcional)</Label>
                         <Input
                             type="file"
                             @change="handleInvoiceImageUpload"
@@ -878,7 +1083,7 @@ function fmtDate(d: string) {
                     <div class="overflow-hidden rounded-2xl border shadow-sm">
                         <table class="w-full text-sm">
                             <thead class="border-b bg-slate-50">
-                                <tr class="text-left text-[10px] font-black uppercase text-slate-400">
+                                <tr class="text-left text-[10px] font-black text-slate-400 uppercase">
                                     <th class="px-3 py-3">Tipo</th>
                                     <th class="px-3 py-3">Nombre <span class="text-red-400">*</span></th>
                                     <th class="px-3 py-3">Marca</th>
@@ -886,6 +1091,7 @@ function fmtDate(d: string) {
                                     <th class="px-3 py-3">Código</th>
                                     <th class="px-3 py-3">N° Serie</th>
                                     <th class="px-3 py-3">Estado</th>
+                                    <th class="w-20 px-3 py-3">Cantidad</th>
                                     <th class="w-28 px-3 py-3">P. Unitario</th>
                                     <th v-if="invoiceForm.document_type === 'factura'" class="w-24 px-3 py-3 text-right">IGV (18%)</th>
                                     <th class="w-28 px-3 py-3 text-right">Total</th>
@@ -900,8 +1106,16 @@ function fmtDate(d: string) {
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="computer"><span class="flex items-center gap-1.5"><Laptop class="h-3.5 w-3.5" /> Tecnológico</span></SelectItem>
-                                                <SelectItem value="kitchen"><span class="flex items-center gap-1.5"><UtensilsCrossed class="h-3.5 w-3.5" /> Menaje</span></SelectItem>
+                                                <SelectItem value="computer"
+                                                    ><span class="flex items-center gap-1.5"
+                                                        ><Laptop class="h-3.5 w-3.5" /> Tecnológico</span
+                                                    ></SelectItem
+                                                >
+                                                <SelectItem value="kitchen"
+                                                    ><span class="flex items-center gap-1.5"
+                                                        ><UtensilsCrossed class="h-3.5 w-3.5" /> Menaje</span
+                                                    ></SelectItem
+                                                >
                                             </SelectContent>
                                         </Select>
                                     </td>
@@ -929,6 +1143,15 @@ function fmtDate(d: string) {
                                         </Select>
                                     </td>
                                     <td class="p-2">
+                                        <Input
+                                            type="number"
+                                            v-model="item.quantity"
+                                            min="1"
+                                            step="1"
+                                            class="h-9 w-16 border-none text-center shadow-none focus:ring-1"
+                                        />
+                                    </td>
+                                    <td class="p-2">
                                         <div class="relative">
                                             <span class="absolute top-2 left-2 text-xs text-slate-400">S/.</span>
                                             <Input
@@ -941,10 +1164,17 @@ function fmtDate(d: string) {
                                         </div>
                                     </td>
                                     <td v-if="invoiceForm.document_type === 'factura'" class="p-2 text-right text-xs font-medium text-indigo-500">
-                                        S/.{{ (Number(item.unit_price) - Number(item.unit_price) / 1.18).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                        S/.{{
+                                            ((Number(item.unit_price) - Number(item.unit_price) / 1.18) * Number(item.quantity)).toLocaleString(
+                                                undefined,
+                                                { minimumFractionDigits: 2 },
+                                            )
+                                        }}
                                     </td>
                                     <td class="p-2 text-right text-xs font-bold text-slate-900">
-                                        S/.{{ Number(item.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                        S/.{{
+                                            (Number(item.unit_price) * Number(item.quantity)).toLocaleString(undefined, { minimumFractionDigits: 2 })
+                                        }}
                                     </td>
                                     <td class="p-2 text-center">
                                         <Button
@@ -960,29 +1190,33 @@ function fmtDate(d: string) {
                             </tbody>
                             <tfoot class="border-t border-slate-200 bg-slate-50">
                                 <tr>
-                                    <td :colspan="invoiceForm.document_type === 'factura' ? 8 : 7" rowspan="3" class="px-4 py-3 align-top">
+                                    <td :colspan="invoiceForm.document_type === 'factura' ? 9 : 8" rowspan="3" class="px-4 py-3 align-top">
                                         <div class="rounded-xl border border-dashed border-slate-200 bg-white p-3 text-[10px] text-slate-400">
-                                            <p class="mb-1 font-bold uppercase tracking-widest">Notas de Cálculo:</p>
+                                            <p class="mb-1 font-bold tracking-widest uppercase">Notas de Cálculo:</p>
                                             <p v-if="invoiceForm.document_type === 'factura'">• Los precios ingresados ya incluyen IGV.</p>
                                             <p v-if="invoiceForm.document_type === 'factura'">• Se extrae el 18% para mostrar la base imponible.</p>
                                             <p v-else>• Las boletas no desglosan impuestos; el total es el monto bruto.</p>
                                         </div>
                                     </td>
-                                    <td class="px-4 py-2 text-right text-[11px] font-bold uppercase tracking-wider text-slate-500">Subtotal Gravado</td>
+                                    <td class="px-4 py-2 text-right text-[11px] font-bold tracking-wider text-slate-500 uppercase">
+                                        Subtotal Gravado
+                                    </td>
                                     <td class="px-4 py-2 text-right font-mono font-bold text-slate-700">
                                         S/.{{ invoiceSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
                                     </td>
                                     <td></td>
                                 </tr>
                                 <tr>
-                                    <td class="px-4 py-2 text-right text-[11px] font-bold uppercase tracking-wider text-slate-500">IGV (18%)</td>
+                                    <td class="px-4 py-2 text-right text-[11px] font-bold tracking-wider text-slate-500 uppercase">IGV (18%)</td>
                                     <td class="px-4 py-2 text-right font-mono font-bold text-slate-600">
                                         S/.{{ invoiceIgv.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
                                     </td>
                                     <td></td>
                                 </tr>
                                 <tr class="bg-indigo-50/50">
-                                    <td class="px-4 py-3 text-right text-[12px] font-black uppercase tracking-widest text-indigo-900">Total Factura</td>
+                                    <td class="px-4 py-3 text-right text-[12px] font-black tracking-widest text-indigo-900 uppercase">
+                                        Total Factura
+                                    </td>
                                     <td class="px-4 py-3 text-right">
                                         <span class="font-mono text-xl font-black text-indigo-700">
                                             S/.{{ invoiceTotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
@@ -997,7 +1231,15 @@ function fmtDate(d: string) {
             </div>
 
             <DialogFooter class="-mx-6 mt-4 -mb-6 rounded-b-lg border-t bg-slate-50 p-6">
-                <Button variant="ghost" @click="showInvoiceModal = false; resetInvoiceForm()" class="font-bold">Cancelar</Button>
+                <Button
+                    variant="ghost"
+                    @click="
+                        showInvoiceModal = false;
+                        resetInvoiceForm();
+                    "
+                    class="font-bold"
+                    >Cancelar</Button
+                >
                 <Button
                     @click="submitInvoice"
                     :disabled="isInvoiceSubmitDisabled"
@@ -1010,16 +1252,21 @@ function fmtDate(d: string) {
     </Dialog>
 
     <!-- ══ DIALOG: Confirmar eliminación ══════════════════════════════════ -->
-    <Dialog :open="!!deleteTarget" @update:open="v => { if (!v) deleteTarget = null }">
+    <Dialog
+        :open="!!deleteTarget"
+        @update:open="
+            (v) => {
+                if (!v) deleteTarget = null;
+            }
+        "
+    >
         <DialogContent class="max-w-sm">
             <DialogHeader>
-                <DialogTitle class="flex items-center gap-2 text-red-600">
-                    <Trash2 class="h-5 w-5" /> Eliminar equipo
-                </DialogTitle>
+                <DialogTitle class="flex items-center gap-2 text-red-600"> <Trash2 class="h-5 w-5" /> Eliminar equipo </DialogTitle>
             </DialogHeader>
             <p class="text-sm text-gray-600 dark:text-gray-300">
-                ¿Estás seguro de eliminar <strong>{{ deleteTarget?.name }}</strong>?
-                Se eliminará todo su historial y no se puede deshacer.
+                ¿Estás seguro de eliminar <strong>{{ deleteTarget?.name }}</strong
+                >? Se eliminará todo su historial y no se puede deshacer.
             </p>
             <DialogFooter>
                 <Button variant="outline" @click="deleteTarget = null">Cancelar</Button>

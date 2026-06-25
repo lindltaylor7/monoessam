@@ -13,7 +13,7 @@ class KitchenEquipment extends Model
     protected $fillable = [
         'name', 'brand', 'model', 'size', 'description', 'color',
         'current_type', 'series', 'manual', 'code', 'status', 'responsible_id',
-        'storage_headquarter_id', 'equipment_invoice_id', 'unit_price',
+        'storage_headquarter_id', 'equipment_invoice_id', 'unit_price', 'quantity',
     ];
 
     public function responsible(): BelongsTo

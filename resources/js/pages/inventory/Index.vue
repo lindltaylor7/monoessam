@@ -44,18 +44,22 @@ import { computed, ref, watch } from 'vue';
 
 interface StaffRef { id: number; name: string }
 
+interface HQRef { id: number; name: string; business: { id: number; name: string } | null }
+
 interface ComputerEquipment {
     id: number; name: string; brand: string | null; model: string | null;
     presentation: string | null; color: string | null; series: string | null;
-    code: string | null; status: number;
+    code: string | null; status: number; quantity: number;
     responsible: StaffRef | null;
+    storage_headquarter: HQRef | null;
 }
 
 interface KitchenEquipment {
     id: number; name: string; brand: string | null; model: string | null;
     size: string | null; color: string | null; series: string | null;
-    code: string | null; status: number;
+    code: string | null; status: number; quantity: number;
     responsible: StaffRef | null;
+    storage_headquarter: HQRef | null;
 }
 
 const props = defineProps<{
@@ -398,7 +402,10 @@ const itemForm = ref({
     series: '',
     manual: '',
     code: '',
-    status: '',
+    status: 0,
+    quantity: 1,
+    unit_price: 0,
+    headquarter_id: '',
 });
 
 const colorForm = ref({
@@ -423,7 +430,10 @@ const handleCreateItem = () => {
                 series: '',
                 manual: '',
                 code: '',
-                status: '',
+                status: 0,
+                quantity: 1,
+                unit_price: 0,
+                headquarter_id: '',
             };
         },
     });
@@ -477,19 +487,53 @@ function equipmentStatusInfo(val: number) {
 
 const filteredComputerEquipments = computed(() => {
     const q = searchQuery.value.toLowerCase();
-    if (!q) return props.computerEquipments;
-    return props.computerEquipments.filter(e =>
-        [e.name, e.brand, e.model, e.code, e.series].some(f => f?.toLowerCase().includes(q))
-    );
+    const hq = selectedHeadquarterId.value;
+    return props.computerEquipments.filter(e => {
+        if (hq !== 'all' && String(e.storage_headquarter?.id ?? '') !== hq) return false;
+        if (!q) return true;
+        return [e.name, e.brand, e.model, e.code, e.series].some(f => f?.toLowerCase().includes(q));
+    });
 });
 
 const filteredKitchenEquipments = computed(() => {
     const q = searchQuery.value.toLowerCase();
-    if (!q) return props.kitchenEquipments;
-    return props.kitchenEquipments.filter(e =>
-        [e.name, e.brand, e.model, e.code, e.series].some(f => f?.toLowerCase().includes(q))
-    );
+    const hq = selectedHeadquarterId.value;
+    return props.kitchenEquipments.filter(e => {
+        if (hq !== 'all' && String(e.storage_headquarter?.id ?? '') !== hq) return false;
+        if (!q) return true;
+        return [e.name, e.brand, e.model, e.code, e.series].some(f => f?.toLowerCase().includes(q));
+    });
 });
+
+// ── Pagination ──────────────────────────────────────────────────────────────
+const EQUIP_PAGE_SIZE = 10;
+const computerPage = ref(1);
+const kitchenPage  = ref(1);
+
+watch([searchQuery, selectedHeadquarterId], () => {
+    computerPage.value = 1;
+    kitchenPage.value  = 1;
+});
+watch(activeTab, () => {
+    computerPage.value = 1;
+    kitchenPage.value  = 1;
+});
+
+const paginatedComputerEquipments = computed(() => {
+    const start = (computerPage.value - 1) * EQUIP_PAGE_SIZE;
+    return filteredComputerEquipments.value.slice(start, start + EQUIP_PAGE_SIZE);
+});
+const computerTotalPages = computed(() =>
+    Math.max(1, Math.ceil(filteredComputerEquipments.value.length / EQUIP_PAGE_SIZE))
+);
+
+const paginatedKitchenEquipments = computed(() => {
+    const start = (kitchenPage.value - 1) * EQUIP_PAGE_SIZE;
+    return filteredKitchenEquipments.value.slice(start, start + EQUIP_PAGE_SIZE);
+});
+const kitchenTotalPages = computed(() =>
+    Math.max(1, Math.ceil(filteredKitchenEquipments.value.length / EQUIP_PAGE_SIZE))
+);
 
 // --- New Invoice Logic moved to Invoices/Index.vue ---
 </script>
@@ -574,102 +618,142 @@ const filteredKitchenEquipments = computed(() => {
                                 Nuevo Equipo
                             </Button>
                         </DialogTrigger>
-                        <DialogContent class="sm:max-w-[550px]">
-                            <DialogHeader>
+                        <DialogContent class="flex max-h-[90vh] flex-col overflow-hidden p-0 sm:max-w-[640px]">
+                            <DialogHeader class="border-b bg-slate-50/50 px-6 py-4">
                                 <DialogTitle>Registro de Nuevo Activo</DialogTitle>
                                 <DialogDescription>Complete los datos del equipo para ingresarlo al catálogo</DialogDescription>
                             </DialogHeader>
-                            <div class="grid gap-6 py-4">
-                                <div class="grid gap-2">
-                                    <Label>Tipo de Equipo</Label>
-                                    <Select v-model="itemForm.type">
-                                        <SelectTrigger><SelectValue /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="computer">Equipo Informático</SelectItem>
-                                            <SelectItem value="kitchen">Equipo de Cocina</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
+                            <div class="flex-1 overflow-y-auto px-6 py-4">
+                                <div class="grid gap-5">
+                                <!-- Tipo + Sede -->
                                 <div class="grid grid-cols-2 gap-4">
                                     <div class="grid gap-2">
-                                        <Label>Nombre / Modelo</Label>
-                                        <Input v-model="itemForm.name" placeholder="Ej: Laptop Dell G15" />
-                                    </div>
-                                    <div class="grid gap-2">
-                                        <Label>Marca</Label>
-                                        <Input v-model="itemForm.brand" placeholder="Ej: Dell" />
-                                    </div>
-                                </div>
-
-                                <div v-if="itemForm.type === 'computer'" class="grid grid-cols-2 gap-4">
-                                    <div class="grid gap-2">
-                                        <Label>Presentación</Label>
-                                        <Input v-model="itemForm.presentation" placeholder="Ej: Caja" />
-                                    </div>
-                                    <div class="grid gap-2">
-                                        <Label>Color de Chasis</Label>
-                                        <Input v-model="itemForm.color" placeholder="Ej: Gris Espacial" />
-                                    </div>
-                                </div>
-
-                                <div v-if="itemForm.type === 'kitchen'" class="grid gap-4">
-                                    <div class="grid grid-cols-2 gap-4">
-                                        <div class="grid gap-2">
-                                            <Label>Tamaño / Capacidad</Label>
-                                            <Input v-model="itemForm.size" placeholder="Ej: 50 Litros / Grande" />
-                                        </div>
-                                        <div class="grid gap-2">
-                                            <Label>Color</Label>
-                                            <Input v-model="itemForm.color" placeholder="Ej: Acero Inox" />
-                                        </div>
-                                    </div>
-                                    <div class="grid grid-cols-2 gap-4">
-                                        <div class="grid gap-2">
-                                            <Label>Tipo de Corriente</Label>
-                                            <Input v-model="itemForm.current_type" placeholder="Ej: 220V / Trifásico" />
-                                        </div>
-                                        <div class="grid gap-2">
-                                            <Label>Serie</Label>
-                                            <Input v-model="itemForm.series" placeholder="Ej: SN-123456" />
-                                        </div>
-                                    </div>
-                                    <div class="grid grid-cols-2 gap-4">
-                                        <div class="grid gap-2">
-                                            <Label>Instructivo</Label>
-                                            <Input v-model="itemForm.manual" placeholder="Ej: Físico / Digital" />
-                                        </div>
-                                        <div class="grid gap-2">
-                                            <Label>Código</Label>
-                                            <Input v-model="itemForm.code" placeholder="Ej: COC-001" />
-                                        </div>
-                                    </div>
-                                    <div class="grid gap-2">
-                                        <Label>Estado</Label>
-                                        <Select v-model="itemForm.status">
-                                            <SelectTrigger><SelectValue placeholder="Seleccionar estado" /></SelectTrigger>
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Tipo de Equipo</Label>
+                                        <Select v-model="itemForm.type">
+                                            <SelectTrigger><SelectValue /></SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="nuevo">Nuevo</SelectItem>
-                                                <SelectItem value="bueno">Bueno</SelectItem>
-                                                <SelectItem value="regular">Regular</SelectItem>
-                                                <SelectItem value="mantenimiento">En Mantenimiento</SelectItem>
-                                                <SelectItem value="baja">De Baja</SelectItem>
+                                                <SelectItem value="computer">Equipo Informático</SelectItem>
+                                                <SelectItem value="kitchen">Equipo de Cocina</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                    <div class="grid gap-2">
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Sede / Almacén</Label>
+                                        <Select v-model="itemForm.headquarter_id">
+                                            <SelectTrigger><SelectValue placeholder="Sin sede asignada" /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">
+                                                    {{ hq.business.name }} — {{ hq.name }}
+                                                </SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
                                 </div>
 
+                                <!-- Identificación -->
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div class="grid gap-2">
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Nombre <span class="text-red-500">*</span></Label>
+                                        <Input v-model="itemForm.name" placeholder="Ej: Laptop Dell G15" />
+                                    </div>
+                                    <div class="grid gap-2">
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Marca</Label>
+                                        <Input v-model="itemForm.brand" placeholder="Ej: Dell" />
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div class="grid gap-2">
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Modelo</Label>
+                                        <Input v-model="itemForm.model" placeholder="Ej: Inspiron 15" />
+                                    </div>
+                                    <div class="grid gap-2">
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Código</Label>
+                                        <Input v-model="itemForm.code" placeholder="Ej: COD-001" />
+                                    </div>
+                                </div>
+
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div class="grid gap-2">
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">N° Serie</Label>
+                                        <Input v-model="itemForm.series" placeholder="Ej: SN-123456" />
+                                    </div>
+                                    <div class="grid gap-2">
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Color</Label>
+                                        <Input v-model="itemForm.color" placeholder="Ej: Negro" />
+                                    </div>
+                                </div>
+
+                                <!-- Campos específicos por tipo -->
+                                <div v-if="itemForm.type === 'computer'" class="grid grid-cols-2 gap-4">
+                                    <div class="grid gap-2">
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Presentación</Label>
+                                        <Input v-model="itemForm.presentation" placeholder="Ej: Caja / Bolsa" />
+                                    </div>
+                                </div>
+
+                                <div v-if="itemForm.type === 'kitchen'" class="grid grid-cols-2 gap-4">
+                                    <div class="grid gap-2">
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Tamaño / Capacidad</Label>
+                                        <Input v-model="itemForm.size" placeholder="Ej: 50 Litros" />
+                                    </div>
+                                    <div class="grid gap-2">
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Tipo de Corriente</Label>
+                                        <Input v-model="itemForm.current_type" placeholder="Ej: 220V / Trifásico" />
+                                    </div>
+                                </div>
+
+                                <!-- Estado -->
                                 <div class="grid gap-2">
-                                    <Label>Descripción Técnica</Label>
+                                    <Label class="text-xs font-bold text-slate-500 uppercase">Estado</Label>
+                                    <Select v-model="itemForm.status">
+                                        <SelectTrigger><SelectValue placeholder="Seleccionar estado" /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem :value="0">Nuevo</SelectItem>
+                                            <SelectItem :value="1">Bueno</SelectItem>
+                                            <SelectItem :value="2">Regular</SelectItem>
+                                            <SelectItem :value="3">Dañado</SelectItem>
+                                            <SelectItem :value="4">De Baja</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <!-- Descripción -->
+                                <div class="grid gap-2">
+                                    <Label class="text-xs font-bold text-slate-500 uppercase">Descripción Técnica</Label>
                                     <textarea
                                         v-model="itemForm.description"
-                                        class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-[80px] w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                                        class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-[60px] w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                                         placeholder="Especificaciones adicionales..."
                                     ></textarea>
                                 </div>
+
+                                <!-- Sección de inventario -->
+                                <div class="rounded-xl border border-blue-100 bg-blue-50/40 p-4">
+                                    <p class="mb-3 text-[10px] font-black tracking-widest text-blue-600 uppercase">Detalle de Inventario</p>
+                                    <div class="grid grid-cols-3 gap-4">
+                                        <div class="grid gap-2">
+                                            <Label class="text-xs font-bold text-slate-500 uppercase">P. Unitario (S/.)</Label>
+                                            <Input v-model.number="itemForm.unit_price" type="number" min="0" step="0.01" placeholder="0.00" />
+                                        </div>
+                                        <div class="grid gap-2">
+                                            <Label class="text-xs font-bold text-slate-500 uppercase">Cantidad <span class="text-red-500">*</span></Label>
+                                            <Input v-model.number="itemForm.quantity" type="number" min="1" placeholder="1" />
+                                        </div>
+                                        <div class="grid gap-2">
+                                            <Label class="text-xs font-bold text-slate-500 uppercase">Total</Label>
+                                            <div class="flex h-10 items-center rounded-md border border-blue-200 bg-white px-3 font-mono text-sm font-bold text-blue-700">
+                                                S/.{{ (itemForm.unit_price * itemForm.quantity).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                </div>
                             </div>
-                            <DialogFooter>
-                                <Button @click="handleCreateItem" :disabled="!itemForm.name" class="w-full">Registrar en Catálogo</Button>
+                            <DialogFooter class="border-t bg-slate-50/50 px-6 py-4">
+                                <Button @click="handleCreateItem" :disabled="!itemForm.name || itemForm.quantity < 1" class="w-full">
+                                    Registrar en Catálogo
+                                </Button>
                             </DialogFooter>
                         </DialogContent>
                     </Dialog>
@@ -737,7 +821,11 @@ const filteredKitchenEquipments = computed(() => {
 
                                 <div class="grid grid-cols-2 gap-4">
                                     <div class="grid gap-2">
-                                        <Label>Sede (Opcional)</Label>
+                                        <Label>
+                                            Sede
+                                            <span v-if="stockForm.stockable_type === 'computer' || stockForm.stockable_type === 'kitchen'" class="text-slate-400 text-xs font-normal">(Opcional)</span>
+                                            <span v-else class="text-slate-400 text-xs font-normal">(Opcional)</span>
+                                        </Label>
                                         <Select v-model="stockForm.headquarter_id">
                                             <SelectTrigger><SelectValue placeholder="General" /></SelectTrigger>
                                             <SelectContent>
@@ -749,7 +837,7 @@ const filteredKitchenEquipments = computed(() => {
                                         </Select>
                                     </div>
 
-                                    <div class="grid gap-2">
+                                    <div v-if="stockForm.stockable_type !== 'computer' && stockForm.stockable_type !== 'kitchen'" class="grid gap-2">
                                         <Label>Café / Unidad</Label>
                                         <Select v-model="stockForm.cafe_id">
                                             <SelectTrigger><SelectValue placeholder="Seleccionar" /></SelectTrigger>
@@ -759,6 +847,12 @@ const filteredKitchenEquipments = computed(() => {
                                                 >
                                             </SelectContent>
                                         </Select>
+                                    </div>
+                                    <div v-else class="grid gap-2">
+                                        <Label class="text-slate-400">Almacén / Destino</Label>
+                                        <p class="rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                                            El equipo se registra en la sede seleccionada.
+                                        </p>
                                     </div>
                                 </div>
 
@@ -962,12 +1056,14 @@ const filteredKitchenEquipments = computed(() => {
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Equipo</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Marca / Modelo</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">N° Serie</TableHead>
+                                        <TableHead class="text-center text-muted-foreground text-[10px] font-bold uppercase">Cant.</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Sede</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Estado</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Responsable</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    <TableRow v-for="eq in filteredComputerEquipments" :key="eq.id" class="hover:bg-muted/30 transition-colors">
+                                    <TableRow v-for="eq in paginatedComputerEquipments" :key="eq.id" class="hover:bg-muted/30 transition-colors">
                                         <TableCell class="font-mono text-xs text-slate-400">{{ eq.code || '—' }}</TableCell>
                                         <TableCell>
                                             <div class="flex flex-col">
@@ -979,6 +1075,22 @@ const filteredKitchenEquipments = computed(() => {
                                             {{ [eq.brand, eq.model].filter(Boolean).join(' · ') || '—' }}
                                         </TableCell>
                                         <TableCell class="font-mono text-xs text-slate-400">{{ eq.series || '—' }}</TableCell>
+                                        <TableCell class="text-center">
+                                            <span :class="['inline-flex min-w-[28px] items-center justify-center rounded-full border px-2 py-0.5 font-mono text-xs font-black',
+                                                eq.quantity > 0 ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-red-200 bg-red-50 text-red-600']">
+                                                {{ eq.quantity }}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div v-if="eq.storage_headquarter" class="flex items-center gap-1">
+                                                <Building2 class="h-3 w-3 flex-shrink-0 text-slate-400" />
+                                                <div class="flex flex-col leading-tight">
+                                                    <span class="text-xs font-semibold text-slate-700">{{ eq.storage_headquarter.name }}</span>
+                                                    <span v-if="eq.storage_headquarter.business" class="text-[10px] text-slate-400">{{ eq.storage_headquarter.business.name }}</span>
+                                                </div>
+                                            </div>
+                                            <span v-else class="text-xs text-slate-400">Sin sede</span>
+                                        </TableCell>
                                         <TableCell>
                                             <span :class="['inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', equipmentStatusInfo(eq.status).cls]">
                                                 {{ equipmentStatusInfo(eq.status).label }}
@@ -995,6 +1107,40 @@ const filteredKitchenEquipments = computed(() => {
                                     </TableRow>
                                 </TableBody>
                             </Table>
+                        </div>
+                        <!-- Pagination IT -->
+                        <div v-if="computerTotalPages > 1" class="mt-3 flex items-center justify-between px-1">
+                            <p class="text-xs text-slate-400">
+                                {{ (computerPage - 1) * EQUIP_PAGE_SIZE + 1 }}–{{ Math.min(computerPage * EQUIP_PAGE_SIZE, filteredComputerEquipments.length) }}
+                                de {{ filteredComputerEquipments.length }} equipos
+                            </p>
+                            <div class="flex items-center gap-1">
+                                <button
+                                    @click="computerPage--"
+                                    :disabled="computerPage === 1"
+                                    class="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    ← Ant.
+                                </button>
+                                <button
+                                    v-for="p in computerTotalPages"
+                                    :key="p"
+                                    @click="computerPage = p"
+                                    :class="['rounded-lg border px-2.5 py-1 text-xs font-semibold transition',
+                                        p === computerPage
+                                            ? 'border-blue-300 bg-blue-50 text-blue-700'
+                                            : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50']"
+                                >
+                                    {{ p }}
+                                </button>
+                                <button
+                                    @click="computerPage++"
+                                    :disabled="computerPage === computerTotalPages"
+                                    class="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    Sig. →
+                                </button>
+                            </div>
                         </div>
                     </template>
 
@@ -1021,12 +1167,14 @@ const filteredKitchenEquipments = computed(() => {
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Equipo</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Marca / Modelo</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">N° Serie</TableHead>
+                                        <TableHead class="text-center text-muted-foreground text-[10px] font-bold uppercase">Cant.</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Sede</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Estado</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Responsable</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    <TableRow v-for="eq in filteredKitchenEquipments" :key="eq.id" class="hover:bg-muted/30 transition-colors">
+                                    <TableRow v-for="eq in paginatedKitchenEquipments" :key="eq.id" class="hover:bg-muted/30 transition-colors">
                                         <TableCell class="font-mono text-xs text-slate-400">{{ eq.code || '—' }}</TableCell>
                                         <TableCell>
                                             <div class="flex flex-col">
@@ -1038,6 +1186,22 @@ const filteredKitchenEquipments = computed(() => {
                                             {{ [eq.brand, eq.model].filter(Boolean).join(' · ') || '—' }}
                                         </TableCell>
                                         <TableCell class="font-mono text-xs text-slate-400">{{ eq.series || '—' }}</TableCell>
+                                        <TableCell class="text-center">
+                                            <span :class="['inline-flex min-w-[28px] items-center justify-center rounded-full border px-2 py-0.5 font-mono text-xs font-black',
+                                                eq.quantity > 0 ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-red-200 bg-red-50 text-red-600']">
+                                                {{ eq.quantity }}
+                                            </span>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div v-if="eq.storage_headquarter" class="flex items-center gap-1">
+                                                <Building2 class="h-3 w-3 flex-shrink-0 text-slate-400" />
+                                                <div class="flex flex-col leading-tight">
+                                                    <span class="text-xs font-semibold text-slate-700">{{ eq.storage_headquarter.name }}</span>
+                                                    <span v-if="eq.storage_headquarter.business" class="text-[10px] text-slate-400">{{ eq.storage_headquarter.business.name }}</span>
+                                                </div>
+                                            </div>
+                                            <span v-else class="text-xs text-slate-400">Sin sede</span>
+                                        </TableCell>
                                         <TableCell>
                                             <span :class="['inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', equipmentStatusInfo(eq.status).cls]">
                                                 {{ equipmentStatusInfo(eq.status).label }}
@@ -1054,6 +1218,40 @@ const filteredKitchenEquipments = computed(() => {
                                     </TableRow>
                                 </TableBody>
                             </Table>
+                        </div>
+                        <!-- Pagination Cocina -->
+                        <div v-if="kitchenTotalPages > 1" class="mt-3 flex items-center justify-between px-1">
+                            <p class="text-xs text-slate-400">
+                                {{ (kitchenPage - 1) * EQUIP_PAGE_SIZE + 1 }}–{{ Math.min(kitchenPage * EQUIP_PAGE_SIZE, filteredKitchenEquipments.length) }}
+                                de {{ filteredKitchenEquipments.length }} equipos
+                            </p>
+                            <div class="flex items-center gap-1">
+                                <button
+                                    @click="kitchenPage--"
+                                    :disabled="kitchenPage === 1"
+                                    class="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    ← Ant.
+                                </button>
+                                <button
+                                    v-for="p in kitchenTotalPages"
+                                    :key="p"
+                                    @click="kitchenPage = p"
+                                    :class="['rounded-lg border px-2.5 py-1 text-xs font-semibold transition',
+                                        p === kitchenPage
+                                            ? 'border-orange-300 bg-orange-50 text-orange-700'
+                                            : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50']"
+                                >
+                                    {{ p }}
+                                </button>
+                                <button
+                                    @click="kitchenPage++"
+                                    :disabled="kitchenPage === kitchenTotalPages"
+                                    class="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                    Sig. →
+                                </button>
+                            </div>
                         </div>
                     </template>
 

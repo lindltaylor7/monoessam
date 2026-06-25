@@ -21,6 +21,7 @@ use App\Models\ClothInvoiceItem;
 use App\Models\ClothProvider;
 use App\Models\Epp;
 use App\Models\EppSize;
+use App\Models\EquipmentInvoice;
 use App\Models\Size;
 use App\Models\City;
 use App\Models\InventoryTransfer;
@@ -53,8 +54,20 @@ class InventoryController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
-        $computerEquipments = ComputerEquipment::with('responsible')->get();
-        $kitchenEquipments  = KitchenEquipment::with('responsible')->get();
+        $computerEquipments = ComputerEquipment::with(
+                'responsible:id,name',
+                'storageHeadquarter:id,name,business_id',
+                'storageHeadquarter.business:id,name'
+            )
+            ->select('id', 'name', 'brand', 'model', 'presentation', 'color', 'series', 'code', 'status', 'quantity', 'responsible_id', 'storage_headquarter_id')
+            ->get();
+        $kitchenEquipments  = KitchenEquipment::with(
+                'responsible:id,name',
+                'storageHeadquarter:id,name,business_id',
+                'storageHeadquarter.business:id,name'
+            )
+            ->select('id', 'name', 'brand', 'model', 'size', 'color', 'series', 'code', 'status', 'quantity', 'responsible_id', 'storage_headquarter_id')
+            ->get();
 
         return Inertia::render('inventory/Index', [
             'colors' => $colors,
@@ -172,31 +185,53 @@ class InventoryController extends Controller
     public function update(Request $request)
     {
         $validated = $request->validate([
-            'stockable_id' => 'required|integer',
+            'stockable_id'   => 'required|integer',
             'stockable_type' => 'required|string',
             'headquarter_id' => 'nullable|exists:headquarters,id',
-            'cafe_id' => 'nullable|exists:cafes,id',
-            'quantity' => 'required|numeric|min:0',
-            'action' => 'required|in:set,add'
+            'cafe_id'        => 'nullable|exists:cafes,id',
+            'quantity'       => 'required|numeric|min:0',
+            'action'         => 'required|in:set,add',
         ]);
 
+        // For equipment types, update the quantity directly on the equipment record
+        if (in_array($validated['stockable_type'], ['computer', 'kitchen'])) {
+            $modelClass = $validated['stockable_type'] === 'computer'
+                ? ComputerEquipment::class
+                : KitchenEquipment::class;
+
+            $equipment = $modelClass::findOrFail($validated['stockable_id']);
+
+            if ($validated['action'] === 'add') {
+                $equipment->quantity += (int) $validated['quantity'];
+            } else {
+                $equipment->quantity = (int) $validated['quantity'];
+            }
+
+            if (!empty($validated['headquarter_id'])) {
+                $equipment->storage_headquarter_id = $validated['headquarter_id'];
+            }
+
+            $equipment->save();
+
+            return back()->with('success', 'Stock de equipo actualizado correctamente.');
+        }
+
+        // For cloth / epp / ingredient: use inventory_stocks (polymorphic)
         $modelMap = [
-            'cloth' => Cloth::class,
-            'computer' => ComputerEquipment::class,
-            'kitchen' => KitchenEquipment::class,
+            'cloth'      => Cloth::class,
             'ingredient' => Ingredient::class,
-            'epp' => Epp::class,
+            'epp'        => Epp::class,
         ];
 
         $modelClass = $modelMap[$validated['stockable_type']] ?? $validated['stockable_type'];
 
         $stock = InventoryStock::firstOrNew([
-            'stockable_id' => $validated['stockable_id'],
+            'stockable_id'   => $validated['stockable_id'],
             'stockable_type' => $modelClass,
             'headquarter_id' => $validated['headquarter_id'] ?? null,
-            'cafe_id' => $validated['cafe_id'] ?? null,
-            'size' => $request->input('size'),
-            'color_id' => $request->input('color_id'),
+            'cafe_id'        => $validated['cafe_id'] ?? null,
+            'size'           => $request->input('size'),
+            'color_id'       => $request->input('color_id'),
         ]);
 
         if ($validated['action'] === 'add') {
@@ -226,31 +261,62 @@ class InventoryController extends Controller
     {
         $type = $request->input('type');
 
+        $common = [
+            'name'                   => 'required|string|max:255',
+            'brand'                  => 'nullable|string|max:255',
+            'model'                  => 'nullable|string|max:255',
+            'code'                   => 'nullable|string|max:100',
+            'series'                 => 'nullable|string|max:255',
+            'color'                  => 'nullable|string|max:100',
+            'status'                 => 'nullable|integer|between:0,4',
+            'description'            => 'nullable|string',
+            'unit_price'             => 'nullable|numeric|min:0',
+            'quantity'               => 'nullable|integer|min:1',
+            'headquarter_id'         => 'nullable|exists:headquarters,id',
+        ];
+
         if ($type === 'computer') {
-            $validated = $request->validate([
-                'name' => 'nullable|string',
-                'description' => 'nullable|string',
-                'brand' => 'nullable|string',
-                'model' => 'nullable|string',
-                'presentation' => 'nullable|string',
-                'color' => 'nullable|string',
+            $validated = $request->validate(array_merge($common, [
+                'presentation' => 'nullable|string|max:255',
+            ]));
+
+            ComputerEquipment::create([
+                'name'                   => $validated['name'],
+                'brand'                  => $validated['brand'] ?? null,
+                'model'                  => $validated['model'] ?? null,
+                'code'                   => $validated['code'] ?? null,
+                'series'                 => $validated['series'] ?? null,
+                'color'                  => $validated['color'] ?? null,
+                'status'                 => $validated['status'] ?? 0,
+                'description'            => $validated['description'] ?? null,
+                'presentation'           => $validated['presentation'] ?? null,
+                'unit_price'             => $validated['unit_price'] ?? 0,
+                'quantity'               => $validated['quantity'] ?? 1,
+                'storage_headquarter_id' => $validated['headquarter_id'] ?? null,
             ]);
-            ComputerEquipment::create($validated);
         } elseif ($type === 'kitchen') {
-            $validated = $request->validate([
-                'name' => 'required|string',
-                'brand' => 'required|string',
-                'model' => 'required|string',
-                'size' => 'required|string',
-                'description' => 'nullable|string',
-                'color' => 'nullable|string',
-                'current_type' => 'nullable|string',
-                'series' => 'nullable|string',
-                'manual' => 'nullable|string',
-                'code' => 'nullable|string',
-                'status' => 'nullable|string',
+            $validated = $request->validate(array_merge($common, [
+                'size'         => 'nullable|string|max:100',
+                'current_type' => 'nullable|string|max:100',
+                'manual'       => 'nullable|string|max:255',
+            ]));
+
+            KitchenEquipment::create([
+                'name'                   => $validated['name'],
+                'brand'                  => $validated['brand'] ?? null,
+                'model'                  => $validated['model'] ?? null,
+                'code'                   => $validated['code'] ?? null,
+                'series'                 => $validated['series'] ?? null,
+                'color'                  => $validated['color'] ?? null,
+                'status'                 => $validated['status'] ?? 0,
+                'description'            => $validated['description'] ?? null,
+                'size'                   => $validated['size'] ?? null,
+                'current_type'           => $validated['current_type'] ?? null,
+                'manual'                 => $validated['manual'] ?? null,
+                'unit_price'             => $validated['unit_price'] ?? 0,
+                'quantity'               => $validated['quantity'] ?? 1,
+                'storage_headquarter_id' => $validated['headquarter_id'] ?? null,
             ]);
-            KitchenEquipment::create($validated);
         }
 
         return back()->with('success', 'Equipo registrado correctamente');
@@ -375,10 +441,13 @@ class InventoryController extends Controller
     {
         $invoices = ClothInvoice::with(['business', 'headquarter', 'provider', 'items.cloth', 'items.epp', 'items.color', 'user'])->latest()->get();
         $clothProviders = ClothProvider::with(['epps', 'clothes'])->get();
+        $equipmentInvoices = EquipmentInvoice::with(['business', 'provider', 'user', 'computerEquipments', 'kitchenEquipments'])->latest()->get();
 
         return Inertia::render('inventory/Invoices/Index', [
             'invoices' => $invoices,
+            'equipmentInvoices' => $equipmentInvoices,
             'clothProviders' => $clothProviders,
+            'equipmentProviders' => Provider::where('type', 'equipment')->select('id', 'name', 'ruc', 'email', 'phone')->orderBy('name')->get(),
             'businesses' => Business::all(),
             'headquarters' => Headquarter::with('business')->get(),
             'cafes' => Cafe::with('unit')->get(),

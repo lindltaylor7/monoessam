@@ -14,7 +14,7 @@ class Mine extends Model
     /** @use HasFactory<\Database\Factories\MineFactory> */
     use HasFactory;
 
-    protected $fillable = ['name','dealership_id'];
+    protected $fillable = ['name', 'dealership_id', 'latitude', 'longitude', 'address'];
 
     public function units(): HasMany
     {

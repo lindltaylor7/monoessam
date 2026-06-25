@@ -364,6 +364,7 @@ class StaffController extends Controller
             'system_work'         => $request->workSystem,
             'replacement'         => $request->replacement,
             'salary'              => $request->salary,
+            'salary_type'         => $request->salaryType,
             'observations'        => $request->observations,
             'bank_entity'         => $this->nullIfEmpty($request->bankEntity),
             'pensioncontribution' => $request->pensioncontrbution,

@@ -32,11 +32,11 @@ import { computed, ref } from 'vue';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface StaffRef { id: number; name: string }
-interface HQRef    { id: number; name: string }
+interface HQRef    { id: number; name: string; business: { id: number; name: string } | null }
 
 interface EquipmentBase {
     id: number; name: string; brand: string | null; model: string | null;
-    code: string | null; series: string | null; status: number;
+    code: string | null; series: string | null; status: number; quantity: number;
     storage_headquarter_id: number | null;
     storage_headquarter: HQRef | null;
     responsible: StaffRef | null;
@@ -44,7 +44,7 @@ interface EquipmentBase {
 
 interface Dispatch {
     id: number; dispatch_number: string; status: 'active' | 'returned';
-    equipable_type: 'computer' | 'kitchen'; equipable_id: number;
+    equipable_type: 'computer' | 'kitchen'; equipable_id: number; quantity: number;
     equipment_name: string; equipment_brand: string | null; equipment_model: string | null;
     equipment_code: string | null; equipment_series: string | null; equipment_status: number;
     origin_id: number | null; origin_name: string;
@@ -54,11 +54,8 @@ interface Dispatch {
     dispatched_by: string; dispatched_at: string; dispatched_at_raw: string; returned_at: string | null;
 }
 
-interface ActiveId { type: 'computer' | 'kitchen'; id: number }
-
 const props = defineProps<{
     dispatches: Dispatch[];
-    activeIds: ActiveId[];
     computerEquipments: EquipmentBase[];
     kitchenEquipments: EquipmentBase[];
     headquarters: HQRef[];
@@ -93,6 +90,7 @@ const confirmReturn  = ref<Dispatch | null>(null);
 const form = useForm({
     equipable_type:        'computer' as 'computer' | 'kitchen',
     equipable_id:          '' as string | number,
+    quantity:              1,
     origin_headquarter_id: '' as string | number,
     destination_type:      'cafe' as string,
     destination_id:        '' as string | number,
@@ -100,21 +98,17 @@ const form = useForm({
     description:           '',
 });
 
-// ── Computed: dispatched equipment IDs ────────────────────────────────────
-const activeSet = computed(() =>
-    new Set(props.activeIds.map(a => `${a.type}-${a.id}`))
-);
-
-const isDispatched = (type: 'computer' | 'kitchen', id: number) =>
-    activeSet.value.has(`${type}-${id}`);
-
-// ── Computed: available equipment for form (not currently dispatched) ──────
+// ── Computed: available equipment (quantity > 0) ───────────────────────────
 const availableEquipment = computed(() => {
     const list = form.equipable_type === 'computer'
         ? props.computerEquipments
         : props.kitchenEquipments;
-    return list.filter(e => !isDispatched(form.equipable_type, e.id));
+    return list.filter(e => e.quantity > 0);
 });
+
+const selectedEquipment = computed(() =>
+    availableEquipment.value.find(e => String(e.id) === String(form.equipable_id)) ?? null
+);
 
 // ── Computed: destination options ─────────────────────────────────────────
 const destinationOptions = computed(() => {
@@ -138,29 +132,33 @@ const filteredDispatches = computed(() => {
     });
 });
 
-// ── Computed: equipment in storage grouped by HQ ──────────────────────────
+// ── Computed: equipment in storage grouped by HQ (quantity > 0) ───────────
 const storageGroups = computed(() => {
     const all = [
         ...props.computerEquipments.map(e => ({ ...e, equipable_type: 'computer' as const })),
         ...props.kitchenEquipments.map(e => ({ ...e, equipable_type: 'kitchen' as const })),
-    ].filter(e => !isDispatched(e.equipable_type, e.id));
+    ].filter(e => e.quantity > 0);
 
     const groups: Record<string, { hq: HQRef | null; items: typeof all }> = {};
     for (const e of all) {
         const key = e.storage_headquarter_id ? String(e.storage_headquarter_id) : '__none__';
-        if (!groups[key]) {
-            groups[key] = { hq: e.storage_headquarter, items: [] };
-        }
+        if (!groups[key]) groups[key] = { hq: e.storage_headquarter, items: [] };
         groups[key].items.push(e);
     }
     return Object.values(groups);
 });
 
-// ── Stats ──────────────────────────────────────────────────────────────────
+// ── Stats (based on quantities) ────────────────────────────────────────────
 const stats = computed(() => {
-    const total  = props.computerEquipments.length + props.kitchenEquipments.length;
-    const active = props.dispatches.filter(d => d.status === 'active').length;
-    return { total, active, inStorage: total - active };
+    const allEquipments = [
+        ...props.computerEquipments,
+        ...props.kitchenEquipments,
+    ];
+    const inStorage  = allEquipments.reduce((s, e) => s + (e.quantity ?? 0), 0);
+    const dispatched = props.dispatches
+        .filter(d => d.status === 'active')
+        .reduce((s, d) => s + (d.quantity ?? 1), 0);
+    return { total: allEquipments.length, inStorage, active: dispatched };
 });
 
 // ── Actions ────────────────────────────────────────────────────────────────
@@ -168,6 +166,7 @@ function openCreate() {
     form.reset();
     form.equipable_type   = 'computer';
     form.destination_type = 'cafe';
+    form.quantity         = 1;
     showForm.value        = true;
 }
 
@@ -209,9 +208,17 @@ function downloadPdf(id: number) {
                         <p class="text-muted-foreground mt-0.5 text-sm">Control de almacenes Lima / Huancayo y destinos</p>
                     </div>
                 </div>
-                <Button class="bg-red-600 hover:bg-red-700" @click="openCreate">
-                    <Plus class="mr-1.5 h-4 w-4" /> Nuevo Despacho
-                </Button>
+                <div class="flex items-center gap-2">
+                    <a :href="route('equipment-dispatches.receptions')">
+                        <Button variant="outline" size="sm" class="gap-1.5">
+                            <PackageCheck class="h-4 w-4" />
+                            Recepción por Destino
+                        </Button>
+                    </a>
+                    <Button class="bg-red-600 hover:bg-red-700" @click="openCreate">
+                        <Plus class="mr-1.5 h-4 w-4" /> Nuevo Despacho
+                    </Button>
+                </div>
             </div>
 
             <!-- ── Stats ───────────────────────────────────────────── -->
@@ -290,6 +297,7 @@ function downloadPdf(id: number) {
                                 <tr>
                                     <th class="px-4 py-3 text-left text-xs font-semibold">N° Despacho</th>
                                     <th class="px-4 py-3 text-left text-xs font-semibold">Equipo</th>
+                                    <th class="px-4 py-3 text-center text-xs font-semibold">Cant.</th>
                                     <th class="px-4 py-3 text-left text-xs font-semibold">Origen</th>
                                     <th class="px-4 py-3 text-left text-xs font-semibold">Destino</th>
                                     <th class="px-4 py-3 text-left text-xs font-semibold">Encargado</th>
@@ -300,7 +308,7 @@ function downloadPdf(id: number) {
                             </thead>
                             <tbody>
                                 <tr v-if="filteredDispatches.length === 0">
-                                    <td colspan="8" class="py-14 text-center">
+                                    <td colspan="9" class="py-14 text-center">
                                         <div class="text-muted-foreground flex flex-col items-center gap-2">
                                             <PackageOpen class="h-10 w-10 opacity-30" />
                                             <span class="text-sm">No hay despachos registrados</span>
@@ -331,6 +339,11 @@ function downloadPdf(id: number) {
                                                 </p>
                                             </div>
                                         </div>
+                                    </td>
+                                    <td class="px-4 py-3 text-center">
+                                        <span class="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 font-mono text-xs font-bold text-amber-700">
+                                            {{ d.quantity }}
+                                        </span>
                                     </td>
                                     <td class="px-4 py-3">
                                         <span class="flex items-center gap-1 text-sm">
@@ -427,6 +440,7 @@ function downloadPdf(id: number) {
                                     <th class="px-4 py-2 text-left text-xs font-semibold">Código</th>
                                     <th class="px-4 py-2 text-left text-xs font-semibold">Equipo</th>
                                     <th class="px-4 py-2 text-left text-xs font-semibold">Marca / Modelo</th>
+                                    <th class="px-4 py-2 text-center text-xs font-semibold">Cant.</th>
                                     <th class="px-4 py-2 text-left text-xs font-semibold">Estado</th>
                                     <th class="px-4 py-2 text-left text-xs font-semibold">Responsable</th>
                                 </tr>
@@ -452,6 +466,11 @@ function downloadPdf(id: number) {
                                     <td class="px-4 py-2.5 text-sm font-semibold">{{ eq.name }}</td>
                                     <td class="text-muted-foreground px-4 py-2.5 text-sm">
                                         {{ [eq.brand, eq.model].filter(Boolean).join(' · ') || '—' }}
+                                    </td>
+                                    <td class="px-4 py-2.5 text-center">
+                                        <span class="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 font-mono text-xs font-bold text-emerald-700">
+                                            {{ eq.quantity }}
+                                        </span>
                                     </td>
                                     <td class="px-4 py-2.5">
                                         <span :class="['inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', EQUIP_STATUSES[eq.status]?.cls]">
@@ -518,7 +537,7 @@ function downloadPdf(id: number) {
                 <!-- Selección de equipo -->
                 <div class="grid gap-1.5">
                     <Label>Equipo <span class="text-red-500">*</span></Label>
-                    <Select v-model="form.equipable_id">
+                    <Select v-model="form.equipable_id" @update:model-value="form.quantity = 1">
                         <SelectTrigger>
                             <SelectValue placeholder="Seleccionar equipo disponible…" />
                         </SelectTrigger>
@@ -529,13 +548,33 @@ function downloadPdf(id: number) {
                                 :value="String(eq.id)"
                             >
                                 {{ eq.name }}{{ eq.brand ? ` — ${eq.brand}` : '' }}{{ eq.code ? ` [${eq.code}]` : '' }}
+                                <span class="ml-1 text-xs text-emerald-600 font-semibold">({{ eq.quantity }} disp.)</span>
                             </SelectItem>
                             <div v-if="availableEquipment.length === 0" class="px-3 py-4 text-center text-xs text-gray-400">
-                                Todos los equipos de este tipo están despachados
+                                Sin stock disponible para este tipo
                             </div>
                         </SelectContent>
                     </Select>
                     <p v-if="form.errors.equipable_id" class="text-xs text-red-500">{{ form.errors.equipable_id }}</p>
+                </div>
+
+                <!-- Cantidad a despachar -->
+                <div class="grid gap-1.5">
+                    <Label>
+                        Cantidad a Despachar <span class="text-red-500">*</span>
+                        <span v-if="selectedEquipment" class="text-muted-foreground ml-2 text-xs font-normal">
+                            máx. {{ selectedEquipment.quantity }}
+                        </span>
+                    </Label>
+                    <Input
+                        type="number"
+                        v-model="form.quantity"
+                        min="1"
+                        :max="selectedEquipment?.quantity ?? 9999"
+                        :disabled="!form.equipable_id"
+                        placeholder="1"
+                    />
+                    <p v-if="form.errors.quantity" class="text-xs text-red-500">{{ form.errors.quantity }}</p>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
@@ -546,7 +585,7 @@ function downloadPdf(id: number) {
                             <SelectTrigger><SelectValue placeholder="Lima / Huancayo…" /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">
-                                    {{ hq.name }}
+                                    {{ hq.name }}{{ hq.business ? ` · ${hq.business.name}` : '' }}
                                 </SelectItem>
                             </SelectContent>
                         </Select>
@@ -618,7 +657,7 @@ function downloadPdf(id: number) {
                 <Button variant="outline" @click="showForm = false">Cancelar</Button>
                 <Button
                     class="bg-red-600 hover:bg-red-700"
-                    :disabled="form.processing || !form.equipable_id || !form.origin_headquarter_id || !form.destination_id"
+                    :disabled="form.processing || !form.equipable_id || !form.origin_headquarter_id || !form.destination_id || form.quantity < 1 || (!!selectedEquipment && form.quantity > selectedEquipment.quantity)"
                     @click="submitForm"
                 >
                     <Truck class="mr-1.5 h-4 w-4" />
@@ -638,13 +677,14 @@ function downloadPdf(id: number) {
             </DialogHeader>
             <div class="space-y-3 py-1">
                 <p class="text-sm text-gray-600 dark:text-gray-300">
-                    Confirma que el equipo <strong>{{ confirmReturn?.equipment_name }}</strong>
-                    ha sido retornado al almacén desde
-                    <strong>{{ confirmReturn?.destination_name }}</strong>.
+                    Confirma que
+                    <strong>{{ confirmReturn?.quantity }} {{ (confirmReturn?.quantity ?? 1) > 1 ? 'unidades' : 'unidad' }}</strong>
+                    de <strong>{{ confirmReturn?.equipment_name }}</strong>
+                    han sido retornadas desde <strong>{{ confirmReturn?.destination_name }}</strong>.
                 </p>
                 <div class="flex items-center gap-2 rounded-lg border bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
                     <ArrowRight class="h-4 w-4 flex-shrink-0" />
-                    Volverá al almacén <strong class="ml-1">{{ confirmReturn?.origin_name }}</strong>
+                    Volverán al almacén <strong class="ml-1">{{ confirmReturn?.origin_name }}</strong>
                 </div>
             </div>
             <DialogFooter>

@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 class Cafe extends Model
 {
     use HasFactory;
-    protected $fillable = ['name', 'unit_id'];
+    protected $fillable = ['name', 'unit_id', 'latitude', 'longitude', 'address'];
 
 
     public function unit(): BelongsTo

@@ -3,8 +3,9 @@ import Button from '@/components/ui/button/Button.vue';
 import { Headquarter } from '@/types';
 import axios from 'axios';
 import { ImageUp, Trash } from 'lucide-vue-next';
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import AreaModal from '../headcount/AreaModal.vue';
+import CoordEditor from '../management/CoordEditor.vue';
 import ServicePopover from './ServicePopover.vue';
 
 interface Business {
@@ -14,20 +15,41 @@ interface Business {
     logo?: string | null;
 }
 
+interface HQWithLocation extends Headquarter {
+    latitude: number | null;
+    longitude: number | null;
+    address: string | null;
+}
+
 const props = defineProps<{
     businesses: Business[];
     services: unknown[];
-    headquarters: Headquarter[];
+    headquarters: HQWithLocation[];
 }>();
 
 const emit = defineEmits<{
     (e: 'selectAreas', headquarter: Headquarter): void;
 }>();
 
+const localHQs = ref<HQWithLocation[]>(props.headquarters.map(h => ({ ...h })));
+
+watch(() => props.headquarters, (v) => {
+    localHQs.value = v.map(h => ({ ...h }));
+}, { deep: true });
+
+function getBusinessHeadquartersLocal(businessId: number) {
+    return localHQs.value.filter(h => h.business?.id === businessId);
+}
+
+function onHQCoordUpdated(hqId: number, lat: number | null, lng: number | null, address: string | null) {
+    const hq = localHQs.value.find(h => h.id === hqId);
+    if (hq) { hq.latitude = lat; hq.longitude = lng; hq.address = address; }
+}
+
 const uploading = ref<number | null>(null);
 
 const getBusinessHeadquarters = (businessId: number) => {
-    return props.headquarters.filter((h) => h.business?.id === businessId);
+    return localHQs.value.filter((h) => h.business?.id === businessId);
 };
 
 const selectHeadquarter = (headquarter: Headquarter) => {
@@ -140,54 +162,19 @@ const handleLogoUpload = async (event: Event, businessId: number) => {
                             @click="selectHeadquarter(headquarter)"
                         >
                             <div class="flex items-start justify-between">
-                                <div>
+                                <div class="flex-1 min-w-0">
                                     <h4 class="font-medium text-gray-800 dark:text-gray-100">{{ headquarter.name }}</h4>
-                                    <div class="mt-1 flex flex-wrap gap-2">
-                                        <span v-if="headquarter.address" class="flex items-center text-sm text-gray-600 dark:text-gray-300">
-                                            <svg
-                                                xmlns="http://www.w3.org/2000/svg"
-                                                class="mr-1 h-4 w-4"
-                                                fill="none"
-                                                viewBox="0 0 24 24"
-                                                stroke="currentColor"
-                                            >
-                                                <path
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                    stroke-width="1.5"
-                                                    d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
-                                                />
-                                                <path
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                    stroke-width="1.5"
-                                                    d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
-                                                />
-                                            </svg>
-                                            {{ headquarter.address }}
-                                        </span>
-                                        <span v-if="headquarter.phone" class="flex items-center text-sm text-gray-600 dark:text-gray-300">
-                                            <svg
-                                                xmlns="http://www.w3.org/2000/svg"
-                                                class="mr-1 h-4 w-4"
-                                                fill="none"
-                                                viewBox="0 0 24 24"
-                                                stroke="currentColor"
-                                            >
-                                                <path
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                    stroke-width="1.5"
-                                                    d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
-                                                />
-                                            </svg>
-                                            {{ headquarter.phone }}
-                                        </span>
-                                    </div>
+                                    <!-- Dirección + coordenadas editables inline -->
+                                    <CoordEditor
+                                        :latitude="headquarter.latitude"
+                                        :longitude="headquarter.longitude"
+                                        :address="headquarter.address"
+                                        :patch-url="`/headquarters/${headquarter.id}`"
+                                        @updated="(lat, lng, addr) => onHQCoordUpdated(headquarter.id, lat, lng, addr)"
+                                    />
                                 </div>
-                                <div class="flex gap-2">
-                                    <AreaModal :headquarters="headquarters" :headquarterId="headquarter.id" />
-
+                                <div class="flex gap-2 ml-2 shrink-0">
+                                    <AreaModal :headquarters="(headquarters as any)" :headquarterId="headquarter.id" />
                                     <Button
                                         class="flex cursor-pointer items-center justify-center rounded-lg border border-transparent bg-red-50 p-2 text-red-600 transition-all duration-200 ease-in-out hover:scale-105 hover:border-red-200 hover:bg-red-100 hover:text-red-700 hover:shadow-sm dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/40"
                                         title="Eliminar sede"

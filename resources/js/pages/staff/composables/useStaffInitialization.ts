@@ -31,6 +31,7 @@ export function useStaffInitialization(form: any, prendasFijas: Ref<any[]>, imag
             form.workSystem = staff.staff_financial.system_work;
             form.replacement = staff.staff_financial.replacement;
             form.salary = staff.staff_financial.salary;
+            form.salaryType = staff.staff_financial.salary_type ?? '';
             form.observations = staff.staff_financial.observations;
             form.bankEntity = String(staff.staff_financial.bank_entity);
             form.cc = staff.staff_financial.account_number;
