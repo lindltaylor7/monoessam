@@ -14,7 +14,7 @@ class LogisticController extends Controller
 {
     public function index()
     {
-        $dispatches = EquipmentDispatch::with(['equipable', 'origin', 'staff', 'dispatcher', 'receiver'])
+        $dispatches = EquipmentDispatch::with(['equipable', 'origin.business', 'originCafe', 'staff', 'dispatcher', 'receiver'])
             ->latest()
             ->get()
             ->map(fn ($d) => $this->transform($d));
@@ -45,7 +45,7 @@ class LogisticController extends Controller
             'cafe'        => Cafe::find($d->destination_id),
             'unit'        => Unit::find($d->destination_id),
             'mine'        => Mine::find($d->destination_id),
-            'headquarter' => Headquarter::find($d->destination_id),
+            'headquarter' => Headquarter::with('business:id,name')->find($d->destination_id),
             default       => null,
         };
 
@@ -75,11 +75,14 @@ class LogisticController extends Controller
             'equipment_code'    => $d->equipable?->code,
             'equipment_series'  => $d->equipable?->series,
             'equipment_status'  => $d->equipable?->status,
-            'origin_id'         => $d->origin_headquarter_id,
-            'origin_name'       => $d->origin?->name ?? '—',
-            'destination_type'  => $d->destination_type,
-            'destination_label' => $destinationLabel,
-            'destination_name'  => $destinationName ?? '—',
+            'origin_id'           => $d->origin_headquarter_id ?? $d->origin_cafe_id,
+            'origin_label'        => $d->origin_cafe_id ? 'Café / Comedor' : 'Sede / Almacén',
+            'origin_name'         => $d->origin?->name ?? $d->originCafe?->name ?? '—',
+            'origin_business'     => $d->origin_cafe_id ? null : $d->origin?->business?->name,
+            'destination_type'    => $d->destination_type,
+            'destination_label'   => $destinationLabel,
+            'destination_name'    => $destinationName ?? '—',
+            'destination_business'=> $d->destination_type === 'headquarter' ? $dest?->business?->name : null,
             'destination_id'    => $d->destination_id,
             'staff_id'          => $d->staff_id,
             'staff_name'        => $d->staff?->name,

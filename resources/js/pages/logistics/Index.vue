@@ -107,9 +107,12 @@ interface Dispatch {
     equipment_status: number;
     origin_id: number | null;
     origin_name: string;
+    origin_label?: string;
+    origin_business?: string | null;
     destination_type: string;
     destination_label: string;
     destination_name: string;
+    destination_business?: string | null;
     destination_id: number;
     staff_id: number | null;
     staff_name: string | null;
@@ -250,7 +253,10 @@ interface DispatchGroup {
     items: Dispatch[];
     destination_name: string;
     destination_label: string;
+    destination_business?: string | null;
     origin_name: string;
+    origin_label?: string;
+    origin_business?: string | null;
     dispatched_at: string;
     dispatched_at_raw: string;
     staff_name: string | null;
@@ -281,7 +287,10 @@ const groupedDispatches = computed((): DispatchGroup[] => {
                 items: [d],
                 destination_name: d.destination_name,
                 destination_label: d.destination_label,
+                destination_business: d.destination_business,
                 origin_name: d.origin_name,
+                origin_label: d.origin_label,
+                origin_business: d.origin_business,
                 dispatched_at: d.dispatched_at,
                 dispatched_at_raw: d.dispatched_at_raw,
                 staff_name: d.staff_name,
@@ -814,8 +823,9 @@ function pctCls(v: number | null): string {
                                         <thead>
                                             <tr class="border-b bg-slate-50">
                                                 <th class="px-3 py-2 text-left font-semibold text-slate-500">Guía</th>
-                                                <th class="px-3 py-2 text-left font-semibold text-slate-500">Destino</th>
                                                 <th class="hidden px-3 py-2 text-left font-semibold text-slate-500 sm:table-cell">Origen</th>
+                                                <th class="px-3 py-2 text-left font-semibold text-slate-500">Destino</th>
+
                                                 <th class="px-3 py-2 text-left font-semibold text-slate-500">Fecha</th>
                                                 <th class="px-3 py-2 text-left font-semibold text-slate-500">Estado</th>
                                                 <th class="hidden px-3 py-2 text-left font-semibold text-slate-500 lg:table-cell">Encargado</th>
@@ -842,13 +852,19 @@ function pctCls(v: number | null): string {
                                                         {{ g.items.length }} ítems
                                                     </span>
                                                 </td>
+                                                <!-- Origen -->
+                                                <td class="hidden px-3 py-2.5 sm:table-cell">
+                                                    <p v-if="g.origin_business" class="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">{{ g.origin_business }}</p>
+                                                    <p class="truncate font-medium text-slate-800">{{ g.origin_name }}</p>
+                                                    <p class="text-[11px] text-slate-400">{{ g.origin_label ?? 'Sede / Almacén' }}</p>
+                                                </td>
                                                 <!-- Destino -->
                                                 <td class="max-w-[120px] px-3 py-2.5">
+                                                    <p v-if="g.destination_business" class="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">{{ g.destination_business }}</p>
                                                     <p class="truncate font-medium text-slate-800">{{ g.destination_name }}</p>
-                                                    <p class="text-slate-400">{{ g.destination_label }}</p>
+                                                    <p class="text-[11px] text-slate-400">{{ g.destination_label }}</p>
                                                 </td>
-                                                <!-- Origen -->
-                                                <td class="hidden px-3 py-2.5 text-slate-600 sm:table-cell">{{ g.origin_name }}</td>
+
                                                 <!-- Fecha -->
                                                 <td class="px-3 py-2.5 whitespace-nowrap text-slate-600">{{ g.dispatched_at }}</td>
                                                 <!-- Estado -->
@@ -929,12 +945,15 @@ function pctCls(v: number | null): string {
                                 <div class="grid grid-cols-2 gap-3 text-xs">
                                     <div>
                                         <p class="text-slate-400">Destino / Cliente</p>
+                                        <p v-if="selectedDispatch.destination_business" class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{{ selectedDispatch.destination_business }}</p>
                                         <p class="font-medium text-slate-800">{{ selectedDispatch.destination_name }}</p>
+                                        <p class="text-[10px] text-slate-400">{{ selectedDispatch.destination_label }}</p>
                                     </div>
                                     <div class="flex items-start gap-1.5">
                                         <MapPin class="mt-0.5 h-3 w-3 shrink-0 text-red-500" />
                                         <div>
                                             <p class="text-slate-400">Origen</p>
+                                            <p v-if="selectedDispatch.origin_business" class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{{ selectedDispatch.origin_business }}</p>
                                             <p class="font-medium text-slate-800">{{ selectedDispatch.origin_name }}</p>
                                         </div>
                                     </div>

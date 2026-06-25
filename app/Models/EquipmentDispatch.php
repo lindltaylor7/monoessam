@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+// Cafe used for originCafe relationship
 
 class EquipmentDispatch extends Model
 {
@@ -15,7 +16,8 @@ class EquipmentDispatch extends Model
         'staff_id', 'description',
         'dispatch_number', 'guide_number', 'status',
         'dispatched_at', 'returned_at',
-        'dispatched_by', 'received_at', 'received_by',
+        'dispatched_by', 'received_at', 'received_by', 'reception_notes',
+        'origin_cafe_id',
     ];
 
     protected $casts = [
@@ -32,6 +34,11 @@ class EquipmentDispatch extends Model
     public function origin(): BelongsTo
     {
         return $this->belongsTo(Headquarter::class, 'origin_headquarter_id');
+    }
+
+    public function originCafe(): BelongsTo
+    {
+        return $this->belongsTo(Cafe::class, 'origin_cafe_id');
     }
 
     public function staff(): BelongsTo
