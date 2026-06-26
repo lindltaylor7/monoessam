@@ -200,6 +200,53 @@ class ClothController extends Controller
         return back();
     }
 
+    /** Store a new profile item (sin cloth_id / epp_id). */
+    public function storeProfileItem(Request $request)
+    {
+        $validated = $request->validate([
+            'staff_id'     => 'required|exists:staff,id',
+            'clothe_name'  => 'required|string|max:100',
+            'clothing_size'=> 'nullable|string|max:50',
+        ]);
+
+        Staff_clothes::create([
+            'staff_id'      => $validated['staff_id'],
+            'clothe_name'   => $validated['clothe_name'],
+            'clothing_size' => $validated['clothing_size'] ?? '',
+            'cloth_id'      => null,
+            'epp_id'        => null,
+            'quantity'      => 1,
+        ]);
+
+        return back()->with('success', 'Prenda de referencia agregada.');
+    }
+
+    /** Update clothe_name / clothing_size of a profile item. */
+    public function updateProfileItem(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'clothe_name'   => 'nullable|string|max:100',
+            'clothing_size' => 'nullable|string|max:50',
+        ]);
+
+        $entry = Staff_clothes::findOrFail($id);
+        abort_if($entry->cloth_id || $entry->epp_id, 403, 'No es un ítem de perfil.');
+
+        $entry->update(array_filter($validated, fn($v) => $v !== null));
+
+        return back()->with('success', 'Actualizado correctamente.');
+    }
+
+    /** Delete a profile item. */
+    public function destroyProfileItem($id)
+    {
+        $entry = Staff_clothes::findOrFail($id);
+        abort_if($entry->cloth_id || $entry->epp_id, 403, 'No es un ítem de perfil.');
+        $entry->delete();
+
+        return back()->with('success', 'Prenda de referencia eliminada.');
+    }
+
     /**
      * Update Staff Cloth Status.
      */

@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { router, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
-import { Camera, Check, FileText, Loader2, Package, Plus, Search, Trash2 } from 'lucide-vue-next';
+import { Camera, Check, FileText, Loader2, Package, Pencil, Plus, Search, Trash2, X } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
 import { computed, ref, watch } from 'vue';
 
@@ -637,6 +637,77 @@ const confirmAssignment = (draft: any, headquarterId: string | null = null) => {
     );
 };
 
+// ── Perfil de Referencia (profile items: !cloth_id && !epp_id) ────────────
+const isAddingProfile = ref(false);
+const newProfileItem = ref({ clothe_name: '', clothing_size: '' });
+const profileEdits = ref<Record<number, { clothe_name: string; clothing_size: string }>>({});
+
+const profileItems = computed(() =>
+    props.staff?.staff_clothes.filter((c: StaffCloth) => !c.cloth_id && !c.epp_id) ?? [],
+);
+
+function startEditProfile(item: StaffCloth) {
+    profileEdits.value[item.id] = {
+        clothe_name: item.clothe_name ?? '',
+        clothing_size: item.clothing_size ?? '',
+    };
+}
+
+function cancelEditProfile(id: number) {
+    delete profileEdits.value[id];
+}
+
+function saveProfileItem(item: StaffCloth) {
+    const draft = profileEdits.value[item.id];
+    if (!draft) return;
+    router.put(
+        route('clothes.profile.update', item.id),
+        { clothe_name: draft.clothe_name, clothing_size: draft.clothing_size },
+        {
+            preserveScroll: true,
+            preserveState: true,
+            only: ['staff', 'flash'],
+            onSuccess: () => delete profileEdits.value[item.id],
+        },
+    );
+}
+
+function addProfileItem() {
+    if (!props.staff || !newProfileItem.value.clothe_name.trim()) return;
+    router.post(
+        route('clothes.profile.store'),
+        { staff_id: props.staff.id, ...newProfileItem.value },
+        {
+            preserveScroll: true,
+            preserveState: true,
+            only: ['staff', 'flash'],
+            onSuccess: () => {
+                newProfileItem.value = { clothe_name: '', clothing_size: '' };
+                isAddingProfile.value = false;
+            },
+        },
+    );
+}
+
+function deleteProfileItem(id: number) {
+    Swal.fire({
+        icon: 'warning',
+        title: '¿Eliminar prenda?',
+        text: 'Esta acción no se puede deshacer.',
+        showCancelButton: true,
+        confirmButtonColor: '#e11d48',
+        cancelButtonText: 'Cancelar',
+        confirmButtonText: 'Eliminar',
+    }).then((result) => {
+        if (!result.isConfirmed) return;
+        router.delete(route('clothes.profile.destroy', id), {
+            preserveScroll: true,
+            preserveState: true,
+            only: ['staff', 'flash'],
+        });
+    });
+}
+
 const evidenceFile = ref<File | null>(null);
 const handleFileChange = (e: Event) => {
     const target = e.target as HTMLInputElement;
@@ -878,24 +949,114 @@ watch(
                             </TabsList>
 
                             <TabsContent value="assignments" class="animate-in fade-in zoom-in-95 space-y-6 duration-200">
-                                <!-- Perfil de Tallas (Reference) -->
-                                <div
-                                    v-if="staff.staff_clothes && staff.staff_clothes.filter((c: StaffCloth) => !c.cloth_id && !c.epp_id).length > 0"
-                                    class="space-y-3"
-                                >
-                                    <h3 class="border-l-2 border-slate-200 px-1 pl-3 text-xs font-black tracking-widest text-slate-400 uppercase">
-                                        Perfil de Referencia
-                                    </h3>
-                                    <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                                        <div
-                                            v-for="item in staff.staff_clothes.filter((c: StaffCloth) => !c.cloth_id && !c.epp_id)"
-                                            :key="item.id"
-                                            class="flex flex-col rounded-2xl border border-slate-100 bg-slate-50 p-3 shadow-sm"
+                                <!-- Perfil de Referencia (editable) -->
+                                <div class="space-y-3">
+                                    <div class="flex items-center justify-between">
+                                        <h3 class="border-l-2 border-slate-200 pl-3 text-xs font-black tracking-widest text-slate-400 uppercase">
+                                            Perfil de Referencia
+                                        </h3>
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            class="h-7 gap-1.5 rounded-lg px-2 text-[10px] font-black text-indigo-600 uppercase hover:bg-indigo-50"
+                                            @click="isAddingProfile = !isAddingProfile"
                                         >
-                                            <span class="truncate text-[10px] font-bold text-slate-500 uppercase">{{ item.clothe_name }}</span>
-                                            <span class="mt-1 text-sm font-black text-slate-900 uppercase">{{ item.clothing_size || '-' }}</span>
+                                            <component :is="isAddingProfile ? X : Plus" class="h-3.5 w-3.5" />
+                                            {{ isAddingProfile ? 'Cancelar' : 'Agregar prenda' }}
+                                        </Button>
+                                    </div>
+
+                                    <!-- Formulario para agregar nueva prenda -->
+                                    <div
+                                        v-if="isAddingProfile"
+                                        class="flex flex-col gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3 sm:flex-row sm:items-end"
+                                    >
+                                        <div class="flex-1 space-y-1">
+                                            <Label class="text-[10px] font-bold text-slate-500 uppercase">Nombre</Label>
+                                            <Input
+                                                v-model="newProfileItem.clothe_name"
+                                                placeholder="Talla Camisa, Talla Pantalón..."
+                                                class="h-9 border-none bg-white text-xs shadow-sm"
+                                            />
+                                        </div>
+                                        <div class="w-32 space-y-1">
+                                            <Label class="text-[10px] font-bold text-slate-500 uppercase">Talla</Label>
+                                            <Input
+                                                v-model="newProfileItem.clothing_size"
+                                                placeholder="M, L, 32..."
+                                                class="h-9 border-none bg-white text-xs shadow-sm uppercase"
+                                            />
+                                        </div>
+                                        <Button
+                                            :disabled="!newProfileItem.clothe_name.trim()"
+                                            class="h-9 shrink-0 bg-indigo-600 px-4 text-[10px] font-black text-white uppercase hover:bg-indigo-700 disabled:opacity-50"
+                                            @click="addProfileItem"
+                                        >
+                                            <Plus class="mr-1 h-3.5 w-3.5" /> Guardar
+                                        </Button>
+                                    </div>
+
+                                    <!-- Lista de prendas de perfil -->
+                                    <div v-if="profileItems.length > 0" class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                        <div
+                                            v-for="item in profileItems"
+                                            :key="item.id"
+                                            class="group relative flex flex-col rounded-2xl border border-slate-100 bg-slate-50 p-3 shadow-sm transition-all hover:border-indigo-200 hover:bg-indigo-50/30"
+                                        >
+                                            <!-- Vista normal -->
+                                            <template v-if="!profileEdits[item.id]">
+                                                <span class="truncate text-[10px] font-bold text-slate-500 uppercase">{{ item.clothe_name }}</span>
+                                                <span class="mt-1 text-sm font-black text-slate-900 uppercase">{{ item.clothing_size || '-' }}</span>
+                                                <!-- Botones de acción -->
+                                                <div class="absolute top-1.5 right-1.5 hidden gap-1 group-hover:flex">
+                                                    <button
+                                                        class="flex h-6 w-6 items-center justify-center rounded-lg bg-white text-slate-400 shadow-sm hover:text-indigo-600"
+                                                        @click.stop="startEditProfile(item)"
+                                                    >
+                                                        <Pencil class="h-3 w-3" />
+                                                    </button>
+                                                    <button
+                                                        class="flex h-6 w-6 items-center justify-center rounded-lg bg-white text-slate-400 shadow-sm hover:text-rose-500"
+                                                        @click.stop="deleteProfileItem(item.id)"
+                                                    >
+                                                        <Trash2 class="h-3 w-3" />
+                                                    </button>
+                                                </div>
+                                            </template>
+
+                                            <!-- Vista edición inline -->
+                                            <template v-else>
+                                                <Input
+                                                    v-model="profileEdits[item.id].clothe_name"
+                                                    class="mb-1 h-7 border-indigo-200 bg-white p-1 text-[10px] font-bold uppercase"
+                                                    placeholder="Nombre"
+                                                />
+                                                <Input
+                                                    v-model="profileEdits[item.id].clothing_size"
+                                                    class="h-8 border-indigo-200 bg-white p-1 text-sm font-black uppercase"
+                                                    placeholder="Talla"
+                                                />
+                                                <div class="mt-2 flex gap-1">
+                                                    <button
+                                                        class="flex flex-1 items-center justify-center gap-1 rounded-lg bg-indigo-600 py-1 text-[9px] font-black text-white uppercase hover:bg-indigo-700"
+                                                        @click="saveProfileItem(item)"
+                                                    >
+                                                        <Check class="h-3 w-3" /> Guardar
+                                                    </button>
+                                                    <button
+                                                        class="flex items-center justify-center rounded-lg bg-slate-100 px-2 py-1 text-slate-500 hover:bg-slate-200"
+                                                        @click="cancelEditProfile(item.id)"
+                                                    >
+                                                        <X class="h-3 w-3" />
+                                                    </button>
+                                                </div>
+                                            </template>
                                         </div>
                                     </div>
+
+                                    <p v-else-if="!isAddingProfile" class="text-[11px] text-slate-400 italic">
+                                        Sin prendas de referencia. Usa "Agregar prenda" para añadir.
+                                    </p>
                                 </div>
 
                                 <!-- EPP Asignaciones (Actual tracking) -->

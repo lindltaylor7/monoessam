@@ -326,6 +326,11 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         // EPP Manage Routes
         Route::post('/assign-epp-role', [ClothController::class, 'assignEppRole'])->name('assign-epp-role');
         Route::delete('/epps/{id}', [ClothController::class, 'destroyEpp'])->name('epps.destroy');
+
+        // Profile items (tallas de referencia sin cloth_id / epp_id)
+        Route::post('/profile', [ClothController::class, 'storeProfileItem'])->name('profile.store');
+        Route::put('/profile/{id}', [ClothController::class, 'updateProfileItem'])->name('profile.update');
+        Route::delete('/profile/{id}', [ClothController::class, 'destroyProfileItem'])->name('profile.destroy');
     });
 
     Route::prefix('inventory')->name('inventory.')->group(function () {
