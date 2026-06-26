@@ -101,7 +101,7 @@ function cancel() {
         </div>
 
         <!-- Inline editor -->
-        <div v-else class="mt-1.5 space-y-1.5 rounded-lg border border-blue-200 bg-blue-50 p-2">
+        <div v-else class="mt-1.5 space-y-1.5 rounded-lg border border-blue-200 bg-blue-50 p-2 text-slate-800">
             <!-- Dirección -->
             <input
                 v-model="addr"
