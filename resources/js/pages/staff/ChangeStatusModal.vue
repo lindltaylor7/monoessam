@@ -122,14 +122,24 @@ const getStatusColor = (status: number) => {
                 </div>
 
                 <div class="space-y-2">
-                    <label for="observation" class="text-sm font-medium">Observación</label>
+                    <label for="observation" class="text-sm font-medium">
+                        Observación <span class="text-red-500">*</span>
+                    </label>
                     <textarea
                         id="observation"
                         v-model="form.observation"
                         rows="3"
                         placeholder="Ingrese una observación sobre el cambio de estado..."
-                        class="w-full rounded-md border border-gray-300 px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 focus:outline-none"
+                        :class="[
+                            'w-full rounded-md border px-3 py-2 focus:ring-1 focus:outline-none',
+                            !form.observation.trim()
+                                ? 'border-red-300 focus:border-red-500 focus:ring-red-500'
+                                : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500',
+                        ]"
                     ></textarea>
+                    <p v-if="!form.observation.trim()" class="text-xs text-red-500">
+                        La observación es requerida para guardar el cambio.
+                    </p>
                     <p v-if="form.errors.observation" class="text-sm text-red-600">
                         {{ form.errors.observation }}
                     </p>
@@ -179,7 +189,7 @@ const getStatusColor = (status: number) => {
 
             <DialogFooter>
                 <Button variant="outline" @click="open = false">Cancelar</Button>
-                <Button type="submit" @click="saveStatusChange" :disabled="form.processing">
+                <Button type="submit" @click="saveStatusChange" :disabled="form.processing || !form.observation.trim()">
                     {{ form.processing ? 'Guardando...' : 'Guardar' }}
                 </Button>
             </DialogFooter>

@@ -24,8 +24,8 @@ import {
     Truck,
     UtensilsCrossed,
 } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
-import { AdvancedMarker, GoogleMap, Polyline } from 'vue3-google-map';
+import { computed, onUnmounted, ref, watch } from 'vue';
+import { AdvancedMarker, GoogleMap } from 'vue3-google-map';
 
 // ── Map ───────────────────────────────────────────────────────────────────
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
@@ -54,19 +54,6 @@ const mapRouteData = computed(() => {
 });
 
 const mapCenter = computed(() => mapRouteData.value?.center ?? DEFAULT_CENTER);
-
-const routePath = computed(() => {
-    const r = mapRouteData.value;
-    if (!r?.dest) return [];
-    return [r.origin, r.dest];
-});
-
-const polylineOptions = {
-    strokeColor: '#2563EB',
-    strokeOpacity: 0.85,
-    strokeWeight: 3,
-    geodesic: true,
-};
 
 // ── Types ─────────────────────────────────────────────────────────────────
 interface StaffRef {
@@ -107,9 +94,12 @@ interface Dispatch {
     equipment_status: number;
     origin_id: number | null;
     origin_name: string;
+    origin_label?: string;
+    origin_business?: string | null;
     destination_type: string;
     destination_label: string;
     destination_name: string;
+    destination_business?: string | null;
     destination_id: number;
     staff_id: number | null;
     staff_name: string | null;
@@ -215,6 +205,74 @@ function getStatus(d: Dispatch) {
     return { label: 'En Tránsito', cls: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500' };
 }
 
+// ── Directions (Routes API v2 — reemplaza el deprecado DirectionsService) ──
+function decodePolyline(encoded: string): { lat: number; lng: number }[] {
+    const path: { lat: number; lng: number }[] = [];
+    let idx = 0, lat = 0, lng = 0;
+    while (idx < encoded.length) {
+        let b, shift = 0, result = 0;
+        do { b = encoded.charCodeAt(idx++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 32);
+        lat += result & 1 ? ~(result >> 1) : result >> 1;
+        shift = 0; result = 0;
+        do { b = encoded.charCodeAt(idx++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 32);
+        lng += result & 1 ? ~(result >> 1) : result >> 1;
+        path.push({ lat: lat * 1e-5, lng: lng * 1e-5 });
+    }
+    return path;
+}
+
+const googleMapRef = ref<InstanceType<typeof GoogleMap> | null>(null);
+let routePolyline: any = null;
+let reqId = 0;
+
+watch(
+    [() => googleMapRef.value?.ready, mapRouteData] as const,
+    async ([isReady, data]) => {
+        const id = ++reqId;
+        routePolyline?.setMap(null);
+        routePolyline = null;
+
+        if (!isReady || !data?.dest) return;
+
+        const mapInstance = googleMapRef.value?.map;
+        const gmaps = (window as any).google?.maps;
+        if (!mapInstance || !gmaps) return;
+
+        try {
+            const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY!,
+                    'X-Goog-FieldMask': 'routes.polyline.encodedPolyline',
+                },
+                body: JSON.stringify({
+                    origin: { location: { latLng: { latitude: data.origin.lat, longitude: data.origin.lng } } },
+                    destination: { location: { latLng: { latitude: data.dest.lat, longitude: data.dest.lng } } },
+                    travelMode: 'DRIVE',
+                }),
+            });
+
+            const json = await res.json();
+            const encoded = json.routes?.[0]?.polyline?.encodedPolyline;
+            if (!encoded) { console.warn('[Routes API]', json); return; }
+            if (id !== reqId) return;
+
+            routePolyline = new gmaps.Polyline({
+                path: decodePolyline(encoded),
+                strokeColor: '#2563EB',
+                strokeOpacity: 0.9,
+                strokeWeight: 4,
+                map: mapInstance,
+            });
+        } catch (err) {
+            console.warn('[Routes API]', err);
+        }
+    },
+);
+
+onUnmounted(() => routePolyline?.setMap(null));
+
 const selectedTimeline = computed(() => {
     const d = selectedDispatch.value;
     if (!d) return [];
@@ -250,14 +308,20 @@ interface DispatchGroup {
     items: Dispatch[];
     destination_name: string;
     destination_label: string;
+    destination_business?: string | null;
     origin_name: string;
+    origin_label?: string;
+    origin_business?: string | null;
     dispatched_at: string;
     dispatched_at_raw: string;
     staff_name: string | null;
     dispatched_by: string;
 }
 
-const groupedDispatches = computed((): DispatchGroup[] => {
+const PAGE_SIZE = 10;
+const tablePage = ref(1);
+
+const allGroupedDispatches = computed((): DispatchGroup[] => {
     const q = tableSearch.value.toLowerCase();
     const sorted = [...props.dispatches]
         .sort((a, b) => new Date(b.dispatched_at_raw ?? 0).getTime() - new Date(a.dispatched_at_raw ?? 0).getTime())
@@ -281,7 +345,10 @@ const groupedDispatches = computed((): DispatchGroup[] => {
                 items: [d],
                 destination_name: d.destination_name,
                 destination_label: d.destination_label,
+                destination_business: d.destination_business,
                 origin_name: d.origin_name,
+                origin_label: d.origin_label,
+                origin_business: d.origin_business,
                 dispatched_at: d.dispatched_at,
                 dispatched_at_raw: d.dispatched_at_raw,
                 staff_name: d.staff_name,
@@ -289,7 +356,29 @@ const groupedDispatches = computed((): DispatchGroup[] => {
             });
         }
     }
-    return [...map.values()].slice(0, 15);
+    return [...map.values()];
+});
+
+// Reset page when search changes
+watch(tableSearch, () => { tablePage.value = 1; });
+
+const totalTablePages = computed(() => Math.max(1, Math.ceil(allGroupedDispatches.value.length / PAGE_SIZE)));
+
+const groupedDispatches = computed(() => {
+    const start = (tablePage.value - 1) * PAGE_SIZE;
+    return allGroupedDispatches.value.slice(start, start + PAGE_SIZE);
+});
+
+const tablePageNumbers = computed(() => {
+    const total = totalTablePages.value;
+    const cur = tablePage.value;
+    if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+    const pages: (number | '…')[] = [1];
+    if (cur > 3) pages.push('…');
+    for (let p = Math.max(2, cur - 1); p <= Math.min(total - 1, cur + 1); p++) pages.push(p);
+    if (cur < total - 2) pages.push('…');
+    pages.push(total);
+    return pages;
 });
 
 function groupStatus(g: DispatchGroup) {
@@ -611,8 +700,10 @@ function pctCls(v: number | null): string {
                             <div class="relative h-52">
                                 <GoogleMap
                                     v-if="GOOGLE_MAPS_API_KEY"
+                                    ref="googleMapRef"
                                     :api-key="GOOGLE_MAPS_API_KEY"
                                     :map-id="mapOptions.mapId"
+                                    :libraries="['maps', 'marker']"
                                     :center="mapCenter"
                                     :zoom="mapRouteData?.dest ? 6 : mapRouteData ? 10 : 9"
                                     :options="mapOptions"
@@ -627,7 +718,7 @@ function pctCls(v: number | null): string {
                                             v-if="mapRouteData.dest"
                                             :options="{ position: mapRouteData.dest, title: selectedDispatch?.destination_name ?? 'Destino' }"
                                         />
-                                        <Polyline v-if="routePath.length === 2" :options="{ ...polylineOptions, path: routePath }" />
+
                                     </template>
                                     <!-- Sin selección: marcadores de todos los orígenes con coords -->
                                     <template v-else>
@@ -670,7 +761,7 @@ function pctCls(v: number | null): string {
                         <!-- Bottom: Resumen + Últimos Despachos side by side on wide screens -->
                         <div class="grid grid-cols-1 gap-5 lg:grid-cols-5">
                             <!-- Resumen de Operaciones -->
-                            <div class="rounded-xl border bg-white p-4 shadow-sm lg:col-span-2">
+                            <div class="self-start rounded-xl border bg-white p-4 shadow-sm lg:col-span-2">
                                 <div class="mb-3 flex items-center justify-between">
                                     <h2 class="text-sm font-semibold text-slate-900">Resumen de Operaciones</h2>
                                     <button class="text-xs font-medium text-blue-600 hover:underline">Ver reporte</button>
@@ -792,85 +883,102 @@ function pctCls(v: number | null): string {
                                 </div>
                             </div>
 
-                            <!-- Últimos Despachos -->
-                            <div class="overflow-hidden rounded-xl border bg-white shadow-sm lg:col-span-3">
-                                <div class="flex items-center justify-between border-b px-4 py-3">
-                                    <h2 class="text-sm font-semibold text-slate-900">Últimos Despachos</h2>
-                                    <div class="flex items-center gap-2">
-                                        <div class="relative">
-                                            <Search class="absolute top-1/2 left-2 h-3 w-3 -translate-y-1/2 text-slate-400" />
-                                            <input
-                                                v-model="tableSearch"
-                                                placeholder="Buscar…"
-                                                class="h-7 rounded-lg border border-slate-200 pr-3 pl-6 text-[11px] outline-none focus:ring-1 focus:ring-slate-300"
-                                            />
-                                        </div>
-                                        <button class="text-xs font-medium whitespace-nowrap text-blue-600 hover:underline">Ver todos</button>
+                            <!-- Despachos -->
+                            <div class="flex flex-col overflow-hidden rounded-xl border bg-white shadow-sm lg:col-span-3">
+                                <!-- Header -->
+                                <div class="flex items-center justify-between border-b px-5 py-4">
+                                    <div>
+                                        <h2 class="text-sm font-bold text-slate-900">Despachos</h2>
+                                        <p class="mt-0.5 text-[11px] text-slate-400">
+                                            {{ allGroupedDispatches.length }} guía(s) en total
+                                        </p>
+                                    </div>
+                                    <div class="relative">
+                                        <Search class="absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                                        <input
+                                            v-model="tableSearch"
+                                            placeholder="Buscar guía, equipo, destino…"
+                                            class="h-8 w-56 rounded-lg border border-slate-200 pr-3 pl-8 text-xs outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                                        />
                                     </div>
                                 </div>
 
-                                <div class="overflow-x-auto">
-                                    <table class="w-full text-[11px]">
+                                <!-- Table -->
+                                <div class="flex-1 overflow-x-auto">
+                                    <table class="w-full text-xs">
                                         <thead>
-                                            <tr class="border-b bg-slate-50">
-                                                <th class="px-3 py-2 text-left font-semibold text-slate-500">Guía</th>
-                                                <th class="px-3 py-2 text-left font-semibold text-slate-500">Destino</th>
-                                                <th class="hidden px-3 py-2 text-left font-semibold text-slate-500 sm:table-cell">Origen</th>
-                                                <th class="px-3 py-2 text-left font-semibold text-slate-500">Fecha</th>
-                                                <th class="px-3 py-2 text-left font-semibold text-slate-500">Estado</th>
-                                                <th class="hidden px-3 py-2 text-left font-semibold text-slate-500 lg:table-cell">Encargado</th>
-                                                <th class="px-3 py-2 text-center font-semibold text-slate-500">Acciones</th>
+                                            <tr class="border-b bg-slate-50/80">
+                                                <th class="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">Guía</th>
+                                                <th class="hidden px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:table-cell">Origen</th>
+                                                <th class="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">Destino</th>
+                                                <th class="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">Fecha</th>
+                                                <th class="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">Estado</th>
+                                                <th class="hidden px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400 lg:table-cell">Encargado</th>
+                                                <th class="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-slate-400">Acciones</th>
                                             </tr>
                                         </thead>
-                                        <tbody>
+                                        <tbody class="divide-y divide-slate-100">
                                             <tr
                                                 v-for="g in groupedDispatches"
                                                 :key="g.key"
-                                                class="cursor-pointer border-b transition-colors last:border-0"
-                                                :class="g.items.some((i) => i.id === selectedDispatch?.id) ? 'bg-blue-50' : 'hover:bg-slate-50'"
+                                                class="cursor-pointer transition-colors"
+                                                :class="g.items.some((i) => i.id === selectedDispatch?.id)
+                                                    ? 'bg-blue-50'
+                                                    : 'hover:bg-slate-50/70'"
                                                 @click="selectDispatch(g.items[0])"
                                             >
-                                                <!-- Guía / N° despacho -->
-                                                <td class="px-3 py-2.5">
-                                                    <span class="font-mono font-semibold text-slate-900">
+                                                <!-- Guía -->
+                                                <td class="px-4 py-3.5">
+                                                    <p class="font-mono font-bold text-slate-800">
                                                         {{ g.guide_number ?? g.items[0].dispatch_number }}
-                                                    </span>
+                                                    </p>
                                                     <span
                                                         v-if="g.items.length > 1"
-                                                        class="ml-1.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"
+                                                        class="mt-0.5 inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"
                                                     >
                                                         {{ g.items.length }} ítems
                                                     </span>
                                                 </td>
-                                                <!-- Destino -->
-                                                <td class="max-w-[120px] px-3 py-2.5">
-                                                    <p class="truncate font-medium text-slate-800">{{ g.destination_name }}</p>
-                                                    <p class="text-slate-400">{{ g.destination_label }}</p>
-                                                </td>
+
                                                 <!-- Origen -->
-                                                <td class="hidden px-3 py-2.5 text-slate-600 sm:table-cell">{{ g.origin_name }}</td>
+                                                <td class="hidden px-4 py-3.5 sm:table-cell">
+                                                    <p v-if="g.origin_business" class="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">{{ g.origin_business }}</p>
+                                                    <p class="truncate font-semibold text-slate-800">{{ g.origin_name }}</p>
+                                                    <p class="text-[10px] text-slate-400">{{ g.origin_label ?? 'Sede / Almacén' }}</p>
+                                                </td>
+
+                                                <!-- Destino -->
+                                                <td class="max-w-[140px] px-4 py-3.5">
+                                                    <p v-if="g.destination_business" class="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">{{ g.destination_business }}</p>
+                                                    <p class="truncate font-semibold text-slate-800">{{ g.destination_name }}</p>
+                                                    <p class="text-[10px] text-slate-400">{{ g.destination_label }}</p>
+                                                </td>
+
                                                 <!-- Fecha -->
-                                                <td class="px-3 py-2.5 whitespace-nowrap text-slate-600">{{ g.dispatched_at }}</td>
+                                                <td class="whitespace-nowrap px-4 py-3.5 text-slate-600">{{ g.dispatched_at }}</td>
+
                                                 <!-- Estado -->
-                                                <td class="px-3 py-2.5">
+                                                <td class="px-4 py-3.5">
                                                     <span
-                                                        class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                                                        class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold"
                                                         :class="groupStatus(g).cls"
                                                     >
                                                         <span class="h-1.5 w-1.5 rounded-full" :class="groupStatus(g).dot"></span>
                                                         {{ groupStatus(g).label }}
                                                     </span>
                                                 </td>
+
                                                 <!-- Encargado -->
-                                                <td class="hidden truncate px-3 py-2.5 text-slate-600 lg:table-cell">
+                                                <td class="hidden max-w-[100px] truncate px-4 py-3.5 text-slate-600 lg:table-cell">
                                                     {{ g.staff_name || g.dispatched_by }}
                                                 </td>
+
                                                 <!-- Acciones -->
-                                                <td class="px-3 py-2.5">
-                                                    <div class="flex items-center justify-center gap-1">
+                                                <td class="px-4 py-3.5">
+                                                    <div class="flex items-center justify-center gap-1.5">
                                                         <button
                                                             title="Descargar guía PDF"
-                                                            class="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                                                            class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
                                                             @click.stop="downloadGroup(g)"
                                                         >
                                                             <FileDown class="h-3.5 w-3.5" />
@@ -878,21 +986,56 @@ function pctCls(v: number | null): string {
                                                         <button
                                                             v-if="g.items.some((i) => i.status === 'active' && !i.received_at)"
                                                             title="Registrar retorno"
-                                                            class="rounded p-1 text-slate-400 hover:bg-amber-50 hover:text-amber-600"
-                                                            @click.stop="
-                                                                confirmReturn = g.items.find((i) => i.status === 'active' && !i.received_at) ?? null
-                                                            "
+                                                            class="rounded-lg p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600"
+                                                            @click.stop="confirmReturn = g.items.find((i) => i.status === 'active' && !i.received_at) ?? null"
                                                         >
                                                             <RotateCcw class="h-3.5 w-3.5" />
                                                         </button>
                                                     </div>
                                                 </td>
                                             </tr>
+
                                             <tr v-if="groupedDispatches.length === 0">
-                                                <td colspan="7" class="px-4 py-8 text-center text-slate-400">No hay despachos registrados</td>
+                                                <td colspan="7" class="px-4 py-12 text-center text-slate-400">
+                                                    <Package class="mx-auto mb-2 h-8 w-8 text-slate-200" />
+                                                    <p class="text-sm font-medium">Sin resultados</p>
+                                                </td>
                                             </tr>
                                         </tbody>
                                     </table>
+                                </div>
+
+                                <!-- Pagination -->
+                                <div v-if="totalTablePages > 1" class="flex items-center justify-between border-t bg-slate-50/60 px-5 py-3">
+                                    <p class="text-[11px] text-slate-400">
+                                        {{ (tablePage - 1) * PAGE_SIZE + 1 }}–{{ Math.min(tablePage * PAGE_SIZE, allGroupedDispatches.length) }}
+                                        de {{ allGroupedDispatches.length }} guías
+                                    </p>
+                                    <div class="flex items-center gap-1">
+                                        <button
+                                            :disabled="tablePage === 1"
+                                            class="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                            @click="tablePage--"
+                                        >← Ant.</button>
+
+                                        <template v-for="p in tablePageNumbers" :key="String(p)">
+                                            <span v-if="p === '…'" class="px-1 text-[11px] text-slate-400">…</span>
+                                            <button
+                                                v-else
+                                                :class="['rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition',
+                                                    p === tablePage
+                                                        ? 'border-blue-400 bg-blue-50 text-blue-700'
+                                                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50']"
+                                                @click="tablePage = p as number"
+                                            >{{ p }}</button>
+                                        </template>
+
+                                        <button
+                                            :disabled="tablePage === totalTablePages"
+                                            class="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                            @click="tablePage++"
+                                        >Sig. →</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -929,12 +1072,15 @@ function pctCls(v: number | null): string {
                                 <div class="grid grid-cols-2 gap-3 text-xs">
                                     <div>
                                         <p class="text-slate-400">Destino / Cliente</p>
+                                        <p v-if="selectedDispatch.destination_business" class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{{ selectedDispatch.destination_business }}</p>
                                         <p class="font-medium text-slate-800">{{ selectedDispatch.destination_name }}</p>
+                                        <p class="text-[10px] text-slate-400">{{ selectedDispatch.destination_label }}</p>
                                     </div>
                                     <div class="flex items-start gap-1.5">
                                         <MapPin class="mt-0.5 h-3 w-3 shrink-0 text-red-500" />
                                         <div>
                                             <p class="text-slate-400">Origen</p>
+                                            <p v-if="selectedDispatch.origin_business" class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{{ selectedDispatch.origin_business }}</p>
                                             <p class="font-medium text-slate-800">{{ selectedDispatch.origin_name }}</p>
                                         </div>
                                     </div>

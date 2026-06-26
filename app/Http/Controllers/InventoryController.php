@@ -21,6 +21,7 @@ use App\Models\ClothInvoiceItem;
 use App\Models\ClothProvider;
 use App\Models\Epp;
 use App\Models\EppSize;
+use App\Models\EquipmentDispatch;
 use App\Models\EquipmentInvoice;
 use App\Models\Size;
 use App\Models\City;
@@ -54,20 +55,69 @@ class InventoryController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
+        // Map equipment → current cafe via active dispatch (2 extra queries, no N+1)
+        $activeDispatches = EquipmentDispatch::where('destination_type', 'cafe')
+            ->where('status', 'active')
+            ->orderByDesc('id')
+            ->get(['equipable_type', 'equipable_id', 'destination_id'])
+            ->unique(fn($d) => $d->equipable_type . '-' . $d->equipable_id)
+            ->keyBy(fn($d) => $d->equipable_type . '-' . $d->equipable_id);
+
+        $cafeMap = Cafe::whereIn('id', $activeDispatches->pluck('destination_id')->unique()->values())
+            ->select('id', 'name')
+            ->get()
+            ->keyBy('id');
+
+        $attachCafe = function ($equipment, string $morphClass) use ($activeDispatches, $cafeMap) {
+            $key  = $morphClass . '-' . $equipment->id;
+            $disp = $activeDispatches->get($key);
+            $equipment->current_cafe = $disp ? $cafeMap->get($disp->destination_id) : null;
+            return $equipment;
+        };
+
         $computerEquipments = ComputerEquipment::with(
                 'responsible:id,name',
                 'storageHeadquarter:id,name,business_id',
                 'storageHeadquarter.business:id,name'
             )
             ->select('id', 'name', 'brand', 'model', 'presentation', 'color', 'series', 'code', 'status', 'quantity', 'responsible_id', 'storage_headquarter_id')
-            ->get();
-        $kitchenEquipments  = KitchenEquipment::with(
+            ->get()
+            ->map(fn($e) => $attachCafe($e, 'App\\Models\\ComputerEquipment'));
+
+        $kitchenEquipments = KitchenEquipment::with(
                 'responsible:id,name',
                 'storageHeadquarter:id,name,business_id',
                 'storageHeadquarter.business:id,name'
             )
             ->select('id', 'name', 'brand', 'model', 'size', 'color', 'series', 'code', 'status', 'quantity', 'responsible_id', 'storage_headquarter_id')
-            ->get();
+            ->get()
+            ->map(fn($e) => $attachCafe($e, 'App\\Models\\KitchenEquipment'));
+
+        // Dispatches FROM a café (origin_cafe_id set) awaiting reception at HQ or another location
+        $cafeOutboundDispatches = EquipmentDispatch::with(['equipable', 'originCafe', 'dispatcher', 'receiver'])
+            ->whereNotNull('origin_cafe_id')
+            ->where('status', 'active')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn($d) => [
+                'id'              => $d->id,
+                'dispatch_number' => $d->dispatch_number,
+                'guide_number'    => $d->guide_number,
+                'equipable_type'  => str_contains($d->equipable_type, 'Computer') ? 'computer' : 'kitchen',
+                'quantity'        => $d->quantity,
+                'equipment_name'  => $d->equipable?->name ?? '—',
+                'equipment_brand' => $d->equipable?->brand,
+                'equipment_model' => $d->equipable?->model,
+                'equipment_code'  => $d->equipable?->code,
+                'origin_cafe'     => $d->originCafe?->name ?? '—',
+                'destination_type' => $d->destination_type,
+                'destination_id'   => $d->destination_id,
+                'dispatched_by'   => $d->dispatcher?->name ?? '—',
+                'dispatched_at'   => $d->dispatched_at?->format('d/m/Y H:i'),
+                'received_at'     => $d->received_at?->format('d/m/Y H:i'),
+                'received_by'     => $d->receiver?->name,
+                'reception_notes' => $d->reception_notes,
+            ]);
 
         return Inertia::render('inventory/Index', [
             'colors' => $colors,
@@ -80,8 +130,9 @@ class InventoryController extends Controller
             'epps' => $epps,
             'units' => $units,
             'transfers' => $transfers,
-            'computerEquipments' => $computerEquipments,
-            'kitchenEquipments'  => $kitchenEquipments,
+            'computerEquipments'      => $computerEquipments,
+            'kitchenEquipments'       => $kitchenEquipments,
+            'cafeOutboundDispatches'  => $cafeOutboundDispatches,
         ]);
     }
 

@@ -121,6 +121,7 @@ const toggleRole = (eppId: number, roleId: number, currentStatus: boolean, quant
         {
             preserveScroll: true,
             preserveState: true,
+            only: ['epps'],
             onFinish: () => Swal.close(),
         },
     );
@@ -158,6 +159,7 @@ const updatePivot = (eppId: number, roleId: number, field: string, value: any) =
         {
             preserveScroll: true,
             preserveState: true,
+            only: ['epps'],
             onFinish: () => Swal.close(),
         },
     );
@@ -207,9 +209,9 @@ const prevRoles = () => {
     }
 };
 
-// Resetear página al filtrar
+// Resetear página solo cuando el usuario cambia filtro/café
 import { watch } from 'vue';
-watch([filteredRoles, selectedCafeId], () => {
+watch([searchQuery, selectedCafeId], () => {
     roleStartIndex.value = 0;
 });
 

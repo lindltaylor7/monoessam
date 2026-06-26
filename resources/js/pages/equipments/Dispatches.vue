@@ -47,7 +47,7 @@ interface Dispatch {
     equipable_type: 'computer' | 'kitchen'; equipable_id: number; quantity: number;
     equipment_name: string; equipment_brand: string | null; equipment_model: string | null;
     equipment_code: string | null; equipment_series: string | null; equipment_status: number;
-    origin_id: number | null; origin_name: string;
+    origin_id: number | null; origin_name: string; origin_label?: string;
     destination_type: string; destination_label: string; destination_name: string; destination_id: number;
     staff_id: number | null; staff_name: string | null;
     description: string | null;
@@ -346,10 +346,15 @@ function downloadPdf(id: number) {
                                         </span>
                                     </td>
                                     <td class="px-4 py-3">
-                                        <span class="flex items-center gap-1 text-sm">
-                                            <Warehouse class="h-3.5 w-3.5 text-slate-400" />
-                                            {{ d.origin_name }}
-                                        </span>
+                                        <div>
+                                            <span class="text-muted-foreground mb-0.5 block text-[10px] font-bold uppercase">
+                                                {{ d.origin_label ?? 'Sede / Almacén' }}
+                                            </span>
+                                            <span class="flex items-center gap-1 text-sm font-medium">
+                                                <Warehouse class="h-3.5 w-3.5 text-slate-400" />
+                                                {{ d.origin_name }}
+                                            </span>
+                                        </div>
                                     </td>
                                     <td class="px-4 py-3">
                                         <div>

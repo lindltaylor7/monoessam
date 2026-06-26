@@ -19,7 +19,7 @@ class EquipmentDispatchController extends Controller
 {
     public function index()
     {
-        $dispatches = EquipmentDispatch::with(['equipable', 'origin', 'staff', 'dispatcher'])
+        $dispatches = EquipmentDispatch::with(['equipable', 'origin', 'originCafe', 'staff', 'dispatcher'])
             ->latest()
             ->get()
             ->map(fn ($d) => $this->transform($d));
@@ -111,7 +111,7 @@ class EquipmentDispatchController extends Controller
 
     public function receptions()
     {
-        $dispatches = EquipmentDispatch::with(['equipable', 'origin', 'staff', 'dispatcher', 'receiver'])
+        $dispatches = EquipmentDispatch::with(['equipable', 'origin', 'originCafe', 'staff', 'dispatcher', 'receiver'])
             ->where('status', 'active')
             ->latest()
             ->get()
@@ -124,7 +124,7 @@ class EquipmentDispatchController extends Controller
         ]);
     }
 
-    public function markReceived(int $id)
+    public function markReceived(int $id, Request $request)
     {
         $dispatch = EquipmentDispatch::findOrFail($id);
 
@@ -137,8 +137,9 @@ class EquipmentDispatchController extends Controller
         }
 
         $dispatch->update([
-            'received_at' => now(),
-            'received_by' => Auth::id(),
+            'received_at'     => now(),
+            'received_by'     => Auth::id(),
+            'reception_notes' => $request->input('reception_notes'),
         ]);
 
         return back()->with('success', "Despacho {$dispatch->dispatch_number} confirmado como recibido.");
@@ -160,7 +161,7 @@ class EquipmentDispatchController extends Controller
 
     public function pdf(int $id)
     {
-        $dispatch = EquipmentDispatch::with(['equipable', 'origin', 'staff', 'dispatcher'])
+        $dispatch = EquipmentDispatch::with(['equipable', 'origin', 'originCafe', 'staff', 'dispatcher'])
             ->findOrFail($id);
 
         $data = $this->transform($dispatch);
@@ -173,7 +174,7 @@ class EquipmentDispatchController extends Controller
 
     public function guidePdf(string $guideNumber)
     {
-        $dispatches = EquipmentDispatch::with(['equipable', 'origin', 'staff', 'dispatcher'])
+        $dispatches = EquipmentDispatch::with(['equipable', 'origin', 'originCafe', 'staff', 'dispatcher'])
             ->where('guide_number', $guideNumber)
             ->orderBy('id')
             ->get();
@@ -236,8 +237,9 @@ class EquipmentDispatchController extends Controller
             'equipment_code'   => $d->equipable?->code,
             'equipment_series' => $d->equipable?->series,
             'equipment_status' => $d->equipable?->status,
-            'origin_id'        => $d->origin_headquarter_id,
-            'origin_name'      => $d->origin?->name ?? '—',
+            'origin_id'        => $d->origin_headquarter_id ?? $d->origin_cafe_id,
+            'origin_label'     => $d->origin_cafe_id ? 'Café / Comedor' : 'Sede / Almacén',
+            'origin_name'      => $d->origin?->name ?? $d->originCafe?->name ?? '—',
             'destination_type' => $d->destination_type,
             'destination_label'=> $destinationLabel,
             'destination_name' => $destinationName ?? '—',

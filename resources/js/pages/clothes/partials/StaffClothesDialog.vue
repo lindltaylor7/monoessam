@@ -637,6 +637,123 @@ const confirmAssignment = (draft: any, headquarterId: string | null = null) => {
     );
 };
 
+// ── Tallas del Staff (13 ítems fijos, misma lógica que SizesTab) ─────────
+const PRENDA_LABELS = [
+    'Polo',
+    'Cafarena',
+    'Overall',
+    'Casaca',
+    'Chaleco',
+    'Chaqueta Blanca',
+    'Pantalón',
+    'Camisa/Blusa',
+    'Guardapolvo',
+    'Guantes',
+    'Botas Blancas',
+    'Zapatos',
+    'Lentes',
+] as const;
+
+const prendasFijas = computed(() =>
+    PRENDA_LABELS.map((label) => {
+        const existing = props.staff?.staff_clothes.find((sc) => !sc.cloth_id && !sc.epp_id && sc.clothe_name === label);
+        return { label, talla: existing?.clothing_size ?? '', id: existing?.id ?? null };
+    }),
+);
+
+function updatePrendaSize(label: string, existingId: number | null, size: string) {
+    if (!props.staff || !size) return;
+    if (existingId) {
+        router.put(
+            route('clothes.profile.update', existingId),
+            { clothe_name: label, clothing_size: size },
+            { preserveScroll: true, preserveState: true, only: ['staff', 'flash'] },
+        );
+    } else {
+        router.post(
+            route('clothes.profile.store'),
+            { staff_id: props.staff.id, clothe_name: label, clothing_size: size },
+            { preserveScroll: true, preserveState: true, only: ['staff', 'flash'] },
+        );
+    }
+}
+
+// ── Perfil de Referencia (profile items: !cloth_id && !epp_id) ────────────
+const isAddingProfile = ref(false);
+const newProfileItem = ref({ clothe_name: '', clothing_size: '' });
+const profileEdits = ref<Record<number, { clothe_name: string; clothing_size: string }>>({});
+
+const profileItems = computed(() => props.staff?.staff_clothes.filter((c: StaffCloth) => !c.cloth_id && !c.epp_id) ?? []);
+
+function startEditProfile(item: StaffCloth) {
+    profileEdits.value[item.id] = {
+        clothe_name: item.clothe_name ?? '',
+        clothing_size: item.clothing_size ?? '',
+    };
+}
+
+function cancelEditProfile(id: number) {
+    delete profileEdits.value[id];
+}
+
+function saveProfileItem(item: StaffCloth) {
+    const draft = profileEdits.value[item.id];
+    if (!draft) return;
+    router.put(
+        route('clothes.profile.update', item.id),
+        { clothe_name: draft.clothe_name, clothing_size: draft.clothing_size },
+        {
+            preserveScroll: true,
+            preserveState: true,
+            only: ['staff', 'flash'],
+            onSuccess: () => delete profileEdits.value[item.id],
+        },
+    );
+}
+
+function addProfileItem() {
+    if (!props.staff || !newProfileItem.value.clothe_name.trim()) return;
+    router.post(
+        route('clothes.profile.store'),
+        { staff_id: props.staff.id, ...newProfileItem.value },
+        {
+            preserveScroll: true,
+            preserveState: true,
+            only: ['staff', 'flash'],
+            onSuccess: () => {
+                newProfileItem.value = { clothe_name: '', clothing_size: '' };
+                isAddingProfile.value = false;
+            },
+        },
+    );
+}
+
+function deleteProfileItem(id: number) {
+    Swal.fire({
+        icon: 'warning',
+        title: '¿Eliminar prenda?',
+        text: 'Esta acción no se puede deshacer.',
+        showCancelButton: true,
+        confirmButtonColor: '#e11d48',
+        cancelButtonText: 'Cancelar',
+        confirmButtonText: 'Eliminar',
+    }).then((result) => {
+        if (!result.isConfirmed) return;
+        router.delete(route('clothes.profile.destroy', id), {
+            preserveScroll: true,
+            preserveState: true,
+            only: ['staff', 'flash'],
+        });
+    });
+}
+
+// Evita que el diálogo se cierre cuando el usuario interactúa con SweetAlert
+function preventCloseOnSwal(e: Event) {
+    if (document.querySelector('.swal2-container')) {
+        e.preventDefault();
+    }
+}
+
 const evidenceFile = ref<File | null>(null);
 const handleFileChange = (e: Event) => {
     const target = e.target as HTMLInputElement;
@@ -690,7 +807,7 @@ watch(
 <template>
     <div class="contents">
         <Dialog :open="open" @update:open="$emit('update:open', $event)">
-            <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-[850px]">
+            <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-[850px]" @interact-outside="preventCloseOnSwal">
                 <DialogHeader>
                     <div class="flex items-start justify-between">
                         <div>
@@ -878,22 +995,131 @@ watch(
                             </TabsList>
 
                             <TabsContent value="assignments" class="animate-in fade-in zoom-in-95 space-y-6 duration-200">
-                                <!-- Perfil de Tallas (Reference) -->
-                                <div
-                                    v-if="staff.staff_clothes && staff.staff_clothes.filter((c: StaffCloth) => !c.cloth_id && !c.epp_id).length > 0"
-                                    class="space-y-3"
-                                >
-                                    <h3 class="border-l-2 border-slate-200 px-1 pl-3 text-xs font-black tracking-widest text-slate-400 uppercase">
-                                        Perfil de Referencia
+                                <!-- Tallas del Staff (Implementos) -->
+                                <div class="space-y-3">
+                                    <h3 class="border-l-2 border-slate-200 pl-3 text-xs font-black tracking-widest text-slate-400 uppercase">
+                                        Implementos
                                     </h3>
                                     <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
                                         <div
-                                            v-for="item in staff.staff_clothes.filter((c: StaffCloth) => !c.cloth_id && !c.epp_id)"
-                                            :key="item.id"
-                                            class="flex flex-col rounded-2xl border border-slate-100 bg-slate-50 p-3 shadow-sm"
+                                            v-for="prenda in prendasFijas"
+                                            :key="prenda.label"
+                                            class="flex flex-col gap-1.5 rounded-2xl border bg-slate-50 p-3 shadow-sm transition-colors"
+                                            :class="prenda.talla ? 'border-indigo-100 bg-indigo-50/30' : 'border-slate-100'"
                                         >
-                                            <span class="truncate text-[10px] font-bold text-slate-500 uppercase">{{ item.clothe_name }}</span>
-                                            <span class="mt-1 text-sm font-black text-slate-900 uppercase">{{ item.clothing_size || '-' }}</span>
+                                            <span class="truncate text-[10px] font-bold text-slate-500 uppercase">{{ prenda.label }}</span>
+
+                                            <!-- Pantalón -->
+                                            <Select
+                                                v-if="prenda.label === 'Pantalón'"
+                                                :model-value="prenda.talla || undefined"
+                                                @update:model-value="
+                                                    (val) => {
+                                                        if (val) updatePrendaSize(prenda.label, prenda.id, String(val));
+                                                    }
+                                                "
+                                            >
+                                                <SelectTrigger class="h-8 border-none bg-white text-xs shadow-sm"
+                                                    ><SelectValue placeholder="Talla"
+                                                /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem
+                                                        v-for="s in ['S - 28', 'M - 30', 'L - 32', 'XL - 34', 'XXL - 36', 'XXXL - 38', 'XXXXL - 40']"
+                                                        :key="s"
+                                                        :value="s"
+                                                        >{{ s }}</SelectItem
+                                                    >
+                                                </SelectContent>
+                                            </Select>
+
+                                            <!-- Ropa estándar -->
+                                            <Select
+                                                v-else-if="
+                                                    [
+                                                        'Polo',
+                                                        'Cafarena',
+                                                        'Overall',
+                                                        'Casaca',
+                                                        'Chaleco',
+                                                        'Chaqueta Blanca',
+                                                        'Camisa/Blusa',
+                                                        'Guardapolvo',
+                                                    ].includes(prenda.label)
+                                                "
+                                                :model-value="prenda.talla || undefined"
+                                                @update:model-value="
+                                                    (val) => {
+                                                        if (val) updatePrendaSize(prenda.label, prenda.id, String(val));
+                                                    }
+                                                "
+                                            >
+                                                <SelectTrigger class="h-8 border-none bg-white text-xs shadow-sm"
+                                                    ><SelectValue placeholder="Talla"
+                                                /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem v-for="s in ['S', 'M', 'L', 'XL', 'XXL']" :key="s" :value="s">{{ s }}</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+
+                                            <!-- Guantes -->
+                                            <Select
+                                                v-else-if="prenda.label === 'Guantes'"
+                                                :model-value="prenda.talla || undefined"
+                                                @update:model-value="
+                                                    (val) => {
+                                                        if (val) updatePrendaSize(prenda.label, prenda.id, String(val));
+                                                    }
+                                                "
+                                            >
+                                                <SelectTrigger class="h-8 border-none bg-white text-xs shadow-sm"
+                                                    ><SelectValue placeholder="Talla"
+                                                /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem v-for="s in ['8', '9', '10']" :key="s" :value="s">{{ s }}</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+
+                                            <!-- Calzado -->
+                                            <Select
+                                                v-else-if="prenda.label === 'Zapatos' || prenda.label === 'Botas Blancas'"
+                                                :model-value="prenda.talla || undefined"
+                                                @update:model-value="
+                                                    (val) => {
+                                                        if (val) updatePrendaSize(prenda.label, prenda.id, String(val));
+                                                    }
+                                                "
+                                            >
+                                                <SelectTrigger class="h-8 border-none bg-white text-xs shadow-sm"
+                                                    ><SelectValue placeholder="Talla"
+                                                /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem
+                                                        v-for="s in [35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45]"
+                                                        :key="s"
+                                                        :value="String(s)"
+                                                        >{{ s }}</SelectItem
+                                                    >
+                                                </SelectContent>
+                                            </Select>
+
+                                            <!-- Lentes -->
+                                            <Select
+                                                v-else-if="prenda.label === 'Lentes'"
+                                                :model-value="prenda.talla || undefined"
+                                                @update:model-value="
+                                                    (val) => {
+                                                        if (val) updatePrendaSize(prenda.label, prenda.id, String(val));
+                                                    }
+                                                "
+                                            >
+                                                <SelectTrigger class="h-8 border-none bg-white text-xs shadow-sm"
+                                                    ><SelectValue placeholder="Tipo"
+                                                /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="Lentes">Lentes</SelectItem>
+                                                    <SelectItem value="Sobrelentes">Sobrelentes</SelectItem>
+                                                </SelectContent>
+                                            </Select>
                                         </div>
                                     </div>
                                 </div>

@@ -37,6 +37,7 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SaleController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\StaffController;
+use App\Http\Controllers\StoreController;
 use App\Http\Controllers\SubdealershipController;
 use App\Http\Controllers\UnitController;
 use App\Http\Controllers\UsersController;
@@ -325,6 +326,11 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         // EPP Manage Routes
         Route::post('/assign-epp-role', [ClothController::class, 'assignEppRole'])->name('assign-epp-role');
         Route::delete('/epps/{id}', [ClothController::class, 'destroyEpp'])->name('epps.destroy');
+
+        // Profile items (tallas de referencia sin cloth_id / epp_id)
+        Route::post('/profile', [ClothController::class, 'storeProfileItem'])->name('profile.store');
+        Route::put('/profile/{id}', [ClothController::class, 'updateProfileItem'])->name('profile.update');
+        Route::delete('/profile/{id}', [ClothController::class, 'destroyProfileItem'])->name('profile.destroy');
     });
 
     Route::prefix('inventory')->name('inventory.')->group(function () {
@@ -456,6 +462,8 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     // ========================================================================
     Route::get('management', [ManagementController::class, 'index'])->name('management');
     Route::get('logistics', [LogisticController::class, 'index'])->name('logistics');
+    Route::get('store', [StoreController::class, 'index'])->name('store');
+    Route::post('store/dispatch', [StoreController::class, 'sendDispatch'])->name('store.dispatch');
 
 });
 

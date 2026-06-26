@@ -22,6 +22,8 @@ import {
     CheckCircle2,
     ChevronDown,
     ChevronRight,
+    Clock,
+    Coffee,
     ExternalLink,
     FileText,
     History,
@@ -35,6 +37,7 @@ import {
     Palette,
     Plus,
     Search,
+    SendHorizonal,
     Settings2,
     Shirt,
     User,
@@ -43,8 +46,28 @@ import {
 import { computed, ref, watch } from 'vue';
 
 interface StaffRef { id: number; name: string }
+interface HQRef    { id: number; name: string; business: { id: number; name: string } | null }
+interface CafeRef  { id: number; name: string }
 
-interface HQRef { id: number; name: string; business: { id: number; name: string } | null }
+interface CafeOutboundDispatch {
+    id: number;
+    dispatch_number: string;
+    guide_number: string | null;
+    equipable_type: 'computer' | 'kitchen';
+    quantity: number;
+    equipment_name: string;
+    equipment_brand: string | null;
+    equipment_model: string | null;
+    equipment_code: string | null;
+    origin_cafe: string;
+    destination_type: string;
+    destination_id: number;
+    dispatched_by: string;
+    dispatched_at: string;
+    received_at: string | null;
+    received_by: string | null;
+    reception_notes: string | null;
+}
 
 interface ComputerEquipment {
     id: number; name: string; brand: string | null; model: string | null;
@@ -52,6 +75,7 @@ interface ComputerEquipment {
     code: string | null; status: number; quantity: number;
     responsible: StaffRef | null;
     storage_headquarter: HQRef | null;
+    current_cafe: CafeRef | null;
 }
 
 interface KitchenEquipment {
@@ -60,6 +84,7 @@ interface KitchenEquipment {
     code: string | null; status: number; quantity: number;
     responsible: StaffRef | null;
     storage_headquarter: HQRef | null;
+    current_cafe: CafeRef | null;
 }
 
 const props = defineProps<{
@@ -90,7 +115,30 @@ const props = defineProps<{
     transfers: Array<any>;
     computerEquipments: ComputerEquipment[];
     kitchenEquipments: KitchenEquipment[];
+    cafeOutboundDispatches: CafeOutboundDispatch[];
 }>();
+
+// ── Café inbound reception ─────────────────────────────────────────────────
+const cafeConfirmId   = ref<number | null>(null);
+const cafeNote        = ref('');
+const cafeProcessing  = ref(false);
+
+function startCafeReceive(id: number) {
+    cafeConfirmId.value = id;
+    cafeNote.value      = '';
+}
+
+function doCafeReceive(id: number) {
+    cafeProcessing.value = true;
+    router.put(route('equipment-dispatches.receive', id), { reception_notes: cafeNote.value || null }, {
+        preserveScroll: true,
+        onFinish: () => { cafeProcessing.value = false; cafeConfirmId.value = null; cafeNote.value = ''; },
+    });
+}
+
+const pendingCafeDispatches = computed(() =>
+    props.cafeOutboundDispatches.filter(d => !d.received_at).length
+);
 
 const activeTab = ref('clothes');
 const viewMode = ref<'cards' | 'table'>('cards');
@@ -486,20 +534,24 @@ function equipmentStatusInfo(val: number) {
 }
 
 const filteredComputerEquipments = computed(() => {
-    const q = searchQuery.value.toLowerCase();
-    const hq = selectedHeadquarterId.value;
+    const q    = searchQuery.value.toLowerCase();
+    const hq   = selectedHeadquarterId.value;
+    const cafe = selectedCafeId.value;
     return props.computerEquipments.filter(e => {
-        if (hq !== 'all' && String(e.storage_headquarter?.id ?? '') !== hq) return false;
+        if (hq   !== 'all' && String(e.storage_headquarter?.id ?? '') !== hq)   return false;
+        if (cafe !== 'all' && String(e.current_cafe?.id ?? '')          !== cafe) return false;
         if (!q) return true;
         return [e.name, e.brand, e.model, e.code, e.series].some(f => f?.toLowerCase().includes(q));
     });
 });
 
 const filteredKitchenEquipments = computed(() => {
-    const q = searchQuery.value.toLowerCase();
-    const hq = selectedHeadquarterId.value;
+    const q    = searchQuery.value.toLowerCase();
+    const hq   = selectedHeadquarterId.value;
+    const cafe = selectedCafeId.value;
     return props.kitchenEquipments.filter(e => {
-        if (hq !== 'all' && String(e.storage_headquarter?.id ?? '') !== hq) return false;
+        if (hq   !== 'all' && String(e.storage_headquarter?.id ?? '') !== hq)   return false;
+        if (cafe !== 'all' && String(e.current_cafe?.id ?? '')          !== cafe) return false;
         if (!q) return true;
         return [e.name, e.brand, e.model, e.code, e.series].some(f => f?.toLowerCase().includes(q));
     });
@@ -510,7 +562,7 @@ const EQUIP_PAGE_SIZE = 10;
 const computerPage = ref(1);
 const kitchenPage  = ref(1);
 
-watch([searchQuery, selectedHeadquarterId], () => {
+watch([searchQuery, selectedHeadquarterId, selectedCafeId], () => {
     computerPage.value = 1;
     kitchenPage.value  = 1;
 });
@@ -965,6 +1017,14 @@ const kitchenTotalPages = computed(() =>
                                 <Truck class="h-4 w-4 text-indigo-600" />
                                 <span class="hidden sm:inline text-indigo-700 font-bold">Envíos a Unidades</span>
                             </TabsTrigger> -->
+                            <TabsTrigger value="cafe_transfers" class="relative gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                                <SendHorizonal class="h-4 w-4 text-indigo-600" />
+                                <span class="hidden sm:inline font-bold text-indigo-700">Desde Café</span>
+                                <span
+                                    v-if="pendingCafeDispatches > 0"
+                                    class="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-[9px] font-black text-white"
+                                >{{ pendingCafeDispatches }}</span>
+                            </TabsTrigger>
                         </TabsList>
                     </Tabs>
 
@@ -1058,6 +1118,7 @@ const kitchenTotalPages = computed(() =>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">N° Serie</TableHead>
                                         <TableHead class="text-center text-muted-foreground text-[10px] font-bold uppercase">Cant.</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Sede</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Café / Comedor</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Estado</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Responsable</TableHead>
                                     </TableRow>
@@ -1090,6 +1151,14 @@ const kitchenTotalPages = computed(() =>
                                                 </div>
                                             </div>
                                             <span v-else class="text-xs text-slate-400">Sin sede</span>
+                                        </TableCell>
+                                        <TableCell>
+                                            <span v-if="eq.current_cafe"
+                                                class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                                                <Coffee class="h-3 w-3 shrink-0" />
+                                                {{ eq.current_cafe.name }}
+                                            </span>
+                                            <span v-else class="text-xs italic text-slate-300">En almacén</span>
                                         </TableCell>
                                         <TableCell>
                                             <span :class="['inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', equipmentStatusInfo(eq.status).cls]">
@@ -1169,6 +1238,7 @@ const kitchenTotalPages = computed(() =>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">N° Serie</TableHead>
                                         <TableHead class="text-center text-muted-foreground text-[10px] font-bold uppercase">Cant.</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Sede</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Café / Comedor</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Estado</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Responsable</TableHead>
                                     </TableRow>
@@ -1201,6 +1271,14 @@ const kitchenTotalPages = computed(() =>
                                                 </div>
                                             </div>
                                             <span v-else class="text-xs text-slate-400">Sin sede</span>
+                                        </TableCell>
+                                        <TableCell>
+                                            <span v-if="eq.current_cafe"
+                                                class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                                                <Coffee class="h-3 w-3 shrink-0" />
+                                                {{ eq.current_cafe.name }}
+                                            </span>
+                                            <span v-else class="text-xs italic text-slate-300">En almacén</span>
                                         </TableCell>
                                         <TableCell>
                                             <span :class="['inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', equipmentStatusInfo(eq.status).cls]">
@@ -1252,6 +1330,141 @@ const kitchenTotalPages = computed(() =>
                                     Sig. →
                                 </button>
                             </div>
+                        </div>
+                    </template>
+
+                    <!-- ── Transferencias desde Café ───────────────────── -->
+                    <template v-else-if="activeTab === 'cafe_transfers'">
+                        <div class="mb-3 flex items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-2.5">
+                            <div class="flex items-center gap-2 text-sm font-medium text-indigo-700">
+                                <SendHorizonal class="h-4 w-4" />
+                                {{ cafeOutboundDispatches.filter(d => !d.received_at).length }} en tránsito ·
+                                {{ cafeOutboundDispatches.filter(d => d.received_at).length }} recepcionados
+                            </div>
+                        </div>
+
+                        <div v-if="cafeOutboundDispatches.length === 0"
+                            class="bg-muted/20 flex h-48 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed">
+                            <Coffee class="h-8 w-8 text-slate-300" />
+                            <p class="text-sm font-semibold text-slate-400">Sin envíos desde cafés</p>
+                        </div>
+
+                        <div v-else class="bg-card mb-6 overflow-hidden rounded-2xl border shadow-sm">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow class="bg-muted/50 hover:bg-muted/50">
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">N° Despacho</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Equipo</TableHead>
+                                        <TableHead class="text-center text-muted-foreground text-[10px] font-bold uppercase">Cant.</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Origen (Café)</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Despachado</TableHead>
+                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Estado</TableHead>
+                                        <TableHead class="text-center text-muted-foreground text-[10px] font-bold uppercase">Acción</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    <TableRow
+                                        v-for="d in cafeOutboundDispatches"
+                                        :key="d.id"
+                                        class="hover:bg-muted/30 transition-colors"
+                                        :class="d.received_at ? 'bg-emerald-50/40' : ''"
+                                    >
+                                        <!-- N° Despacho -->
+                                        <TableCell>
+                                            <p class="font-mono text-xs font-semibold text-slate-700">{{ d.dispatch_number }}</p>
+                                            <p v-if="d.guide_number" class="font-mono text-[10px] text-slate-400">{{ d.guide_number }}</p>
+                                        </TableCell>
+
+                                        <!-- Equipo -->
+                                        <TableCell>
+                                            <div class="flex items-center gap-2">
+                                                <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+                                                    :class="d.equipable_type === 'computer' ? 'bg-blue-100' : 'bg-orange-100'">
+                                                    <Monitor v-if="d.equipable_type === 'computer'" class="h-3.5 w-3.5 text-blue-600" />
+                                                    <Utensils v-else class="h-3.5 w-3.5 text-orange-600" />
+                                                </div>
+                                                <div>
+                                                    <p class="font-semibold text-sm leading-tight">{{ d.equipment_name }}</p>
+                                                    <p class="text-[11px] text-slate-400">
+                                                        {{ [d.equipment_brand, d.equipment_model].filter(Boolean).join(' · ') || '—' }}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </TableCell>
+
+                                        <!-- Cantidad -->
+                                        <TableCell class="text-center">
+                                            <span class="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 font-mono text-xs font-bold text-indigo-700">
+                                                {{ d.quantity }}
+                                            </span>
+                                        </TableCell>
+
+                                        <!-- Origen café -->
+                                        <TableCell>
+                                            <span class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                                                <Coffee class="h-3 w-3 shrink-0" />
+                                                {{ d.origin_cafe }}
+                                            </span>
+                                        </TableCell>
+
+                                        <!-- Despachado -->
+                                        <TableCell>
+                                            <p class="text-xs text-slate-700">{{ d.dispatched_at }}</p>
+                                            <p class="text-[10px] text-slate-400">por {{ d.dispatched_by }}</p>
+                                        </TableCell>
+
+                                        <!-- Estado -->
+                                        <TableCell>
+                                            <span v-if="d.received_at"
+                                                class="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                                <CheckCircle2 class="h-3 w-3" /> Recepcionado
+                                            </span>
+                                            <span v-else
+                                                class="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-600">
+                                                <Clock class="h-3 w-3" /> En tránsito
+                                            </span>
+                                        </TableCell>
+
+                                        <!-- Acción -->
+                                        <TableCell class="text-center">
+                                            <template v-if="d.received_at">
+                                                <p class="text-[11px] text-slate-500">{{ d.received_by ?? '—' }}</p>
+                                                <p v-if="d.reception_notes" class="mt-1 max-w-[180px] rounded bg-slate-100 px-2 py-1 text-[10px] italic text-slate-500">
+                                                    {{ d.reception_notes }}
+                                                </p>
+                                            </template>
+
+                                            <template v-else-if="cafeConfirmId === d.id">
+                                                <div class="space-y-1.5 text-left">
+                                                    <textarea
+                                                        v-model="cafeNote"
+                                                        placeholder="Observación (opcional)…"
+                                                        rows="2"
+                                                        class="w-full min-w-[180px] rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200 resize-none"
+                                                    />
+                                                    <div class="flex gap-1">
+                                                        <button :disabled="cafeProcessing"
+                                                            class="flex-1 rounded-lg bg-emerald-600 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                                                            @click="doCafeReceive(d.id)">
+                                                            Confirmar
+                                                        </button>
+                                                        <button class="rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-50"
+                                                            @click="cafeConfirmId = null">
+                                                            Cancelar
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </template>
+
+                                            <button v-else
+                                                class="rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-[11px] font-bold text-emerald-700 shadow-sm hover:bg-emerald-50"
+                                                @click="startCafeReceive(d.id)">
+                                                Recepcionar
+                                            </button>
+                                        </TableCell>
+                                    </TableRow>
+                                </TableBody>
+                            </Table>
                         </div>
                     </template>
 
