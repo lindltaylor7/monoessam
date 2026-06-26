@@ -747,6 +747,13 @@ function deleteProfileItem(id: number) {
     });
 }
 
+// Evita que el diálogo se cierre cuando el usuario interactúa con SweetAlert
+function preventCloseOnSwal(e: Event) {
+    if (document.querySelector('.swal2-container')) {
+        e.preventDefault();
+    }
+}
+
 const evidenceFile = ref<File | null>(null);
 const handleFileChange = (e: Event) => {
     const target = e.target as HTMLInputElement;
@@ -800,7 +807,7 @@ watch(
 <template>
     <div class="contents">
         <Dialog :open="open" @update:open="$emit('update:open', $event)">
-            <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-[850px]">
+            <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-[850px]" @interact-outside="preventCloseOnSwal">
                 <DialogHeader>
                     <div class="flex items-start justify-between">
                         <div>
