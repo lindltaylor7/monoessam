@@ -102,10 +102,19 @@ const resetFilters = () => {
     applyFilters();
 };
 
-// Eliminar venta
+// Eliminar venta completa
 const deleteSale = (saleId: number) => {
     if (confirm('¿Estás seguro de que deseas eliminar esta venta? Esta acción no se puede deshacer.')) {
         router.delete(route('reportsales.destroy', saleId), {
+            preserveScroll: true,
+        });
+    }
+};
+
+// Eliminar un ítem individual de la venta
+const deleteDetail = (detailId: number) => {
+    if (confirm('¿Eliminar este ítem? El total de la venta se actualizará automáticamente.')) {
+        router.delete(route('reportsales.ticket-detail.destroy', detailId), {
             preserveScroll: true,
         });
     }
@@ -291,7 +300,7 @@ const exportDetail = () => {
                     </div>
                 </CardHeader>
                 <CardContent class="p-0">
-                    <SalesReportTable :sales="sales.data" :paginate-data="sales" @delete-sale="deleteSale" />
+                    <SalesReportTable :sales="sales.data" :paginate-data="sales" @delete-sale="deleteSale" @delete-detail="deleteDetail" />
                 </CardContent>
             </Card>
         </div>

@@ -7,6 +7,7 @@ use App\Exports\SalesReportExport;
 use App\Exports\ValorizacionExport;
 use App\Models\Sale;
 use App\Models\Subdealership;
+use App\Models\Ticket_detail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -204,6 +205,27 @@ class ReportSalesController extends Controller
             new SalesDetailExport($startDate, $endDate, $cafeId, $sdId, $cafeIds, $cafeName),
             $fileName,
         );
+    }
+
+    /**
+     * Remove a single ticket detail and recalculate the sale total.
+     */
+    public function destroyTicketDetail(string $id)
+    {
+        $detail = Ticket_detail::with('ticket.sale')->findOrFail($id);
+        $ticket = $detail->ticket;
+        $sale   = $ticket->sale;
+
+        if ($ticket->ticket_details()->count() <= 1) {
+            return redirect()->back()->with('error', 'No se puede eliminar el único ítem de la venta.');
+        }
+
+        $sale->total = max(0, $sale->total - $detail->unit_price);
+        $sale->save();
+
+        $detail->delete();
+
+        return redirect()->back()->with('success', 'Ítem eliminado. Total actualizado.');
     }
 
     /**
