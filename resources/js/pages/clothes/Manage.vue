@@ -423,7 +423,8 @@ const hasRoleInSelection = (roleId: number) => {
                                     >
                                         <div class="absolute inset-0 flex items-center justify-center p-2">
                                             <div
-                                                class="w-[180px] -rotate-90 transform truncate px-2 text-left text-[10px] font-black tracking-tight whitespace-nowrap text-slate-500 uppercase transition-all group-hover:scale-105 group-hover:text-indigo-600"
+                                                class="-rotate-90 transform px-2 text-center text-[10px] font-black tracking-tight whitespace-normal break-words text-slate-500 uppercase transition-all group-hover:scale-105 group-hover:text-indigo-600"
+                                            style="width: 11rem; word-break: break-word;"
                                             >
                                                 {{ role.name }}
                                             </div>

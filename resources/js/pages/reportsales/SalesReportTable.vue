@@ -57,7 +57,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-    deleteSale: [saleId: number];
+    deleteSale:   [saleId: number];
+    deleteDetail: [detailId: number];
 }>();
 
 const sendToPrint = (saleId: number) => {
@@ -192,43 +193,55 @@ const getInitials = (name: string) =>
                     <TableCell class="py-4 align-top">
                         <div class="space-y-1.5">
                             <template v-for="detail in sale?.tickets[0]?.ticket_details" :key="detail.id">
-                                <div
-                                    class="flex items-stretch overflow-hidden rounded-lg border"
-                                    :class="getServiceCfg(detail.service_type).borderClass"
-                                >
-                                    <!-- Hora -->
+                                <div class="group/detail flex items-stretch gap-1">
                                     <div
-                                        class="flex items-center gap-1 border-r px-2 py-1.5"
-                                        :class="[getServiceCfg(detail.service_type).borderClass, getServiceCfg(detail.service_type).bgClass]"
+                                        class="flex flex-1 items-stretch overflow-hidden rounded-lg border"
+                                        :class="getServiceCfg(detail.service_type).borderClass"
                                     >
-                                        <Clock class="size-3 shrink-0 text-slate-400" />
-                                        <span class="text-[10px] font-semibold tabular-nums text-slate-500">
-                                            {{ formatTime(sale.created_at) }}
-                                        </span>
+                                        <!-- Hora -->
+                                        <div
+                                            class="flex items-center gap-1 border-r px-2 py-1.5"
+                                            :class="[getServiceCfg(detail.service_type).borderClass, getServiceCfg(detail.service_type).bgClass]"
+                                        >
+                                            <Clock class="size-3 shrink-0 text-slate-400" />
+                                            <span class="text-[10px] font-semibold tabular-nums text-slate-500">
+                                                {{ formatTime(sale.created_at) }}
+                                            </span>
+                                        </div>
+                                        <!-- Servicio -->
+                                        <div
+                                            class="flex flex-1 items-center gap-2 px-2.5 py-1.5"
+                                            :class="getServiceCfg(detail.service_type).bgClass"
+                                        >
+                                            <component
+                                                :is="getServiceCfg(detail.service_type).icon"
+                                                class="size-3.5 shrink-0"
+                                                :class="getServiceCfg(detail.service_type).textClass"
+                                            />
+                                            <span
+                                                class="flex-1 truncate text-[12px] font-semibold"
+                                                :class="getServiceCfg(detail.service_type).textClass"
+                                            >
+                                                {{ detail.service_name }}
+                                            </span>
+                                            <span
+                                                class="shrink-0 text-[12px] font-black"
+                                                :class="getServiceCfg(detail.service_type).textClass"
+                                            >
+                                                S/{{ Number(detail.unit_price).toFixed(2) }}
+                                            </span>
+                                        </div>
                                     </div>
-                                    <!-- Servicio -->
-                                    <div
-                                        class="flex flex-1 items-center gap-2 px-2.5 py-1.5"
-                                        :class="getServiceCfg(detail.service_type).bgClass"
+
+                                    <!-- Botón eliminar ítem (solo si hay más de 1) -->
+                                    <button
+                                        v-if="(sale?.tickets[0]?.ticket_details?.length ?? 0) > 1"
+                                        class="flex shrink-0 items-center justify-center rounded-lg border border-transparent px-1.5 text-slate-300 opacity-0 transition-all group-hover/detail:border-red-100 group-hover/detail:bg-red-50 group-hover/detail:text-red-400 group-hover/detail:opacity-100"
+                                        title="Eliminar ítem"
+                                        @click="emit('deleteDetail', detail.id)"
                                     >
-                                        <component
-                                            :is="getServiceCfg(detail.service_type).icon"
-                                            class="size-3.5 shrink-0"
-                                            :class="getServiceCfg(detail.service_type).textClass"
-                                        />
-                                        <span
-                                            class="flex-1 truncate text-[12px] font-semibold"
-                                            :class="getServiceCfg(detail.service_type).textClass"
-                                        >
-                                            {{ detail.service_name }}
-                                        </span>
-                                        <span
-                                            class="shrink-0 text-[12px] font-black"
-                                            :class="getServiceCfg(detail.service_type).textClass"
-                                        >
-                                            S/{{ Number(detail.unit_price).toFixed(2) }}
-                                        </span>
-                                    </div>
+                                        <Trash2 class="size-3.5" />
+                                    </button>
                                 </div>
                             </template>
                             <span

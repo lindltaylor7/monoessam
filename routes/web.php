@@ -419,6 +419,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     Route::prefix('reportsales')->name('reportsales.')->group(function () {
         Route::get('/', [ReportSalesController::class, 'index'])->name('index');
         Route::delete('{id}', [ReportSalesController::class, 'destroy'])->name('destroy');
+        Route::delete('ticket-detail/{id}', [ReportSalesController::class, 'destroyTicketDetail'])->name('ticket-detail.destroy');
         Route::get('export',    [ReportSalesController::class, 'export'])->name('export');
         Route::get('export-vlz',    [ReportSalesController::class, 'exportValorizacion'])->name('export-vlz');
         Route::get('export-detail', [ReportSalesController::class, 'exportDetail'])->name('export-detail');
