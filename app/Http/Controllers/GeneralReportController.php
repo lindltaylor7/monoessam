@@ -93,7 +93,7 @@ class GeneralReportController extends Controller
             ]);
 
         /* ── Service type breakdown ── */
-        $svcLabels = [1 => 'Desayuno', 2 => 'Almuerzo', 3 => 'Cena', 4 => 'Refrigerio'];
+        $svcLabels = [1 => 'Desayuno', 4 => 'Almuerzo', 8 => 'Cena'];
         $byServiceType = Ticket_detail::whereHas('ticket.sale', function ($q) use ($cafeIds, $startDate, $endDate) {
             $q->whereIn('cafe_id', $cafeIds)->whereBetween('date', [$startDate, $endDate]);
         })
