@@ -25,8 +25,9 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
     private array $sdGroups   = [];
     private array $svcPrices  = []; // svc_name => representative unit price
     private array $grandTotals = []; // svc_name => total qty (all persons × dates)
+    private array $dniMap     = []; // sd => name => dni
 
-    private const FIXED_COLS = 2; // EMPRESA + APELLIDOS Y NOMBRES
+    private const FIXED_COLS = 3; // EMPRESA + APELLIDOS Y NOMBRES + DNI
     private const DATA_START  = 6; // rows 1-5: title, period, spacer, header-dates, header-services
 
     public function __construct(
@@ -48,6 +49,7 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
         foreach ($this->rows as $row) {
             $sd    = $row['sd_name'];
             $name  = $row['name'];
+            $dni   = $row['dni'] ?? '—';
             $date  = $row['date'];
             $svc   = $row['svc_name'];
             $qty   = (int) ($row['amount'] ?? 1);
@@ -68,6 +70,7 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
             }
             if (!isset($this->matrix[$sd][$name])) {
                 $this->matrix[$sd][$name] = [];
+                $this->dniMap[$sd][$name] = $dni;
             }
             $key = $date . '|' . $svc;
             $this->matrix[$sd][$name][$key] = ($this->matrix[$sd][$name][$key] ?? 0) + $qty;
@@ -151,7 +154,7 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
         $period[0] = 'Período: ' . $fmt($this->startDate) . ' — ' . $fmt($this->endDate);
 
         /* ── Row 4: header level 1 (dates + TOTAL DE CONSUMO) ── */
-        $header1 = ['EMPRESA', 'APELLIDOS Y NOMBRES'];
+        $header1 = ['EMPRESA', 'APELLIDOS Y NOMBRES', 'DNI'];
         foreach ($this->dates as $date) {
             $header1[] = $date;
             for ($i = 1; $i < $nSvcs; $i++) $header1[] = '';
@@ -160,7 +163,7 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
         for ($i = 1; $i < $nSvcs; $i++) $header1[] = '';
 
         /* ── Row 5: header level 2 (service names repeated for dates + for TOTAL) ── */
-        $header2 = ['', ''];
+        $header2 = ['', '', ''];
         foreach ($this->dates as $_) {
             foreach ($this->services as $svc) $header2[] = $svc;
         }
@@ -175,7 +178,7 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
             $first   = true;
 
             foreach ($persons as $person) {
-                $row = [$first ? $sd : '', $person];
+                $row = [$first ? $sd : '', $person, $this->dniMap[$sd][$person] ?? '—'];
 
                 /* Per-date quantities */
                 foreach ($this->dates as $date) {
@@ -200,7 +203,7 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
         }
 
         /* ── Totals row (per-date totals + TOTAL DE CONSUMO grand totals) ── */
-        $totals        = ['', 'TOTAL'];
+        $totals        = ['', 'TOTAL', ''];
         $dataRowArrays = array_slice($rows, self::DATA_START - 1);
 
         for ($ci = self::FIXED_COLS; $ci < $nTotCols; $ci++) {
@@ -449,6 +452,8 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
 
         /* ── Column widths ── */
         $sheet->getColumnDimension('A')->setWidth(22);
+        $sheet->getColumnDimension('B')->setWidth(32);
+        $sheet->getColumnDimension('C')->setWidth(13);
         for ($c = self::FIXED_COLS + 1; $c <= $totalCols; $c++) {
             $sheet->getColumnDimension(Coordinate::stringFromColumnIndex($c))->setWidth(10);
         }

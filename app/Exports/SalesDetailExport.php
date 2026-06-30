@@ -54,6 +54,7 @@ class SalesDetailExport implements WithMultipleSheets
                     $this->rows[] = [
                         'sd_name'    => strtoupper($ticket->subdealership_name ?: 'SIN EMPRESA'),
                         'name'       => strtoupper($ticket->dinner_name ?: 'SIN NOMBRE'),
+                        'dni'        => $ticket->dni ?: '—',
                         'date'       => $date,
                         'date_raw'   => $sale->date,   // yyyy-mm-dd for sorting
                         'time'       => $time,
