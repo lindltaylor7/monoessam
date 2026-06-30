@@ -30,6 +30,7 @@ class SalesDetailSheet implements FromArray, ShouldAutoSize, WithStyles, WithTit
                 $num++,
                 $row['sd_name'],
                 $row['name'],
+                $row['dni'] ?? '—',
                 $row['date'],
                 $row['time'],
                 $row['svc_name'],
@@ -48,12 +49,12 @@ class SalesDetailSheet implements FromArray, ShouldAutoSize, WithStyles, WithTit
         );
 
         return array_merge(
-            [['CAFETERÍA: ' . strtoupper($this->cafeName), '', '', '', '', '', '', '']],
-            [['Período: ' . $fmt($this->startDate) . ' — ' . $fmt($this->endDate), '', '', '', '', '', '', '']],
-            [['', '', '', '', '', '', '', '']],
-            [['N°', 'SUBCONCESIONARIA', 'APELLIDOS Y NOMBRES', 'FECHA', 'HORA', 'SERVICIO', 'CANT.', 'PRECIO']],
+            [['CAFETERÍA: ' . strtoupper($this->cafeName), '', '', '', '', '', '', '', '']],
+            [['Período: ' . $fmt($this->startDate) . ' — ' . $fmt($this->endDate), '', '', '', '', '', '', '', '']],
+            [['', '', '', '', '', '', '', '', '']],
+            [['N°', 'SUBCONCESIONARIA', 'APELLIDOS Y NOMBRES', 'DNI', 'FECHA', 'HORA', 'SERVICIO', 'CANT.', 'PRECIO']],
             $this->dataRows,
-            [['', '', '', '', '', 'TOTAL', $totalQty, number_format($totalPrice, 2)]],
+            [['', '', '', '', '', '', 'TOTAL', $totalQty, number_format($totalPrice, 2)]],
         );
     }
 
@@ -66,7 +67,7 @@ class SalesDetailSheet implements FromArray, ShouldAutoSize, WithStyles, WithTit
     {
         $lastDataRow = self::DATA_START + count($this->dataRows) - 1;
         $totalsRow   = $lastDataRow + 1;
-        $lastCol     = 'H';
+        $lastCol     = 'I';
 
         $sheet->mergeCells("A1:{$lastCol}1");
         $sheet->mergeCells("A2:{$lastCol}2");
@@ -102,10 +103,11 @@ class SalesDetailSheet implements FromArray, ShouldAutoSize, WithStyles, WithTit
                     $sheet->getStyle("A{$r}:{$lastCol}{$r}")->getFill()
                         ->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('F8FAFC');
                 }
-                foreach (['A', 'D', 'E', 'G'] as $col) {
+                // A=N°, D=DNI, E=FECHA, F=HORA, H=CANT. → centrados
+                foreach (['A', 'D', 'E', 'F', 'H'] as $col) {
                     $sheet->getStyle("{$col}{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
                 }
-                $sheet->getStyle("H{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+                $sheet->getStyle("I{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
             }
         }
 
@@ -114,17 +116,19 @@ class SalesDetailSheet implements FromArray, ShouldAutoSize, WithStyles, WithTit
             'fill'    => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'DBEAFE']],
             'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'BFDBFE']]],
         ]);
-        $sheet->getStyle("F{$totalsRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         $sheet->getStyle("G{$totalsRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle("H{$totalsRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+        $sheet->getStyle("H{$totalsRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("I{$totalsRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
+        // A=N°, B=SUBCONCESIONARIA, C=APELLIDOS Y NOMBRES, D=DNI, E=FECHA, F=HORA, G=SERVICIO, H=CANT., I=PRECIO
         $sheet->getColumnDimension('A')->setWidth(6);
         $sheet->getColumnDimension('B')->setWidth(24);
         $sheet->getColumnDimension('C')->setWidth(32);
-        $sheet->getColumnDimension('D')->setWidth(12);
-        $sheet->getColumnDimension('E')->setWidth(10);
-        $sheet->getColumnDimension('F')->setWidth(26);
-        $sheet->getColumnDimension('G')->setWidth(8);
-        $sheet->getColumnDimension('H')->setWidth(12);
+        $sheet->getColumnDimension('D')->setWidth(13);
+        $sheet->getColumnDimension('E')->setWidth(12);
+        $sheet->getColumnDimension('F')->setWidth(10);
+        $sheet->getColumnDimension('G')->setWidth(26);
+        $sheet->getColumnDimension('H')->setWidth(8);
+        $sheet->getColumnDimension('I')->setWidth(12);
     }
 }

@@ -99,7 +99,7 @@ const showSuccess = (message: string) =>
         title: '¡Éxito!',
         text: message,
         confirmButtonColor: '#6366f1',
-        timer: 3000,
+        timer: 500,
         timerProgressBar: true,
         showConfirmButton: false,
     });
@@ -112,10 +112,7 @@ const showVisitorModal = ref(false);
 
 const handleVisitorSuccess = (sales: any[]) => {
     localSales.value = sales;
-    allSalesData.value = [
-        ...allSalesData.value.filter((s: any) => s.cafe_id != cafeSelected.value),
-        ...sales,
-    ];
+    allSalesData.value = [...allSalesData.value.filter((s: any) => s.cafe_id != cafeSelected.value), ...sales];
 };
 
 const showDialog = () => {
@@ -162,10 +159,10 @@ const subdealership = ref<any>({});
 const validateConfig = (): boolean => {
     const missing: string[] = [];
 
-    if (!receiptType.value)                        missing.push('Tipo de Documento');
-    if (!saletypeSelected.value)                   missing.push('Categoría de Venta');
-    if (!cafeSelected.value)                       missing.push('Cafetería / Punto de Servicio');
-    if (!dateSelected.value)                       missing.push('Fecha');
+    if (!receiptType.value) missing.push('Tipo de Documento');
+    if (!saletypeSelected.value) missing.push('Categoría de Venta');
+    if (!cafeSelected.value) missing.push('Cafetería / Punto de Servicio');
+    if (!dateSelected.value) missing.push('Fecha');
     if (servicesSelectedToSale.value.length === 0) missing.push('Servicio(s) seleccionado(s)');
 
     if (missing.length > 0) {
@@ -174,9 +171,13 @@ const validateConfig = (): boolean => {
             title: 'Configuración incompleta',
             html: `<p class="text-sm text-slate-600 mb-3">Completa los siguientes campos antes de registrar la venta:</p>
                    <ul class="text-left space-y-1">
-                     ${missing.map((m) => `<li class="flex items-center gap-2 text-sm font-semibold text-red-600">
+                     ${missing
+                         .map(
+                             (m) => `<li class="flex items-center gap-2 text-sm font-semibold text-red-600">
                        <span class="inline-block h-1.5 w-1.5 rounded-full bg-red-500 shrink-0"></span>${m}
-                     </li>`).join('')}
+                     </li>`,
+                         )
+                         .join('')}
                    </ul>`,
             confirmButtonColor: '#dc2626',
             confirmButtonText: 'Entendido',
@@ -211,10 +212,7 @@ const saveSale = (dni: string, force = false) => {
                 salesCardRef.value?.cleanInput();
                 const newSales = response.data.sales || [];
                 localSales.value = newSales;
-                allSalesData.value = [
-                    ...allSalesData.value.filter((sale: any) => sale.cafe_id != cafeSelected.value),
-                    ...newSales,
-                ];
+                allSalesData.value = [...allSalesData.value.filter((sale: any) => sale.cafe_id != cafeSelected.value), ...newSales];
             }
 
             if (response.data.otherCafe) {
@@ -256,9 +254,7 @@ const displayedSales = computed(() => {
     if (!dateSelected.value || servicesSelectedToSale.value.length === 0) return [];
     const selectedCodes = servicesSelectedToSale.value.map((s: any) => s.code);
     return localSales.value.filter((sale: any) =>
-        sale.tickets?.some((ticket: any) =>
-            ticket.ticket_details?.some((detail: any) => selectedCodes.includes(detail.code)),
-        ),
+        sale.tickets?.some((ticket: any) => ticket.ticket_details?.some((detail: any) => selectedCodes.includes(detail.code))),
     );
 });
 
