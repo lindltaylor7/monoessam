@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import Button from '@/components/ui/button/Button.vue';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useForm } from '@inertiajs/vue3';
@@ -43,6 +43,14 @@ const payslips = computed(() =>
     ),
 );
 
+const missingCurrentMonth = computed(() => {
+    const now = new Date();
+    return !payslips.value.some((f) => {
+        const d = new Date(f.created_at);
+        return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    });
+});
+
 const handleFileUpload = (event: Event) => {
     const input = event.target as HTMLInputElement;
     if (!input.files || input.files.length === 0) return;
@@ -69,8 +77,13 @@ const handleFileUpload = (event: Event) => {
     uploadForm.post(route('staff.upload-file'), {
         forceFormData: true,
         preserveState: true,
-        onSuccess: () => { uploading.value = false; showAlert.value = false; },
-        onFinish: () => { uploading.value = false; },
+        onSuccess: () => {
+            uploading.value = false;
+            showAlert.value = false;
+        },
+        onFinish: () => {
+            uploading.value = false;
+        },
         onError: () => {
             showAlert.value = true;
             alertMessage.value = 'Error al subir la boleta.';
@@ -87,8 +100,12 @@ const deleteFile = (fileId: number) => {
     deletingFileId.value = fileId;
     const form = useForm({});
     form.delete(route('staff.delete-file', fileId), {
-        onSuccess: () => { deletingFileId.value = null; },
-        onFinish: () => { deletingFileId.value = null; },
+        onSuccess: () => {
+            deletingFileId.value = null;
+        },
+        onFinish: () => {
+            deletingFileId.value = null;
+        },
         onError: () => {
             showAlert.value = true;
             alertMessage.value = 'Error al eliminar la boleta.';
@@ -101,21 +118,27 @@ const viewFile = (file: StaffFile) => {
     window.open('/storage/' + file.file_path, '_blank');
 };
 
-const formatDate = (date: string) =>
-    new Date(date).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+const formatDate = (date: string) => new Date(date).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
 </script>
 
 <template>
     <Dialog v-model:open="open">
         <DialogTrigger as-child>
-            <Button
-                variant="ghost"
-                size="icon"
-                class="h-9 w-9 cursor-pointer rounded-full text-emerald-600 transition-all hover:bg-emerald-50 hover:text-emerald-800"
-                title="Boletas de Pago"
-            >
-                <Banknote class="h-4 w-4" />
-            </Button>
+            <div class="relative inline-flex">
+                <Button
+                    variant="ghost"
+                    size="icon"
+                    class="h-9 w-9 cursor-pointer rounded-full text-emerald-600 transition-all hover:bg-emerald-50 hover:text-emerald-800"
+                    :title="missingCurrentMonth ? 'Boletas de Pago — falta boleta de este mes' : 'Boletas de Pago'"
+                >
+                    <Banknote class="h-4 w-4" />
+                </Button>
+                <span
+                    v-if="missingCurrentMonth"
+                    class="absolute top-0.5 right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-red-500"
+                    aria-label="Falta boleta del mes actual"
+                />
+            </div>
         </DialogTrigger>
 
         <DialogContent class="flex h-[80vh] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-[640px]">
@@ -126,7 +149,6 @@ const formatDate = (date: string) =>
 
             <div class="flex-1 overflow-y-auto bg-zinc-50/50">
                 <div class="space-y-6 px-6 py-6">
-
                     <Alert v-if="showAlert" variant="destructive" class="border-red-200 bg-red-50 text-red-900">
                         <AlertCircle class="h-4 w-4" />
                         <AlertDescription>{{ alertMessage }}</AlertDescription>
@@ -146,7 +168,6 @@ const formatDate = (date: string) =>
                                 <span class="text-[10px] font-bold tracking-tighter text-zinc-400 uppercase">PDF · Máx 10MB</span>
                             </div>
                         </div>
-
                         <label
                             :class="[
                                 'relative flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-3 text-sm font-bold transition-all duration-300',
@@ -158,7 +179,11 @@ const formatDate = (date: string) =>
                             <template v-if="uploading">
                                 <svg class="h-5 w-5 animate-spin text-emerald-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                    <path
+                                        class="opacity-75"
+                                        fill="currentColor"
+                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                    />
                                 </svg>
                                 <span>Subiendo boleta...</span>
                             </template>
@@ -223,7 +248,11 @@ const formatDate = (date: string) =>
                                         <template v-if="deletingFileId === file.id">
                                             <svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24">
                                                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
-                                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                                <path
+                                                    class="opacity-75"
+                                                    fill="currentColor"
+                                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                                />
                                             </svg>
                                         </template>
                                         <X v-else class="h-4 w-4" />
@@ -232,7 +261,6 @@ const formatDate = (date: string) =>
                             </div>
                         </TransitionGroup>
                     </div>
-
                 </div>
             </div>
         </DialogContent>
@@ -241,12 +269,26 @@ const formatDate = (date: string) =>
 
 <style scoped>
 .list-enter-active,
-.list-leave-active { transition: all 0.4s ease; }
+.list-leave-active {
+    transition: all 0.4s ease;
+}
 .list-enter-from,
-.list-leave-to { opacity: 0; transform: translateX(30px); }
+.list-leave-to {
+    opacity: 0;
+    transform: translateX(30px);
+}
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #e4e4e7; border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: #d4d4d8; }
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #e4e4e7;
+    border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #d4d4d8;
+}
 </style>
