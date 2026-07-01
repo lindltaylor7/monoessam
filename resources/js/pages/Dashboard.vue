@@ -2,6 +2,7 @@
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 import { Head, usePage } from '@inertiajs/vue3';
+import * as LucideIcons from 'lucide-vue-next';
 import {
     AlertTriangle,
     ArrowUpRight,
@@ -13,12 +14,6 @@ import {
     TrendingUp,
     Users,
     Utensils,
-    House,
-    Receipt,
-    BookOpen,
-    Building2,
-    HandHelping,
-    ClipboardList,
 } from 'lucide-vue-next';
 import { computed } from 'vue';
 import VueApexCharts from 'vue3-apexcharts';
@@ -60,18 +55,13 @@ const todayLabel = computed(() =>
 );
 
 // ── Quick-access modules (from user's permissions) ──────────────────────────
-const iconMap: Record<string, any> = {
-    House, Users, Utensils, ClipboardList, Building2,
-    HandHelping, LayoutGrid, ShoppingCart, Receipt, BookOpen,
-};
-
 const quickLinks = computed(() =>
     permissions.value
         .filter((p: any) => p.route_name && p.sidebar_name)
         .map((p: any) => ({
             title: p.sidebar_name,
             href:  '/' + p.route_name,
-            icon:  iconMap[p.icon_class] ?? LayoutGrid,
+            icon:  (LucideIcons as Record<string, any>)[p.icon_class] ?? LayoutGrid,
         })),
 );
 

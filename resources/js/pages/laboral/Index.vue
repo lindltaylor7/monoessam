@@ -2,14 +2,16 @@
 import StatusBadge from '@/components/shared/StatusBadge.vue';
 import { Button } from '@/components/ui/button';
 import Input from '@/components/ui/input/Input.vue';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { getStatusColor, getStatusLabel } from '@/composables/useStaffConstants';
 import AppLayout from '@/layouts/AppLayout.vue';
 import ContractsModal from '@/pages/staff/ContractsModal.vue';
 import FilesModal from '@/pages/staff/FilesModal.vue';
+import PayslipsModal from '@/pages/staff/PayslipsModal.vue';
 import { Staff } from '@/types';
 import { Head } from '@inertiajs/vue3';
-import { Download, Search } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
+import { ChevronLeft, ChevronRight, Download, Search } from 'lucide-vue-next';
+import { computed, ref, watch } from 'vue';
 import * as XLSX from 'xlsx';
 
 interface Props {
@@ -23,6 +25,10 @@ const props = withDefaults(defineProps<Props>(), {
 const searchQuery = ref('');
 const startDateFilter = ref('');
 const endDateFilter = ref('');
+const comedorFilter = ref('');
+
+const PAGE_SIZE = 20;
+const currentPage = ref(1);
 
 const clearDateFilter = () => {
     startDateFilter.value = '';
@@ -79,6 +85,14 @@ const isNearExpiry = (expirationDate: string | null) => {
     return diffDays > 0 && diffDays <= 30;
 };
 
+const uniqueComedores = computed(() => {
+    const names = new Set<string>();
+    for (const s of props.staff || []) {
+        if (s.staffable?.name) names.add(s.staffable.name);
+    }
+    return Array.from(names).sort();
+});
+
 const filteredStaff = computed(() => {
     let filtered = props.staff || [];
 
@@ -88,13 +102,17 @@ const filteredStaff = computed(() => {
         filtered = filtered.filter((s) => s.name?.toLowerCase().includes(query) || s.dni?.includes(query));
     }
 
+    // Filtro por comedor/unidad
+    if (comedorFilter.value && comedorFilter.value !== '__all__') {
+        filtered = filtered.filter((s) => s.staffable?.name === comedorFilter.value);
+    }
+
     // Filtro por fecha de ingreso (Rango)
     if (startDateFilter.value || endDateFilter.value) {
         filtered = filtered.filter((s) => {
             const sDate = getStartDate(s);
             if (!sDate) return false;
 
-            // Format to YYYY-MM-DD
             try {
                 const dateObj = new Date(sDate);
                 const isoDate = dateObj.toISOString().split('T')[0];
@@ -119,9 +137,20 @@ const filteredStaff = computed(() => {
     return filtered;
 });
 
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredStaff.value.length / PAGE_SIZE)));
+
+const paginatedStaff = computed(() => {
+    const start = (currentPage.value - 1) * PAGE_SIZE;
+    return filteredStaff.value.slice(start, start + PAGE_SIZE);
+});
+
+watch(filteredStaff, () => {
+    currentPage.value = 1;
+});
+
 const salaryTypeLabel = (type?: string | null) => {
     if (type === 'monthly') return '/ mes';
-    if (type === 'daily')   return '/ día';
+    if (type === 'daily') return '/ día';
     return '';
 };
 
@@ -177,6 +206,18 @@ const exportToExcel = () => {
                     <Search class="text-muted-foreground absolute top-3 left-3 h-4 w-4" />
                     <Input type="text" placeholder="Buscar por nombre o DNI..." v-model="searchQuery" class="bg-muted/50 border-zinc-200 pl-9" />
                 </div>
+
+                <Select v-model="comedorFilter">
+                    <SelectTrigger class="w-56 border-zinc-200 bg-white">
+                        <SelectValue placeholder="Comedor / Unidad" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="__all__">Todos</SelectItem>
+                        <SelectItem v-for="name in uniqueComedores" :key="name" :value="name">
+                            {{ name }}
+                        </SelectItem>
+                    </SelectContent>
+                </Select>
 
                 <div class="flex items-center gap-2">
                     <span class="text-muted-foreground text-sm font-medium whitespace-nowrap">Fecha de ingreso:</span>
@@ -290,7 +331,7 @@ const exportToExcel = () => {
                         </thead>
 
                         <tbody>
-                            <tr v-for="staff in filteredStaff" :key="staff.id" class="hover:bg-muted/30 group border-t transition-colors">
+                            <tr v-for="staff in paginatedStaff" :key="staff.id" class="hover:bg-muted/30 group border-t transition-colors">
                                 <td class="p-4">
                                     <div class="font-semibold text-zinc-900">{{ staff.name }}</div>
                                 </td>
@@ -312,7 +353,9 @@ const exportToExcel = () => {
                                     </div>
                                 </td>
                                 <td class="p-4">
-                                    <div class="inline-flex items-baseline gap-1 rounded-md bg-green-50 px-2 py-0.5 text-sm font-medium text-green-700">
+                                    <div
+                                        class="inline-flex items-baseline gap-1 rounded-md bg-green-50 px-2 py-0.5 text-sm font-medium text-green-700"
+                                    >
                                         S/. {{ staff.staff_financial?.salary || '0.00' }}
                                         <span v-if="staff.staff_financial?.salary_type" class="text-xs font-normal text-green-500">
                                             {{ salaryTypeLabel(staff.staff_financial.salary_type) }}
@@ -379,7 +422,9 @@ const exportToExcel = () => {
                                     <div class="flex items-center justify-center gap-2">
                                         <!-- Modal exclusivo de Contratos -->
                                         <ContractsModal :staff="staff as any" />
-                                        <!-- Botón de expediente digital utilizando FilesModal de Staff -->
+                                        <!-- Modal de Boletas de Pago -->
+                                        <PayslipsModal :staff="staff as any" />
+                                        <!-- Expediente digital -->
                                         <FilesModal :staff="staff as any" />
                                     </div>
                                 </td>
@@ -398,10 +443,43 @@ const exportToExcel = () => {
                 </div>
             </div>
 
-            <!-- Resumen -->
-            <div class="text-muted-foreground px-1 text-sm font-medium">
-                Mostrando {{ filteredStaff.length }} {{ filteredStaff.length === 1 ? 'registro' : 'registros' }}
-                <span v-if="filteredStaff.length !== (props.staff?.length || 0)"> (de {{ props.staff?.length || 0 }} en total) </span>
+            <!-- Paginación + Resumen -->
+            <div class="flex items-center justify-between px-1">
+                <div class="text-muted-foreground text-sm font-medium">
+                    Mostrando {{ Math.min((currentPage - 1) * PAGE_SIZE + 1, filteredStaff.length) }}–{{
+                        Math.min(currentPage * PAGE_SIZE, filteredStaff.length)
+                    }}
+                    de {{ filteredStaff.length }} {{ filteredStaff.length === 1 ? 'registro' : 'registros' }}
+                    <span v-if="filteredStaff.length !== (props.staff?.length || 0)">(filtrados de {{ props.staff?.length || 0 }})</span>
+                </div>
+
+                <div class="flex items-center gap-1">
+                    <Button variant="outline" size="icon" class="h-8 w-8" :disabled="currentPage === 1" @click="currentPage--">
+                        <ChevronLeft class="h-4 w-4" />
+                    </Button>
+
+                    <template v-for="page in totalPages" :key="page">
+                        <Button
+                            v-if="page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1"
+                            :variant="page === currentPage ? 'default' : 'outline'"
+                            size="icon"
+                            class="h-8 w-8"
+                            :class="page === currentPage ? 'border-red-600 bg-red-600 text-white hover:bg-red-700' : ''"
+                            @click="currentPage = page"
+                        >
+                            {{ page }}
+                        </Button>
+                        <span
+                            v-else-if="(page === 2 && currentPage > 3) || (page === totalPages - 1 && currentPage < totalPages - 2)"
+                            class="text-muted-foreground px-1 text-sm"
+                            >…</span
+                        >
+                    </template>
+
+                    <Button variant="outline" size="icon" class="h-8 w-8" :disabled="currentPage === totalPages" @click="currentPage++">
+                        <ChevronRight class="h-4 w-4" />
+                    </Button>
+                </div>
             </div>
         </div>
     </AppLayout>

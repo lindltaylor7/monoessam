@@ -277,21 +277,27 @@ const isEquipmentInvoiceModalOpen = ref(false);
 
 const emptyEquipItem = (type: 'computer' | 'kitchen') => ({
     type,
-    name: '', brand: '', model: '', code: '',
-    series: '', color: '', status: 0,
-    unit_price: 0, quantity: 1,
+    name: '',
+    brand: '',
+    model: '',
+    code: '',
+    series: '',
+    color: '',
+    status: 0,
+    unit_price: 0,
+    quantity: 1,
 });
 
 const equipInvoiceForm = ref({
-    business_id:    '',
-    provider_id:    '',
+    business_id: '',
+    provider_id: '',
     headquarter_id: '',
-    document_type:  'factura',
+    document_type: 'factura',
     invoice_number: '',
-    date:           new Date().toISOString().split('T')[0],
-    notes:          '',
-    invoice_image:  null as File | null,
-    items:          [emptyEquipItem('computer')],
+    date: new Date().toISOString().split('T')[0],
+    notes: '',
+    invoice_image: null as File | null,
+    items: [emptyEquipItem('computer')],
 });
 
 const filteredEquipHeadquarters = computed(() => {
@@ -299,16 +305,19 @@ const filteredEquipHeadquarters = computed(() => {
     return props.headquarters.filter((hq) => String(hq.business_id) === equipInvoiceForm.value.business_id);
 });
 
-const equipItemType = computed<'computer' | 'kitchen'>(() =>
-    invoiceTypeFilter.value === 'menaje' ? 'kitchen' : 'computer'
-);
+const equipItemType = computed<'computer' | 'kitchen'>(() => (invoiceTypeFilter.value === 'menaje' ? 'kitchen' : 'computer'));
 
 function openInvoiceModal() {
     if (invoiceTypeFilter.value === 'equipos' || invoiceTypeFilter.value === 'menaje') {
         equipInvoiceForm.value = {
-            business_id: '', provider_id: '', headquarter_id: '', document_type: 'factura',
-            invoice_number: '', date: new Date().toISOString().split('T')[0],
-            notes: '', invoice_image: null,
+            business_id: '',
+            provider_id: '',
+            headquarter_id: '',
+            document_type: 'factura',
+            invoice_number: '',
+            date: new Date().toISOString().split('T')[0],
+            notes: '',
+            invoice_image: null,
             items: [emptyEquipItem(equipItemType.value)],
         };
         isEquipmentInvoiceModalOpen.value = true;
@@ -327,19 +336,14 @@ function removeEquipItem(index: number) {
     }
 }
 
-const equipTotal = computed(() =>
-    equipInvoiceForm.value.items.reduce((s, i) => s + i.quantity * i.unit_price, 0)
-);
+const equipTotal = computed(() => equipInvoiceForm.value.items.reduce((s, i) => s + i.quantity * i.unit_price, 0));
 
-const equipSubtotal = computed(() =>
-    equipInvoiceForm.value.document_type === 'factura' ? equipTotal.value / 1.18 : equipTotal.value
-);
+const equipSubtotal = computed(() => (equipInvoiceForm.value.document_type === 'factura' ? equipTotal.value / 1.18 : equipTotal.value));
 
 const equipIgv = computed(() => equipTotal.value - equipSubtotal.value);
 
-const isEquipSubmitDisabled = computed(() =>
-    !equipInvoiceForm.value.business_id ||
-    equipInvoiceForm.value.items.some(i => !i.name || i.unit_price <= 0 || i.quantity < 1)
+const isEquipSubmitDisabled = computed(
+    () => !equipInvoiceForm.value.business_id || equipInvoiceForm.value.items.some((i) => !i.name || i.unit_price <= 0 || i.quantity < 1),
 );
 
 function handleEquipImageUpload(e: Event) {
@@ -350,21 +354,25 @@ function handleEquipInvoiceSubmit() {
     if (isEquipSubmitDisabled.value) return;
     const fd = new FormData();
     const f = equipInvoiceForm.value;
-    fd.append('business_id',    f.business_id);
-    if (f.provider_id)    fd.append('provider_id',    f.provider_id);
+    fd.append('business_id', f.business_id);
+    if (f.provider_id) fd.append('provider_id', f.provider_id);
     if (f.headquarter_id) fd.append('headquarter_id', f.headquarter_id);
-    fd.append('document_type',  f.document_type);
+    fd.append('document_type', f.document_type);
     fd.append('invoice_number', f.invoice_number);
-    fd.append('date',           f.date);
-    fd.append('notes',          f.notes);
+    fd.append('date', f.date);
+    fd.append('notes', f.notes);
     if (f.invoice_image) fd.append('invoice_image', f.invoice_image);
     f.items.forEach((item, i) => {
         Object.entries(item).forEach(([k, v]) => fd.append(`items[${i}][${k}]`, String(v)));
     });
     router.post(route('equipments.invoice.store'), fd, {
         forceFormData: true,
-        onSuccess: () => { isEquipmentInvoiceModalOpen.value = false; },
-        onError: () => { alert('Error al guardar. Revise los campos requeridos.'); },
+        onSuccess: () => {
+            isEquipmentInvoiceModalOpen.value = false;
+        },
+        onError: () => {
+            alert('Error al guardar. Revise los campos requeridos.');
+        },
         preserveScroll: true,
     });
 }
@@ -695,9 +703,6 @@ const saveInlinePrice = (cp: any) => {
                     <Button @click="isEppModalOpen = true" variant="outline" class="gap-2 border-slate-200 bg-white">
                         <Box class="h-4 w-4" /> Nuevo EPP
                     </Button>
-                    <Button @click="openProviderModal()" variant="outline" class="gap-2 border-slate-200 bg-white">
-                        <Truck class="h-4 w-4" /> Nuevo Proveedor
-                    </Button>
                 </div>
             </div>
 
@@ -748,14 +753,16 @@ const saveInlinePrice = (cp: any) => {
                                     <Button
                                         @click="openInvoiceModal"
                                         :disabled="invoiceTypeFilter === 'insumos'"
-                                        :class="['gap-2 shadow-lg transition-colors',
+                                        :class="[
+                                            'gap-2 shadow-lg transition-colors',
                                             invoiceTypeFilter === 'equipos'
                                                 ? 'bg-blue-600 shadow-blue-200 hover:bg-blue-700'
                                                 : invoiceTypeFilter === 'menaje'
-                                                ? 'bg-orange-600 shadow-orange-200 hover:bg-orange-700'
-                                                : invoiceTypeFilter === 'insumos'
-                                                ? 'cursor-not-allowed bg-slate-400 shadow-slate-200'
-                                                : 'bg-indigo-600 shadow-indigo-200 hover:bg-indigo-700']"
+                                                  ? 'bg-orange-600 shadow-orange-200 hover:bg-orange-700'
+                                                  : invoiceTypeFilter === 'insumos'
+                                                    ? 'cursor-not-allowed bg-slate-400 shadow-slate-200'
+                                                    : 'bg-indigo-600 shadow-indigo-200 hover:bg-indigo-700',
+                                        ]"
                                     >
                                         <Plus class="h-4 w-4" />
                                         <span v-if="invoiceTypeFilter === 'equipos'">Factura Equipos</span>
@@ -1173,22 +1180,40 @@ const saveInlinePrice = (cp: any) => {
 
                                             <div class="grid gap-6 py-4">
                                                 <!-- Header fields -->
-                                                <div class="grid grid-cols-1 gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-3">
+                                                <div
+                                                    class="grid grid-cols-1 gap-4 rounded-2xl border border-slate-100 bg-slate-50 p-4 md:grid-cols-3"
+                                                >
                                                     <div class="space-y-2">
-                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Empresa <span class="text-red-500">*</span></Label>
-                                                        <Select v-model="equipInvoiceForm.business_id" @update:model-value="equipInvoiceForm.headquarter_id = ''">
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase"
+                                                            >Empresa <span class="text-red-500">*</span></Label
+                                                        >
+                                                        <Select
+                                                            v-model="equipInvoiceForm.business_id"
+                                                            @update:model-value="equipInvoiceForm.headquarter_id = ''"
+                                                        >
                                                             <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                                                             <SelectContent>
-                                                                <SelectItem v-for="b in businesses" :key="b.id" :value="String(b.id)">{{ b.name }}</SelectItem>
+                                                                <SelectItem v-for="b in businesses" :key="b.id" :value="String(b.id)">{{
+                                                                    b.name
+                                                                }}</SelectItem>
                                                             </SelectContent>
                                                         </Select>
                                                     </div>
                                                     <div class="space-y-2">
-                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Sede / Almacén <span class="text-red-500">*</span></Label>
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase"
+                                                            >Sede / Almacén <span class="text-red-500">*</span></Label
+                                                        >
                                                         <Select v-model="equipInvoiceForm.headquarter_id" :disabled="!equipInvoiceForm.business_id">
-                                                            <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar sede" /></SelectTrigger>
+                                                            <SelectTrigger class="bg-white"
+                                                                ><SelectValue placeholder="Seleccionar sede"
+                                                            /></SelectTrigger>
                                                             <SelectContent>
-                                                                <SelectItem v-for="hq in filteredEquipHeadquarters" :key="hq.id" :value="String(hq.id)">{{ hq.name }}</SelectItem>
+                                                                <SelectItem
+                                                                    v-for="hq in filteredEquipHeadquarters"
+                                                                    :key="hq.id"
+                                                                    :value="String(hq.id)"
+                                                                    >{{ hq.name }}</SelectItem
+                                                                >
                                                             </SelectContent>
                                                         </Select>
                                                     </div>
@@ -1197,7 +1222,9 @@ const saveInlinePrice = (cp: any) => {
                                                         <Select v-model="equipInvoiceForm.provider_id">
                                                             <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                                                             <SelectContent>
-                                                                <SelectItem v-for="p in equipmentProviders" :key="p.id" :value="String(p.id)">{{ p.name }}</SelectItem>
+                                                                <SelectItem v-for="p in equipmentProviders" :key="p.id" :value="String(p.id)">{{
+                                                                    p.name
+                                                                }}</SelectItem>
                                                             </SelectContent>
                                                         </Select>
                                                     </div>
@@ -1213,10 +1240,16 @@ const saveInlinePrice = (cp: any) => {
                                                     </div>
                                                     <div class="space-y-2">
                                                         <Label class="text-xs font-bold text-slate-500 uppercase">Nº Documento</Label>
-                                                        <Input v-model="equipInvoiceForm.invoice_number" placeholder="Ej: F-001-0012" class="bg-white" />
+                                                        <Input
+                                                            v-model="equipInvoiceForm.invoice_number"
+                                                            placeholder="Ej: F-001-0012"
+                                                            class="bg-white"
+                                                        />
                                                     </div>
                                                     <div class="space-y-2">
-                                                        <Label class="text-xs font-bold text-slate-500 uppercase">Fecha <span class="text-red-500">*</span></Label>
+                                                        <Label class="text-xs font-bold text-slate-500 uppercase"
+                                                            >Fecha <span class="text-red-500">*</span></Label
+                                                        >
                                                         <Input v-model="equipInvoiceForm.date" type="date" class="bg-white" />
                                                     </div>
                                                     <div class="space-y-2">
@@ -1238,10 +1271,19 @@ const saveInlinePrice = (cp: any) => {
                                                 <div class="space-y-3">
                                                     <div class="flex items-center justify-between px-1">
                                                         <h3 class="flex items-center gap-2 text-sm font-bold text-slate-700">
-                                                            <component :is="equipItemType === 'kitchen' ? ChefHat : Laptop" class="h-4 w-4" :class="equipItemType === 'kitchen' ? 'text-orange-500' : 'text-blue-500'" />
+                                                            <component
+                                                                :is="equipItemType === 'kitchen' ? ChefHat : Laptop"
+                                                                class="h-4 w-4"
+                                                                :class="equipItemType === 'kitchen' ? 'text-orange-500' : 'text-blue-500'"
+                                                            />
                                                             Equipos Incluidos
                                                         </h3>
-                                                        <Button @click="addEquipItem" size="sm" variant="outline" class="h-8 gap-1.5 border-blue-200 text-xs font-bold text-blue-600 hover:bg-blue-50">
+                                                        <Button
+                                                            @click="addEquipItem"
+                                                            size="sm"
+                                                            variant="outline"
+                                                            class="h-8 gap-1.5 border-blue-200 text-xs font-bold text-blue-600 hover:bg-blue-50"
+                                                        >
                                                             <Plus class="h-3.5 w-3.5" /> Agregar Fila
                                                         </Button>
                                                     </div>
@@ -1272,40 +1314,73 @@ const saveInlinePrice = (cp: any) => {
                                                                 >
                                                                     <td class="p-2">
                                                                         <Select v-model="item.type">
-                                                                            <SelectTrigger class="h-8 w-28 border-none shadow-none text-xs focus:ring-1">
+                                                                            <SelectTrigger
+                                                                                class="h-8 w-28 border-none text-xs shadow-none focus:ring-1"
+                                                                            >
                                                                                 <SelectValue />
                                                                             </SelectTrigger>
                                                                             <SelectContent>
                                                                                 <SelectItem value="computer">
-                                                                                    <span class="flex items-center gap-1"><Laptop class="h-3 w-3 text-blue-500" /> IT</span>
+                                                                                    <span class="flex items-center gap-1"
+                                                                                        ><Laptop class="h-3 w-3 text-blue-500" /> IT</span
+                                                                                    >
                                                                                 </SelectItem>
                                                                                 <SelectItem value="kitchen">
-                                                                                    <span class="flex items-center gap-1"><ChefHat class="h-3 w-3 text-orange-500" /> Menaje</span>
+                                                                                    <span class="flex items-center gap-1"
+                                                                                        ><ChefHat class="h-3 w-3 text-orange-500" /> Menaje</span
+                                                                                    >
                                                                                 </SelectItem>
                                                                             </SelectContent>
                                                                         </Select>
                                                                     </td>
                                                                     <td class="p-2">
-                                                                        <Input v-model="item.name" placeholder="Nombre*" class="h-8 min-w-[120px] border-none shadow-none focus:ring-1" />
+                                                                        <Input
+                                                                            v-model="item.name"
+                                                                            placeholder="Nombre*"
+                                                                            class="h-8 min-w-[120px] border-none shadow-none focus:ring-1"
+                                                                        />
                                                                     </td>
                                                                     <td class="p-2">
-                                                                        <Input v-model="item.brand" placeholder="Marca" class="h-8 w-24 border-none shadow-none focus:ring-1" />
+                                                                        <Input
+                                                                            v-model="item.brand"
+                                                                            placeholder="Marca"
+                                                                            class="h-8 w-24 border-none shadow-none focus:ring-1"
+                                                                        />
                                                                     </td>
                                                                     <td class="p-2">
-                                                                        <Input v-model="item.model" placeholder="Modelo" class="h-8 w-24 border-none shadow-none focus:ring-1" />
+                                                                        <Input
+                                                                            v-model="item.model"
+                                                                            placeholder="Modelo"
+                                                                            class="h-8 w-24 border-none shadow-none focus:ring-1"
+                                                                        />
                                                                     </td>
                                                                     <td class="p-2">
-                                                                        <Input v-model="item.code" placeholder="Código" class="h-8 w-24 border-none shadow-none focus:ring-1" />
+                                                                        <Input
+                                                                            v-model="item.code"
+                                                                            placeholder="Código"
+                                                                            class="h-8 w-24 border-none shadow-none focus:ring-1"
+                                                                        />
                                                                     </td>
                                                                     <td class="p-2">
-                                                                        <Input v-model="item.series" placeholder="Serie" class="h-8 w-24 border-none shadow-none focus:ring-1" />
+                                                                        <Input
+                                                                            v-model="item.series"
+                                                                            placeholder="Serie"
+                                                                            class="h-8 w-24 border-none shadow-none focus:ring-1"
+                                                                        />
                                                                     </td>
                                                                     <td class="p-2">
-                                                                        <Input v-model="item.color" placeholder="Color" class="h-8 w-20 border-none shadow-none focus:ring-1" />
+                                                                        <Input
+                                                                            v-model="item.color"
+                                                                            placeholder="Color"
+                                                                            class="h-8 w-20 border-none shadow-none focus:ring-1"
+                                                                        />
                                                                     </td>
                                                                     <td class="p-2">
                                                                         <Select v-model="item.status">
-                                                                            <SelectTrigger class="h-8 w-24 border-none shadow-none text-xs focus:ring-1"><SelectValue /></SelectTrigger>
+                                                                            <SelectTrigger
+                                                                                class="h-8 w-24 border-none text-xs shadow-none focus:ring-1"
+                                                                                ><SelectValue
+                                                                            /></SelectTrigger>
                                                                             <SelectContent>
                                                                                 <SelectItem :value="0">Nuevo</SelectItem>
                                                                                 <SelectItem :value="1">Bueno</SelectItem>
@@ -1316,7 +1391,9 @@ const saveInlinePrice = (cp: any) => {
                                                                     </td>
                                                                     <td class="p-2">
                                                                         <div class="relative">
-                                                                            <span class="absolute top-2 left-2.5 text-xs text-slate-400 select-none">S/.</span>
+                                                                            <span class="absolute top-2 left-2.5 text-xs text-slate-400 select-none"
+                                                                                >S/.</span
+                                                                            >
                                                                             <Input
                                                                                 type="number"
                                                                                 v-model="item.unit_price"
@@ -1337,10 +1414,19 @@ const saveInlinePrice = (cp: any) => {
                                                                         />
                                                                     </td>
                                                                     <td class="p-2 text-right text-xs font-bold text-slate-900">
-                                                                        S/.{{ (item.quantity * item.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                                        S/.{{
+                                                                            (item.quantity * item.unit_price).toLocaleString(undefined, {
+                                                                                minimumFractionDigits: 2,
+                                                                            })
+                                                                        }}
                                                                     </td>
                                                                     <td class="p-2 text-center">
-                                                                        <Button @click="removeEquipItem(idx)" variant="ghost" size="sm" class="h-7 w-7 rounded-full p-0 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600">
+                                                                        <Button
+                                                                            @click="removeEquipItem(idx)"
+                                                                            variant="ghost"
+                                                                            size="sm"
+                                                                            class="h-7 w-7 rounded-full p-0 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600"
+                                                                        >
                                                                             <Trash2 class="h-3.5 w-3.5" />
                                                                         </Button>
                                                                     </td>
@@ -1349,25 +1435,51 @@ const saveInlinePrice = (cp: any) => {
                                                             <tfoot class="border-t border-slate-200 bg-slate-50">
                                                                 <tr>
                                                                     <td colspan="10" rowspan="3" class="px-4 py-3 align-top">
-                                                                        <div class="rounded-xl border border-dashed border-slate-200 bg-white p-3 text-[10px] text-slate-400">
+                                                                        <div
+                                                                            class="rounded-xl border border-dashed border-slate-200 bg-white p-3 text-[10px] text-slate-400"
+                                                                        >
                                                                             <p class="mb-1 font-bold tracking-widest uppercase">Notas de Cálculo:</p>
-                                                                            <p v-if="equipInvoiceForm.document_type === 'factura'">• Los precios ingresados ya incluyen IGV (18%).</p>
-                                                                            <p v-else>• Boleta: el total es el monto bruto sin desglose de impuestos.</p>
+                                                                            <p v-if="equipInvoiceForm.document_type === 'factura'">
+                                                                                • Los precios ingresados ya incluyen IGV (18%).
+                                                                            </p>
+                                                                            <p v-else>
+                                                                                • Boleta: el total es el monto bruto sin desglose de impuestos.
+                                                                            </p>
                                                                         </div>
                                                                     </td>
-                                                                    <td class="px-4 py-2 text-right text-[11px] font-bold tracking-wider text-slate-500 uppercase">Subtotal Gravado</td>
-                                                                    <td class="px-4 py-2 text-right font-mono font-bold text-slate-700">S/.{{ equipSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</td>
+                                                                    <td
+                                                                        class="px-4 py-2 text-right text-[11px] font-bold tracking-wider text-slate-500 uppercase"
+                                                                    >
+                                                                        Subtotal Gravado
+                                                                    </td>
+                                                                    <td class="px-4 py-2 text-right font-mono font-bold text-slate-700">
+                                                                        S/.{{ equipSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                                    </td>
                                                                     <td></td>
                                                                 </tr>
                                                                 <tr>
-                                                                    <td class="px-4 py-2 text-right text-[11px] font-bold tracking-wider text-slate-500 uppercase">IGV (18%)</td>
-                                                                    <td class="px-4 py-2 text-right font-mono font-bold text-slate-600">S/.{{ equipIgv.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</td>
+                                                                    <td
+                                                                        class="px-4 py-2 text-right text-[11px] font-bold tracking-wider text-slate-500 uppercase"
+                                                                    >
+                                                                        IGV (18%)
+                                                                    </td>
+                                                                    <td class="px-4 py-2 text-right font-mono font-bold text-slate-600">
+                                                                        S/.{{ equipIgv.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                                    </td>
                                                                     <td></td>
                                                                 </tr>
                                                                 <tr class="bg-blue-50/40">
-                                                                    <td class="px-4 py-3 text-right text-[12px] font-black tracking-widest text-blue-900 uppercase">Total Factura</td>
+                                                                    <td
+                                                                        class="px-4 py-3 text-right text-[12px] font-black tracking-widest text-blue-900 uppercase"
+                                                                    >
+                                                                        Total Factura
+                                                                    </td>
                                                                     <td class="px-4 py-3 text-right">
-                                                                        <span class="font-mono text-xl font-black text-blue-700">S/.{{ equipTotal.toLocaleString(undefined, { minimumFractionDigits: 2 }) }}</span>
+                                                                        <span class="font-mono text-xl font-black text-blue-700"
+                                                                            >S/.{{
+                                                                                equipTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })
+                                                                            }}</span
+                                                                        >
                                                                     </td>
                                                                     <td></td>
                                                                 </tr>
@@ -1378,11 +1490,18 @@ const saveInlinePrice = (cp: any) => {
                                             </div>
 
                                             <DialogFooter class="-mx-6 mt-4 -mb-6 rounded-b-lg border-t bg-slate-50 p-6">
-                                                <Button variant="ghost" @click="isEquipmentInvoiceModalOpen = false" class="font-bold">Cancelar</Button>
+                                                <Button variant="ghost" @click="isEquipmentInvoiceModalOpen = false" class="font-bold"
+                                                    >Cancelar</Button
+                                                >
                                                 <Button
                                                     @click="handleEquipInvoiceSubmit"
                                                     :disabled="isEquipSubmitDisabled"
-                                                    :class="['font-bold text-white shadow-lg', equipItemType === 'kitchen' ? 'bg-orange-600 shadow-orange-200 hover:bg-orange-700' : 'bg-blue-600 shadow-blue-200 hover:bg-blue-700']"
+                                                    :class="[
+                                                        'font-bold text-white shadow-lg',
+                                                        equipItemType === 'kitchen'
+                                                            ? 'bg-orange-600 shadow-orange-200 hover:bg-orange-700'
+                                                            : 'bg-blue-600 shadow-blue-200 hover:bg-blue-700',
+                                                    ]"
                                                 >
                                                     Guardar e Ingresar Equipos
                                                 </Button>
@@ -1479,9 +1598,13 @@ const saveInlinePrice = (cp: any) => {
 
                 <TabsContent value="providers">
                     <Card class="overflow-hidden rounded-2xl border-slate-200 bg-white shadow-sm">
-                        <CardHeader class="border-b bg-slate-50/50">
-                            <CardTitle class="text-lg">Gestión de Proveedores</CardTitle>
+                        <CardHeader class="flex flex-row items-center justify-between border-b bg-slate-50/50">
+                            <CardTitle class="text-lg">Gestión de Proveedores de EPPS</CardTitle>
+                            <Button @click="openProviderModal()" size="sm" class="gap-2 bg-blue-600 text-white hover:bg-blue-700">
+                                <Truck class="h-4 w-4" /> Nuevo Proveedor
+                            </Button>
                         </CardHeader>
+
                         <CardContent class="p-0">
                             <Table>
                                 <TableHeader>
@@ -2179,9 +2302,8 @@ const saveInlinePrice = (cp: any) => {
                             Factura #{{ selectedEquipInvoice?.invoice_number || 'S/N' }}
                         </DialogTitle>
                         <DialogDescription class="mt-1">
-                            {{ selectedEquipInvoice?.provider?.name || 'Sin proveedor' }} •
-                            {{ selectedEquipInvoice?.date }} •
-                            Reg. por: {{ selectedEquipInvoice?.user?.name || 'Sistema' }}
+                            {{ selectedEquipInvoice?.provider?.name || 'Sin proveedor' }} • {{ selectedEquipInvoice?.date }} • Reg. por:
+                            {{ selectedEquipInvoice?.user?.name || 'Sistema' }}
                         </DialogDescription>
                     </DialogHeader>
 
@@ -2231,14 +2353,23 @@ const saveInlinePrice = (cp: any) => {
                                         <template v-if="selectedEquipInvoice">
                                             <TableRow
                                                 v-for="eq in [
-                                                    ...(selectedEquipInvoice.computer_equipments ?? []).map((e: any) => ({ ...e, _type: 'computer' })),
-                                                    ...(selectedEquipInvoice.kitchen_equipments  ?? []).map((e: any) => ({ ...e, _type: 'kitchen'  })),
+                                                    ...(selectedEquipInvoice.computer_equipments ?? []).map((e: any) => ({
+                                                        ...e,
+                                                        _type: 'computer',
+                                                    })),
+                                                    ...(selectedEquipInvoice.kitchen_equipments ?? []).map((e: any) => ({ ...e, _type: 'kitchen' })),
                                                 ]"
                                                 :key="eq.id"
                                             >
                                                 <TableCell class="py-2">
-                                                    <span :class="['inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold',
-                                                        eq._type === 'computer' ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-orange-200 bg-orange-50 text-orange-700']">
+                                                    <span
+                                                        :class="[
+                                                            'inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold',
+                                                            eq._type === 'computer'
+                                                                ? 'border-blue-200 bg-blue-50 text-blue-700'
+                                                                : 'border-orange-200 bg-orange-50 text-orange-700',
+                                                        ]"
+                                                    >
                                                         <component :is="eq._type === 'computer' ? Laptop : ChefHat" class="h-2.5 w-2.5" />
                                                         {{ eq._type === 'computer' ? 'IT' : 'Menaje' }}
                                                     </span>
@@ -2250,12 +2381,18 @@ const saveInlinePrice = (cp: any) => {
                                                 <TableCell class="py-2 font-mono text-xs text-slate-500">{{ eq.code || '—' }}</TableCell>
                                                 <TableCell class="py-2 font-mono text-xs text-slate-500">{{ eq.series || '—' }}</TableCell>
                                                 <TableCell class="py-2 text-xs text-slate-500">{{ eq.color || '—' }}</TableCell>
-                                                <TableCell class="py-2 text-center text-xs font-black text-slate-700">{{ eq.quantity ?? 1 }}</TableCell>
+                                                <TableCell class="py-2 text-center text-xs font-black text-slate-700">{{
+                                                    eq.quantity ?? 1
+                                                }}</TableCell>
                                                 <TableCell class="py-2 text-right text-[10px] font-medium text-slate-500">
                                                     S/.{{ Number(eq.unit_price ?? 0).toFixed(2) }}
                                                 </TableCell>
                                                 <TableCell class="py-2 text-right text-xs font-black text-blue-600">
-                                                    S/.{{ (Number(eq.unit_price ?? 0) * (eq.quantity ?? 1)).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                    S/.{{
+                                                        (Number(eq.unit_price ?? 0) * (eq.quantity ?? 1)).toLocaleString(undefined, {
+                                                            minimumFractionDigits: 2,
+                                                        })
+                                                    }}
                                                 </TableCell>
                                             </TableRow>
                                         </template>
@@ -2268,13 +2405,26 @@ const saveInlinePrice = (cp: any) => {
                                                     <div class="flex items-center justify-between px-2">
                                                         <span class="text-[10px] font-black tracking-widest text-slate-400 uppercase">IGV (18%)</span>
                                                         <span class="font-mono text-xs font-bold text-slate-600">
-                                                            S/.{{ Number((selectedEquipInvoice?.total_amount / 1.18) * 0.18 || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                            S/.{{
+                                                                Number((selectedEquipInvoice?.total_amount / 1.18) * 0.18 || 0).toLocaleString(
+                                                                    undefined,
+                                                                    { minimumFractionDigits: 2 },
+                                                                )
+                                                            }}
                                                         </span>
                                                     </div>
-                                                    <div class="flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50/50 p-3 shadow-sm">
-                                                        <span class="text-[10px] font-black tracking-widest text-blue-700 uppercase">Total Factura</span>
+                                                    <div
+                                                        class="flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50/50 p-3 shadow-sm"
+                                                    >
+                                                        <span class="text-[10px] font-black tracking-widest text-blue-700 uppercase"
+                                                            >Total Factura</span
+                                                        >
                                                         <span class="font-mono text-sm font-black text-blue-700">
-                                                            S/.{{ Number(selectedEquipInvoice?.total_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                                            S/.{{
+                                                                Number(selectedEquipInvoice?.total_amount || 0).toLocaleString(undefined, {
+                                                                    minimumFractionDigits: 2,
+                                                                })
+                                                            }}
                                                         </span>
                                                     </div>
                                                 </div>
