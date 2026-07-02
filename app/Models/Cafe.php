@@ -61,4 +61,9 @@ class Cafe extends Model
     {
         return $this->belongsToMany(\Spatie\Permission\Models\Role::class, 'cafe_roles');
     }
+
+    public function products(): HasMany
+    {
+        return $this->hasMany(Product::class);
+    }
 }

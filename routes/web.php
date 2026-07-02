@@ -32,6 +32,8 @@ use App\Http\Controllers\LevelController;
 use App\Http\Controllers\MenuCycleController;
 use App\Http\Controllers\PlanningController;
 use App\Http\Controllers\PurchaseOrderController;
+use App\Http\Controllers\PosController;
+use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ReportSalesController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SaleController;
@@ -298,6 +300,16 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     // ========================================================================
     // VENTAS
     // ========================================================================
+    Route::get('pos', [PosController::class, 'index'])->name('pos.index');
+
+    Route::prefix('products')->name('products.')->group(function () {
+        Route::get('/',      [ProductController::class, 'index'])->name('index');
+        Route::post('/',     [ProductController::class, 'store'])->name('store');
+        Route::put('{id}',   [ProductController::class, 'update'])->name('update');
+        Route::patch('{id}/stock', [ProductController::class, 'updateStock'])->name('stock');
+        Route::delete('{id}',[ProductController::class, 'destroy'])->name('destroy');
+    });
+
     Route::prefix('sales')->name('sales.')->group(function () {
         Route::get('/', [SaleController::class, 'index'])->name('index');
         Route::post('/', [SaleController::class, 'store'])->name('store');

@@ -45,7 +45,12 @@ class SubdealershipController extends Controller
         }
 
         $subdealership = Subdealership::create($request->only([
-            'name', 'ruc', 'fiscal_address', 'legal_address', 'phone', 'email',
+            'name',
+            'ruc',
+            'fiscal_address',
+            'legal_address',
+            'phone',
+            'email',
         ]));
 
         $mineId = Auth::user()->mine_id;
@@ -93,7 +98,7 @@ class SubdealershipController extends Controller
             $query->where('name', 'like', "%{$q}%");
         }
 
-        return response()->json($query->orderBy('name')->limit(20)->get(['id', 'name', 'ruc']));
+        return response()->json($query->orderBy('name')->get(['id', 'name', 'ruc']));
     }
 
     public function attachToMine(Subdealership $subdealership)
