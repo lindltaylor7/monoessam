@@ -25,7 +25,18 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
     private array $sdGroups   = [];
     private array $svcPrices  = []; // svc_name => representative unit price
     private array $grandTotals = []; // svc_name => total qty (all persons × dates)
+    private array $dateSvcTotals = []; // "date|svc" => total qty (all persons)
     private array $dniMap     = []; // sd => name => dni
+
+    /** Canonical service ordering regardless of stored service_type integrity */
+    private function servicePriority(string $svc): int
+    {
+        $upper = strtoupper($svc);
+        if (str_starts_with($upper, 'DESAYUNO')) return 1;
+        if (str_starts_with($upper, 'ALMUERZO')) return 2;
+        if (str_starts_with($upper, 'CENA'))     return 3;
+        return 4;
+    }
 
     private const FIXED_COLS = 3; // EMPRESA + APELLIDOS Y NOMBRES + DNI
     private const DATA_START  = 6; // rows 1-5: title, period, spacer, header-dates, header-services
@@ -84,10 +95,10 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
         );
         $this->dates = $dates;
 
-        /* Sort services by type (1=D, 2=A, 3=C, 4=R) then name */
+        /* Sort services: DESAYUNO, ALMUERZO, CENA, then anything else by name */
         $svcs = array_keys($svcTypeMap);
         usort($svcs, fn($a, $b) =>
-            ($svcTypeMap[$a] ?? 99) <=> ($svcTypeMap[$b] ?? 99) ?: strcmp($a, $b)
+            $this->servicePriority($a) <=> $this->servicePriority($b) ?: strcmp($a, $b)
         );
         $this->services = $svcs;
 
@@ -98,10 +109,10 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
             ksort($this->matrix[$sd]);
             $count = count($this->matrix[$sd]);
             $this->sdGroups[] = ['sd' => $sd, 'start' => $currentRow, 'count' => $count];
-            $currentRow += $count;
+            $currentRow += $count + 1; // +1 for the empresa subtotal row
         }
 
-        /* Compute grand totals per service */
+        /* Compute grand totals per service, and per date+service (for the bottom totals row) */
         foreach ($this->services as $svc) {
             $total = 0;
             foreach ($this->matrix as $persons) {
@@ -112,6 +123,14 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
                 }
             }
             $this->grandTotals[$svc] = $total;
+        }
+
+        foreach ($this->matrix as $persons) {
+            foreach ($persons as $cells) {
+                foreach ($cells as $key => $qty) {
+                    $this->dateSvcTotals[$key] = ($this->dateSvcTotals[$key] ?? 0) + $qty;
+                }
+            }
         }
     }
 
@@ -177,14 +196,20 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
             $persons = array_keys($this->matrix[$sd]);
             $first   = true;
 
+            /* Accumulators for this empresa's subtotal row */
+            $groupDateSvcTotals = []; // "date|svc" => qty
+            $groupSvcTotals     = []; // svc => qty (TOTAL DE CONSUMO)
+
             foreach ($persons as $person) {
                 $row = [$first ? $sd : '', $person, $this->dniMap[$sd][$person] ?? '—'];
 
                 /* Per-date quantities */
                 foreach ($this->dates as $date) {
                     foreach ($this->services as $svc) {
-                        $qty   = $this->matrix[$sd][$person][$date . '|' . $svc] ?? null;
-                        $row[] = ($qty !== null && $qty > 0) ? (int) $qty : '';
+                        $qty   = $this->matrix[$sd][$person][$date . '|' . $svc] ?? 0;
+                        $row[] = $qty > 0 ? (int) $qty : '';
+                        $key   = $date . '|' . $svc;
+                        $groupDateSvcTotals[$key] = ($groupDateSvcTotals[$key] ?? 0) + $qty;
                     }
                 }
 
@@ -195,24 +220,39 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
                         $rowTotal += $this->matrix[$sd][$person][$date . '|' . $svc] ?? 0;
                     }
                     $row[] = $rowTotal > 0 ? $rowTotal : '';
+                    $groupSvcTotals[$svc] = ($groupSvcTotals[$svc] ?? 0) + $rowTotal;
                 }
 
                 $rows[] = $row;
                 $first  = false;
             }
+
+            /* ── Subtotal row: total of each service for this empresa ── */
+            $subRow = ['', 'TOTAL ' . $sd, ''];
+            foreach ($this->dates as $date) {
+                foreach ($this->services as $svc) {
+                    $v = $groupDateSvcTotals[$date . '|' . $svc] ?? 0;
+                    $subRow[] = $v > 0 ? $v : '';
+                }
+            }
+            foreach ($this->services as $svc) {
+                $v = $groupSvcTotals[$svc] ?? 0;
+                $subRow[] = $v > 0 ? $v : '';
+            }
+            $rows[] = $subRow;
         }
 
         /* ── Totals row (per-date totals + TOTAL DE CONSUMO grand totals) ── */
-        $totals        = ['', 'TOTAL', ''];
-        $dataRowArrays = array_slice($rows, self::DATA_START - 1);
-
-        for ($ci = self::FIXED_COLS; $ci < $nTotCols; $ci++) {
-            $sum = 0;
-            foreach ($dataRowArrays as $dr) {
-                $v = $dr[$ci] ?? '';
-                $sum += is_numeric($v) ? (int) $v : 0;
+        $totals = ['', 'TOTAL', ''];
+        foreach ($this->dates as $date) {
+            foreach ($this->services as $svc) {
+                $v = $this->dateSvcTotals[$date . '|' . $svc] ?? 0;
+                $totals[] = $v > 0 ? $v : '';
             }
-            $totals[] = $sum > 0 ? $sum : '';
+        }
+        foreach ($this->services as $svc) {
+            $v = $this->grandTotals[$svc] ?? 0;
+            $totals[] = $v > 0 ? $v : '';
         }
         $rows[] = $totals;
 
@@ -274,7 +314,7 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
         $tcStart     = $this->totalConsumoStartIdx(); // 0-based
         $lastCol     = Coordinate::stringFromColumnIndex($totalCols);
 
-        $totalPersonRows = array_sum(array_column($this->sdGroups, 'count'));
+        $totalPersonRows = array_sum(array_column($this->sdGroups, 'count')) + count($this->sdGroups);
         $lastDataRow = self::DATA_START + $totalPersonRows - 1;
         $totalsRow   = $lastDataRow + 1;
         $priceRow    = $totalsRow + 1;
@@ -434,9 +474,10 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
         ]);
         $sheet->getRowDimension($totalRow)->setRowHeight(22);
 
-        /* ── EMPRESA column merges ── */
+        /* ── EMPRESA column merges (spans person rows only, not the subtotal row) ── */
         foreach ($this->sdGroups as $group) {
-            $endRow = $group['start'] + $group['count'] - 1;
+            $endRow           = $group['start'] + $group['count'] - 1;
+            $groupSubtotalRow = $endRow + 1;
             if ($group['count'] > 1) {
                 $sheet->mergeCells("A{$group['start']}:A{$endRow}");
             }
@@ -445,7 +486,14 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
                 'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'EFF6FF']],
                 'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
             ]);
-            $sheet->getStyle("A{$endRow}:{$lastCol}{$endRow}")->getBorders()
+            $sheet->getStyle("A{$groupSubtotalRow}:{$lastCol}{$groupSubtotalRow}")->applyFromArray([
+                'font'      => ['bold' => true, 'size' => 9, 'color' => ['rgb' => '1E3A5F']],
+                'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'E2E8F0']],
+                'borders'   => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']]],
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER],
+            ]);
+            $sheet->getStyle("B{$groupSubtotalRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+            $sheet->getStyle("A{$groupSubtotalRow}:{$lastCol}{$groupSubtotalRow}")->getBorders()
                 ->getBottom()->setBorderStyle(Border::BORDER_MEDIUM)
                 ->getColor()->setRGB('94A3B8');
         }
