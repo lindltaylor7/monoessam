@@ -46,7 +46,7 @@ const footerNavItems: NavItem[] = [];
             </SidebarMenu>
         </SidebarHeader>
 
-        <SidebarContent class="bg-red-700 text-white">
+        <SidebarContent class="sidebar-scroll bg-red-700 text-white">
             <NavMain :items="mainNavItems" />
         </SidebarContent>
 

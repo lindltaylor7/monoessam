@@ -3,8 +3,8 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Head } from '@inertiajs/vue3';
 import axios from 'axios';
 import {
-    CalendarDays, ChevronRight, Clock, Loader2,
-    Package, RotateCcw, Search, ShoppingBag, User, X,
+    CalendarDays, Clock, Loader2,
+    Package, RotateCcw, Search, ShoppingBag, Store, X,
 } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
 import { computed, ref } from 'vue';
@@ -20,14 +20,14 @@ interface Product {
     is_active: boolean;
 }
 
-interface Cafe {
+interface Mercantil {
     id: number;
     name: string;
     unit?: { id: number; name: string };
 }
 
 interface Props {
-    cafes:      (Cafe & { products: Product[] })[];
+    mercantiles: (Mercantil & { products: Product[] })[];
     sale_types: any[];
 }
 
@@ -53,15 +53,12 @@ const categoryMeta = (() => {
 })();
 
 // ── State ──────────────────────────────────────────────────────────────────
-const cafeSelected     = ref<number>(props.cafes[0]?.id ?? 0);
-const dateSelected     = ref<string>(new Date().toISOString().split('T')[0]);
-const saletypeSelected = ref<number>(props.sale_types[0]?.id ?? 0);
-const activeCategory   = ref<string>('all');
-const searchQuery      = ref('');
+const mercantilSelected = ref<number>(props.mercantiles[0]?.id ?? 0);
+const dateSelected      = ref<string>(new Date().toISOString().split('T')[0]);
+const saletypeSelected  = ref<number>(props.sale_types[0]?.id ?? 0);
+const activeCategory    = ref<string>('all');
+const searchQuery       = ref('');
 
-const dniInput   = ref('');
-const customer   = ref<any>(null);
-const searching  = ref(false);
 const submitting = ref(false);
 
 interface CartItem {
@@ -75,16 +72,16 @@ interface CartItem {
 const cart = ref<CartItem[]>([]);
 
 // ── Derived ────────────────────────────────────────────────────────────────
-const cafeProducts = computed<Product[]>(() =>
-    props.cafes.find(c => c.id === cafeSelected.value)?.products ?? [],
+const mercantilProducts = computed<Product[]>(() =>
+    props.mercantiles.find(m => m.id === mercantilSelected.value)?.products ?? [],
 );
 
 const categories = computed<string[]>(() =>
-    [...new Set(cafeProducts.value.map((p: Product) => p.category ?? 'Sin categoría'))].sort(),
+    [...new Set(mercantilProducts.value.map((p: Product) => p.category ?? 'Sin categoría'))].sort(),
 );
 
 const filtered = computed<Product[]>(() => {
-    let list: Product[] = cafeProducts.value;
+    let list: Product[] = mercantilProducts.value;
     if (activeCategory.value !== 'all')
         list = list.filter((p: Product) => (p.category ?? 'Sin categoría') === activeCategory.value);
     if (searchQuery.value.trim())
@@ -128,58 +125,27 @@ const decreaseQty = (id: number) => {
 const removeItem = (id: number) => { cart.value = cart.value.filter(i => i.productId !== id); };
 const clearCart  = () => { cart.value = []; };
 
-// ── DNI search ─────────────────────────────────────────────────────────────
-const searchCustomer = async () => {
-    const dni = dniInput.value.trim();
-    if (!/^\d{8}$/.test(dni)) {
-        Swal.fire({ icon: 'warning', title: 'DNI inválido', text: 'Ingresa exactamente 8 dígitos.', confirmButtonColor: '#dc2626' });
-        return;
-    }
-    if (!cafeSelected.value) {
-        Swal.fire({ icon: 'warning', title: 'Sin cafetería', text: 'Selecciona una cafetería primero.', confirmButtonColor: '#dc2626' });
-        return;
-    }
-    searching.value = true;
-    try {
-        const { data } = await axios.get(`/sales/search/${dni}/${cafeSelected.value}`);
-        if (data?.length) { customer.value = data[0]; }
-        else {
-            Swal.fire({ icon: 'error', title: 'No encontrado', text: 'No se encontró un comensal con ese DNI.', confirmButtonColor: '#dc2626' });
-            customer.value = null;
-        }
-    } catch {
-        Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudo conectar con el servidor.', confirmButtonColor: '#dc2626' });
-    } finally {
-        searching.value = false;
-    }
-};
-
-const clearCustomer = () => { customer.value = null; dniInput.value = ''; };
-
 // ── Submit ─────────────────────────────────────────────────────────────────
 const submit = async () => {
-    if (!customer.value)   { Swal.fire({ icon: 'warning', title: 'Sin comensal', text: 'Busca al comensal por DNI.', confirmButtonColor: '#dc2626' }); return; }
-    if (!cart.value.length){ Swal.fire({ icon: 'warning', title: 'Carrito vacío', text: 'Agrega al menos un producto.', confirmButtonColor: '#dc2626' }); return; }
+    if (!mercantilSelected.value) { Swal.fire({ icon: 'warning', title: 'Sin mercantil', text: 'Selecciona un mercantil.', confirmButtonColor: '#dc2626' }); return; }
+    if (!cart.value.length)       { Swal.fire({ icon: 'warning', title: 'Carrito vacío', text: 'Agrega al menos un producto.', confirmButtonColor: '#dc2626' }); return; }
 
     submitting.value = true;
     try {
         const fd = new FormData();
-        fd.append('cafe_id',      cafeSelected.value.toString());
-        fd.append('sale_type_id', saletypeSelected.value.toString());
-        fd.append('products',     JSON.stringify(cart.value));
-        fd.append('dni',          customer.value.dni);
-        fd.append('date',         dateSelected.value);
+        fd.append('mercantil_id',  mercantilSelected.value.toString());
+        fd.append('sale_type_id',  saletypeSelected.value.toString());
+        fd.append('products',      JSON.stringify(cart.value));
+        fd.append('date',          dateSelected.value);
 
         await axios.post('/pos/store', fd);
 
         await Swal.fire({
             icon: 'success', title: '¡Venta registrada!',
-            html: `<p class="text-sm text-slate-600">Venta registrada para <strong>${customer.value.name}</strong>.</p>`,
             confirmButtonColor: '#6366f1', timer: 1800, timerProgressBar: true, showConfirmButton: false,
         });
 
         clearCart();
-        clearCustomer();
     } catch (err: any) {
         Swal.fire({ icon: 'error', title: 'Error', text: err.response?.data?.message ?? 'No se pudo registrar la venta.', confirmButtonColor: '#dc2626' });
     } finally {
@@ -196,11 +162,11 @@ const submit = async () => {
             <!-- ── CONFIG BAR ──────────────────────────────────────────────── -->
             <div class="flex flex-wrap items-center gap-2 border-b bg-white px-4 py-2.5 shadow-sm">
                 <div class="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5">
-                    <ShoppingBag class="h-3.5 w-3.5 text-zinc-500" />
-                    <select v-model="cafeSelected" class="border-none bg-transparent text-sm font-semibold text-zinc-700 outline-none">
-                        <option :value="0" disabled>Seleccionar cafetería</option>
-                        <option v-for="c in cafes" :key="c.id" :value="c.id">
-                            {{ c.name }}<span v-if="c.unit"> · {{ c.unit.name }}</span>
+                    <Store class="h-3.5 w-3.5 text-zinc-500" />
+                    <select v-model="mercantilSelected" class="border-none bg-transparent text-sm font-semibold text-zinc-700 outline-none">
+                        <option :value="0" disabled>Seleccionar mercantil</option>
+                        <option v-for="m in mercantiles" :key="m.id" :value="m.id">
+                            {{ m.name }}<span v-if="m.unit"> · {{ m.unit.name }}</span>
                         </option>
                     </select>
                 </div>
@@ -332,38 +298,6 @@ const submit = async () => {
                         </p>
                     </div>
 
-                    <!-- Customer -->
-                    <div class="border-b bg-slate-50 px-5 py-4">
-                        <div v-if="customer" class="flex items-center gap-3">
-                            <div class="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-100 text-indigo-600">
-                                <User class="h-5 w-5" />
-                            </div>
-                            <div class="min-w-0 flex-1">
-                                <p class="truncate text-sm font-bold text-zinc-800">{{ customer.name }}</p>
-                                <p class="text-xs text-zinc-500">DNI {{ customer.dni }}<span v-if="customer.subdealership"> · {{ customer.subdealership.name }}</span></p>
-                            </div>
-                            <button @click="clearCustomer" class="rounded-full p-1.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-500">
-                                <X class="h-4 w-4" />
-                            </button>
-                        </div>
-
-                        <div v-else class="flex gap-2">
-                            <div class="relative flex-1">
-                                <Search class="absolute top-2.5 left-3 h-4 w-4 text-zinc-400" />
-                                <input
-                                    v-model="dniInput" type="text" maxlength="8" placeholder="Buscar por DNI..."
-                                    class="w-full rounded-xl border border-zinc-200 bg-white py-2 pr-3 pl-9 text-sm font-medium text-zinc-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
-                                    @keydown.enter="searchCustomer"
-                                />
-                            </div>
-                            <button @click="searchCustomer" :disabled="searching"
-                                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:opacity-60">
-                                <Loader2 v-if="searching" class="h-4 w-4 animate-spin" />
-                                <ChevronRight v-else class="h-4 w-4" />
-                            </button>
-                        </div>
-                    </div>
-
                     <!-- Cart items -->
                     <div class="flex-1 overflow-y-auto px-5 py-3">
                         <div v-if="cart.length === 0" class="flex h-full flex-col items-center justify-center gap-3 text-zinc-300">
@@ -425,17 +359,14 @@ const submit = async () => {
                                 class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-200 text-zinc-400 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-500 disabled:opacity-40">
                                 <RotateCcw class="h-4 w-4" />
                             </button>
-                            <button @click="submit" :disabled="submitting || !cart.length || !customer"
+                            <button @click="submit" :disabled="submitting || !cart.length"
                                 class="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 text-sm font-black text-white shadow-md shadow-indigo-200 transition-all hover:bg-indigo-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50">
                                 <Loader2 v-if="submitting" class="h-4 w-4 animate-spin" />
                                 <span v-else>Confirmar Venta</span>
                             </button>
                         </div>
 
-                        <p v-if="!customer" class="text-center text-[11px] font-medium text-amber-500">
-                            ⚠ Busca al comensal por DNI para continuar
-                        </p>
-                        <p v-else-if="!cart.length" class="text-center text-[11px] text-zinc-400">
+                        <p v-if="!cart.length" class="text-center text-[11px] text-zinc-400">
                             Selecciona productos del catálogo
                         </p>
                     </div>

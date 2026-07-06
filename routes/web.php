@@ -23,6 +23,7 @@ use App\Http\Controllers\IngredientController;
 use App\Http\Controllers\NutritionalFactorController;
 use App\Http\Controllers\LogisticController;
 use App\Http\Controllers\ManagementController;
+use App\Http\Controllers\MercantilController;
 use App\Http\Controllers\MineController;
 use App\Http\Controllers\PeriodController;
 use App\Http\Controllers\PermissionController;
@@ -308,6 +309,13 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::put('{id}',   [ProductController::class, 'update'])->name('update');
         Route::patch('{id}/stock', [ProductController::class, 'updateStock'])->name('stock');
         Route::delete('{id}',[ProductController::class, 'destroy'])->name('destroy');
+    });
+
+    Route::prefix('mercantiles')->name('mercantiles.')->group(function () {
+        Route::get('/',      [MercantilController::class, 'index'])->name('index');
+        Route::post('/',     [MercantilController::class, 'store'])->name('store');
+        Route::put('{id}',   [MercantilController::class, 'update'])->name('update');
+        Route::delete('{id}',[MercantilController::class, 'destroy'])->name('destroy');
     });
 
     Route::prefix('sales')->name('sales.')->group(function () {

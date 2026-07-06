@@ -6,15 +6,15 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { Minus, Package, Pencil, Plus, Search, ShoppingBag, Tag, Trash2, ToggleLeft, ToggleRight } from 'lucide-vue-next';
+import { Minus, Package, Pencil, Plus, Search, Store, Tag, Trash2, ToggleLeft, ToggleRight } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 // ── Types ──────────────────────────────────────────────────────────────────
-interface Cafe { id: number; name: string; unit?: { id: number; name: string } }
+interface Mercantil { id: number; name: string; unit?: { id: number; name: string } }
 interface Product {
     id: number;
-    cafe_id: number;
-    cafe?: { id: number; name: string };
+    mercantil_id: number;
+    mercantil?: { id: number; name: string };
     name: string;
     description?: string;
     sku?: string;
@@ -24,16 +24,16 @@ interface Product {
     is_active: boolean;
 }
 
-const props = defineProps<{ products: Product[]; cafes: Cafe[] }>();
+const props = defineProps<{ products: Product[]; mercantiles: Mercantil[] }>();
 
 // ── Filters ────────────────────────────────────────────────────────────────
-const search      = ref('');
-const cafeFilter  = ref('__all__');
+const search          = ref('');
+const mercantilFilter = ref('__all__');
 
 const filtered = computed(() => {
     let list = props.products;
-    if (cafeFilter.value !== '__all__')
-        list = list.filter(p => p.cafe_id === Number(cafeFilter.value));
+    if (mercantilFilter.value !== '__all__')
+        list = list.filter(p => p.mercantil_id === Number(mercantilFilter.value));
     if (search.value.trim())
         list = list.filter(p =>
             p.name.toLowerCase().includes(search.value.toLowerCase()) ||
@@ -53,36 +53,36 @@ const showModal  = ref(false);
 const editingId  = ref<number | null>(null);
 
 const form = useForm({
-    cafe_id:     '' as string | number,
-    name:        '',
-    description: '',
-    sku:         '',
-    category:    '',
-    price:       '' as string | number,
-    stock:       0 as string | number,
-    is_active:   true as boolean,
+    mercantil_id: '' as string | number,
+    name:         '',
+    description:  '',
+    sku:          '',
+    category:     '',
+    price:        '' as string | number,
+    stock:        0 as string | number,
+    is_active:    true as boolean,
 });
 
 const openCreate = () => {
     editingId.value = null;
     form.reset();
-    form.cafe_id   = props.cafes[0]?.id ?? '';
-    form.stock     = 0;
-    form.is_active = true;
+    form.mercantil_id = props.mercantiles[0]?.id ?? '';
+    form.stock         = 0;
+    form.is_active      = true;
     showModal.value = true;
 };
 
 const openEdit = (p: Product) => {
-    editingId.value  = p.id;
-    form.cafe_id     = p.cafe_id;
-    form.name        = p.name;
-    form.description = p.description ?? '';
-    form.sku         = p.sku ?? '';
-    form.category    = p.category ?? '';
-    form.price       = p.price;
-    form.stock       = p.stock;
-    form.is_active   = p.is_active;
-    showModal.value  = true;
+    editingId.value     = p.id;
+    form.mercantil_id   = p.mercantil_id;
+    form.name           = p.name;
+    form.description     = p.description ?? '';
+    form.sku             = p.sku ?? '';
+    form.category        = p.category ?? '';
+    form.price           = p.price;
+    form.stock           = p.stock;
+    form.is_active       = p.is_active;
+    showModal.value      = true;
 };
 
 const closeModal = () => { showModal.value = false; form.reset(); };
@@ -90,9 +90,9 @@ const closeModal = () => { showModal.value = false; form.reset(); };
 const save = () => {
     const payload = {
         ...form.data(),
-        cafe_id: Number(form.cafe_id),
-        price:   Number(form.price),
-        stock:   Number(form.stock),
+        mercantil_id: Number(form.mercantil_id),
+        price:        Number(form.price),
+        stock:        Number(form.stock),
     };
 
     if (editingId.value) {
@@ -136,7 +136,7 @@ const fmt = (n: number) => `S/ ${Number(n).toFixed(2)}`;
                 <div>
                     <h1 class="text-2xl font-semibold tracking-tight">Productos</h1>
                     <p class="text-muted-foreground mt-1 text-sm">
-                        Gestión de productos por cafetería para el Punto de Venta.
+                        Gestión de productos por mercantil para el Punto de Venta.
                     </p>
                 </div>
                 <Button @click="openCreate" class="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white">
@@ -151,14 +151,14 @@ const fmt = (n: number) => `S/ ${Number(n).toFixed(2)}`;
                     <Input v-model="search" placeholder="Buscar por nombre, SKU o categoría…" class="pl-9" />
                 </div>
 
-                <Select v-model="cafeFilter">
+                <Select v-model="mercantilFilter">
                     <SelectTrigger class="w-56">
-                        <SelectValue placeholder="Todas las cafeterías" />
+                        <SelectValue placeholder="Todos los mercantiles" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="__all__">Todas las cafeterías</SelectItem>
-                        <SelectItem v-for="c in cafes" :key="c.id" :value="String(c.id)">
-                            {{ c.name }}<span v-if="c.unit" class="text-muted-foreground"> · {{ c.unit.name }}</span>
+                        <SelectItem value="__all__">Todos los mercantiles</SelectItem>
+                        <SelectItem v-for="m in mercantiles" :key="m.id" :value="String(m.id)">
+                            {{ m.name }}<span v-if="m.unit" class="text-muted-foreground"> · {{ m.unit.name }}</span>
                         </SelectItem>
                     </SelectContent>
                 </Select>
@@ -175,7 +175,7 @@ const fmt = (n: number) => `S/ ${Number(n).toFixed(2)}`;
                         <thead class="bg-muted/50 sticky top-0">
                             <tr>
                                 <th class="p-4 text-left text-xs font-bold uppercase tracking-wider text-zinc-500">Producto</th>
-                                <th class="p-4 text-left text-xs font-bold uppercase tracking-wider text-zinc-500">Cafetería</th>
+                                <th class="p-4 text-left text-xs font-bold uppercase tracking-wider text-zinc-500">Mercantil</th>
                                 <th class="p-4 text-left text-xs font-bold uppercase tracking-wider text-zinc-500">Categoría</th>
                                 <th class="p-4 text-left text-xs font-bold uppercase tracking-wider text-zinc-500">SKU</th>
                                 <th class="p-4 text-right text-xs font-bold uppercase tracking-wider text-zinc-500">Precio</th>
@@ -201,11 +201,11 @@ const fmt = (n: number) => `S/ ${Number(n).toFixed(2)}`;
                                         </div>
                                     </div>
                                 </td>
-                                <!-- Cafetería -->
+                                <!-- Mercantil -->
                                 <td class="p-4">
                                     <div class="flex items-center gap-1.5">
-                                        <ShoppingBag class="h-3.5 w-3.5 text-zinc-400" />
-                                        <span class="text-sm text-zinc-700">{{ p.cafe?.name ?? '—' }}</span>
+                                        <Store class="h-3.5 w-3.5 text-zinc-400" />
+                                        <span class="text-sm text-zinc-700">{{ p.mercantil?.name ?? '—' }}</span>
                                     </div>
                                 </td>
                                 <!-- Categoría -->
@@ -291,20 +291,20 @@ const fmt = (n: number) => `S/ ${Number(n).toFixed(2)}`;
                 </DialogHeader>
 
                 <form @submit.prevent="save" class="mt-2 space-y-4">
-                    <!-- Cafetería -->
+                    <!-- Mercantil -->
                     <div class="space-y-1.5">
-                        <Label>Cafetería <span class="text-red-500">*</span></Label>
-                        <Select v-model="form.cafe_id">
+                        <Label>Mercantil <span class="text-red-500">*</span></Label>
+                        <Select v-model="form.mercantil_id">
                             <SelectTrigger>
-                                <SelectValue placeholder="Seleccionar cafetería" />
+                                <SelectValue placeholder="Seleccionar mercantil" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem v-for="c in cafes" :key="c.id" :value="String(c.id)">
-                                    {{ c.name }}<span v-if="c.unit" class="text-muted-foreground"> · {{ c.unit.name }}</span>
+                                <SelectItem v-for="m in mercantiles" :key="m.id" :value="String(m.id)">
+                                    {{ m.name }}<span v-if="m.unit" class="text-muted-foreground"> · {{ m.unit.name }}</span>
                                 </SelectItem>
                             </SelectContent>
                         </Select>
-                        <p v-if="form.errors.cafe_id" class="text-xs text-red-500">{{ form.errors.cafe_id }}</p>
+                        <p v-if="form.errors.mercantil_id" class="text-xs text-red-500">{{ form.errors.mercantil_id }}</p>
                     </div>
 
                     <!-- Nombre -->
