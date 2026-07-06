@@ -77,12 +77,16 @@ export interface Unit {
     name: string;
     mine_id: number;
     cafes: Cafe[];
+    mercantiles: Mercantil[];
 }
 
 export interface Cafe {
     id: number;
     name: string;
     unit_id: number;
+    latitude: number | null;
+    longitude: number | null;
+    address: string | null;
     unit: {
         id: number;
         name: string;
@@ -91,6 +95,14 @@ export interface Cafe {
     // Properties used in Headcount context
     assigned_roles?: any[];
     roles?: any[];
+}
+
+export interface Mercantil {
+    id: number;
+    name: string;
+    unit_id: number;
+    address: string | null;
+    is_active: boolean;
 }
 
 export interface Dish {

@@ -25,6 +25,10 @@ class Unit extends Model
     {
         return $this->hasMany(Cafe::class);
     }
+    public function mercantiles(): HasMany
+    {
+        return $this->hasMany(Mercantil::class);
+    }
     public function services(): MorphToMany
     {
         return $this->morphToMany(Service::class, 'serviceable');

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Business, Cafe, Mine, Service, Unit } from '@/types';
+import { Business, Cafe, Mercantil, Mine, Service, Unit } from '@/types';
 import { Head } from '@inertiajs/vue3';
 import { computed, ref } from 'vue'; // Necesitas importar `ref` y `computed`
 import CafeTable from './CafeTable.vue'; // Nuevo componente (similar a TableCafes, pero solo para la Unidad seleccionada)
 import ManagementModal from './ManagementModal.vue';
+import MercantilTable from './MercantilTable.vue'; // Nuevo componente (mismo patrón que CafeTable, pero para Mercantiles)
 import MineSelector from './MineSelector.vue'; // Nuevo componente
 import UnitSelector from './UnitSelector.vue'; // Nuevo componente
 
@@ -29,8 +30,8 @@ const selectedMine = computed(() => props.mines.find((m) => m.id === selectedMin
 const selectedUnit = computed(() => {
     const mine = selectedMine.value;
     if (mine && mine.units) {
-        // Asumiendo que `Unit` ahora tiene una propiedad `cafes`
-        return mine.units.find((u: Unit & { cafes: Cafe[] }) => u.id === selectedUnitId.value);
+        // Asumiendo que `Unit` ahora tiene propiedades `cafes` y `mercantiles`
+        return mine.units.find((u: Unit & { cafes: Cafe[]; mercantiles: Mercantil[] }) => u.id === selectedUnitId.value);
     }
     return null;
 });
@@ -60,9 +61,12 @@ const handleSelectUnit = (unitId: number) => {
                 Selecciona una Mina para ver sus Unidades.
             </div>
 
-            <CafeTable v-if="selectedUnit" :cafes="selectedUnit.cafes" :services="services" :roles="roles" />
+            <div v-if="selectedUnit" class="flex flex-col gap-4">
+                <CafeTable :cafes="selectedUnit.cafes" :services="services" :roles="roles" />
+                <MercantilTable :mercantiles="selectedUnit.mercantiles" :unit-id="selectedUnit.id" />
+            </div>
             <div v-else class="flex items-center justify-center rounded-xl border p-4 text-center text-gray-500">
-                Selecciona una Unidad para ver sus Cafeterías.
+                Selecciona una Unidad para ver sus Cafeterías y Mercantiles.
             </div>
         </div>
         <ManagementModal :businesses="businesses" />

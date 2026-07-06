@@ -11,7 +11,7 @@ class Product extends Model
     use HasFactory;
 
     protected $fillable = [
-        'cafe_id',
+        'mercantil_id',
         'name',
         'description',
         'sku',
@@ -27,8 +27,8 @@ class Product extends Model
         'is_active' => 'boolean',
     ];
 
-    public function cafe(): BelongsTo
+    public function mercantil(): BelongsTo
     {
-        return $this->belongsTo(Cafe::class);
+        return $this->belongsTo(Mercantil::class);
     }
 }
