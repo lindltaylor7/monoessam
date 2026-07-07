@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import { Minus, Package, Pencil, Plus, Search, Store, Tag, Trash2, ToggleLeft, ToggleRight } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Mercantil { id: number; name: string; unit?: { id: number; name: string } }
@@ -42,6 +42,27 @@ const filtered = computed(() => {
         );
     return list;
 });
+
+// ── Pagination ─────────────────────────────────────────────────────────────
+const pageSize    = 20;
+const currentPage = ref(1);
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filtered.value.length / pageSize)));
+
+const paginated = computed(() => {
+    const start = (currentPage.value - 1) * pageSize;
+    return filtered.value.slice(start, start + pageSize);
+});
+
+watch([search, mercantilFilter], () => { currentPage.value = 1; });
+
+watch(totalPages, (total) => {
+    if (currentPage.value > total) currentPage.value = total;
+});
+
+const goToPage = (page: number) => {
+    currentPage.value = Math.min(Math.max(page, 1), totalPages.value);
+};
 
 // ── Categories from all products ───────────────────────────────────────────
 const existingCategories = computed<string[]>(() =>
@@ -168,6 +189,11 @@ const fmt = (n: number) => `S/ ${Number(n).toFixed(2)}`;
                 </span>
             </div>
 
+            <p v-if="filtered.length" class="text-muted-foreground -mb-2 text-sm">
+                Mostrando {{ (currentPage - 1) * pageSize + 1 }}–{{ Math.min(currentPage * pageSize, filtered.length) }}
+                de {{ filtered.length }}
+            </p>
+
             <!-- Table -->
             <div class="bg-card overflow-hidden rounded-xl border shadow-sm">
                 <div class="overflow-x-auto">
@@ -185,7 +211,7 @@ const fmt = (n: number) => `S/ ${Number(n).toFixed(2)}`;
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="p in filtered" :key="p.id"
+                            <tr v-for="p in paginated" :key="p.id"
                                 class="group border-t transition-colors hover:bg-muted/30">
                                 <!-- Nombre + descripción -->
                                 <td class="p-4">
@@ -280,6 +306,31 @@ const fmt = (n: number) => `S/ ${Number(n).toFixed(2)}`;
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            <!-- Pagination -->
+            <div v-if="totalPages > 1" class="flex items-center justify-between">
+                <Button variant="outline" size="sm" :disabled="currentPage === 1" @click="goToPage(currentPage - 1)">
+                    Anterior
+                </Button>
+
+                <div class="flex items-center gap-1">
+                    <Button
+                        v-for="page in totalPages"
+                        :key="page"
+                        size="sm"
+                        :variant="page === currentPage ? 'default' : 'outline'"
+                        :class="page === currentPage ? 'bg-indigo-600 hover:bg-indigo-700 text-white' : ''"
+                        class="h-8 w-8 p-0"
+                        @click="goToPage(page)"
+                    >
+                        {{ page }}
+                    </Button>
+                </div>
+
+                <Button variant="outline" size="sm" :disabled="currentPage === totalPages" @click="goToPage(currentPage + 1)">
+                    Siguiente
+                </Button>
             </div>
         </div>
 
