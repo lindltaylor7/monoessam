@@ -38,8 +38,10 @@ const selectedUnit = computed(() => {
 
 // --- Handlers ---
 const handleSelectMine = (mineId: number) => {
+    if (mineId !== selectedMineId.value) {
+        selectedUnitId.value = null; // Reiniciar unidad solo si realmente cambia de mina
+    }
     selectedMineId.value = mineId;
-    selectedUnitId.value = null; // Reiniciar unidad al cambiar de mina
 };
 
 const handleSelectUnit = (unitId: number) => {

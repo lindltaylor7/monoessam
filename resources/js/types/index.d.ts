@@ -138,6 +138,8 @@ export interface Headquarter {
     name: string;
     business_id?: number;
     address?: string;
+    latitude?: number | null;
+    longitude?: number | null;
     phone?: string;
     areas: Area[];
     business?: { id: number; name: string };

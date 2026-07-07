@@ -292,16 +292,19 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     // ========================================================================
     Route::prefix('businesses')->name('businesses.')->group(function () {
         Route::get('/', [BusinessController::class, 'index'])->name('index');
+        Route::post('/', [BusinessController::class, 'store'])->name('store');
         Route::post('services', [BusinessController::class, 'businessServices'])->name('services');
         Route::post('{id}/logo', [BusinessController::class, 'uploadLogo'])->name('logo');
     });
 
+    Route::post('/headquarters', [HeadquarterController::class, 'store'])->name('headquarters.store');
     Route::patch('/headquarters/{headquarter}', [HeadquarterController::class, 'update'])->name('headquarters.update');
 
     // ========================================================================
     // VENTAS
     // ========================================================================
     Route::get('pos', [PosController::class, 'index'])->name('pos.index');
+    Route::post('pos/store', [PosController::class, 'store'])->name('pos.store');
 
     Route::prefix('products')->name('products.')->group(function () {
         Route::get('/',      [ProductController::class, 'index'])->name('index');

@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 class Business extends Model
 {
     use HasFactory;
-    protected $fillable = ['name', 'logo'];
+    protected $fillable = ['name', 'logo', 'ruc', 'fiscal_address', 'legal_address', 'email'];
 
     public function users(): HasMany
     {

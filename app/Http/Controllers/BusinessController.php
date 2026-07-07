@@ -40,7 +40,17 @@ class BusinessController extends Controller
      */
     public function store(Request $request)
     {
-        //
+        $data = $request->validate([
+            'name'           => 'required|string|max:255',
+            'ruc'            => 'nullable|string|max:20',
+            'fiscal_address' => 'nullable|string|max:255',
+            'legal_address'  => 'nullable|string|max:255',
+            'email'          => 'nullable|email|max:255',
+        ]);
+
+        Business::create($data);
+
+        return redirect()->back();
     }
 
     /**
@@ -84,7 +94,7 @@ class BusinessController extends Controller
 
         $business->services()->sync($selectedIds);
 
-        return to_route('businesses');
+        return redirect()->back();
     }
 
     public function uploadLogo(Request $request, string $id)
