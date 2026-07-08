@@ -14,7 +14,7 @@ class LogisticController extends Controller
 {
     public function index()
     {
-        $dispatches = EquipmentDispatch::with(['equipable', 'origin.business', 'originCafe', 'staff', 'dispatcher', 'receiver'])
+        $dispatches = EquipmentDispatch::with(['equipable', 'origin.business', 'originCafe.unit', 'staff', 'dispatcher', 'receiver'])
             ->latest()
             ->get()
             ->map(fn ($d) => $this->transform($d));
@@ -42,7 +42,7 @@ class LogisticController extends Controller
     private function transform(EquipmentDispatch $d): array
     {
         $dest = match ($d->destination_type) {
-            'cafe'        => Cafe::find($d->destination_id),
+            'cafe'        => Cafe::with('unit:id,name')->find($d->destination_id),
             'unit'        => Unit::find($d->destination_id),
             'mine'        => Mine::find($d->destination_id),
             'headquarter' => Headquarter::with('business:id,name')->find($d->destination_id),
@@ -79,10 +79,12 @@ class LogisticController extends Controller
             'origin_label'        => $d->origin_cafe_id ? 'Café / Comedor' : 'Sede / Almacén',
             'origin_name'         => $d->origin?->name ?? $d->originCafe?->name ?? '—',
             'origin_business'     => $d->origin_cafe_id ? null : $d->origin?->business?->name,
+            'origin_unit'         => $d->origin_cafe_id ? $d->originCafe?->unit?->name : null,
             'destination_type'    => $d->destination_type,
             'destination_label'   => $destinationLabel,
             'destination_name'    => $destinationName ?? '—',
             'destination_business'=> $d->destination_type === 'headquarter' ? $dest?->business?->name : null,
+            'destination_unit'    => $d->destination_type === 'cafe' ? $dest?->unit?->name : null,
             'destination_id'    => $d->destination_id,
             'staff_id'          => $d->staff_id,
             'staff_name'        => $d->staff?->name,

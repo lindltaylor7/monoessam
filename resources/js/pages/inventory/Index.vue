@@ -45,9 +45,19 @@ import {
 } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
-interface StaffRef { id: number; name: string }
-interface HQRef    { id: number; name: string; business: { id: number; name: string } | null }
-interface CafeRef  { id: number; name: string }
+interface StaffRef {
+    id: number;
+    name: string;
+}
+interface HQRef {
+    id: number;
+    name: string;
+    business: { id: number; name: string } | null;
+}
+interface CafeRef {
+    id: number;
+    name: string;
+}
 
 interface CafeOutboundDispatch {
     id: number;
@@ -70,18 +80,32 @@ interface CafeOutboundDispatch {
 }
 
 interface ComputerEquipment {
-    id: number; name: string; brand: string | null; model: string | null;
-    presentation: string | null; color: string | null; series: string | null;
-    code: string | null; status: number; quantity: number;
+    id: number;
+    name: string;
+    brand: string | null;
+    model: string | null;
+    presentation: string | null;
+    color: string | null;
+    series: string | null;
+    code: string | null;
+    status: number;
+    quantity: number;
     responsible: StaffRef | null;
     storage_headquarter: HQRef | null;
     current_cafe: CafeRef | null;
 }
 
 interface KitchenEquipment {
-    id: number; name: string; brand: string | null; model: string | null;
-    size: string | null; color: string | null; series: string | null;
-    code: string | null; status: number; quantity: number;
+    id: number;
+    name: string;
+    brand: string | null;
+    model: string | null;
+    size: string | null;
+    color: string | null;
+    series: string | null;
+    code: string | null;
+    status: number;
+    quantity: number;
     responsible: StaffRef | null;
     storage_headquarter: HQRef | null;
     current_cafe: CafeRef | null;
@@ -119,26 +143,63 @@ const props = defineProps<{
 }>();
 
 // ── Café inbound reception ─────────────────────────────────────────────────
-const cafeConfirmId   = ref<number | null>(null);
-const cafeNote        = ref('');
-const cafeProcessing  = ref(false);
+const cafeConfirmId = ref<number | null>(null);
+const cafeNote = ref('');
+const cafeProcessing = ref(false);
 
 function startCafeReceive(id: number) {
     cafeConfirmId.value = id;
-    cafeNote.value      = '';
+    cafeNote.value = '';
 }
 
 function doCafeReceive(id: number) {
     cafeProcessing.value = true;
-    router.put(route('equipment-dispatches.receive', id), { reception_notes: cafeNote.value || null }, {
-        preserveScroll: true,
-        onFinish: () => { cafeProcessing.value = false; cafeConfirmId.value = null; cafeNote.value = ''; },
-    });
+    router.put(
+        route('equipment-dispatches.receive', id),
+        { reception_notes: cafeNote.value || null },
+        {
+            preserveScroll: true,
+            onFinish: () => {
+                cafeProcessing.value = false;
+                cafeConfirmId.value = null;
+                cafeNote.value = '';
+            },
+        },
+    );
 }
 
-const pendingCafeDispatches = computed(() =>
-    props.cafeOutboundDispatches.filter(d => !d.received_at).length
-);
+const pendingCafeDispatches = computed(() => props.cafeOutboundDispatches.filter((d) => !d.received_at).length);
+
+interface CafeDispatchGroup {
+    key: string;
+    guide_number: string | null;
+    items: CafeOutboundDispatch[];
+    origin_cafe: string;
+    dispatched_at: string;
+    dispatched_by: string;
+}
+
+// Agrupa los envíos desde café por guía de remisión, para que se vean juntos
+// aunque cada equipo se siga recepcionando individualmente.
+const groupedCafeDispatches = computed((): CafeDispatchGroup[] => {
+    const map = new Map<string, CafeDispatchGroup>();
+    for (const d of props.cafeOutboundDispatches) {
+        const key = d.guide_number ?? `solo-${d.id}`;
+        if (map.has(key)) {
+            map.get(key)!.items.push(d);
+        } else {
+            map.set(key, {
+                key,
+                guide_number: d.guide_number,
+                items: [d],
+                origin_cafe: d.origin_cafe,
+                dispatched_at: d.dispatched_at,
+                dispatched_by: d.dispatched_by,
+            });
+        }
+    }
+    return [...map.values()];
+});
 
 const activeTab = ref('clothes');
 const viewMode = ref<'cards' | 'table'>('cards');
@@ -522,70 +583,66 @@ const getItemIcon = (type: string) => {
 
 // ── Equipment tab helpers ───────────────────────────────────────────────────
 const EQUIPMENT_STATUSES = [
-    { value: 0, label: 'Nuevo',   cls: 'bg-blue-100 text-blue-700 border-blue-200'        },
-    { value: 1, label: 'Bueno',   cls: 'bg-green-100 text-green-700 border-green-200'     },
-    { value: 2, label: 'Regular', cls: 'bg-yellow-100 text-yellow-700 border-yellow-200'  },
-    { value: 3, label: 'Dañado',  cls: 'bg-red-100 text-red-700 border-red-200'           },
-    { value: 4, label: 'Baja',    cls: 'bg-gray-100 text-gray-600 border-gray-200'        },
+    { value: 0, label: 'Nuevo', cls: 'bg-blue-100 text-blue-700 border-blue-200' },
+    { value: 1, label: 'Bueno', cls: 'bg-green-100 text-green-700 border-green-200' },
+    { value: 2, label: 'Regular', cls: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+    { value: 3, label: 'Dañado', cls: 'bg-red-100 text-red-700 border-red-200' },
+    { value: 4, label: 'Baja', cls: 'bg-gray-100 text-gray-600 border-gray-200' },
 ];
 
 function equipmentStatusInfo(val: number) {
-    return EQUIPMENT_STATUSES.find(s => s.value === val) ?? EQUIPMENT_STATUSES[0];
+    return EQUIPMENT_STATUSES.find((s) => s.value === val) ?? EQUIPMENT_STATUSES[0];
 }
 
 const filteredComputerEquipments = computed(() => {
-    const q    = searchQuery.value.toLowerCase();
-    const hq   = selectedHeadquarterId.value;
+    const q = searchQuery.value.toLowerCase();
+    const hq = selectedHeadquarterId.value;
     const cafe = selectedCafeId.value;
-    return props.computerEquipments.filter(e => {
-        if (hq   !== 'all' && String(e.storage_headquarter?.id ?? '') !== hq)   return false;
-        if (cafe !== 'all' && String(e.current_cafe?.id ?? '')          !== cafe) return false;
+    return props.computerEquipments.filter((e) => {
+        if (hq !== 'all' && String(e.storage_headquarter?.id ?? '') !== hq) return false;
+        if (cafe !== 'all' && String(e.current_cafe?.id ?? '') !== cafe) return false;
         if (!q) return true;
-        return [e.name, e.brand, e.model, e.code, e.series].some(f => f?.toLowerCase().includes(q));
+        return [e.name, e.brand, e.model, e.code, e.series].some((f) => f?.toLowerCase().includes(q));
     });
 });
 
 const filteredKitchenEquipments = computed(() => {
-    const q    = searchQuery.value.toLowerCase();
-    const hq   = selectedHeadquarterId.value;
+    const q = searchQuery.value.toLowerCase();
+    const hq = selectedHeadquarterId.value;
     const cafe = selectedCafeId.value;
-    return props.kitchenEquipments.filter(e => {
-        if (hq   !== 'all' && String(e.storage_headquarter?.id ?? '') !== hq)   return false;
-        if (cafe !== 'all' && String(e.current_cafe?.id ?? '')          !== cafe) return false;
+    return props.kitchenEquipments.filter((e) => {
+        if (hq !== 'all' && String(e.storage_headquarter?.id ?? '') !== hq) return false;
+        if (cafe !== 'all' && String(e.current_cafe?.id ?? '') !== cafe) return false;
         if (!q) return true;
-        return [e.name, e.brand, e.model, e.code, e.series].some(f => f?.toLowerCase().includes(q));
+        return [e.name, e.brand, e.model, e.code, e.series].some((f) => f?.toLowerCase().includes(q));
     });
 });
 
 // ── Pagination ──────────────────────────────────────────────────────────────
 const EQUIP_PAGE_SIZE = 10;
 const computerPage = ref(1);
-const kitchenPage  = ref(1);
+const kitchenPage = ref(1);
 
 watch([searchQuery, selectedHeadquarterId, selectedCafeId], () => {
     computerPage.value = 1;
-    kitchenPage.value  = 1;
+    kitchenPage.value = 1;
 });
 watch(activeTab, () => {
     computerPage.value = 1;
-    kitchenPage.value  = 1;
+    kitchenPage.value = 1;
 });
 
 const paginatedComputerEquipments = computed(() => {
     const start = (computerPage.value - 1) * EQUIP_PAGE_SIZE;
     return filteredComputerEquipments.value.slice(start, start + EQUIP_PAGE_SIZE);
 });
-const computerTotalPages = computed(() =>
-    Math.max(1, Math.ceil(filteredComputerEquipments.value.length / EQUIP_PAGE_SIZE))
-);
+const computerTotalPages = computed(() => Math.max(1, Math.ceil(filteredComputerEquipments.value.length / EQUIP_PAGE_SIZE)));
 
 const paginatedKitchenEquipments = computed(() => {
     const start = (kitchenPage.value - 1) * EQUIP_PAGE_SIZE;
     return filteredKitchenEquipments.value.slice(start, start + EQUIP_PAGE_SIZE);
 });
-const kitchenTotalPages = computed(() =>
-    Math.max(1, Math.ceil(filteredKitchenEquipments.value.length / EQUIP_PAGE_SIZE))
-);
+const kitchenTotalPages = computed(() => Math.max(1, Math.ceil(filteredKitchenEquipments.value.length / EQUIP_PAGE_SIZE)));
 
 // --- New Invoice Logic moved to Invoices/Index.vue ---
 </script>
@@ -677,129 +734,139 @@ const kitchenTotalPages = computed(() =>
                             </DialogHeader>
                             <div class="flex-1 overflow-y-auto px-6 py-4">
                                 <div class="grid gap-5">
-                                <!-- Tipo + Sede -->
-                                <div class="grid grid-cols-2 gap-4">
+                                    <!-- Tipo + Sede -->
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div class="grid gap-2">
+                                            <Label class="text-xs font-bold text-slate-500 uppercase">Tipo de Equipo</Label>
+                                            <Select v-model="itemForm.type">
+                                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="computer">Equipo Informático</SelectItem>
+                                                    <SelectItem value="kitchen">Equipo de Cocina</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        <div class="grid gap-2">
+                                            <Label class="text-xs font-bold text-slate-500 uppercase">Sede / Almacén</Label>
+                                            <Select v-model="itemForm.headquarter_id">
+                                                <SelectTrigger><SelectValue placeholder="Sin sede asignada" /></SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">
+                                                        {{ hq.business.name }} — {{ hq.name }}
+                                                    </SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                    </div>
+
+                                    <!-- Identificación -->
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div class="grid gap-2">
+                                            <Label class="text-xs font-bold text-slate-500 uppercase"
+                                                >Nombre <span class="text-red-500">*</span></Label
+                                            >
+                                            <Input v-model="itemForm.name" placeholder="Ej: Laptop Dell G15" />
+                                        </div>
+                                        <div class="grid gap-2">
+                                            <Label class="text-xs font-bold text-slate-500 uppercase">Marca</Label>
+                                            <Input v-model="itemForm.brand" placeholder="Ej: Dell" />
+                                        </div>
+                                    </div>
+
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div class="grid gap-2">
+                                            <Label class="text-xs font-bold text-slate-500 uppercase">Modelo</Label>
+                                            <Input v-model="itemForm.model" placeholder="Ej: Inspiron 15" />
+                                        </div>
+                                        <div class="grid gap-2">
+                                            <Label class="text-xs font-bold text-slate-500 uppercase">Código</Label>
+                                            <Input v-model="itemForm.code" placeholder="Ej: COD-001" />
+                                        </div>
+                                    </div>
+
+                                    <div class="grid grid-cols-2 gap-4">
+                                        <div class="grid gap-2">
+                                            <Label class="text-xs font-bold text-slate-500 uppercase">N° Serie</Label>
+                                            <Input v-model="itemForm.series" placeholder="Ej: SN-123456" />
+                                        </div>
+                                        <div class="grid gap-2">
+                                            <Label class="text-xs font-bold text-slate-500 uppercase">Color</Label>
+                                            <Input v-model="itemForm.color" placeholder="Ej: Negro" />
+                                        </div>
+                                    </div>
+
+                                    <!-- Campos específicos por tipo -->
+                                    <div v-if="itemForm.type === 'computer'" class="grid grid-cols-2 gap-4">
+                                        <div class="grid gap-2">
+                                            <Label class="text-xs font-bold text-slate-500 uppercase">Presentación</Label>
+                                            <Input v-model="itemForm.presentation" placeholder="Ej: Caja / Bolsa" />
+                                        </div>
+                                    </div>
+
+                                    <div v-if="itemForm.type === 'kitchen'" class="grid grid-cols-2 gap-4">
+                                        <div class="grid gap-2">
+                                            <Label class="text-xs font-bold text-slate-500 uppercase">Tamaño / Capacidad</Label>
+                                            <Input v-model="itemForm.size" placeholder="Ej: 50 Litros" />
+                                        </div>
+                                        <div class="grid gap-2">
+                                            <Label class="text-xs font-bold text-slate-500 uppercase">Tipo de Corriente</Label>
+                                            <Input v-model="itemForm.current_type" placeholder="Ej: 220V / Trifásico" />
+                                        </div>
+                                    </div>
+
+                                    <!-- Estado -->
                                     <div class="grid gap-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">Tipo de Equipo</Label>
-                                        <Select v-model="itemForm.type">
-                                            <SelectTrigger><SelectValue /></SelectTrigger>
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Estado</Label>
+                                        <Select v-model="itemForm.status">
+                                            <SelectTrigger><SelectValue placeholder="Seleccionar estado" /></SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="computer">Equipo Informático</SelectItem>
-                                                <SelectItem value="kitchen">Equipo de Cocina</SelectItem>
+                                                <SelectItem :value="0">Nuevo</SelectItem>
+                                                <SelectItem :value="1">Bueno</SelectItem>
+                                                <SelectItem :value="2">Regular</SelectItem>
+                                                <SelectItem :value="3">Dañado</SelectItem>
+                                                <SelectItem :value="4">De Baja</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                    <div class="grid gap-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">Sede / Almacén</Label>
-                                        <Select v-model="itemForm.headquarter_id">
-                                            <SelectTrigger><SelectValue placeholder="Sin sede asignada" /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">
-                                                    {{ hq.business.name }} — {{ hq.name }}
-                                                </SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
 
-                                <!-- Identificación -->
-                                <div class="grid grid-cols-2 gap-4">
+                                    <!-- Descripción -->
                                     <div class="grid gap-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">Nombre <span class="text-red-500">*</span></Label>
-                                        <Input v-model="itemForm.name" placeholder="Ej: Laptop Dell G15" />
+                                        <Label class="text-xs font-bold text-slate-500 uppercase">Descripción Técnica</Label>
+                                        <textarea
+                                            v-model="itemForm.description"
+                                            class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-[60px] w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                                            placeholder="Especificaciones adicionales..."
+                                        ></textarea>
                                     </div>
-                                    <div class="grid gap-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">Marca</Label>
-                                        <Input v-model="itemForm.brand" placeholder="Ej: Dell" />
-                                    </div>
-                                </div>
 
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div class="grid gap-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">Modelo</Label>
-                                        <Input v-model="itemForm.model" placeholder="Ej: Inspiron 15" />
-                                    </div>
-                                    <div class="grid gap-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">Código</Label>
-                                        <Input v-model="itemForm.code" placeholder="Ej: COD-001" />
-                                    </div>
-                                </div>
-
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div class="grid gap-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">N° Serie</Label>
-                                        <Input v-model="itemForm.series" placeholder="Ej: SN-123456" />
-                                    </div>
-                                    <div class="grid gap-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">Color</Label>
-                                        <Input v-model="itemForm.color" placeholder="Ej: Negro" />
-                                    </div>
-                                </div>
-
-                                <!-- Campos específicos por tipo -->
-                                <div v-if="itemForm.type === 'computer'" class="grid grid-cols-2 gap-4">
-                                    <div class="grid gap-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">Presentación</Label>
-                                        <Input v-model="itemForm.presentation" placeholder="Ej: Caja / Bolsa" />
-                                    </div>
-                                </div>
-
-                                <div v-if="itemForm.type === 'kitchen'" class="grid grid-cols-2 gap-4">
-                                    <div class="grid gap-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">Tamaño / Capacidad</Label>
-                                        <Input v-model="itemForm.size" placeholder="Ej: 50 Litros" />
-                                    </div>
-                                    <div class="grid gap-2">
-                                        <Label class="text-xs font-bold text-slate-500 uppercase">Tipo de Corriente</Label>
-                                        <Input v-model="itemForm.current_type" placeholder="Ej: 220V / Trifásico" />
-                                    </div>
-                                </div>
-
-                                <!-- Estado -->
-                                <div class="grid gap-2">
-                                    <Label class="text-xs font-bold text-slate-500 uppercase">Estado</Label>
-                                    <Select v-model="itemForm.status">
-                                        <SelectTrigger><SelectValue placeholder="Seleccionar estado" /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem :value="0">Nuevo</SelectItem>
-                                            <SelectItem :value="1">Bueno</SelectItem>
-                                            <SelectItem :value="2">Regular</SelectItem>
-                                            <SelectItem :value="3">Dañado</SelectItem>
-                                            <SelectItem :value="4">De Baja</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                <!-- Descripción -->
-                                <div class="grid gap-2">
-                                    <Label class="text-xs font-bold text-slate-500 uppercase">Descripción Técnica</Label>
-                                    <textarea
-                                        v-model="itemForm.description"
-                                        class="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex min-h-[60px] w-full rounded-md border px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
-                                        placeholder="Especificaciones adicionales..."
-                                    ></textarea>
-                                </div>
-
-                                <!-- Sección de inventario -->
-                                <div class="rounded-xl border border-blue-100 bg-blue-50/40 p-4">
-                                    <p class="mb-3 text-[10px] font-black tracking-widest text-blue-600 uppercase">Detalle de Inventario</p>
-                                    <div class="grid grid-cols-3 gap-4">
-                                        <div class="grid gap-2">
-                                            <Label class="text-xs font-bold text-slate-500 uppercase">P. Unitario (S/.)</Label>
-                                            <Input v-model.number="itemForm.unit_price" type="number" min="0" step="0.01" placeholder="0.00" />
-                                        </div>
-                                        <div class="grid gap-2">
-                                            <Label class="text-xs font-bold text-slate-500 uppercase">Cantidad <span class="text-red-500">*</span></Label>
-                                            <Input v-model.number="itemForm.quantity" type="number" min="1" placeholder="1" />
-                                        </div>
-                                        <div class="grid gap-2">
-                                            <Label class="text-xs font-bold text-slate-500 uppercase">Total</Label>
-                                            <div class="flex h-10 items-center rounded-md border border-blue-200 bg-white px-3 font-mono text-sm font-bold text-blue-700">
-                                                S/.{{ (itemForm.unit_price * itemForm.quantity).toLocaleString(undefined, { minimumFractionDigits: 2 }) }}
+                                    <!-- Sección de inventario -->
+                                    <div class="rounded-xl border border-blue-100 bg-blue-50/40 p-4">
+                                        <p class="mb-3 text-[10px] font-black tracking-widest text-blue-600 uppercase">Detalle de Inventario</p>
+                                        <div class="grid grid-cols-3 gap-4">
+                                            <div class="grid gap-2">
+                                                <Label class="text-xs font-bold text-slate-500 uppercase">P. Unitario (S/.)</Label>
+                                                <Input v-model.number="itemForm.unit_price" type="number" min="0" step="0.01" placeholder="0.00" />
+                                            </div>
+                                            <div class="grid gap-2">
+                                                <Label class="text-xs font-bold text-slate-500 uppercase"
+                                                    >Cantidad <span class="text-red-500">*</span></Label
+                                                >
+                                                <Input v-model.number="itemForm.quantity" type="number" min="1" placeholder="1" />
+                                            </div>
+                                            <div class="grid gap-2">
+                                                <Label class="text-xs font-bold text-slate-500 uppercase">Total</Label>
+                                                <div
+                                                    class="flex h-10 items-center rounded-md border border-blue-200 bg-white px-3 font-mono text-sm font-bold text-blue-700"
+                                                >
+                                                    S/.{{
+                                                        (itemForm.unit_price * itemForm.quantity).toLocaleString(undefined, {
+                                                            minimumFractionDigits: 2,
+                                                        })
+                                                    }}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
-                                </div>
                                 </div>
                             </div>
                             <DialogFooter class="border-t bg-slate-50/50 px-6 py-4">
@@ -875,8 +942,12 @@ const kitchenTotalPages = computed(() =>
                                     <div class="grid gap-2">
                                         <Label>
                                             Sede
-                                            <span v-if="stockForm.stockable_type === 'computer' || stockForm.stockable_type === 'kitchen'" class="text-slate-400 text-xs font-normal">(Opcional)</span>
-                                            <span v-else class="text-slate-400 text-xs font-normal">(Opcional)</span>
+                                            <span
+                                                v-if="stockForm.stockable_type === 'computer' || stockForm.stockable_type === 'kitchen'"
+                                                class="text-xs font-normal text-slate-400"
+                                                >(Opcional)</span
+                                            >
+                                            <span v-else class="text-xs font-normal text-slate-400">(Opcional)</span>
                                         </Label>
                                         <Select v-model="stockForm.headquarter_id">
                                             <SelectTrigger><SelectValue placeholder="General" /></SelectTrigger>
@@ -1017,13 +1088,17 @@ const kitchenTotalPages = computed(() =>
                                 <Truck class="h-4 w-4 text-indigo-600" />
                                 <span class="hidden sm:inline text-indigo-700 font-bold">Envíos a Unidades</span>
                             </TabsTrigger> -->
-                            <TabsTrigger value="cafe_transfers" class="relative gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                            <TabsTrigger
+                                value="cafe_transfers"
+                                class="relative gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                            >
                                 <SendHorizonal class="h-4 w-4 text-indigo-600" />
-                                <span class="hidden sm:inline font-bold text-indigo-700">Desde Café</span>
+                                <span class="hidden font-bold text-indigo-700 sm:inline">Desde Café</span>
                                 <span
                                     v-if="pendingCafeDispatches > 0"
                                     class="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-[9px] font-black text-white"
-                                >{{ pendingCafeDispatches }}</span>
+                                    >{{ pendingCafeDispatches }}</span
+                                >
                             </TabsTrigger>
                         </TabsList>
                     </Tabs>
@@ -1092,7 +1167,6 @@ const kitchenTotalPages = computed(() =>
 
                 <!-- Content Grid / Table -->
                 <div class="custom-scrollbar flex-1 overflow-y-auto pr-2">
-
                     <!-- ── Equipos IT ───────────────────────────────────── -->
                     <template v-if="activeTab === 'computer'">
                         <div class="mb-3 flex items-center justify-between rounded-xl border border-blue-100 bg-blue-50 px-4 py-2.5">
@@ -1100,11 +1174,17 @@ const kitchenTotalPages = computed(() =>
                                 <Monitor class="h-4 w-4" />
                                 {{ filteredComputerEquipments.length }} equipos tecnológicos registrados
                             </div>
-                            <a :href="route('equipments.index')" class="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800">
+                            <a
+                                :href="route('equipments.index')"
+                                class="flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800"
+                            >
                                 Gestionar equipos <ExternalLink class="h-3.5 w-3.5" />
                             </a>
                         </div>
-                        <div v-if="filteredComputerEquipments.length === 0" class="bg-muted/20 flex h-48 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed">
+                        <div
+                            v-if="filteredComputerEquipments.length === 0"
+                            class="bg-muted/20 flex h-48 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed"
+                        >
                             <Monitor class="h-8 w-8 text-slate-300" />
                             <p class="text-sm font-semibold text-slate-400">Sin equipos tecnológicos</p>
                         </div>
@@ -1116,7 +1196,7 @@ const kitchenTotalPages = computed(() =>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Equipo</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Marca / Modelo</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">N° Serie</TableHead>
-                                        <TableHead class="text-center text-muted-foreground text-[10px] font-bold uppercase">Cant.</TableHead>
+                                        <TableHead class="text-muted-foreground text-center text-[10px] font-bold uppercase">Cant.</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Sede</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Café / Comedor</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Estado</TableHead>
@@ -1128,7 +1208,7 @@ const kitchenTotalPages = computed(() =>
                                         <TableCell class="font-mono text-xs text-slate-400">{{ eq.code || '—' }}</TableCell>
                                         <TableCell>
                                             <div class="flex flex-col">
-                                                <span class="font-bold text-foreground">{{ eq.name }}</span>
+                                                <span class="text-foreground font-bold">{{ eq.name }}</span>
                                                 <span v-if="eq.presentation" class="text-[11px] text-slate-400">{{ eq.presentation }}</span>
                                             </div>
                                         </TableCell>
@@ -1137,8 +1217,14 @@ const kitchenTotalPages = computed(() =>
                                         </TableCell>
                                         <TableCell class="font-mono text-xs text-slate-400">{{ eq.series || '—' }}</TableCell>
                                         <TableCell class="text-center">
-                                            <span :class="['inline-flex min-w-[28px] items-center justify-center rounded-full border px-2 py-0.5 font-mono text-xs font-black',
-                                                eq.quantity > 0 ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-red-200 bg-red-50 text-red-600']">
+                                            <span
+                                                :class="[
+                                                    'inline-flex min-w-[28px] items-center justify-center rounded-full border px-2 py-0.5 font-mono text-xs font-black',
+                                                    eq.quantity > 0
+                                                        ? 'border-blue-200 bg-blue-50 text-blue-700'
+                                                        : 'border-red-200 bg-red-50 text-red-600',
+                                                ]"
+                                            >
                                                 {{ eq.quantity }}
                                             </span>
                                         </TableCell>
@@ -1147,21 +1233,30 @@ const kitchenTotalPages = computed(() =>
                                                 <Building2 class="h-3 w-3 flex-shrink-0 text-slate-400" />
                                                 <div class="flex flex-col leading-tight">
                                                     <span class="text-xs font-semibold text-slate-700">{{ eq.storage_headquarter.name }}</span>
-                                                    <span v-if="eq.storage_headquarter.business" class="text-[10px] text-slate-400">{{ eq.storage_headquarter.business.name }}</span>
+                                                    <span v-if="eq.storage_headquarter.business" class="text-[10px] text-slate-400">{{
+                                                        eq.storage_headquarter.business.name
+                                                    }}</span>
                                                 </div>
                                             </div>
                                             <span v-else class="text-xs text-slate-400">Sin sede</span>
                                         </TableCell>
                                         <TableCell>
-                                            <span v-if="eq.current_cafe"
-                                                class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                                            <span
+                                                v-if="eq.current_cafe"
+                                                class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700"
+                                            >
                                                 <Coffee class="h-3 w-3 shrink-0" />
                                                 {{ eq.current_cafe.name }}
                                             </span>
-                                            <span v-else class="text-xs italic text-slate-300">En almacén</span>
+                                            <span v-else class="text-xs text-slate-300 italic">En almacén</span>
                                         </TableCell>
                                         <TableCell>
-                                            <span :class="['inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', equipmentStatusInfo(eq.status).cls]">
+                                            <span
+                                                :class="[
+                                                    'inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+                                                    equipmentStatusInfo(eq.status).cls,
+                                                ]"
+                                            >
                                                 {{ equipmentStatusInfo(eq.status).label }}
                                             </span>
                                         </TableCell>
@@ -1180,7 +1275,9 @@ const kitchenTotalPages = computed(() =>
                         <!-- Pagination IT -->
                         <div v-if="computerTotalPages > 1" class="mt-3 flex items-center justify-between px-1">
                             <p class="text-xs text-slate-400">
-                                {{ (computerPage - 1) * EQUIP_PAGE_SIZE + 1 }}–{{ Math.min(computerPage * EQUIP_PAGE_SIZE, filteredComputerEquipments.length) }}
+                                {{ (computerPage - 1) * EQUIP_PAGE_SIZE + 1 }}–{{
+                                    Math.min(computerPage * EQUIP_PAGE_SIZE, filteredComputerEquipments.length)
+                                }}
                                 de {{ filteredComputerEquipments.length }} equipos
                             </p>
                             <div class="flex items-center gap-1">
@@ -1195,10 +1292,12 @@ const kitchenTotalPages = computed(() =>
                                     v-for="p in computerTotalPages"
                                     :key="p"
                                     @click="computerPage = p"
-                                    :class="['rounded-lg border px-2.5 py-1 text-xs font-semibold transition',
+                                    :class="[
+                                        'rounded-lg border px-2.5 py-1 text-xs font-semibold transition',
                                         p === computerPage
                                             ? 'border-blue-300 bg-blue-50 text-blue-700'
-                                            : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50']"
+                                            : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50',
+                                    ]"
                                 >
                                     {{ p }}
                                 </button>
@@ -1220,11 +1319,17 @@ const kitchenTotalPages = computed(() =>
                                 <Utensils class="h-4 w-4" />
                                 {{ filteredKitchenEquipments.length }} equipos de cocina registrados
                             </div>
-                            <a :href="route('equipments.index')" class="flex items-center gap-1 text-xs font-semibold text-orange-600 hover:text-orange-800">
+                            <a
+                                :href="route('equipments.index')"
+                                class="flex items-center gap-1 text-xs font-semibold text-orange-600 hover:text-orange-800"
+                            >
                                 Gestionar equipos <ExternalLink class="h-3.5 w-3.5" />
                             </a>
                         </div>
-                        <div v-if="filteredKitchenEquipments.length === 0" class="bg-muted/20 flex h-48 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed">
+                        <div
+                            v-if="filteredKitchenEquipments.length === 0"
+                            class="bg-muted/20 flex h-48 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed"
+                        >
                             <Utensils class="h-8 w-8 text-slate-300" />
                             <p class="text-sm font-semibold text-slate-400">Sin equipos de cocina</p>
                         </div>
@@ -1236,7 +1341,7 @@ const kitchenTotalPages = computed(() =>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Equipo</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Marca / Modelo</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">N° Serie</TableHead>
-                                        <TableHead class="text-center text-muted-foreground text-[10px] font-bold uppercase">Cant.</TableHead>
+                                        <TableHead class="text-muted-foreground text-center text-[10px] font-bold uppercase">Cant.</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Sede</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Café / Comedor</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Estado</TableHead>
@@ -1248,7 +1353,7 @@ const kitchenTotalPages = computed(() =>
                                         <TableCell class="font-mono text-xs text-slate-400">{{ eq.code || '—' }}</TableCell>
                                         <TableCell>
                                             <div class="flex flex-col">
-                                                <span class="font-bold text-foreground">{{ eq.name }}</span>
+                                                <span class="text-foreground font-bold">{{ eq.name }}</span>
                                                 <span v-if="eq.size" class="text-[11px] text-slate-400">{{ eq.size }}</span>
                                             </div>
                                         </TableCell>
@@ -1257,8 +1362,14 @@ const kitchenTotalPages = computed(() =>
                                         </TableCell>
                                         <TableCell class="font-mono text-xs text-slate-400">{{ eq.series || '—' }}</TableCell>
                                         <TableCell class="text-center">
-                                            <span :class="['inline-flex min-w-[28px] items-center justify-center rounded-full border px-2 py-0.5 font-mono text-xs font-black',
-                                                eq.quantity > 0 ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-red-200 bg-red-50 text-red-600']">
+                                            <span
+                                                :class="[
+                                                    'inline-flex min-w-[28px] items-center justify-center rounded-full border px-2 py-0.5 font-mono text-xs font-black',
+                                                    eq.quantity > 0
+                                                        ? 'border-orange-200 bg-orange-50 text-orange-700'
+                                                        : 'border-red-200 bg-red-50 text-red-600',
+                                                ]"
+                                            >
                                                 {{ eq.quantity }}
                                             </span>
                                         </TableCell>
@@ -1267,21 +1378,30 @@ const kitchenTotalPages = computed(() =>
                                                 <Building2 class="h-3 w-3 flex-shrink-0 text-slate-400" />
                                                 <div class="flex flex-col leading-tight">
                                                     <span class="text-xs font-semibold text-slate-700">{{ eq.storage_headquarter.name }}</span>
-                                                    <span v-if="eq.storage_headquarter.business" class="text-[10px] text-slate-400">{{ eq.storage_headquarter.business.name }}</span>
+                                                    <span v-if="eq.storage_headquarter.business" class="text-[10px] text-slate-400">{{
+                                                        eq.storage_headquarter.business.name
+                                                    }}</span>
                                                 </div>
                                             </div>
                                             <span v-else class="text-xs text-slate-400">Sin sede</span>
                                         </TableCell>
                                         <TableCell>
-                                            <span v-if="eq.current_cafe"
-                                                class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                                            <span
+                                                v-if="eq.current_cafe"
+                                                class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700"
+                                            >
                                                 <Coffee class="h-3 w-3 shrink-0" />
                                                 {{ eq.current_cafe.name }}
                                             </span>
-                                            <span v-else class="text-xs italic text-slate-300">En almacén</span>
+                                            <span v-else class="text-xs text-slate-300 italic">En almacén</span>
                                         </TableCell>
                                         <TableCell>
-                                            <span :class="['inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', equipmentStatusInfo(eq.status).cls]">
+                                            <span
+                                                :class="[
+                                                    'inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+                                                    equipmentStatusInfo(eq.status).cls,
+                                                ]"
+                                            >
                                                 {{ equipmentStatusInfo(eq.status).label }}
                                             </span>
                                         </TableCell>
@@ -1300,7 +1420,9 @@ const kitchenTotalPages = computed(() =>
                         <!-- Pagination Cocina -->
                         <div v-if="kitchenTotalPages > 1" class="mt-3 flex items-center justify-between px-1">
                             <p class="text-xs text-slate-400">
-                                {{ (kitchenPage - 1) * EQUIP_PAGE_SIZE + 1 }}–{{ Math.min(kitchenPage * EQUIP_PAGE_SIZE, filteredKitchenEquipments.length) }}
+                                {{ (kitchenPage - 1) * EQUIP_PAGE_SIZE + 1 }}–{{
+                                    Math.min(kitchenPage * EQUIP_PAGE_SIZE, filteredKitchenEquipments.length)
+                                }}
                                 de {{ filteredKitchenEquipments.length }} equipos
                             </p>
                             <div class="flex items-center gap-1">
@@ -1315,10 +1437,12 @@ const kitchenTotalPages = computed(() =>
                                     v-for="p in kitchenTotalPages"
                                     :key="p"
                                     @click="kitchenPage = p"
-                                    :class="['rounded-lg border px-2.5 py-1 text-xs font-semibold transition',
+                                    :class="[
+                                        'rounded-lg border px-2.5 py-1 text-xs font-semibold transition',
                                         p === kitchenPage
                                             ? 'border-orange-300 bg-orange-50 text-orange-700'
-                                            : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50']"
+                                            : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50',
+                                    ]"
                                 >
                                     {{ p }}
                                 </button>
@@ -1338,13 +1462,15 @@ const kitchenTotalPages = computed(() =>
                         <div class="mb-3 flex items-center justify-between rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-2.5">
                             <div class="flex items-center gap-2 text-sm font-medium text-indigo-700">
                                 <SendHorizonal class="h-4 w-4" />
-                                {{ cafeOutboundDispatches.filter(d => !d.received_at).length }} en tránsito ·
-                                {{ cafeOutboundDispatches.filter(d => d.received_at).length }} recepcionados
+                                {{ cafeOutboundDispatches.filter((d) => !d.received_at).length }} en tránsito ·
+                                {{ cafeOutboundDispatches.filter((d) => d.received_at).length }} recepcionados
                             </div>
                         </div>
 
-                        <div v-if="cafeOutboundDispatches.length === 0"
-                            class="bg-muted/20 flex h-48 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed">
+                        <div
+                            v-if="cafeOutboundDispatches.length === 0"
+                            class="bg-muted/20 flex h-48 flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed"
+                        >
                             <Coffee class="h-8 w-8 text-slate-300" />
                             <p class="text-sm font-semibold text-slate-400">Sin envíos desde cafés</p>
                         </div>
@@ -1355,114 +1481,169 @@ const kitchenTotalPages = computed(() =>
                                     <TableRow class="bg-muted/50 hover:bg-muted/50">
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">N° Despacho</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Equipo</TableHead>
-                                        <TableHead class="text-center text-muted-foreground text-[10px] font-bold uppercase">Cant.</TableHead>
+                                        <TableHead class="text-muted-foreground text-center text-[10px] font-bold uppercase">Cant.</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Origen (Café)</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Despachado</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Estado</TableHead>
-                                        <TableHead class="text-center text-muted-foreground text-[10px] font-bold uppercase">Acción</TableHead>
+                                        <TableHead class="text-muted-foreground text-center text-[10px] font-bold uppercase">Acción</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    <TableRow
-                                        v-for="d in cafeOutboundDispatches"
-                                        :key="d.id"
-                                        class="hover:bg-muted/30 transition-colors"
-                                        :class="d.received_at ? 'bg-emerald-50/40' : ''"
-                                    >
-                                        <!-- N° Despacho -->
-                                        <TableCell>
-                                            <p class="font-mono text-xs font-semibold text-slate-700">{{ d.dispatch_number }}</p>
-                                            <p v-if="d.guide_number" class="font-mono text-[10px] text-slate-400">{{ d.guide_number }}</p>
-                                        </TableCell>
-
-                                        <!-- Equipo -->
-                                        <TableCell>
-                                            <div class="flex items-center gap-2">
-                                                <div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
-                                                    :class="d.equipable_type === 'computer' ? 'bg-blue-100' : 'bg-orange-100'">
-                                                    <Monitor v-if="d.equipable_type === 'computer'" class="h-3.5 w-3.5 text-blue-600" />
-                                                    <Utensils v-else class="h-3.5 w-3.5 text-orange-600" />
-                                                </div>
-                                                <div>
-                                                    <p class="font-semibold text-sm leading-tight">{{ d.equipment_name }}</p>
-                                                    <p class="text-[11px] text-slate-400">
-                                                        {{ [d.equipment_brand, d.equipment_model].filter(Boolean).join(' · ') || '—' }}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </TableCell>
-
-                                        <!-- Cantidad -->
-                                        <TableCell class="text-center">
-                                            <span class="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 font-mono text-xs font-bold text-indigo-700">
-                                                {{ d.quantity }}
-                                            </span>
-                                        </TableCell>
-
-                                        <!-- Origen café -->
-                                        <TableCell>
-                                            <span class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                                                <Coffee class="h-3 w-3 shrink-0" />
-                                                {{ d.origin_cafe }}
-                                            </span>
-                                        </TableCell>
-
-                                        <!-- Despachado -->
-                                        <TableCell>
-                                            <p class="text-xs text-slate-700">{{ d.dispatched_at }}</p>
-                                            <p class="text-[10px] text-slate-400">por {{ d.dispatched_by }}</p>
-                                        </TableCell>
-
-                                        <!-- Estado -->
-                                        <TableCell>
-                                            <span v-if="d.received_at"
-                                                class="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
-                                                <CheckCircle2 class="h-3 w-3" /> Recepcionado
-                                            </span>
-                                            <span v-else
-                                                class="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-600">
-                                                <Clock class="h-3 w-3" /> En tránsito
-                                            </span>
-                                        </TableCell>
-
-                                        <!-- Acción -->
-                                        <TableCell class="text-center">
-                                            <template v-if="d.received_at">
-                                                <p class="text-[11px] text-slate-500">{{ d.received_by ?? '—' }}</p>
-                                                <p v-if="d.reception_notes" class="mt-1 max-w-[180px] rounded bg-slate-100 px-2 py-1 text-[10px] italic text-slate-500">
-                                                    {{ d.reception_notes }}
-                                                </p>
-                                            </template>
-
-                                            <template v-else-if="cafeConfirmId === d.id">
-                                                <div class="space-y-1.5 text-left">
-                                                    <textarea
-                                                        v-model="cafeNote"
-                                                        placeholder="Observación (opcional)…"
-                                                        rows="2"
-                                                        class="w-full min-w-[180px] rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200 resize-none"
-                                                    />
-                                                    <div class="flex gap-1">
-                                                        <button :disabled="cafeProcessing"
-                                                            class="flex-1 rounded-lg bg-emerald-600 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
-                                                            @click="doCafeReceive(d.id)">
-                                                            Confirmar
-                                                        </button>
-                                                        <button class="rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-50"
-                                                            @click="cafeConfirmId = null">
-                                                            Cancelar
-                                                        </button>
+                                    <template v-for="group in groupedCafeDispatches" :key="group.key">
+                                        <!-- Cabecera de la guía de remisión -->
+                                        <TableRow class="bg-indigo-50/60 hover:bg-indigo-50/60">
+                                            <TableCell colspan="7" class="py-2">
+                                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                                    <div class="flex items-center gap-2">
+                                                        <FileText class="h-3.5 w-3.5 text-indigo-500" />
+                                                        <span class="font-mono text-xs font-bold text-indigo-700">
+                                                            {{ group.guide_number ?? group.items[0].dispatch_number }}
+                                                        </span>
+                                                        <span
+                                                            class="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700"
+                                                        >
+                                                            {{ group.items.length }} equipo{{ group.items.length !== 1 ? 's' : '' }}
+                                                        </span>
+                                                        <span
+                                                            class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700"
+                                                        >
+                                                            {{ group.items.filter((i) => i.received_at).length }}/{{
+                                                                group.items.length
+                                                            }}
+                                                            recepcionados
+                                                        </span>
+                                                    </div>
+                                                    <div class="flex items-center gap-3 text-[11px] text-slate-500">
+                                                        <span class="inline-flex items-center gap-1">
+                                                            <Coffee class="h-3 w-3 shrink-0 text-amber-500" />
+                                                            {{ group.origin_cafe }}
+                                                        </span>
+                                                        <span>{{ group.dispatched_at }} · por {{ group.dispatched_by }}</span>
                                                     </div>
                                                 </div>
-                                            </template>
+                                            </TableCell>
+                                        </TableRow>
 
-                                            <button v-else
-                                                class="rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-[11px] font-bold text-emerald-700 shadow-sm hover:bg-emerald-50"
-                                                @click="startCafeReceive(d.id)">
-                                                Recepcionar
-                                            </button>
-                                        </TableCell>
-                                    </TableRow>
+                                        <TableRow
+                                            v-for="d in group.items"
+                                            :key="d.id"
+                                            class="hover:bg-muted/30 transition-colors"
+                                            :class="d.received_at ? 'bg-emerald-50/40' : ''"
+                                        >
+                                            <!-- N° Despacho -->
+                                            <TableCell>
+                                                <p class="font-mono text-xs font-semibold text-slate-700">{{ d.dispatch_number }}</p>
+                                                <p v-if="d.guide_number" class="font-mono text-[10px] text-slate-400">{{ d.guide_number }}</p>
+                                            </TableCell>
+
+                                            <!-- Equipo -->
+                                            <TableCell>
+                                                <div class="flex items-center gap-2">
+                                                    <div
+                                                        class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+                                                        :class="d.equipable_type === 'computer' ? 'bg-blue-100' : 'bg-orange-100'"
+                                                    >
+                                                        <Monitor v-if="d.equipable_type === 'computer'" class="h-3.5 w-3.5 text-blue-600" />
+                                                        <Utensils v-else class="h-3.5 w-3.5 text-orange-600" />
+                                                    </div>
+                                                    <div>
+                                                        <p class="text-sm leading-tight font-semibold">{{ d.equipment_name }}</p>
+                                                        <p class="text-[11px] text-slate-400">
+                                                            {{ [d.equipment_brand, d.equipment_model].filter(Boolean).join(' · ') || '—' }}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </TableCell>
+
+                                            <!-- Cantidad -->
+                                            <TableCell class="text-center">
+                                                <span
+                                                    class="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 font-mono text-xs font-bold text-indigo-700"
+                                                >
+                                                    {{ d.quantity }}
+                                                </span>
+                                            </TableCell>
+
+                                            <!-- Origen café -->
+                                            <TableCell>
+                                                <span
+                                                    class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700"
+                                                >
+                                                    <Coffee class="h-3 w-3 shrink-0" />
+                                                    {{ d.origin_cafe }}
+                                                </span>
+                                            </TableCell>
+
+                                            <!-- Despachado -->
+                                            <TableCell>
+                                                <p class="text-xs text-slate-700">{{ d.dispatched_at }}</p>
+                                                <p class="text-[10px] text-slate-400">por {{ d.dispatched_by }}</p>
+                                            </TableCell>
+
+                                            <!-- Estado -->
+                                            <TableCell>
+                                                <span
+                                                    v-if="d.received_at"
+                                                    class="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700"
+                                                >
+                                                    <CheckCircle2 class="h-3 w-3" /> Recepcionado
+                                                </span>
+                                                <span
+                                                    v-else
+                                                    class="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-600"
+                                                >
+                                                    <Clock class="h-3 w-3" /> En tránsito
+                                                </span>
+                                            </TableCell>
+
+                                            <!-- Acción -->
+                                            <TableCell class="text-center">
+                                                <template v-if="d.received_at">
+                                                    <p class="text-[11px] text-slate-500">{{ d.received_by ?? '—' }}</p>
+                                                    <p
+                                                        v-if="d.reception_notes"
+                                                        class="mt-1 max-w-[180px] rounded bg-slate-100 px-2 py-1 text-[10px] text-slate-500 italic"
+                                                    >
+                                                        {{ d.reception_notes }}
+                                                    </p>
+                                                </template>
+
+                                                <template v-else-if="cafeConfirmId === d.id">
+                                                    <div class="space-y-1.5 text-left">
+                                                        <textarea
+                                                            v-model="cafeNote"
+                                                            placeholder="Observación (opcional)…"
+                                                            rows="2"
+                                                            class="w-full min-w-[180px] resize-none rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
+                                                        />
+                                                        <div class="flex gap-1">
+                                                            <button
+                                                                :disabled="cafeProcessing"
+                                                                class="flex-1 rounded-lg bg-emerald-600 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                                                                @click="doCafeReceive(d.id)"
+                                                            >
+                                                                Confirmar
+                                                            </button>
+                                                            <button
+                                                                class="rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-50"
+                                                                @click="cafeConfirmId = null"
+                                                            >
+                                                                Cancelar
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </template>
+
+                                                <button
+                                                    v-else
+                                                    class="rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-[11px] font-bold text-emerald-700 shadow-sm hover:bg-emerald-50"
+                                                    @click="startCafeReceive(d.id)"
+                                                >
+                                                    Recepcionar
+                                                </button>
+                                            </TableCell>
+                                        </TableRow>
+                                    </template>
                                 </TableBody>
                             </Table>
                         </div>
@@ -1470,412 +1651,420 @@ const kitchenTotalPages = computed(() =>
 
                     <!-- ── Stock: Ropa / EPPs / Insumos ─────────────────── -->
                     <template v-else>
-                    <div
-                        v-if="filteredStocks.length === 0"
-                        class="bg-muted/20 flex h-64 flex-col items-center justify-center rounded-3xl border-2 border-dashed"
-                    >
-                        <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
-                            <Package class="h-8 w-8 text-slate-300" />
-                        </div>
-                        <p class="text-lg font-semibold text-muted-foreground">Sin resultados</p>
-                        <p class="mt-1 text-sm text-slate-400">No hay existencias registradas para esta categoría</p>
-                    </div>
-
-                    <template v-else>
-                        <!-- Cards View -->
-                        <div v-if="viewMode === 'cards'" class="grid grid-cols-1 gap-5 pb-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                            <Card
-                                v-for="item in filteredStocks"
-                                :key="item.id"
-                                class="bg-card group flex flex-col overflow-hidden rounded-2xl border transition-all duration-300 hover:shadow-lg"
-                            >
-                                <div class="h-1.5 w-full bg-slate-100">
-                                    <div v-if="item.stockable_type.includes('Cloth')" class="bg-primary/40 h-full"></div>
-                                    <div v-else-if="item.stockable_type.includes('Computer')" class="h-full bg-blue-400"></div>
-                                    <div v-else-if="item.stockable_type.includes('Kitchen')" class="h-full bg-orange-400"></div>
-                                    <div v-else class="h-full bg-emerald-400"></div>
-                                </div>
-
-                                <CardHeader class="p-5 pb-3">
-                                    <div class="flex items-start justify-between gap-4">
-                                        <div class="flex gap-3">
-                                            <div
-                                                :class="[
-                                                    'flex size-10 flex-shrink-0 items-center justify-center self-start rounded-xl p-2 shadow-sm transition-transform group-hover:scale-110',
-                                                    activeTab === 'clothes'
-                                                        ? 'bg-indigo-50 text-indigo-600'
-                                                        : activeTab === 'epps'
-                                                          ? 'bg-amber-50 text-amber-600'
-                                                          : activeTab === 'computer'
-                                                            ? 'bg-blue-50 text-blue-600'
-                                                            : activeTab === 'kitchen'
-                                                              ? 'bg-orange-50 text-orange-600'
-                                                              : 'bg-emerald-50 text-emerald-600',
-                                                ]"
-                                            >
-                                                <component :is="getItemIcon(activeTab)" class="h-5 w-5" />
-                                            </div>
-                                            <div class="min-w-0">
-                                                <CardTitle
-                                                    class="line-clamp-2 flex min-h-[40px] items-center text-[14px] leading-tight font-black break-words text-foreground"
-                                                    >{{ item.stockable?.name }}</CardTitle
-                                                >
-                                                <CardDescription class="mt-0.5 flex items-center gap-1.5 text-xs whitespace-normal text-muted-foreground">
-                                                    <template v-if="activeTab === 'clothes'">
-                                                        <Palette class="h-3 w-3" /> Prendas de Personal
-                                                    </template>
-                                                    <template v-else-if="activeTab === 'epps'">
-                                                        <Box class="h-3 w-3" /> Elemento de Protección
-                                                    </template>
-                                                    <template v-else-if="activeTab === 'computer'">
-                                                        {{ item.stockable?.brand }} | {{ item.stockable?.model || 'S/M' }}
-                                                    </template>
-                                                    <template v-else-if="activeTab === 'kitchen'">
-                                                        {{ item.stockable?.brand }} | {{ item.stockable?.size }}
-                                                        <span v-if="item.stockable?.code" class="ml-1 font-mono text-[10px] text-slate-400"
-                                                            >#{{ item.stockable?.code }}</span
-                                                        >
-                                                    </template>
-                                                    <template v-else> Insumo / Ingrediente </template>
-                                                </CardDescription>
-                                            </div>
-                                        </div>
-                                        <Badge
-                                            :variant="getStockStatus(item.quantity).variant"
-                                            class="rounded-full border-none px-2.5 text-[10px] font-bold uppercase shadow-none"
-                                        >
-                                            {{ getStockStatus(item.quantity).label }}
-                                        </Badge>
-                                    </div>
-                                </CardHeader>
-
-                                <CardContent class="flex-1 p-5 pt-0">
-                                    <div
-                                        class="mt-4 flex items-center justify-between rounded-2xl border border-transparent bg-slate-50 p-4 transition-colors group-hover:border-slate-200 group-hover:bg-slate-100/50"
-                                    >
-                                        <div>
-                                            <p class="mb-1 text-[10px] font-bold tracking-widest text-slate-400 uppercase">Stock Disponible</p>
-                                            <div class="flex items-baseline gap-1.5 text-foreground">
-                                                <span class="text-3xl leading-none font-black">{{ item.quantity }}</span>
-                                                <span class="text-xs font-bold text-slate-400 uppercase">Unidades</span>
-                                            </div>
-                                        </div>
-                                        <div
-                                            @click="openSizesModal(item)"
-                                            class="flex cursor-pointer flex-col items-end gap-1 transition-opacity hover:opacity-80"
-                                        >
-                                            <div
-                                                v-if="item.quantity > 0"
-                                                class="flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600"
-                                            >
-                                                <ArrowUpRight class="h-3 w-3" /> ACTIVO
-                                            </div>
-                                            <div
-                                                v-else
-                                                class="flex items-center gap-1 rounded-full border border-rose-100 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600"
-                                            >
-                                                <ArrowDownRight class="h-3 w-3" /> AGOTADO
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div class="mt-5 space-y-2.5">
-                                        <div class="flex items-center justify-between text-[11px]">
-                                            <span class="flex items-center gap-1.5 font-medium text-slate-400"
-                                                ><Building2 class="h-3 w-3" /> Gestión / Ubicación</span
-                                            >
-                                            <span class="max-w-[120px] truncate font-bold text-slate-700">{{ item.display_headquarter }}</span>
-                                        </div>
-                                    </div>
-                                </CardContent>
-
-                                <div
-                                    class="flex items-center justify-between border-t px-5 py-4 transition-colors group-hover:bg-muted/30"
-                                >
-                                    <div class="flex -space-x-1.5 overflow-hidden">
-                                        <div
-                                            class="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-indigo-100 text-[8px] font-bold text-indigo-600"
-                                        >
-                                            HQ
-                                        </div>
-                                        <div
-                                            class="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-amber-100 text-[8px] font-bold text-amber-600"
-                                        >
-                                            CF
-                                        </div>
-                                    </div>
-                                    <button
-                                        @click="openSizesModal(item)"
-                                        class="text-primary flex items-center gap-1 text-[10px] font-black tracking-tighter uppercase transition-all hover:gap-2"
-                                    >
-                                        AUDITAR STOCK <ArrowUpRight class="h-3.5 w-3.5" />
-                                    </button>
-                                </div>
-                            </Card>
-                        </div>
-
-                        <!-- Table View -->
                         <div
-                            v-else-if="viewMode === 'table' && activeTab !== 'units_transfers'"
-                            class="bg-card mb-6 overflow-hidden rounded-2xl border shadow-sm"
+                            v-if="filteredStocks.length === 0"
+                            class="bg-muted/20 flex h-64 flex-col items-center justify-center rounded-3xl border-2 border-dashed"
                         >
-                            <Table>
-                                <TableHeader>
-                                    <TableRow class="bg-muted/50 hover:bg-muted/50">
-                                        <TableHead class="w-[300px] text-[10px] font-bold text-muted-foreground uppercase">Item / Catálogo</TableHead>
-                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Atributos</TableHead>
-                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Gestión / Ubicación</TableHead>
-                                        <TableHead class="text-center text-[10px] font-bold text-muted-foreground uppercase">Disponible</TableHead>
-                                        <TableHead class="text-center text-[10px] font-bold text-muted-foreground uppercase">Estado</TableHead>
-                                        <TableHead class="w-[80px]"></TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    <template v-for="item in filteredStocks" :key="item.key">
-                                        <!-- Main EPP Row -->
-                                        <TableRow class="group cursor-pointer hover:bg-muted/30 transition-colors" @click="toggleRow(item.key)">
-                                            <TableCell>
-                                                <div class="flex items-center gap-3">
-                                                    <div class="p-1">
-                                                        <ChevronDown v-if="expandedRows.has(item.key)" class="h-4 w-4 text-slate-400" />
-                                                        <ChevronRight v-else class="h-4 w-4 text-slate-400" />
-                                                    </div>
-                                                    <div
-                                                        :class="[
-                                                            'rounded-lg p-2',
-                                                            activeTab === 'clothes'
-                                                                ? 'bg-indigo-50 text-indigo-600'
-                                                                : activeTab === 'epps'
-                                                                  ? 'bg-amber-50 text-amber-600'
-                                                                  : activeTab === 'computer'
-                                                                    ? 'bg-blue-50 text-blue-600'
-                                                                    : activeTab === 'kitchen'
-                                                                      ? 'bg-orange-50 text-orange-600'
-                                                                      : 'bg-emerald-50 text-emerald-600',
-                                                        ]"
-                                                    >
-                                                        <component :is="getItemIcon(activeTab)" class="h-4 w-4" />
-                                                    </div>
-                                                    <div class="flex flex-col">
-                                                        <span class="font-bold text-foreground"
-                                                            >{{ item.stockable?.name }} ({{ item.nestedSizes.length }} tallas)</span
-                                                        >
-                                                        <span class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
-                                                            {{ activeTab }}
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div class="flex flex-col gap-1">
-                                                    <template v-if="activeTab === 'computer'">
-                                                        <span class="text-xs font-semibold text-slate-700">{{ item.stockable?.brand }}</span>
-                                                        <span class="text-[10px] text-muted-foreground">{{ item.stockable?.model || 'Sin Modelo' }}</span>
-                                                    </template>
-                                                    <template v-else-if="activeTab === 'kitchen'">
-                                                        <span class="text-xs font-semibold text-slate-700">{{ item.stockable?.brand }}</span>
-                                                        <span class="text-[10px] text-muted-foreground">{{ item.stockable?.size }}</span>
-                                                    </template>
-                                                    <template v-else>
-                                                        <span class="text-xs text-muted-foreground italic">Desglosado por tallas</span>
-                                                    </template>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div class="flex flex-col">
-                                                    <div class="flex items-center gap-1.5 text-xs">
-                                                        <Building2 class="h-3 w-3 text-slate-400" />
-                                                        <span class="font-medium text-slate-700">{{ item.display_headquarter }}</span>
-                                                    </div>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell class="text-center text-lg font-black text-foreground">
-                                                {{ item.quantity }}
-                                            </TableCell>
-                                            <TableCell class="text-center">
-                                                <div class="flex flex-col items-center gap-1">
-                                                    <Badge
-                                                        :variant="getStockStatus(item.quantity).variant"
-                                                        class="rounded-full border-none px-2 text-[9px] font-black tracking-tighter uppercase shadow-none"
-                                                    >
-                                                        {{ getStockStatus(item.quantity).label }}
-                                                    </Badge>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Button
-                                                    @click.stop="openSizesModal(item)"
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    class="hover:text-primary h-8 w-8 p-0 text-slate-400 transition-colors"
-                                                >
-                                                    <MoreHorizontal class="h-4 w-4" />
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
-
-                                        <!-- Nested Sizes Level -->
-                                        <template v-if="expandedRows.has(item.key)">
-                                            <template v-for="sizeRow in item.nestedSizes" :key="sizeRow.label">
-                                                <TableRow
-                                                    class="border-l-primary/30 cursor-pointer border-l-4 bg-slate-50/30"
-                                                    @click="toggleSizeRow(item.key, sizeRow.label)"
-                                                >
-                                                    <TableCell class="pl-12">
-                                                        <div class="flex items-center gap-2">
-                                                            <div class="p-0.5">
-                                                                <ChevronDown
-                                                                    v-if="expandedSizeRows.has(`${item.key}-${sizeRow.label}`)"
-                                                                    class="h-3 w-3 text-slate-400"
-                                                                />
-                                                                <ChevronRight v-else class="h-3 w-3 text-slate-400" />
-                                                            </div>
-                                                            <div
-                                                                class="bg-primary/10 text-primary flex h-6 w-6 items-center justify-center rounded text-[10px] font-black"
-                                                            >
-                                                                {{ sizeRow.label.toUpperCase().slice(0, 2) }}
-                                                            </div>
-                                                            <span class="text-sm font-bold text-slate-700">Talla: {{ sizeRow.label }}</span>
-                                                        </div>
-                                                    </TableCell>
-                                                    <TableCell colspan="2" class="text-[11px] text-slate-400 italic">
-                                                        {{ sizeRow.nestedColors.length }} combinaciones de color
-                                                    </TableCell>
-                                                    <TableCell class="text-center font-bold text-slate-600">
-                                                        {{ sizeRow.total }}
-                                                    </TableCell>
-                                                    <TableCell colspan="2"></TableCell>
-                                                </TableRow>
-
-                                                <!-- Nested Colors Level -->
-                                                <template v-if="expandedSizeRows.has(`${item.key}-${sizeRow.label}`)">
-                                                    <TableRow
-                                                        v-for="colorData in sizeRow.nestedColors"
-                                                        :key="colorData.id"
-                                                        class="border-l-4 border-l-slate-200 bg-slate-100/20"
-                                                    >
-                                                        <TableCell class="py-2 pl-24">
-                                                            <div class="flex items-center gap-3">
-                                                                <div
-                                                                    class="h-3 w-3 rounded-full border border-white shadow-sm"
-                                                                    :style="{ backgroundColor: colorData.color?.hex_code || '#ccc' }"
-                                                                ></div>
-                                                                <span class="text-xs font-semibold text-slate-600">{{
-                                                                    colorData.color?.name || 'Sin color'
-                                                                }}</span>
-                                                            </div>
-                                                        </TableCell>
-                                                        <TableCell colspan="2">
-                                                            <div class="flex flex-wrap gap-1">
-                                                                <Badge
-                                                                    v-for="rec in colorData.records"
-                                                                    :key="rec.id"
-                                                                    variant="outline"
-                                                                    class="border bg-card px-1 py-0 text-[9px] text-slate-400"
-                                                                >
-                                                                    {{ rec.headquarter?.name || rec.cafe?.name || 'N/A' }}: {{ rec.quantity }}
-                                                                </Badge>
-                                                            </div>
-                                                        </TableCell>
-                                                        <TableCell class="text-center font-black text-foreground">
-                                                            {{ colorData.quantity }}
-                                                        </TableCell>
-                                                        <TableCell colspan="2"></TableCell>
-                                                    </TableRow>
-                                                </template>
-                                            </template>
-                                        </template>
-                                    </template>
-                                </TableBody>
-                            </Table>
+                            <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
+                                <Package class="h-8 w-8 text-slate-300" />
+                            </div>
+                            <p class="text-muted-foreground text-lg font-semibold">Sin resultados</p>
+                            <p class="mt-1 text-sm text-slate-400">No hay existencias registradas para esta categoría</p>
                         </div>
 
-                        <!-- Transfers Tab Content -->
-                        <div v-else-if="activeTab === 'units_transfers'" class="space-y-6">
-                            <div class="bg-card mb-6 overflow-hidden rounded-2xl border shadow-sm">
+                        <template v-else>
+                            <!-- Cards View -->
+                            <div v-if="viewMode === 'cards'" class="grid grid-cols-1 gap-5 pb-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                                <Card
+                                    v-for="item in filteredStocks"
+                                    :key="item.id"
+                                    class="bg-card group flex flex-col overflow-hidden rounded-2xl border transition-all duration-300 hover:shadow-lg"
+                                >
+                                    <div class="h-1.5 w-full bg-slate-100">
+                                        <div v-if="item.stockable_type.includes('Cloth')" class="bg-primary/40 h-full"></div>
+                                        <div v-else-if="item.stockable_type.includes('Computer')" class="h-full bg-blue-400"></div>
+                                        <div v-else-if="item.stockable_type.includes('Kitchen')" class="h-full bg-orange-400"></div>
+                                        <div v-else class="h-full bg-emerald-400"></div>
+                                    </div>
+
+                                    <CardHeader class="p-5 pb-3">
+                                        <div class="flex items-start justify-between gap-4">
+                                            <div class="flex gap-3">
+                                                <div
+                                                    :class="[
+                                                        'flex size-10 flex-shrink-0 items-center justify-center self-start rounded-xl p-2 shadow-sm transition-transform group-hover:scale-110',
+                                                        activeTab === 'clothes'
+                                                            ? 'bg-indigo-50 text-indigo-600'
+                                                            : activeTab === 'epps'
+                                                              ? 'bg-amber-50 text-amber-600'
+                                                              : activeTab === 'computer'
+                                                                ? 'bg-blue-50 text-blue-600'
+                                                                : activeTab === 'kitchen'
+                                                                  ? 'bg-orange-50 text-orange-600'
+                                                                  : 'bg-emerald-50 text-emerald-600',
+                                                    ]"
+                                                >
+                                                    <component :is="getItemIcon(activeTab)" class="h-5 w-5" />
+                                                </div>
+                                                <div class="min-w-0">
+                                                    <CardTitle
+                                                        class="text-foreground line-clamp-2 flex min-h-[40px] items-center text-[14px] leading-tight font-black break-words"
+                                                        >{{ item.stockable?.name }}</CardTitle
+                                                    >
+                                                    <CardDescription
+                                                        class="text-muted-foreground mt-0.5 flex items-center gap-1.5 text-xs whitespace-normal"
+                                                    >
+                                                        <template v-if="activeTab === 'clothes'">
+                                                            <Palette class="h-3 w-3" /> Prendas de Personal
+                                                        </template>
+                                                        <template v-else-if="activeTab === 'epps'">
+                                                            <Box class="h-3 w-3" /> Elemento de Protección
+                                                        </template>
+                                                        <template v-else-if="activeTab === 'computer'">
+                                                            {{ item.stockable?.brand }} | {{ item.stockable?.model || 'S/M' }}
+                                                        </template>
+                                                        <template v-else-if="activeTab === 'kitchen'">
+                                                            {{ item.stockable?.brand }} | {{ item.stockable?.size }}
+                                                            <span v-if="item.stockable?.code" class="ml-1 font-mono text-[10px] text-slate-400"
+                                                                >#{{ item.stockable?.code }}</span
+                                                            >
+                                                        </template>
+                                                        <template v-else> Insumo / Ingrediente </template>
+                                                    </CardDescription>
+                                                </div>
+                                            </div>
+                                            <Badge
+                                                :variant="getStockStatus(item.quantity).variant"
+                                                class="rounded-full border-none px-2.5 text-[10px] font-bold uppercase shadow-none"
+                                            >
+                                                {{ getStockStatus(item.quantity).label }}
+                                            </Badge>
+                                        </div>
+                                    </CardHeader>
+
+                                    <CardContent class="flex-1 p-5 pt-0">
+                                        <div
+                                            class="mt-4 flex items-center justify-between rounded-2xl border border-transparent bg-slate-50 p-4 transition-colors group-hover:border-slate-200 group-hover:bg-slate-100/50"
+                                        >
+                                            <div>
+                                                <p class="mb-1 text-[10px] font-bold tracking-widest text-slate-400 uppercase">Stock Disponible</p>
+                                                <div class="text-foreground flex items-baseline gap-1.5">
+                                                    <span class="text-3xl leading-none font-black">{{ item.quantity }}</span>
+                                                    <span class="text-xs font-bold text-slate-400 uppercase">Unidades</span>
+                                                </div>
+                                            </div>
+                                            <div
+                                                @click="openSizesModal(item)"
+                                                class="flex cursor-pointer flex-col items-end gap-1 transition-opacity hover:opacity-80"
+                                            >
+                                                <div
+                                                    v-if="item.quantity > 0"
+                                                    class="flex items-center gap-1 rounded-full border border-emerald-100 bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600"
+                                                >
+                                                    <ArrowUpRight class="h-3 w-3" /> ACTIVO
+                                                </div>
+                                                <div
+                                                    v-else
+                                                    class="flex items-center gap-1 rounded-full border border-rose-100 bg-rose-50 px-2 py-0.5 text-[10px] font-bold text-rose-600"
+                                                >
+                                                    <ArrowDownRight class="h-3 w-3" /> AGOTADO
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="mt-5 space-y-2.5">
+                                            <div class="flex items-center justify-between text-[11px]">
+                                                <span class="flex items-center gap-1.5 font-medium text-slate-400"
+                                                    ><Building2 class="h-3 w-3" /> Gestión / Ubicación</span
+                                                >
+                                                <span class="max-w-[120px] truncate font-bold text-slate-700">{{ item.display_headquarter }}</span>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+
+                                    <div class="group-hover:bg-muted/30 flex items-center justify-between border-t px-5 py-4 transition-colors">
+                                        <div class="flex -space-x-1.5 overflow-hidden">
+                                            <div
+                                                class="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-indigo-100 text-[8px] font-bold text-indigo-600"
+                                            >
+                                                HQ
+                                            </div>
+                                            <div
+                                                class="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-amber-100 text-[8px] font-bold text-amber-600"
+                                            >
+                                                CF
+                                            </div>
+                                        </div>
+                                        <button
+                                            @click="openSizesModal(item)"
+                                            class="text-primary flex items-center gap-1 text-[10px] font-black tracking-tighter uppercase transition-all hover:gap-2"
+                                        >
+                                            AUDITAR STOCK <ArrowUpRight class="h-3.5 w-3.5" />
+                                        </button>
+                                    </div>
+                                </Card>
+                            </div>
+
+                            <!-- Table View -->
+                            <div
+                                v-else-if="viewMode === 'table' && activeTab !== 'units_transfers'"
+                                class="bg-card mb-6 overflow-hidden rounded-2xl border shadow-sm"
+                            >
                                 <Table>
                                     <TableHeader>
-                                        <TableRow class="bg-indigo-50/30">
-                                            <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Fecha Envío</TableHead>
-                                            <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Destino (Unidad)</TableHead>
-                                            <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Personal Asignado</TableHead>
-                                            <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Items</TableHead>
-                                            <TableHead class="text-center text-[10px] font-bold text-muted-foreground uppercase">Estado</TableHead>
-                                            <TableHead class="w-[120px]"></TableHead>
+                                        <TableRow class="bg-muted/50 hover:bg-muted/50">
+                                            <TableHead class="text-muted-foreground w-[300px] text-[10px] font-bold uppercase"
+                                                >Item / Catálogo</TableHead
+                                            >
+                                            <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Atributos</TableHead>
+                                            <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Gestión / Ubicación</TableHead>
+                                            <TableHead class="text-muted-foreground text-center text-[10px] font-bold uppercase"
+                                                >Disponible</TableHead
+                                            >
+                                            <TableHead class="text-muted-foreground text-center text-[10px] font-bold uppercase">Estado</TableHead>
+                                            <TableHead class="w-[80px]"></TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        <TableRow
-                                            v-for="transfer in transfers"
-                                            :key="transfer.id"
-                                            class="group hover:bg-muted/30 transition-colors"
-                                        >
-                                            <TableCell class="text-xs font-medium text-slate-600">
-                                                {{ new Date(transfer.created_at).toLocaleDateString() }}
-                                                <span class="block font-mono text-[10px] text-slate-400">{{
-                                                    new Date(transfer.created_at).toLocaleTimeString()
-                                                }}</span>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div class="flex items-center gap-2">
-                                                    <div class="rounded-lg bg-indigo-100 p-1.5 text-indigo-600">
-                                                        <Building2 class="h-3.5 w-3.5" />
+                                        <template v-for="item in filteredStocks" :key="item.key">
+                                            <!-- Main EPP Row -->
+                                            <TableRow class="group hover:bg-muted/30 cursor-pointer transition-colors" @click="toggleRow(item.key)">
+                                                <TableCell>
+                                                    <div class="flex items-center gap-3">
+                                                        <div class="p-1">
+                                                            <ChevronDown v-if="expandedRows.has(item.key)" class="h-4 w-4 text-slate-400" />
+                                                            <ChevronRight v-else class="h-4 w-4 text-slate-400" />
+                                                        </div>
+                                                        <div
+                                                            :class="[
+                                                                'rounded-lg p-2',
+                                                                activeTab === 'clothes'
+                                                                    ? 'bg-indigo-50 text-indigo-600'
+                                                                    : activeTab === 'epps'
+                                                                      ? 'bg-amber-50 text-amber-600'
+                                                                      : activeTab === 'computer'
+                                                                        ? 'bg-blue-50 text-blue-600'
+                                                                        : activeTab === 'kitchen'
+                                                                          ? 'bg-orange-50 text-orange-600'
+                                                                          : 'bg-emerald-50 text-emerald-600',
+                                                            ]"
+                                                        >
+                                                            <component :is="getItemIcon(activeTab)" class="h-4 w-4" />
+                                                        </div>
+                                                        <div class="flex flex-col">
+                                                            <span class="text-foreground font-bold"
+                                                                >{{ item.stockable?.name }} ({{ item.nestedSizes.length }} tallas)</span
+                                                            >
+                                                            <span class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
+                                                                {{ activeTab }}
+                                                            </span>
+                                                        </div>
                                                     </div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div class="flex flex-col gap-1">
+                                                        <template v-if="activeTab === 'computer'">
+                                                            <span class="text-xs font-semibold text-slate-700">{{ item.stockable?.brand }}</span>
+                                                            <span class="text-muted-foreground text-[10px]">{{
+                                                                item.stockable?.model || 'Sin Modelo'
+                                                            }}</span>
+                                                        </template>
+                                                        <template v-else-if="activeTab === 'kitchen'">
+                                                            <span class="text-xs font-semibold text-slate-700">{{ item.stockable?.brand }}</span>
+                                                            <span class="text-muted-foreground text-[10px]">{{ item.stockable?.size }}</span>
+                                                        </template>
+                                                        <template v-else>
+                                                            <span class="text-muted-foreground text-xs italic">Desglosado por tallas</span>
+                                                        </template>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>
                                                     <div class="flex flex-col">
-                                                        <span class="leading-tight font-bold text-foreground">{{ transfer.unit?.name }}</span>
-                                                        <span class="text-[10px] font-black tracking-tighter text-slate-400 uppercase">{{
-                                                            transfer.unit?.mine?.name
-                                                        }}</span>
+                                                        <div class="flex items-center gap-1.5 text-xs">
+                                                            <Building2 class="h-3 w-3 text-slate-400" />
+                                                            <span class="font-medium text-slate-700">{{ item.display_headquarter }}</span>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div class="flex items-center gap-2">
-                                                    <User class="h-3.5 w-3.5 text-slate-300" />
-                                                    <span class="text-sm text-slate-600">{{ transfer.staff?.name || 'Stock de Unidad' }}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>
-                                                <div class="flex flex-wrap gap-1">
-                                                    <Badge
-                                                        v-for="item in transfer.items"
-                                                        :key="item.id"
-                                                        variant="outline"
-                                                        class="border bg-card px-1.5 py-0 text-[10px] text-muted-foreground lowercase"
+                                                </TableCell>
+                                                <TableCell class="text-foreground text-center text-lg font-black">
+                                                    {{ item.quantity }}
+                                                </TableCell>
+                                                <TableCell class="text-center">
+                                                    <div class="flex flex-col items-center gap-1">
+                                                        <Badge
+                                                            :variant="getStockStatus(item.quantity).variant"
+                                                            class="rounded-full border-none px-2 text-[9px] font-black tracking-tighter uppercase shadow-none"
+                                                        >
+                                                            {{ getStockStatus(item.quantity).label }}
+                                                        </Badge>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Button
+                                                        @click.stop="openSizesModal(item)"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        class="hover:text-primary h-8 w-8 p-0 text-slate-400 transition-colors"
                                                     >
-                                                        {{ item.quantity }}x {{ item.stockable?.name }} ({{ item.size || 'U' }})
-                                                    </Badge>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell class="text-center">
-                                                <Badge
-                                                    :class="[
-                                                        'rounded-full border-none px-2 text-[9px] font-black tracking-tighter uppercase shadow-none',
-                                                        transfer.status === 'sent'
-                                                            ? 'bg-amber-100 text-amber-700'
-                                                            : 'bg-emerald-100 text-emerald-700',
-                                                    ]"
-                                                >
-                                                    {{ transfer.status === 'sent' ? 'En Tránsito / Uso' : 'Devuelto' }}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell>
-                                                <Button
-                                                    v-if="transfer.status === 'sent'"
-                                                    @click="openReturnModal(transfer)"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    class="h-8 gap-1 rounded-lg border bg-card text-[10px] font-black tracking-tighter uppercase transition-all hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
-                                                >
-                                                    <History class="h-3.5 w-3.5" /> DEVOLVER
-                                                </Button>
-                                            </TableCell>
-                                        </TableRow>
+                                                        <MoreHorizontal class="h-4 w-4" />
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+
+                                            <!-- Nested Sizes Level -->
+                                            <template v-if="expandedRows.has(item.key)">
+                                                <template v-for="sizeRow in item.nestedSizes" :key="sizeRow.label">
+                                                    <TableRow
+                                                        class="border-l-primary/30 cursor-pointer border-l-4 bg-slate-50/30"
+                                                        @click="toggleSizeRow(item.key, sizeRow.label)"
+                                                    >
+                                                        <TableCell class="pl-12">
+                                                            <div class="flex items-center gap-2">
+                                                                <div class="p-0.5">
+                                                                    <ChevronDown
+                                                                        v-if="expandedSizeRows.has(`${item.key}-${sizeRow.label}`)"
+                                                                        class="h-3 w-3 text-slate-400"
+                                                                    />
+                                                                    <ChevronRight v-else class="h-3 w-3 text-slate-400" />
+                                                                </div>
+                                                                <div
+                                                                    class="bg-primary/10 text-primary flex h-6 w-6 items-center justify-center rounded text-[10px] font-black"
+                                                                >
+                                                                    {{ sizeRow.label.toUpperCase().slice(0, 2) }}
+                                                                </div>
+                                                                <span class="text-sm font-bold text-slate-700">Talla: {{ sizeRow.label }}</span>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell colspan="2" class="text-[11px] text-slate-400 italic">
+                                                            {{ sizeRow.nestedColors.length }} combinaciones de color
+                                                        </TableCell>
+                                                        <TableCell class="text-center font-bold text-slate-600">
+                                                            {{ sizeRow.total }}
+                                                        </TableCell>
+                                                        <TableCell colspan="2"></TableCell>
+                                                    </TableRow>
+
+                                                    <!-- Nested Colors Level -->
+                                                    <template v-if="expandedSizeRows.has(`${item.key}-${sizeRow.label}`)">
+                                                        <TableRow
+                                                            v-for="colorData in sizeRow.nestedColors"
+                                                            :key="colorData.id"
+                                                            class="border-l-4 border-l-slate-200 bg-slate-100/20"
+                                                        >
+                                                            <TableCell class="py-2 pl-24">
+                                                                <div class="flex items-center gap-3">
+                                                                    <div
+                                                                        class="h-3 w-3 rounded-full border border-white shadow-sm"
+                                                                        :style="{ backgroundColor: colorData.color?.hex_code || '#ccc' }"
+                                                                    ></div>
+                                                                    <span class="text-xs font-semibold text-slate-600">{{
+                                                                        colorData.color?.name || 'Sin color'
+                                                                    }}</span>
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell colspan="2">
+                                                                <div class="flex flex-wrap gap-1">
+                                                                    <Badge
+                                                                        v-for="rec in colorData.records"
+                                                                        :key="rec.id"
+                                                                        variant="outline"
+                                                                        class="bg-card border px-1 py-0 text-[9px] text-slate-400"
+                                                                    >
+                                                                        {{ rec.headquarter?.name || rec.cafe?.name || 'N/A' }}: {{ rec.quantity }}
+                                                                    </Badge>
+                                                                </div>
+                                                            </TableCell>
+                                                            <TableCell class="text-foreground text-center font-black">
+                                                                {{ colorData.quantity }}
+                                                            </TableCell>
+                                                            <TableCell colspan="2"></TableCell>
+                                                        </TableRow>
+                                                    </template>
+                                                </template>
+                                            </template>
+                                        </template>
                                     </TableBody>
                                 </Table>
                             </div>
-                        </div>
-                    </template>
+
+                            <!-- Transfers Tab Content -->
+                            <div v-else-if="activeTab === 'units_transfers'" class="space-y-6">
+                                <div class="bg-card mb-6 overflow-hidden rounded-2xl border shadow-sm">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow class="bg-indigo-50/30">
+                                                <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Fecha Envío</TableHead>
+                                                <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Destino (Unidad)</TableHead>
+                                                <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Personal Asignado</TableHead>
+                                                <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Items</TableHead>
+                                                <TableHead class="text-muted-foreground text-center text-[10px] font-bold uppercase"
+                                                    >Estado</TableHead
+                                                >
+                                                <TableHead class="w-[120px]"></TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            <TableRow
+                                                v-for="transfer in transfers"
+                                                :key="transfer.id"
+                                                class="group hover:bg-muted/30 transition-colors"
+                                            >
+                                                <TableCell class="text-xs font-medium text-slate-600">
+                                                    {{ new Date(transfer.created_at).toLocaleDateString() }}
+                                                    <span class="block font-mono text-[10px] text-slate-400">{{
+                                                        new Date(transfer.created_at).toLocaleTimeString()
+                                                    }}</span>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div class="flex items-center gap-2">
+                                                        <div class="rounded-lg bg-indigo-100 p-1.5 text-indigo-600">
+                                                            <Building2 class="h-3.5 w-3.5" />
+                                                        </div>
+                                                        <div class="flex flex-col">
+                                                            <span class="text-foreground leading-tight font-bold">{{ transfer.unit?.name }}</span>
+                                                            <span class="text-[10px] font-black tracking-tighter text-slate-400 uppercase">{{
+                                                                transfer.unit?.mine?.name
+                                                            }}</span>
+                                                        </div>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div class="flex items-center gap-2">
+                                                        <User class="h-3.5 w-3.5 text-slate-300" />
+                                                        <span class="text-sm text-slate-600">{{ transfer.staff?.name || 'Stock de Unidad' }}</span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <div class="flex flex-wrap gap-1">
+                                                        <Badge
+                                                            v-for="item in transfer.items"
+                                                            :key="item.id"
+                                                            variant="outline"
+                                                            class="bg-card text-muted-foreground border px-1.5 py-0 text-[10px] lowercase"
+                                                        >
+                                                            {{ item.quantity }}x {{ item.stockable?.name }} ({{ item.size || 'U' }})
+                                                        </Badge>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell class="text-center">
+                                                    <Badge
+                                                        :class="[
+                                                            'rounded-full border-none px-2 text-[9px] font-black tracking-tighter uppercase shadow-none',
+                                                            transfer.status === 'sent'
+                                                                ? 'bg-amber-100 text-amber-700'
+                                                                : 'bg-emerald-100 text-emerald-700',
+                                                        ]"
+                                                    >
+                                                        {{ transfer.status === 'sent' ? 'En Tránsito / Uso' : 'Devuelto' }}
+                                                    </Badge>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <Button
+                                                        v-if="transfer.status === 'sent'"
+                                                        @click="openReturnModal(transfer)"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        class="bg-card h-8 gap-1 rounded-lg border text-[10px] font-black tracking-tighter uppercase transition-all hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                                                    >
+                                                        <History class="h-3.5 w-3.5" /> DEVOLVER
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </div>
+                        </template>
                     </template>
                 </div>
             </div>
@@ -1965,7 +2154,9 @@ const kitchenTotalPages = computed(() =>
                         <div v-else class="custom-scrollbar max-h-[350px] divide-y divide-slate-100 overflow-y-auto">
                             <div v-for="group in filteredStockSizes" :key="group.title" class="space-y-3 px-4 py-4">
                                 <div class="mb-2 flex items-center gap-2">
-                                    <div class="rounded border border-slate-200 bg-slate-100 p-1 px-2 text-[9px] font-black text-muted-foreground uppercase">
+                                    <div
+                                        class="text-muted-foreground rounded border border-slate-200 bg-slate-100 p-1 px-2 text-[9px] font-black uppercase"
+                                    >
                                         {{ group.hq }} - {{ group.cafe }}
                                     </div>
                                 </div>
@@ -1985,13 +2176,10 @@ const kitchenTotalPages = computed(() =>
                                                 class="h-2.5 w-2.5 rounded-full border border-slate-200 shadow-sm"
                                                 :style="{ backgroundColor: sz.color.hex_code }"
                                             ></div>
-                                            <span class="text-[10px] font-bold text-muted-foreground uppercase">{{ sz.color.name }}</span>
+                                            <span class="text-muted-foreground text-[10px] font-bold uppercase">{{ sz.color.name }}</span>
                                         </div>
                                     </div>
-                                    <Badge
-                                        variant="secondary"
-                                        class="bg-card rounded-lg border px-2.5 py-0.5 font-mono text-xs font-black"
-                                    >
+                                    <Badge variant="secondary" class="bg-card rounded-lg border px-2.5 py-0.5 font-mono text-xs font-black">
                                         {{ sz.quantity }}
                                     </Badge>
                                 </div>
@@ -2036,7 +2224,7 @@ const kitchenTotalPages = computed(() =>
                 </div>
 
                 <DialogFooter class="flex gap-3 border-t bg-slate-50 p-6 sm:justify-center">
-                    <Button variant="ghost" @click="isReturnModalOpen = false" class="text-[10px] font-bold text-muted-foreground uppercase">
+                    <Button variant="ghost" @click="isReturnModalOpen = false" class="text-muted-foreground text-[10px] font-bold uppercase">
                         Cancelar
                     </Button>
                     <Button

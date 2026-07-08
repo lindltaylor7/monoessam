@@ -11,6 +11,7 @@ import {
     AlertTriangle,
     Bell,
     CheckCircle2,
+    Eye,
     FileDown,
     FileText,
     Laptop,
@@ -96,10 +97,12 @@ interface Dispatch {
     origin_name: string;
     origin_label?: string;
     origin_business?: string | null;
+    origin_unit?: string | null;
     destination_type: string;
     destination_label: string;
     destination_name: string;
     destination_business?: string | null;
+    destination_unit?: string | null;
     destination_id: number;
     staff_id: number | null;
     staff_name: string | null;
@@ -197,24 +200,29 @@ function selectDispatch(d: Dispatch) {
     selectedDispatch.value = selectedDispatch.value?.id === d.id ? null : d;
 }
 
-function getStatus(d: Dispatch) {
-    if (d.received_at) return { label: 'Entregado', cls: 'bg-emerald-100 text-emerald-700', dot: 'bg-emerald-500' };
-    if (d.status === 'returned') return { label: 'Retornado', cls: 'bg-slate-100 text-slate-500', dot: 'bg-slate-400' };
-    if (d.dispatched_at_raw && (Date.now() - new Date(d.dispatched_at_raw).getTime()) / 86400000 > 5)
-        return { label: 'Retrasado', cls: 'bg-red-100 text-red-700', dot: 'bg-red-500' };
-    return { label: 'En Tránsito', cls: 'bg-blue-100 text-blue-700', dot: 'bg-blue-500' };
-}
-
 // ── Directions (Routes API v2 — reemplaza el deprecado DirectionsService) ──
 function decodePolyline(encoded: string): { lat: number; lng: number }[] {
     const path: { lat: number; lng: number }[] = [];
-    let idx = 0, lat = 0, lng = 0;
+    let idx = 0,
+        lat = 0,
+        lng = 0;
     while (idx < encoded.length) {
-        let b, shift = 0, result = 0;
-        do { b = encoded.charCodeAt(idx++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 32);
+        let b,
+            shift = 0,
+            result = 0;
+        do {
+            b = encoded.charCodeAt(idx++) - 63;
+            result |= (b & 0x1f) << shift;
+            shift += 5;
+        } while (b >= 32);
         lat += result & 1 ? ~(result >> 1) : result >> 1;
-        shift = 0; result = 0;
-        do { b = encoded.charCodeAt(idx++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 32);
+        shift = 0;
+        result = 0;
+        do {
+            b = encoded.charCodeAt(idx++) - 63;
+            result |= (b & 0x1f) << shift;
+            shift += 5;
+        } while (b >= 32);
         lng += result & 1 ? ~(result >> 1) : result >> 1;
         path.push({ lat: lat * 1e-5, lng: lng * 1e-5 });
     }
@@ -225,56 +233,55 @@ const googleMapRef = ref<InstanceType<typeof GoogleMap> | null>(null);
 let routePolyline: any = null;
 let reqId = 0;
 
-watch(
-    [() => googleMapRef.value?.ready, mapRouteData] as const,
-    async ([isReady, data]) => {
-        const id = ++reqId;
-        routePolyline?.setMap(null);
-        routePolyline = null;
+watch([() => googleMapRef.value?.ready, mapRouteData] as const, async ([isReady, data]) => {
+    const id = ++reqId;
+    routePolyline?.setMap(null);
+    routePolyline = null;
 
-        if (!isReady || !data?.dest) return;
+    if (!isReady || !data?.dest) return;
 
-        const mapInstance = googleMapRef.value?.map;
-        const gmaps = (window as any).google?.maps;
-        if (!mapInstance || !gmaps) return;
+    const mapInstance = googleMapRef.value?.map;
+    const gmaps = (window as any).google?.maps;
+    if (!mapInstance || !gmaps) return;
 
-        try {
-            const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY!,
-                    'X-Goog-FieldMask': 'routes.polyline.encodedPolyline',
-                },
-                body: JSON.stringify({
-                    origin: { location: { latLng: { latitude: data.origin.lat, longitude: data.origin.lng } } },
-                    destination: { location: { latLng: { latitude: data.dest.lat, longitude: data.dest.lng } } },
-                    travelMode: 'DRIVE',
-                }),
-            });
+    try {
+        const res = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY!,
+                'X-Goog-FieldMask': 'routes.polyline.encodedPolyline',
+            },
+            body: JSON.stringify({
+                origin: { location: { latLng: { latitude: data.origin.lat, longitude: data.origin.lng } } },
+                destination: { location: { latLng: { latitude: data.dest.lat, longitude: data.dest.lng } } },
+                travelMode: 'DRIVE',
+            }),
+        });
 
-            const json = await res.json();
-            const encoded = json.routes?.[0]?.polyline?.encodedPolyline;
-            if (!encoded) { console.warn('[Routes API]', json); return; }
-            if (id !== reqId) return;
-
-            routePolyline = new gmaps.Polyline({
-                path: decodePolyline(encoded),
-                strokeColor: '#2563EB',
-                strokeOpacity: 0.9,
-                strokeWeight: 4,
-                map: mapInstance,
-            });
-        } catch (err) {
-            console.warn('[Routes API]', err);
+        const json = await res.json();
+        const encoded = json.routes?.[0]?.polyline?.encodedPolyline;
+        if (!encoded) {
+            console.warn('[Routes API]', json);
+            return;
         }
-    },
-);
+        if (id !== reqId) return;
+
+        routePolyline = new gmaps.Polyline({
+            path: decodePolyline(encoded),
+            strokeColor: '#2563EB',
+            strokeOpacity: 0.9,
+            strokeWeight: 4,
+            map: mapInstance,
+        });
+    } catch (err) {
+        console.warn('[Routes API]', err);
+    }
+});
 
 onUnmounted(() => routePolyline?.setMap(null));
 
-const selectedTimeline = computed(() => {
-    const d = selectedDispatch.value;
+function computeTimeline(d: Dispatch | null) {
     if (!d) return [];
     const base = d.dispatched_at_raw ? new Date(d.dispatched_at_raw) : null;
     const fmt = (dt: Date) =>
@@ -297,7 +304,27 @@ const selectedTimeline = computed(() => {
             current: false,
         },
     ];
-});
+}
+
+// ── Timeline modal (triggered from the Despachos table) ────────────────────
+const showTimelineModal = ref(false);
+const timelineTarget = ref<Dispatch | null>(null);
+const timelineModalSteps = computed(() => computeTimeline(timelineTarget.value));
+
+function openTimeline(d: Dispatch) {
+    timelineTarget.value = d;
+    showTimelineModal.value = true;
+}
+
+// ── Detail modal (triggered from the Despachos table) ───────────────────────
+const showDetailModal = ref(false);
+const detailGroup = ref<DispatchGroup | null>(null);
+
+function openDetail(g: DispatchGroup) {
+    selectedDispatch.value = g.items[0]; // mantiene el mapa enfocado en esta guía
+    detailGroup.value = g;
+    showDetailModal.value = true;
+}
 
 // ── Recent dispatches table ───────────────────────────────────────────────
 const tableSearch = ref('');
@@ -309,9 +336,11 @@ interface DispatchGroup {
     destination_name: string;
     destination_label: string;
     destination_business?: string | null;
+    destination_unit?: string | null;
     origin_name: string;
     origin_label?: string;
     origin_business?: string | null;
+    origin_unit?: string | null;
     dispatched_at: string;
     dispatched_at_raw: string;
     staff_name: string | null;
@@ -346,9 +375,11 @@ const allGroupedDispatches = computed((): DispatchGroup[] => {
                 destination_name: d.destination_name,
                 destination_label: d.destination_label,
                 destination_business: d.destination_business,
+                destination_unit: d.destination_unit,
                 origin_name: d.origin_name,
                 origin_label: d.origin_label,
                 origin_business: d.origin_business,
+                origin_unit: d.origin_unit,
                 dispatched_at: d.dispatched_at,
                 dispatched_at_raw: d.dispatched_at_raw,
                 staff_name: d.staff_name,
@@ -360,7 +391,9 @@ const allGroupedDispatches = computed((): DispatchGroup[] => {
 });
 
 // Reset page when search changes
-watch(tableSearch, () => { tablePage.value = 1; });
+watch(tableSearch, () => {
+    tablePage.value = 1;
+});
 
 const totalTablePages = computed(() => Math.max(1, Math.ceil(allGroupedDispatches.value.length / PAGE_SIZE)));
 
@@ -401,14 +434,6 @@ function downloadGroup(g: DispatchGroup) {
     }
 }
 
-function downloadGuide(d: Dispatch) {
-    if (d.guide_number) {
-        window.open(route('equipment-dispatches.guide-pdf', d.guide_number), '_blank');
-    } else {
-        window.open(route('equipment-dispatches.pdf', d.id), '_blank');
-    }
-}
-
 // ── Dispatch form ─────────────────────────────────────────────────────────
 const showForm = ref(false);
 const confirmReturn = ref<Dispatch | null>(null);
@@ -426,12 +451,23 @@ const form = useForm({
 
 const filteredEquipmentTable = computed(() => {
     const q = itemSearch.value.toLowerCase().trim();
+    const originId = form.origin_headquarter_id ? Number(form.origin_headquarter_id) : null;
     return equipmentTable.value.filter((eq) => {
+        if (originId !== null && eq.storage_headquarter?.id !== originId) return false;
         if (itemTypeFilter.value !== 'all' && eq.equipable_type !== itemTypeFilter.value) return false;
         if (!q) return true;
         return eq.name.toLowerCase().includes(q) || (eq.storage_headquarter?.name.toLowerCase().includes(q) ?? false);
     });
 });
+
+// Al cambiar la sede origen, limpiamos las cantidades ya ingresadas para
+// evitar despachar equipos que ya no pertenecen a la sede seleccionada.
+watch(
+    () => form.origin_headquarter_id,
+    () => {
+        equipmentTable.value.forEach((eq) => (eq.qty_to_dispatch = 0));
+    },
+);
 
 const dispatchItems = computed(() =>
     equipmentTable.value
@@ -453,7 +489,7 @@ const destinationOptions = computed(() => {
         case 'mine':
             return props.mines.map((m) => ({ id: m.id, label: m.name }));
         case 'headquarter':
-            return props.headquarters.map((h) => ({ id: h.id, label: h.name }));
+            return props.headquarters.map((h) => ({ id: h.id, label: `${h.name}${h.business ? ` — ${h.business.name}` : ''}` }));
         default:
             return [];
     }
@@ -676,9 +712,9 @@ function pctCls(v: number | null): string {
                 </div>
 
                 <!-- ── MAIN GRID ── -->
-                <div class="grid grid-cols-1 gap-5 xl:grid-cols-3">
-                    <!-- LEFT col (xl:col-span-2) -->
-                    <div class="space-y-5 xl:col-span-2">
+                <div class="grid grid-cols-1 gap-5 xl:grid-cols-4">
+                    <!-- LEFT col: Mapa (alto) + Resumen -->
+                    <div class="space-y-5 xl:col-span-1">
                         <!-- Mapa -->
                         <div class="overflow-hidden rounded-xl border bg-white shadow-sm">
                             <div class="flex items-center justify-between border-b px-4 py-3">
@@ -697,7 +733,7 @@ function pctCls(v: number | null): string {
                                 </span>
                                 <span v-else class="text-xs text-slate-400">Selecciona un despacho para ver la ruta</span>
                             </div>
-                            <div class="relative h-52">
+                            <div class="relative h-[28rem]">
                                 <GoogleMap
                                     v-if="GOOGLE_MAPS_API_KEY"
                                     ref="googleMapRef"
@@ -718,7 +754,6 @@ function pctCls(v: number | null): string {
                                             v-if="mapRouteData.dest"
                                             :options="{ position: mapRouteData.dest, title: selectedDispatch?.destination_name ?? 'Destino' }"
                                         />
-
                                     </template>
                                     <!-- Sin selección: marcadores de todos los orígenes con coords -->
                                     <template v-else>
@@ -758,460 +793,322 @@ function pctCls(v: number | null): string {
                             </div>
                         </div>
 
-                        <!-- Bottom: Resumen + Últimos Despachos side by side on wide screens -->
-                        <div class="grid grid-cols-1 gap-5 lg:grid-cols-5">
-                            <!-- Resumen de Operaciones -->
-                            <div class="self-start rounded-xl border bg-white p-4 shadow-sm lg:col-span-2">
-                                <div class="mb-3 flex items-center justify-between">
-                                    <h2 class="text-sm font-semibold text-slate-900">Resumen de Operaciones</h2>
-                                    <button class="text-xs font-medium text-blue-600 hover:underline">Ver reporte</button>
-                                </div>
+                        <!-- Resumen de Operaciones -->
+                        <div class="self-start rounded-xl border bg-white p-4 shadow-sm">
+                            <div class="mb-3 flex items-center justify-between">
+                                <h2 class="text-sm font-semibold text-slate-900">Resumen de Operaciones</h2>
+                                <button class="text-xs font-medium text-blue-600 hover:underline">Ver reporte</button>
+                            </div>
 
-                                <!-- Donut -->
-                                <div class="flex items-center gap-4">
-                                    <div class="relative h-24 w-24 shrink-0">
-                                        <svg viewBox="0 0 36 36" class="h-full w-full">
-                                            <circle cx="18" cy="18" r="15.9" fill="none" stroke="#f1f5f9" stroke-width="3" />
-                                            <circle
-                                                v-if="donutData.p1 > 0"
-                                                cx="18"
-                                                cy="18"
-                                                r="15.9"
-                                                fill="none"
-                                                stroke="#22c55e"
-                                                stroke-width="3.5"
-                                                :stroke-dasharray="`${donutData.p1} ${100 - donutData.p1}`"
-                                                :stroke-dashoffset="donutData.o1"
-                                            />
-                                            <circle
-                                                v-if="donutData.p2 > 0"
-                                                cx="18"
-                                                cy="18"
-                                                r="15.9"
-                                                fill="none"
-                                                stroke="#3b82f6"
-                                                stroke-width="3.5"
-                                                :stroke-dasharray="`${donutData.p2} ${100 - donutData.p2}`"
-                                                :stroke-dashoffset="donutData.o2"
-                                            />
-                                            <circle
-                                                v-if="donutData.p3 > 0"
-                                                cx="18"
-                                                cy="18"
-                                                r="15.9"
-                                                fill="none"
-                                                stroke="#ef4444"
-                                                stroke-width="3.5"
-                                                :stroke-dasharray="`${donutData.p3} ${100 - donutData.p3}`"
-                                                :stroke-dashoffset="donutData.o3"
-                                            />
-                                            <circle
-                                                v-if="donutData.p4 > 0"
-                                                cx="18"
-                                                cy="18"
-                                                r="15.9"
-                                                fill="none"
-                                                stroke="#f59e0b"
-                                                stroke-width="3.5"
-                                                :stroke-dasharray="`${donutData.p4} ${100 - donutData.p4}`"
-                                                :stroke-dashoffset="donutData.o4"
-                                            />
-                                        </svg>
-                                        <div class="absolute inset-0 flex flex-col items-center justify-center">
-                                            <span class="text-lg font-bold text-slate-900">{{ dashStats.total }}</span>
-                                            <span class="text-[10px] text-slate-500">Total</span>
-                                        </div>
-                                    </div>
-
-                                    <!-- Legend -->
-                                    <div class="flex-1 space-y-2">
-                                        <div
-                                            v-for="(seg, i) in [
-                                                { label: 'Entregados', n: dashStats.entregados, p: donutData.p1, color: 'bg-emerald-500' },
-                                                { label: 'En Tránsito', n: dashStats.enTransito, p: donutData.p2, color: 'bg-blue-500' },
-                                                { label: 'Retrasados', n: dashStats.retrasados, p: donutData.p3, color: 'bg-red-500' },
-                                                {
-                                                    label: 'Pendientes',
-                                                    n: dashStats.total - dashStats.entregados - dashStats.enTransito - dashStats.retrasados,
-                                                    p: donutData.p4,
-                                                    color: 'bg-amber-400',
-                                                },
-                                            ]"
-                                            :key="i"
-                                            class="space-y-0.5"
-                                        >
-                                            <div class="flex items-center justify-between text-[11px]">
-                                                <div class="flex items-center gap-1.5">
-                                                    <span class="h-2 w-2 rounded-full" :class="seg.color"></span>
-                                                    <span class="text-slate-600">{{ seg.label }}</span>
-                                                </div>
-                                                <span class="font-semibold text-slate-800">{{ seg.n }} ({{ seg.p }}%)</span>
-                                            </div>
-                                            <div class="h-1 w-full overflow-hidden rounded-full bg-slate-100">
-                                                <div
-                                                    class="h-full rounded-full transition-all"
-                                                    :class="seg.color"
-                                                    :style="{ width: seg.p + '%' }"
-                                                ></div>
-                                            </div>
-                                        </div>
+                            <!-- Donut -->
+                            <div class="flex items-center gap-4">
+                                <div class="relative h-24 w-24 shrink-0">
+                                    <svg viewBox="0 0 36 36" class="h-full w-full">
+                                        <circle cx="18" cy="18" r="15.9" fill="none" stroke="#f1f5f9" stroke-width="3" />
+                                        <circle
+                                            v-if="donutData.p1 > 0"
+                                            cx="18"
+                                            cy="18"
+                                            r="15.9"
+                                            fill="none"
+                                            stroke="#22c55e"
+                                            stroke-width="3.5"
+                                            :stroke-dasharray="`${donutData.p1} ${100 - donutData.p1}`"
+                                            :stroke-dashoffset="donutData.o1"
+                                        />
+                                        <circle
+                                            v-if="donutData.p2 > 0"
+                                            cx="18"
+                                            cy="18"
+                                            r="15.9"
+                                            fill="none"
+                                            stroke="#3b82f6"
+                                            stroke-width="3.5"
+                                            :stroke-dasharray="`${donutData.p2} ${100 - donutData.p2}`"
+                                            :stroke-dashoffset="donutData.o2"
+                                        />
+                                        <circle
+                                            v-if="donutData.p3 > 0"
+                                            cx="18"
+                                            cy="18"
+                                            r="15.9"
+                                            fill="none"
+                                            stroke="#ef4444"
+                                            stroke-width="3.5"
+                                            :stroke-dasharray="`${donutData.p3} ${100 - donutData.p3}`"
+                                            :stroke-dashoffset="donutData.o3"
+                                        />
+                                        <circle
+                                            v-if="donutData.p4 > 0"
+                                            cx="18"
+                                            cy="18"
+                                            r="15.9"
+                                            fill="none"
+                                            stroke="#f59e0b"
+                                            stroke-width="3.5"
+                                            :stroke-dasharray="`${donutData.p4} ${100 - donutData.p4}`"
+                                            :stroke-dashoffset="donutData.o4"
+                                        />
+                                    </svg>
+                                    <div class="absolute inset-0 flex flex-col items-center justify-center">
+                                        <span class="text-lg font-bold text-slate-900">{{ dashStats.total }}</span>
+                                        <span class="text-[10px] text-slate-500">Total</span>
                                     </div>
                                 </div>
 
-                                <!-- Estado de despachos -->
-                                <div class="mt-4 border-t pt-3">
-                                    <p class="mb-2 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Estados de Despachos</p>
-                                    <div class="space-y-1">
-                                        <div
-                                            v-for="(row, i) in [
-                                                { label: 'Entregados', n: dashStats.entregados, p: donutData.p1, color: 'bg-emerald-500' },
-                                                { label: 'En Tránsito', n: dashStats.enTransito, p: donutData.p2, color: 'bg-blue-500' },
-                                                { label: 'Retrasados', n: dashStats.retrasados, p: donutData.p3, color: 'bg-red-500' },
-                                            ]"
-                                            :key="i"
-                                            class="flex items-center gap-2 text-[11px]"
-                                        >
-                                            <span class="h-2 w-2 shrink-0 rounded-sm" :class="row.color"></span>
-                                            <span class="flex-1 text-slate-600">{{ row.label }}</span>
-                                            <span class="font-semibold text-slate-800">{{ row.n }}</span>
-                                            <div class="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100">
-                                                <div class="h-full rounded-full" :class="row.color" :style="{ width: row.p + '%' }"></div>
+                                <!-- Legend -->
+                                <div class="flex-1 space-y-2">
+                                    <div
+                                        v-for="(seg, i) in [
+                                            { label: 'Entregados', n: dashStats.entregados, p: donutData.p1, color: 'bg-emerald-500' },
+                                            { label: 'En Tránsito', n: dashStats.enTransito, p: donutData.p2, color: 'bg-blue-500' },
+                                            { label: 'Retrasados', n: dashStats.retrasados, p: donutData.p3, color: 'bg-red-500' },
+                                            {
+                                                label: 'Pendientes',
+                                                n: dashStats.total - dashStats.entregados - dashStats.enTransito - dashStats.retrasados,
+                                                p: donutData.p4,
+                                                color: 'bg-amber-400',
+                                            },
+                                        ]"
+                                        :key="i"
+                                        class="space-y-0.5"
+                                    >
+                                        <div class="flex items-center justify-between text-[11px]">
+                                            <div class="flex items-center gap-1.5">
+                                                <span class="h-2 w-2 rounded-full" :class="seg.color"></span>
+                                                <span class="text-slate-600">{{ seg.label }}</span>
                                             </div>
-                                            <span class="w-7 text-right text-slate-500">{{ row.p }}%</span>
+                                            <span class="font-semibold text-slate-800">{{ seg.n }} ({{ seg.p }}%)</span>
+                                        </div>
+                                        <div class="h-1 w-full overflow-hidden rounded-full bg-slate-100">
+                                            <div class="h-full rounded-full transition-all" :class="seg.color" :style="{ width: seg.p + '%' }"></div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- Despachos -->
-                            <div class="flex flex-col overflow-hidden rounded-xl border bg-white shadow-sm lg:col-span-3">
-                                <!-- Header -->
-                                <div class="flex items-center justify-between border-b px-5 py-4">
-                                    <div>
-                                        <h2 class="text-sm font-bold text-slate-900">Despachos</h2>
-                                        <p class="mt-0.5 text-[11px] text-slate-400">
-                                            {{ allGroupedDispatches.length }} guía(s) en total
-                                        </p>
-                                    </div>
-                                    <div class="relative">
-                                        <Search class="absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                                        <input
-                                            v-model="tableSearch"
-                                            placeholder="Buscar guía, equipo, destino…"
-                                            class="h-8 w-56 rounded-lg border border-slate-200 pr-3 pl-8 text-xs outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-                                        />
-                                    </div>
-                                </div>
-
-                                <!-- Table -->
-                                <div class="flex-1 overflow-x-auto">
-                                    <table class="w-full text-xs">
-                                        <thead>
-                                            <tr class="border-b bg-slate-50/80">
-                                                <th class="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">Guía</th>
-                                                <th class="hidden px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400 sm:table-cell">Origen</th>
-                                                <th class="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">Destino</th>
-                                                <th class="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">Fecha</th>
-                                                <th class="px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400">Estado</th>
-                                                <th class="hidden px-4 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-400 lg:table-cell">Encargado</th>
-                                                <th class="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-wider text-slate-400">Acciones</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody class="divide-y divide-slate-100">
-                                            <tr
-                                                v-for="g in groupedDispatches"
-                                                :key="g.key"
-                                                class="cursor-pointer transition-colors"
-                                                :class="g.items.some((i) => i.id === selectedDispatch?.id)
-                                                    ? 'bg-blue-50'
-                                                    : 'hover:bg-slate-50/70'"
-                                                @click="selectDispatch(g.items[0])"
-                                            >
-                                                <!-- Guía -->
-                                                <td class="px-4 py-3.5">
-                                                    <p class="font-mono font-bold text-slate-800">
-                                                        {{ g.guide_number ?? g.items[0].dispatch_number }}
-                                                    </p>
-                                                    <span
-                                                        v-if="g.items.length > 1"
-                                                        class="mt-0.5 inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"
-                                                    >
-                                                        {{ g.items.length }} ítems
-                                                    </span>
-                                                </td>
-
-                                                <!-- Origen -->
-                                                <td class="hidden px-4 py-3.5 sm:table-cell">
-                                                    <p v-if="g.origin_business" class="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">{{ g.origin_business }}</p>
-                                                    <p class="truncate font-semibold text-slate-800">{{ g.origin_name }}</p>
-                                                    <p class="text-[10px] text-slate-400">{{ g.origin_label ?? 'Sede / Almacén' }}</p>
-                                                </td>
-
-                                                <!-- Destino -->
-                                                <td class="max-w-[140px] px-4 py-3.5">
-                                                    <p v-if="g.destination_business" class="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">{{ g.destination_business }}</p>
-                                                    <p class="truncate font-semibold text-slate-800">{{ g.destination_name }}</p>
-                                                    <p class="text-[10px] text-slate-400">{{ g.destination_label }}</p>
-                                                </td>
-
-                                                <!-- Fecha -->
-                                                <td class="whitespace-nowrap px-4 py-3.5 text-slate-600">{{ g.dispatched_at }}</td>
-
-                                                <!-- Estado -->
-                                                <td class="px-4 py-3.5">
-                                                    <span
-                                                        class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold"
-                                                        :class="groupStatus(g).cls"
-                                                    >
-                                                        <span class="h-1.5 w-1.5 rounded-full" :class="groupStatus(g).dot"></span>
-                                                        {{ groupStatus(g).label }}
-                                                    </span>
-                                                </td>
-
-                                                <!-- Encargado -->
-                                                <td class="hidden max-w-[100px] truncate px-4 py-3.5 text-slate-600 lg:table-cell">
-                                                    {{ g.staff_name || g.dispatched_by }}
-                                                </td>
-
-                                                <!-- Acciones -->
-                                                <td class="px-4 py-3.5">
-                                                    <div class="flex items-center justify-center gap-1.5">
-                                                        <button
-                                                            title="Descargar guía PDF"
-                                                            class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
-                                                            @click.stop="downloadGroup(g)"
-                                                        >
-                                                            <FileDown class="h-3.5 w-3.5" />
-                                                        </button>
-                                                        <button
-                                                            v-if="g.items.some((i) => i.status === 'active' && !i.received_at)"
-                                                            title="Registrar retorno"
-                                                            class="rounded-lg p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600"
-                                                            @click.stop="confirmReturn = g.items.find((i) => i.status === 'active' && !i.received_at) ?? null"
-                                                        >
-                                                            <RotateCcw class="h-3.5 w-3.5" />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-
-                                            <tr v-if="groupedDispatches.length === 0">
-                                                <td colspan="7" class="px-4 py-12 text-center text-slate-400">
-                                                    <Package class="mx-auto mb-2 h-8 w-8 text-slate-200" />
-                                                    <p class="text-sm font-medium">Sin resultados</p>
-                                                </td>
-                                            </tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-
-                                <!-- Pagination -->
-                                <div v-if="totalTablePages > 1" class="flex items-center justify-between border-t bg-slate-50/60 px-5 py-3">
-                                    <p class="text-[11px] text-slate-400">
-                                        {{ (tablePage - 1) * PAGE_SIZE + 1 }}–{{ Math.min(tablePage * PAGE_SIZE, allGroupedDispatches.length) }}
-                                        de {{ allGroupedDispatches.length }} guías
-                                    </p>
-                                    <div class="flex items-center gap-1">
-                                        <button
-                                            :disabled="tablePage === 1"
-                                            class="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                            @click="tablePage--"
-                                        >← Ant.</button>
-
-                                        <template v-for="p in tablePageNumbers" :key="String(p)">
-                                            <span v-if="p === '…'" class="px-1 text-[11px] text-slate-400">…</span>
-                                            <button
-                                                v-else
-                                                :class="['rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition',
-                                                    p === tablePage
-                                                        ? 'border-blue-400 bg-blue-50 text-blue-700'
-                                                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50']"
-                                                @click="tablePage = p as number"
-                                            >{{ p }}</button>
-                                        </template>
-
-                                        <button
-                                            :disabled="tablePage === totalTablePages"
-                                            class="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
-                                            @click="tablePage++"
-                                        >Sig. →</button>
+                            <!-- Estado de despachos -->
+                            <div class="mt-4 border-t pt-3">
+                                <p class="mb-2 text-[11px] font-semibold tracking-wide text-slate-400 uppercase">Estados de Despachos</p>
+                                <div class="space-y-1">
+                                    <div
+                                        v-for="(row, i) in [
+                                            { label: 'Entregados', n: dashStats.entregados, p: donutData.p1, color: 'bg-emerald-500' },
+                                            { label: 'En Tránsito', n: dashStats.enTransito, p: donutData.p2, color: 'bg-blue-500' },
+                                            { label: 'Retrasados', n: dashStats.retrasados, p: donutData.p3, color: 'bg-red-500' },
+                                        ]"
+                                        :key="i"
+                                        class="flex items-center gap-2 text-[11px]"
+                                    >
+                                        <span class="h-2 w-2 shrink-0 rounded-sm" :class="row.color"></span>
+                                        <span class="flex-1 text-slate-600">{{ row.label }}</span>
+                                        <span class="font-semibold text-slate-800">{{ row.n }}</span>
+                                        <div class="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100">
+                                            <div class="h-full rounded-full" :class="row.color" :style="{ width: row.p + '%' }"></div>
+                                        </div>
+                                        <span class="w-7 text-right text-slate-500">{{ row.p }}%</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- RIGHT col -->
-                    <div class="space-y-5">
-                        <!-- Guía Seleccionada -->
-                        <div class="rounded-xl border bg-white shadow-sm">
+                    <!-- RIGHT col: Despachos (más espacio que el mapa) -->
+                    <div class="xl:col-span-3">
+                        <div class="flex flex-col overflow-hidden rounded-xl border bg-white shadow-sm">
                             <!-- Header -->
-                            <div class="flex items-center justify-between border-b px-4 py-3">
-                                <div v-if="selectedDispatch" class="flex items-center gap-2">
-                                    <span class="text-xs font-semibold text-slate-500">Guía Seleccionada</span>
-                                    <span class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase" :class="getStatus(selectedDispatch).cls">
-                                        {{ getStatus(selectedDispatch).label }}
-                                    </span>
-                                </div>
-                                <h2 v-else class="text-sm font-semibold text-slate-900">Guía Seleccionada</h2>
-                            </div>
-
-                            <!-- Empty state -->
-                            <div v-if="!selectedDispatch" class="flex flex-col items-center gap-3 py-10 text-center">
-                                <FileText class="h-10 w-10 text-slate-200" />
+                            <div class="flex items-center justify-between border-b px-5 py-4">
                                 <div>
-                                    <p class="text-sm font-medium text-slate-500">Selecciona una guía</p>
-                                    <p class="text-xs text-slate-400">Haz clic en una fila de la tabla</p>
+                                    <h2 class="text-sm font-bold text-slate-900">Despachos</h2>
+                                    <p class="mt-0.5 text-[11px] text-slate-400">{{ allGroupedDispatches.length }} guía(s) en total</p>
+                                </div>
+                                <div class="relative">
+                                    <Search class="absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                                    <input
+                                        v-model="tableSearch"
+                                        placeholder="Buscar guía, equipo, destino…"
+                                        class="h-8 w-56 rounded-lg border border-slate-200 pr-3 pl-8 text-xs outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+                                    />
                                 </div>
                             </div>
 
-                            <!-- Detail -->
-                            <div v-else class="space-y-4 px-4 py-4">
-                                <p class="text-base font-bold text-slate-900">Guía: {{ selectedDispatch.dispatch_number }}</p>
-
-                                <div class="grid grid-cols-2 gap-3 text-xs">
-                                    <div>
-                                        <p class="text-slate-400">Destino / Cliente</p>
-                                        <p v-if="selectedDispatch.destination_business" class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{{ selectedDispatch.destination_business }}</p>
-                                        <p class="font-medium text-slate-800">{{ selectedDispatch.destination_name }}</p>
-                                        <p class="text-[10px] text-slate-400">{{ selectedDispatch.destination_label }}</p>
-                                    </div>
-                                    <div class="flex items-start gap-1.5">
-                                        <MapPin class="mt-0.5 h-3 w-3 shrink-0 text-red-500" />
-                                        <div>
-                                            <p class="text-slate-400">Origen</p>
-                                            <p v-if="selectedDispatch.origin_business" class="text-[10px] font-bold uppercase tracking-wide text-slate-400">{{ selectedDispatch.origin_business }}</p>
-                                            <p class="font-medium text-slate-800">{{ selectedDispatch.origin_name }}</p>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <p class="text-slate-400">Encargado</p>
-                                        <p class="font-medium text-slate-800">{{ selectedDispatch.staff_name || selectedDispatch.dispatched_by }}</p>
-                                    </div>
-                                    <div>
-                                        <p class="text-slate-400">Equipo</p>
-                                        <p class="truncate font-medium text-slate-800">{{ selectedDispatch.equipment_name }}</p>
-                                    </div>
-                                    <div>
-                                        <p class="text-slate-400">Tipo destino</p>
-                                        <p class="font-medium text-slate-800">{{ selectedDispatch.destination_label }}</p>
-                                    </div>
-                                    <div>
-                                        <p class="text-slate-400">Cantidad</p>
-                                        <p class="font-medium text-slate-800">{{ selectedDispatch.quantity }} und.</p>
-                                    </div>
-                                    <div>
-                                        <p class="text-slate-400">Fecha despacho</p>
-                                        <p class="font-medium text-slate-800">{{ selectedDispatch.dispatched_at }}</p>
-                                    </div>
-                                    <div v-if="selectedDispatch.received_at">
-                                        <p class="text-slate-400">Recepcionado</p>
-                                        <p class="font-medium text-emerald-600">{{ selectedDispatch.received_at }}</p>
-                                    </div>
-                                </div>
-
-                                <!-- Description -->
-                                <p v-if="selectedDispatch.description" class="rounded-lg bg-slate-50 p-2.5 text-xs text-slate-600 italic">
-                                    "{{ selectedDispatch.description }}"
-                                </p>
-
-                                <!-- Actions -->
-                                <div class="flex gap-2">
-                                    <Button variant="outline" size="sm" class="flex-1 gap-1.5 text-xs" @click="downloadGuide(selectedDispatch)">
-                                        <FileDown class="h-3.5 w-3.5" />
-                                        Ver Guía
-                                    </Button>
-                                    <Button
-                                        size="sm"
-                                        class="flex-1 gap-1.5 bg-red-600 text-xs hover:bg-red-700"
-                                        @click="downloadGuide(selectedDispatch)"
-                                    >
-                                        <FileText class="h-3.5 w-3.5" />
-                                        Ver Documentos
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Línea de Tiempo -->
-                        <div class="rounded-xl border bg-white shadow-sm">
-                            <div class="flex items-center justify-between border-b px-4 py-3">
-                                <h2 class="text-sm font-semibold text-slate-900">Línea de Tiempo de la Guía</h2>
-                                <button v-if="selectedDispatch" class="text-xs font-medium text-blue-600 hover:underline">Ver detalle</button>
-                            </div>
-
-                            <div v-if="!selectedDispatch" class="flex flex-col items-center gap-2 py-8 text-center">
-                                <Activity class="h-8 w-8 text-slate-200" />
-                                <p class="text-xs text-slate-400">Selecciona una guía para ver su línea de tiempo</p>
-                            </div>
-
-                            <div v-else class="px-4 py-4">
-                                <div class="relative space-y-4 pl-5">
-                                    <!-- Vertical line -->
-                                    <div class="absolute top-2 bottom-2 left-[9px] w-px bg-slate-200"></div>
-
-                                    <div v-for="(step, i) in selectedTimeline" :key="i" class="relative">
-                                        <!-- Dot -->
-                                        <div
-                                            class="absolute -left-5 mt-0.5 flex h-4 w-4 items-center justify-center rounded-full ring-2 ring-white"
-                                            :class="step.current ? 'bg-blue-500 ring-blue-200' : step.done ? 'bg-emerald-500' : 'bg-slate-200'"
-                                        >
-                                            <span v-if="step.current" class="h-1.5 w-1.5 rounded-full bg-white"></span>
-                                            <CheckCircle2 v-else-if="step.done" class="h-3 w-3 text-white" />
-                                        </div>
-
-                                        <div>
-                                            <p
-                                                class="text-xs font-semibold"
-                                                :class="step.current ? 'text-blue-600' : step.done ? 'text-slate-800' : 'text-slate-400'"
+                            <!-- Table -->
+                            <div class="flex-1 overflow-x-auto">
+                                <table class="w-full text-xs">
+                                    <thead>
+                                        <tr class="border-b bg-slate-50/80">
+                                            <th class="px-4 py-3 text-left text-[10px] font-bold tracking-wider text-slate-400 uppercase">Guía</th>
+                                            <th
+                                                class="hidden px-4 py-3 text-left text-[10px] font-bold tracking-wider text-slate-400 uppercase sm:table-cell"
                                             >
-                                                {{ step.label }}
-                                            </p>
-                                            <p class="text-[11px] text-slate-400">{{ step.time }}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                                                Origen
+                                            </th>
+                                            <th class="px-4 py-3 text-left text-[10px] font-bold tracking-wider text-slate-400 uppercase">Destino</th>
+                                            <th class="px-4 py-3 text-left text-[10px] font-bold tracking-wider text-slate-400 uppercase">Fecha</th>
+                                            <th class="px-4 py-3 text-left text-[10px] font-bold tracking-wider text-slate-400 uppercase">Estado</th>
+                                            <th
+                                                class="hidden px-4 py-3 text-left text-[10px] font-bold tracking-wider text-slate-400 uppercase lg:table-cell"
+                                            >
+                                                Encargado
+                                            </th>
+                                            <th class="px-4 py-3 text-center text-[10px] font-bold tracking-wider text-slate-400 uppercase">
+                                                Acciones
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100">
+                                        <tr
+                                            v-for="g in groupedDispatches"
+                                            :key="g.key"
+                                            class="cursor-pointer transition-colors"
+                                            :class="g.items.some((i) => i.id === selectedDispatch?.id) ? 'bg-blue-50' : 'hover:bg-slate-50/70'"
+                                            @click="selectDispatch(g.items[0])"
+                                        >
+                                            <!-- Guía -->
+                                            <td class="px-4 py-3.5">
+                                                <p class="font-mono font-bold text-slate-800">
+                                                    {{ g.guide_number ?? g.items[0].dispatch_number }}
+                                                </p>
+                                                <span
+                                                    v-if="g.items.length > 1"
+                                                    class="mt-0.5 inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"
+                                                >
+                                                    {{ g.items.length }} ítems
+                                                </span>
+                                            </td>
 
-                        <!-- Recepciones Pendientes -->
-                        <div class="rounded-xl border bg-white shadow-sm">
-                            <div class="flex items-center justify-between border-b px-4 py-3">
-                                <h2 class="text-sm font-semibold text-slate-900">Recepciones Pendientes</h2>
-                                <span class="rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700">
-                                    {{ activeDispatches.filter((d) => !d.received_at).length }}
-                                </span>
+                                            <!-- Origen -->
+                                            <td class="hidden px-4 py-3.5 sm:table-cell">
+                                                <p
+                                                    v-if="g.origin_business"
+                                                    class="truncate text-[10px] font-bold tracking-wide text-slate-400 uppercase"
+                                                >
+                                                    {{ g.origin_business }}
+                                                </p>
+                                                <p class="truncate font-semibold text-slate-800">{{ g.origin_name }}</p>
+                                                <p class="text-[10px] text-slate-400">
+                                                    {{ g.origin_label ?? 'Sede / Almacén' }}<span v-if="g.origin_unit"> · {{ g.origin_unit }}</span>
+                                                </p>
+                                            </td>
+
+                                            <!-- Destino -->
+                                            <td class="max-w-[140px] px-4 py-3.5">
+                                                <p
+                                                    v-if="g.destination_business"
+                                                    class="truncate text-[10px] font-bold tracking-wide text-slate-400 uppercase"
+                                                >
+                                                    {{ g.destination_business }}
+                                                </p>
+                                                <p class="truncate font-semibold text-slate-800">{{ g.destination_name }}</p>
+                                                <p class="text-[10px] text-slate-400">
+                                                    {{ g.destination_label }}<span v-if="g.destination_unit"> · {{ g.destination_unit }}</span>
+                                                </p>
+                                            </td>
+
+                                            <!-- Fecha -->
+                                            <td class="px-4 py-3.5 whitespace-nowrap text-slate-600">{{ g.dispatched_at }}</td>
+
+                                            <!-- Estado -->
+                                            <td class="px-4 py-3.5">
+                                                <span
+                                                    class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold"
+                                                    :class="groupStatus(g).cls"
+                                                >
+                                                    <span class="h-1.5 w-1.5 rounded-full" :class="groupStatus(g).dot"></span>
+                                                    {{ groupStatus(g).label }}
+                                                </span>
+                                            </td>
+
+                                            <!-- Encargado -->
+                                            <td class="hidden max-w-[100px] truncate px-4 py-3.5 text-slate-600 lg:table-cell">
+                                                {{ g.staff_name || g.dispatched_by }}
+                                            </td>
+
+                                            <!-- Acciones -->
+                                            <td class="px-4 py-3.5">
+                                                <div class="flex items-center justify-center gap-1.5">
+                                                    <button
+                                                        title="Ver detalle"
+                                                        class="rounded-lg p-1.5 text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                                                        @click.stop="openDetail(g)"
+                                                    >
+                                                        <Eye class="h-3.5 w-3.5" />
+                                                    </button>
+                                                    <button
+                                                        title="Línea de tiempo"
+                                                        class="rounded-lg p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+                                                        @click.stop="openTimeline(g.items[0])"
+                                                    >
+                                                        <Activity class="h-3.5 w-3.5" />
+                                                    </button>
+                                                    <button
+                                                        title="Descargar guía PDF"
+                                                        class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                                                        @click.stop="downloadGroup(g)"
+                                                    >
+                                                        <FileDown class="h-3.5 w-3.5" />
+                                                    </button>
+                                                    <button
+                                                        v-if="g.items.some((i) => i.status === 'active' && !i.received_at)"
+                                                        title="Registrar retorno"
+                                                        class="rounded-lg p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600"
+                                                        @click.stop="
+                                                            confirmReturn = g.items.find((i) => i.status === 'active' && !i.received_at) ?? null
+                                                        "
+                                                    >
+                                                        <RotateCcw class="h-3.5 w-3.5" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+
+                                        <tr v-if="groupedDispatches.length === 0">
+                                            <td colspan="7" class="px-4 py-12 text-center text-slate-400">
+                                                <Package class="mx-auto mb-2 h-8 w-8 text-slate-200" />
+                                                <p class="text-sm font-medium">Sin resultados</p>
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
 
-                            <div
-                                v-if="activeDispatches.filter((d) => !d.received_at).length === 0"
-                                class="flex flex-col items-center gap-2 py-6 text-center"
-                            >
-                                <PackageCheck class="h-8 w-8 text-emerald-300" />
-                                <p class="text-xs text-slate-400">Todas las guías han sido recibidas</p>
-                            </div>
-
-                            <div v-else class="divide-y">
-                                <div
-                                    v-for="d in activeDispatches.filter((d) => !d.received_at).slice(0, 5)"
-                                    :key="d.id"
-                                    class="flex items-center gap-3 px-4 py-2.5"
-                                >
-                                    <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange-100">
-                                        <component
-                                            :is="d.equipable_type === 'computer' ? Laptop : UtensilsCrossed"
-                                            class="h-3.5 w-3.5 text-orange-600"
-                                        />
-                                    </div>
-                                    <div class="min-w-0 flex-1">
-                                        <p class="truncate text-[11px] font-semibold text-slate-800">{{ d.dispatch_number }}</p>
-                                        <p class="truncate text-[10px] text-slate-500">{{ d.destination_name }}</p>
-                                    </div>
+                            <!-- Pagination -->
+                            <div v-if="totalTablePages > 1" class="flex items-center justify-between border-t bg-slate-50/60 px-5 py-3">
+                                <p class="text-[11px] text-slate-400">
+                                    {{ (tablePage - 1) * PAGE_SIZE + 1 }}–{{ Math.min(tablePage * PAGE_SIZE, allGroupedDispatches.length) }} de
+                                    {{ allGroupedDispatches.length }} guías
+                                </p>
+                                <div class="flex items-center gap-1">
                                     <button
-                                        class="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-semibold whitespace-nowrap text-emerald-700 hover:bg-emerald-100"
-                                        @click="confirmId = d.id"
+                                        :disabled="tablePage === 1"
+                                        class="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                        @click="tablePage--"
                                     >
-                                        Recibir
+                                        ← Ant.
+                                    </button>
+
+                                    <template v-for="p in tablePageNumbers" :key="String(p)">
+                                        <span v-if="p === '…'" class="px-1 text-[11px] text-slate-400">…</span>
+                                        <button
+                                            v-else
+                                            :class="[
+                                                'rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition',
+                                                p === tablePage
+                                                    ? 'border-blue-400 bg-blue-50 text-blue-700'
+                                                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50',
+                                            ]"
+                                            @click="tablePage = p as number"
+                                        >
+                                            {{ p }}
+                                        </button>
+                                    </template>
+
+                                    <button
+                                        :disabled="tablePage === totalTablePages"
+                                        class="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                                        @click="tablePage++"
+                                    >
+                                        Sig. →
                                     </button>
                                 </div>
                             </div>
@@ -1221,6 +1118,158 @@ function pctCls(v: number | null): string {
             </div>
         </div>
     </AppLayout>
+
+    <!-- ══ MODAL: Línea de Tiempo de la Guía ══════════════════════════════ -->
+    <Dialog :open="showTimelineModal" @update:open="(v) => !v && (showTimelineModal = false)">
+        <DialogContent class="max-w-md">
+            <DialogHeader>
+                <DialogTitle class="flex items-center gap-2">
+                    <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100">
+                        <Activity class="h-4 w-4 text-blue-600" />
+                    </div>
+                    Línea de Tiempo — Guía {{ timelineTarget?.dispatch_number }}
+                </DialogTitle>
+            </DialogHeader>
+
+            <div v-if="timelineTarget" class="px-1 py-2">
+                <p class="mb-3 text-xs text-slate-500">{{ timelineTarget.origin_name }} → {{ timelineTarget.destination_name }}</p>
+                <div class="relative space-y-4 pl-5">
+                    <!-- Vertical line -->
+                    <div class="absolute top-2 bottom-2 left-[9px] w-px bg-slate-200"></div>
+
+                    <div v-for="(step, i) in timelineModalSteps" :key="i" class="relative">
+                        <!-- Dot -->
+                        <div
+                            class="absolute -left-5 mt-0.5 flex h-4 w-4 items-center justify-center rounded-full ring-2 ring-white"
+                            :class="step.current ? 'bg-blue-500 ring-blue-200' : step.done ? 'bg-emerald-500' : 'bg-slate-200'"
+                        >
+                            <span v-if="step.current" class="h-1.5 w-1.5 rounded-full bg-white"></span>
+                            <CheckCircle2 v-else-if="step.done" class="h-3 w-3 text-white" />
+                        </div>
+
+                        <div>
+                            <p
+                                class="text-xs font-semibold"
+                                :class="step.current ? 'text-blue-600' : step.done ? 'text-slate-800' : 'text-slate-400'"
+                            >
+                                {{ step.label }}
+                            </p>
+                            <p class="text-[11px] text-slate-400">{{ step.time }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </DialogContent>
+    </Dialog>
+
+    <!-- ══ MODAL: Guía Seleccionada ══════════════════════════════════════════ -->
+    <Dialog :open="showDetailModal" @update:open="(v) => !v && (showDetailModal = false)">
+        <DialogContent class="max-w-lg">
+            <DialogHeader>
+                <DialogTitle v-if="detailGroup" class="flex items-center gap-2">
+                    <span>Guía: {{ detailGroup.guide_number ?? detailGroup.items[0].dispatch_number }}</span>
+                    <span class="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase" :class="groupStatus(detailGroup).cls">
+                        {{ groupStatus(detailGroup).label }}
+                    </span>
+                </DialogTitle>
+            </DialogHeader>
+
+            <div v-if="detailGroup" class="space-y-4">
+                <div class="grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                        <p class="text-slate-400">Destino / Cliente</p>
+                        <p v-if="detailGroup.destination_business" class="text-[10px] font-bold tracking-wide text-slate-400 uppercase">
+                            {{ detailGroup.destination_business }}
+                        </p>
+                        <p class="font-medium text-slate-800">{{ detailGroup.destination_name }}</p>
+                        <p class="text-[10px] text-slate-400">
+                            {{ detailGroup.destination_label }}<span v-if="detailGroup.destination_unit"> · {{ detailGroup.destination_unit }}</span>
+                        </p>
+                    </div>
+                    <div class="flex items-start gap-1.5">
+                        <MapPin class="mt-0.5 h-3 w-3 shrink-0 text-red-500" />
+                        <div>
+                            <p class="text-slate-400">Origen</p>
+                            <p v-if="detailGroup.origin_business" class="text-[10px] font-bold tracking-wide text-slate-400 uppercase">
+                                {{ detailGroup.origin_business }}
+                            </p>
+                            <p class="font-medium text-slate-800">{{ detailGroup.origin_name }}</p>
+                            <p class="text-[10px] text-slate-400">
+                                {{ detailGroup.origin_label ?? 'Sede / Almacén' }}<span v-if="detailGroup.origin_unit"> · {{ detailGroup.origin_unit }}</span>
+                            </p>
+                        </div>
+                    </div>
+                    <div>
+                        <p class="text-slate-400">Encargado</p>
+                        <p class="font-medium text-slate-800">{{ detailGroup.staff_name || detailGroup.dispatched_by }}</p>
+                    </div>
+                    <div>
+                        <p class="text-slate-400">Tipo destino</p>
+                        <p class="font-medium text-slate-800">{{ detailGroup.destination_label }}</p>
+                    </div>
+                    <div>
+                        <p class="text-slate-400">Fecha despacho</p>
+                        <p class="font-medium text-slate-800">{{ detailGroup.dispatched_at }}</p>
+                    </div>
+                </div>
+
+                <!-- Items de la guía -->
+                <div>
+                    <p class="mb-1.5 text-xs text-slate-400">Equipos ({{ detailGroup.items.length }})</p>
+                    <div class="max-h-48 space-y-1.5 overflow-y-auto">
+                        <div
+                            v-for="item in detailGroup.items"
+                            :key="item.id"
+                            class="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-2.5 py-2"
+                        >
+                            <div class="flex min-w-0 items-center gap-1.5">
+                                <component
+                                    :is="item.equipable_type === 'computer' ? Laptop : UtensilsCrossed"
+                                    class="h-3.5 w-3.5 shrink-0 text-slate-400"
+                                />
+                                <div class="min-w-0">
+                                    <p class="truncate text-xs font-medium text-slate-800">{{ item.equipment_name }}</p>
+                                    <p v-if="item.equipment_brand || item.equipment_model" class="truncate text-[10px] text-slate-400">
+                                        {{ [item.equipment_brand, item.equipment_model].filter(Boolean).join(' · ') }}
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="flex shrink-0 items-center gap-2">
+                                <span class="text-xs font-semibold text-slate-700">× {{ item.quantity }}</span>
+                                <span
+                                    class="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
+                                    :class="item.received_at ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'"
+                                >
+                                    <CheckCircle2 v-if="item.received_at" class="h-2.5 w-2.5" />
+                                    {{ item.received_at ? 'Recibido' : 'Pendiente' }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Description -->
+                <p
+                    v-if="detailGroup.items.find((i) => i.description)?.description"
+                    class="rounded-lg bg-slate-50 p-2.5 text-xs text-slate-600 italic"
+                >
+                    "{{ detailGroup.items.find((i) => i.description)?.description }}"
+                </p>
+
+                <!-- Actions -->
+                <div class="flex gap-2">
+                    <Button variant="outline" size="sm" class="flex-1 gap-1.5 text-xs" @click="downloadGroup(detailGroup)">
+                        <FileDown class="h-3.5 w-3.5" />
+                        Ver Guía
+                    </Button>
+                    <Button size="sm" class="flex-1 gap-1.5 bg-red-600 text-xs hover:bg-red-700" @click="downloadGroup(detailGroup)">
+                        <FileText class="h-3.5 w-3.5" />
+                        Ver Documentos
+                    </Button>
+                </div>
+            </div>
+        </DialogContent>
+    </Dialog>
 
     <!-- ═══ DIALOG: Nueva Guía de Remisión ═══ -->
     <Dialog :open="showForm" @update:open="(v) => !v && (showForm = false)">
@@ -1379,7 +1428,13 @@ function pctCls(v: number | null): string {
                                     </td>
                                 </tr>
                                 <tr v-if="filteredEquipmentTable.length === 0">
-                                    <td colspan="5" class="px-4 py-6 text-center text-slate-400">Sin equipos disponibles</td>
+                                    <td colspan="5" class="px-4 py-6 text-center text-slate-400">
+                                        {{
+                                            form.origin_headquarter_id
+                                                ? 'Esta sede no tiene equipos disponibles'
+                                                : 'Selecciona una sede origen para ver sus equipos'
+                                        }}
+                                    </td>
                                 </tr>
                             </tbody>
                         </table>

@@ -9,6 +9,7 @@ use App\Models\Headquarter;
 use App\Models\KitchenEquipment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class StoreController extends Controller
@@ -70,41 +71,75 @@ class StoreController extends Controller
         $guideSeq    = EquipmentDispatch::whereYear('created_at', now()->year)->whereNotNull('guide_number')->distinct('guide_number')->count() + 1;
         $guideNumber = 'GR-' . now()->year . '-' . str_pad($guideSeq, 4, '0', STR_PAD_LEFT);
 
-        $created = [];
+        // Validate there's enough stock at this café before mutating anything
         foreach ($validated['items'] as $item) {
             $modelClass = $modelMap[$item['equipable_type']];
 
-            // Mark the original dispatch to this café as returned so it leaves the store view
-            EquipmentDispatch::where('destination_type', 'cafe')
+            $available = EquipmentDispatch::where('destination_type', 'cafe')
                 ->where('destination_id', $validated['origin_cafe_id'])
                 ->where('status', 'active')
                 ->where('equipable_type', $modelClass)
                 ->where('equipable_id', $item['equipable_id'])
-                ->latest()
-                ->first()
-                ?->update(['status' => 'returned']);
+                ->sum('quantity');
 
-            $seq            = EquipmentDispatch::whereYear('created_at', now()->year)->count() + 1;
-            $dispatchNumber = 'DESP-' . now()->year . '-' . str_pad($seq, 4, '0', STR_PAD_LEFT);
-
-            EquipmentDispatch::create([
-                'equipable_type'        => $modelClass,
-                'equipable_id'          => $item['equipable_id'],
-                'quantity'              => $item['quantity'],
-                'origin_headquarter_id' => null,
-                'origin_cafe_id'        => $validated['origin_cafe_id'],
-                'destination_type'      => $validated['destination_type'],
-                'destination_id'        => $validated['destination_id'],
-                'description'           => $validated['description'] ?? null,
-                'dispatch_number'       => $dispatchNumber,
-                'guide_number'          => $guideNumber,
-                'status'                => 'active',
-                'dispatched_at'         => now(),
-                'dispatched_by'         => Auth::id(),
-            ]);
-
-            $created[] = $dispatchNumber;
+            if ($item['quantity'] > $available) {
+                return back()->withErrors(['items' => "No hay suficiente stock disponible para uno de los equipos seleccionados."]);
+            }
         }
+
+        $created = DB::transaction(function () use ($validated, $modelMap, $guideNumber) {
+            $created = [];
+            foreach ($validated['items'] as $item) {
+                $modelClass = $modelMap[$item['equipable_type']];
+
+                // Descuenta la cantidad enviada de los lotes recibidos en este café (FIFO),
+                // marcando como "returned" solo el/los lotes que quedan en 0.
+                $remaining = $item['quantity'];
+                $batches = EquipmentDispatch::where('destination_type', 'cafe')
+                    ->where('destination_id', $validated['origin_cafe_id'])
+                    ->where('status', 'active')
+                    ->where('equipable_type', $modelClass)
+                    ->where('equipable_id', $item['equipable_id'])
+                    ->oldest('dispatched_at')
+                    ->lockForUpdate()
+                    ->get();
+
+                foreach ($batches as $batch) {
+                    if ($remaining <= 0) break;
+                    $take = min($remaining, $batch->quantity);
+                    $newQty = $batch->quantity - $take;
+                    if ($newQty > 0) {
+                        $batch->update(['quantity' => $newQty]);
+                    } else {
+                        $batch->update(['quantity' => 0, 'status' => 'returned']);
+                    }
+                    $remaining -= $take;
+                }
+
+                $seq            = EquipmentDispatch::whereYear('created_at', now()->year)->count() + 1;
+                $dispatchNumber = 'DESP-' . now()->year . '-' . str_pad($seq, 4, '0', STR_PAD_LEFT);
+
+                EquipmentDispatch::create([
+                    'equipable_type'        => $modelClass,
+                    'equipable_id'          => $item['equipable_id'],
+                    'quantity'              => $item['quantity'],
+                    'origin_headquarter_id' => null,
+                    'origin_cafe_id'        => $validated['origin_cafe_id'],
+                    'destination_type'      => $validated['destination_type'],
+                    'destination_id'        => $validated['destination_id'],
+                    'description'           => $validated['description'] ?? null,
+                    'dispatch_number'       => $dispatchNumber,
+                    'guide_number'          => $guideNumber,
+                    'status'                => 'active',
+                    'dispatched_at'         => now(),
+                    'dispatched_by'         => Auth::id(),
+                ]);
+
+                $created[] = $dispatchNumber;
+            }
+
+            return $created;
+        });
 
         $count = count($created);
         return back()->with('success', "Guía {$guideNumber} generada — {$count} ítem(s) enviado(s).");
