@@ -19,7 +19,7 @@ import {
     Truck,
     UtensilsCrossed,
 } from 'lucide-vue-next';
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogScrollContent, DialogTitle } from '@/components/ui/dialog';
@@ -353,6 +353,7 @@ const invoiceForm = ref({
             brand: '',
             model: '',
             code: '',
+            codeAuto: true,
             series: '',
             color: '',
             status: '0',
@@ -369,6 +370,7 @@ function addInvoiceItem() {
         brand: '',
         model: '',
         code: '',
+        codeAuto: true,
         series: '',
         color: '',
         status: '0',
@@ -376,6 +378,31 @@ function addInvoiceItem() {
         quantity: 1,
     });
 }
+
+// ── Auto-generar código a partir de nombre + marca + modelo ────────────────
+function codeSlug(value: string, len: number) {
+    return value
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, '')
+        .slice(0, len);
+}
+
+function generateEquipmentCode(name: string, brand: string, model: string) {
+    return [codeSlug(name, 4), codeSlug(brand, 3), codeSlug(model, 4)].filter(Boolean).join('-');
+}
+
+watch(
+    () => invoiceForm.value.items.map((i) => [i.name, i.brand, i.model, i.codeAuto] as const),
+    () => {
+        invoiceForm.value.items.forEach((item) => {
+            if (item.codeAuto) {
+                item.code = generateEquipmentCode(item.name, item.brand, item.model);
+            }
+        });
+    },
+    { deep: true },
+);
 
 function removeInvoiceItem(index: number) {
     if (invoiceForm.value.items.length > 1) invoiceForm.value.items.splice(index, 1);
@@ -411,7 +438,9 @@ function resetInvoiceForm() {
         date: new Date().toISOString().split('T')[0],
         notes: '',
         invoice_image: null,
-        items: [{ type: activeTab.value, name: '', brand: '', model: '', code: '', series: '', color: '', status: '0', unit_price: 0, quantity: 1 }],
+        items: [
+            { type: activeTab.value, name: '', brand: '', model: '', code: '', codeAuto: true, series: '', color: '', status: '0', unit_price: 0, quantity: 1 },
+        ],
     };
 }
 
@@ -422,7 +451,18 @@ function submitInvoice() {
         route('equipments.invoice.store'),
         {
             ...invoiceForm.value,
-            items: invoiceForm.value.items.map((i) => ({ ...i, unit_price: Number(i.unit_price) })),
+            items: invoiceForm.value.items.map((i) => ({
+                type: i.type,
+                name: i.name,
+                brand: i.brand,
+                model: i.model,
+                code: i.code,
+                series: i.series,
+                color: i.color,
+                status: i.status,
+                unit_price: Number(i.unit_price),
+                quantity: i.quantity,
+            })),
         },
         {
             forceFormData: true,
@@ -1129,7 +1169,13 @@ function fmtDate(d: string) {
                                         <Input v-model="item.model" placeholder="Modelo..." class="h-9 border-none shadow-none focus:ring-1" />
                                     </td>
                                     <td class="p-2">
-                                        <Input v-model="item.code" placeholder="Código..." class="h-9 border-none shadow-none focus:ring-1" />
+                                        <Input
+                                            v-model="item.code"
+                                            placeholder="Auto: NOM-MAR-MOD"
+                                            class="h-9 border-none shadow-none focus:ring-1"
+                                            :title="item.codeAuto ? 'Generado automáticamente desde Nombre, Marca y Modelo' : 'Código editado manualmente'"
+                                            @input="item.codeAuto = false"
+                                        />
                                     </td>
                                     <td class="p-2">
                                         <Input v-model="item.series" placeholder="Serie..." class="h-9 border-none shadow-none focus:ring-1" />
