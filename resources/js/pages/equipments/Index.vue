@@ -114,6 +114,7 @@ const props = defineProps<{
     headquarters: HQRef[];
     businesses: BusinessRef[];
     equipmentProviders: ProviderRef[];
+    colors: { id: number; name: string; hex_code?: string }[];
 }>();
 
 const breadcrumbs: BreadcrumbItem[] = [{ title: 'Equipos', href: '/equipments' }];
@@ -458,7 +459,7 @@ function submitInvoice() {
                 model: i.model,
                 code: i.code,
                 series: i.series,
-                color: i.color,
+                color: i.color === 'none' || i.color === '' ? null : i.color,
                 status: i.status,
                 unit_price: Number(i.unit_price),
                 quantity: i.quantity,
@@ -1130,6 +1131,7 @@ function fmtDate(d: string) {
                                     <th class="px-3 py-3">Modelo</th>
                                     <th class="px-3 py-3">Código</th>
                                     <th class="px-3 py-3">N° Serie</th>
+                                    <th class="px-3 py-3">Color</th>
                                     <th class="px-3 py-3">Estado</th>
                                     <th class="w-20 px-3 py-3">Cantidad</th>
                                     <th class="w-28 px-3 py-3">P. Unitario</th>
@@ -1179,6 +1181,25 @@ function fmtDate(d: string) {
                                     </td>
                                     <td class="p-2">
                                         <Input v-model="item.series" placeholder="Serie..." class="h-9 border-none shadow-none focus:ring-1" />
+                                    </td>
+                                    <td class="p-2">
+                                        <Select v-model="item.color">
+                                            <SelectTrigger class="h-9 w-[130px] border-none shadow-none focus:ring-1">
+                                                <SelectValue placeholder="Ninguno" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="none">Ninguno</SelectItem>
+                                                <SelectItem v-for="c in colors" :key="c.id" :value="c.name">
+                                                    <div class="flex items-center gap-2">
+                                                        <div
+                                                            class="h-3 w-3 rounded-full border border-slate-200"
+                                                            :style="{ backgroundColor: c.hex_code }"
+                                                        ></div>
+                                                        {{ c.name }}
+                                                    </div>
+                                                </SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </td>
                                     <td class="p-2">
                                         <Select v-model="item.status">

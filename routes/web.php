@@ -403,6 +403,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('/', [EquipmentController::class, 'index'])->name('index');
         Route::post('/', [EquipmentController::class, 'store'])->name('store');
         Route::post('/invoice', [EquipmentController::class, 'storeInvoice'])->name('invoice.store');
+        Route::post('/invoice/{id}/image', [EquipmentController::class, 'updateInvoiceImage'])->name('invoice.image.update');
         Route::post('/providers', [EquipmentController::class, 'storeEquipmentProvider'])->name('providers.store');
         Route::put('/providers/{id}', [EquipmentController::class, 'updateEquipmentProvider'])->name('providers.update');
         Route::delete('/providers/{id}', [EquipmentController::class, 'destroyEquipmentProvider'])->name('providers.destroy');

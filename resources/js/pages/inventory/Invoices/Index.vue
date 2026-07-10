@@ -564,10 +564,40 @@ const handleAssignmentSubmit = () => {
 // --- View Equipment Invoice Details ---
 const isViewEquipInvoiceModalOpen = ref(false);
 const selectedEquipInvoice = ref<any>(null);
+const isUploadingEquipInvoiceImage = ref(false);
 
 const viewEquipInvoiceDetails = (invoice: any) => {
     selectedEquipInvoice.value = invoice;
     isViewEquipInvoiceModalOpen.value = true;
+};
+
+const handleEquipInvoiceImageUpdate = (e: Event) => {
+    const target = e.target as HTMLInputElement;
+    const file = target.files?.[0];
+    if (!file || !selectedEquipInvoice.value) return;
+
+    isUploadingEquipInvoiceImage.value = true;
+    router.post(
+        route('equipments.invoice.image.update', selectedEquipInvoice.value.id),
+        {
+            invoice_image: file,
+        },
+        {
+            forceFormData: true,
+            preserveScroll: true,
+            onSuccess: () => {
+                const updatedInvoice = allInvoices.value.find(
+                    (i: any) => i._source === 'equipment' && i.id === selectedEquipInvoice.value.id,
+                );
+                if (updatedInvoice) {
+                    selectedEquipInvoice.value = updatedInvoice;
+                }
+            },
+            onFinish: () => {
+                isUploadingEquipInvoiceImage.value = false;
+            },
+        },
+    );
 };
 
 // --- View Invoice Details ---
@@ -2449,9 +2479,24 @@ const saveInlinePrice = (cp: any) => {
                                 <FileText class="h-4 w-4" /> Ver Documento / Imagen
                             </a>
                         </div>
-                        <div v-else class="rounded-2xl border border-slate-100 bg-slate-50/30 p-4">
-                            <p class="text-[10px] font-black tracking-widest text-slate-400 uppercase">Sin Evidencia</p>
-                            <p class="mt-1 text-xs text-slate-500">Esta factura no tiene documento o imagen adjunta.</p>
+                        <div v-else class="space-y-3 rounded-2xl border border-slate-100 bg-slate-50/30 p-4">
+                            <p class="text-[10px] font-black tracking-widest text-slate-400 uppercase">Adjuntar Evidencia</p>
+                            <p class="text-xs text-slate-500">Esta factura aún no cuenta con un documento o imagen de evidencia.</p>
+                            <div class="relative w-full">
+                                <Input
+                                    type="file"
+                                    @change="handleEquipInvoiceImageUpdate"
+                                    accept="image/*,.pdf"
+                                    :disabled="isUploadingEquipInvoiceImage"
+                                    class="h-12 w-full cursor-pointer bg-white text-xs file:mr-4 file:rounded-full file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-xs file:font-bold file:text-blue-600 hover:file:bg-blue-100"
+                                />
+                                <div
+                                    v-if="isUploadingEquipInvoiceImage"
+                                    class="absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-md bg-white/50 text-sm font-bold text-blue-600 backdrop-blur-sm"
+                                >
+                                    <Loader2 class="h-4 w-4 animate-spin" /> Subiendo archivo...
+                                </div>
+                            </div>
                         </div>
                     </div>
 

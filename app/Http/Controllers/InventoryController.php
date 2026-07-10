@@ -81,6 +81,7 @@ class InventoryController extends Controller
                 'storageHeadquarter.business:id,name'
             )
             ->select('id', 'name', 'brand', 'model', 'presentation', 'color', 'series', 'code', 'status', 'quantity', 'responsible_id', 'storage_headquarter_id')
+            ->latest()
             ->get()
             ->map(fn($e) => $attachCafe($e, 'App\\Models\\ComputerEquipment'));
 
@@ -90,6 +91,7 @@ class InventoryController extends Controller
                 'storageHeadquarter.business:id,name'
             )
             ->select('id', 'name', 'brand', 'model', 'size', 'color', 'series', 'code', 'status', 'quantity', 'responsible_id', 'storage_headquarter_id')
+            ->latest()
             ->get()
             ->map(fn($e) => $attachCafe($e, 'App\\Models\\KitchenEquipment'));
 
