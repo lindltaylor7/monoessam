@@ -10,6 +10,7 @@ import {
     Activity,
     AlertTriangle,
     Bell,
+    Check,
     CheckCircle2,
     Eye,
     FileDown,
@@ -19,11 +20,13 @@ import {
     MapPin,
     Package,
     PackageCheck,
+    Pencil,
     Plus,
     RotateCcw,
     Search,
     Truck,
     UtensilsCrossed,
+    X,
 } from 'lucide-vue-next';
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { AdvancedMarker, GoogleMap } from 'vue3-google-map';
@@ -432,6 +435,40 @@ function downloadGroup(g: DispatchGroup) {
     } else {
         window.open(route('equipment-dispatches.pdf', g.items[0].id), '_blank');
     }
+}
+
+// ── Edición inline del número de guía ───────────────────────────────────────
+const editingGuideKey = ref<string | null>(null);
+const guideEditValue = ref('');
+const guideUpdating = ref(false);
+
+function startEditGuide(g: DispatchGroup) {
+    editingGuideKey.value = g.key;
+    guideEditValue.value = g.guide_number ?? g.items[0].dispatch_number;
+}
+
+function cancelEditGuide() {
+    editingGuideKey.value = null;
+}
+
+function saveGuide(g: DispatchGroup) {
+    const value = guideEditValue.value.trim();
+    const current = g.guide_number ?? g.items[0].dispatch_number;
+    if (!value || value === current) {
+        editingGuideKey.value = null;
+        return;
+    }
+
+    guideUpdating.value = true;
+    router.put(
+        route('equipment-dispatches.guide.update'),
+        { ids: g.items.map((i) => i.id), guide_number: value },
+        {
+            preserveScroll: true,
+            onSuccess: () => (editingGuideKey.value = null),
+            onFinish: () => (guideUpdating.value = false),
+        },
+    );
 }
 
 // ── Dispatch form ─────────────────────────────────────────────────────────
@@ -965,10 +1002,39 @@ function pctCls(v: number | null): string {
                                             @click="selectDispatch(g.items[0])"
                                         >
                                             <!-- Guía -->
-                                            <td class="px-4 py-3.5">
-                                                <p class="font-mono font-bold text-slate-800">
-                                                    {{ g.guide_number ?? g.items[0].dispatch_number }}
-                                                </p>
+                                            <td class="px-4 py-3.5" @click.stop>
+                                                <div v-if="editingGuideKey === g.key" class="flex items-center gap-1">
+                                                    <input
+                                                        v-model="guideEditValue"
+                                                        class="w-32 rounded-lg border border-blue-300 px-2 py-1 font-mono text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-blue-200"
+                                                        autofocus
+                                                        @keyup.enter="saveGuide(g)"
+                                                        @keyup.esc="cancelEditGuide"
+                                                    />
+                                                    <button
+                                                        class="rounded p-1 text-emerald-600 hover:bg-emerald-50 disabled:opacity-50"
+                                                        title="Guardar"
+                                                        :disabled="guideUpdating"
+                                                        @click="saveGuide(g)"
+                                                    >
+                                                        <Check class="h-3.5 w-3.5" />
+                                                    </button>
+                                                    <button class="rounded p-1 text-slate-400 hover:bg-slate-100" title="Cancelar" @click="cancelEditGuide">
+                                                        <X class="h-3.5 w-3.5" />
+                                                    </button>
+                                                </div>
+                                                <div v-else class="group/guide flex items-center gap-1.5">
+                                                    <p class="font-mono font-bold text-slate-800">
+                                                        {{ g.guide_number ?? g.items[0].dispatch_number }}
+                                                    </p>
+                                                    <button
+                                                        class="rounded p-0.5 text-slate-300 opacity-0 transition-opacity hover:bg-slate-100 hover:text-blue-600 group-hover/guide:opacity-100"
+                                                        title="Editar guía"
+                                                        @click="startEditGuide(g)"
+                                                    >
+                                                        <Pencil class="h-3 w-3" />
+                                                    </button>
+                                                </div>
                                                 <span
                                                     v-if="g.items.length > 1"
                                                     class="mt-0.5 inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500"

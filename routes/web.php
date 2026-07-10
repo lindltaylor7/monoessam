@@ -421,6 +421,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::put('{id}/receive', [EquipmentDispatchController::class, 'markReceived'])->name('receive');
         Route::get('{id}/pdf', [EquipmentDispatchController::class, 'pdf'])->name('pdf');
         Route::get('guide/{guideNumber}/pdf', [EquipmentDispatchController::class, 'guidePdf'])->name('guide-pdf');
+        Route::put('guide', [EquipmentDispatchController::class, 'updateGuideNumber'])->name('guide.update');
     });
 
     // ========================================================================

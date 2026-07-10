@@ -159,6 +159,19 @@ class EquipmentDispatchController extends Controller
         return back()->with('success', 'Equipo retornado al almacén correctamente.');
     }
 
+    public function updateGuideNumber(Request $request)
+    {
+        $validated = $request->validate([
+            'ids'          => 'required|array|min:1',
+            'ids.*'        => 'integer|exists:equipment_dispatches,id',
+            'guide_number' => 'required|string|max:100',
+        ]);
+
+        EquipmentDispatch::whereIn('id', $validated['ids'])->update(['guide_number' => $validated['guide_number']]);
+
+        return back()->with('success', 'Número de guía actualizado correctamente.');
+    }
+
     public function pdf(int $id)
     {
         $dispatch = EquipmentDispatch::with(['equipable', 'origin', 'originCafe', 'staff', 'dispatcher'])
