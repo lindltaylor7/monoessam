@@ -90,6 +90,7 @@ class EquipmentDispatchController extends Controller
                 'equipable_type'        => $modelClass,
                 'equipable_id'          => $item['equipable_id'],
                 'quantity'              => $item['quantity'],
+                'remaining_quantity'    => $item['quantity'],
                 'origin_headquarter_id' => $validated['origin_headquarter_id'],
                 'destination_type'      => $validated['destination_type'],
                 'destination_id'        => $validated['destination_id'],

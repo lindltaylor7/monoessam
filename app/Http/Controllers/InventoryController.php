@@ -58,8 +58,9 @@ class InventoryController extends Controller
         // Map equipment → current cafe via active dispatch (2 extra queries, no N+1)
         $activeDispatches = EquipmentDispatch::where('destination_type', 'cafe')
             ->where('status', 'active')
+            ->where('remaining_quantity', '>', 0)
             ->orderByDesc('id')
-            ->get(['equipable_type', 'equipable_id', 'destination_id', 'quantity'])
+            ->get(['equipable_type', 'equipable_id', 'destination_id', 'remaining_quantity'])
             ->unique(fn($d) => $d->equipable_type . '-' . $d->equipable_id)
             ->keyBy(fn($d) => $d->equipable_type . '-' . $d->equipable_id);
 
@@ -74,8 +75,9 @@ class InventoryController extends Controller
             $equipment->current_cafe = $disp ? $cafeMap->get($disp->destination_id) : null;
             // Mientras el equipo está despachado a un café, su "quantity" en almacén queda en 0
             // (se descuenta al despachar). Para no mostrar "0" engañosamente, exponemos también
-            // la cantidad que efectivamente está en ese café (la del despacho activo).
-            $equipment->current_cafe_quantity = $disp?->quantity;
+            // el saldo (remaining_quantity) que efectivamente queda en ese café — no `quantity`,
+            // que es el número original de la guía y debe quedar fijo aunque se reenvíe después.
+            $equipment->current_cafe_quantity = $disp?->remaining_quantity;
             return $equipment;
         };
 

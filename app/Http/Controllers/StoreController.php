@@ -87,7 +87,9 @@ class StoreController extends Controller
         $guideSeq    = EquipmentDispatch::whereYear('created_at', now()->year)->whereNotNull('guide_number')->distinct('guide_number')->count() + 1;
         $guideNumber = 'GR-' . now()->year . '-' . str_pad($guideSeq, 4, '0', STR_PAD_LEFT);
 
-        // Validate there's enough stock at this café before mutating anything
+        // Validate there's enough stock at this café before mutating anything.
+        // "Disponible" se mide por remaining_quantity (saldo vivo), nunca por quantity
+        // (que es el número original de cada guía y debe quedar fijo para siempre).
         foreach ($validated['items'] as $item) {
             $modelClass = $modelMap[$item['equipable_type']];
 
@@ -96,7 +98,7 @@ class StoreController extends Controller
                 ->where('status', 'active')
                 ->where('equipable_type', $modelClass)
                 ->where('equipable_id', $item['equipable_id'])
-                ->sum('quantity');
+                ->sum('remaining_quantity');
 
             if ($item['quantity'] > $available) {
                 return back()->withErrors(['items' => "No hay suficiente stock disponible para uno de los equipos seleccionados."]);
@@ -108,8 +110,10 @@ class StoreController extends Controller
             foreach ($validated['items'] as $item) {
                 $modelClass = $modelMap[$item['equipable_type']];
 
-                // Descuenta la cantidad enviada de los lotes recibidos en este café (FIFO),
-                // marcando como "returned" solo el/los lotes que quedan en 0.
+                // Descuenta la cantidad enviada del saldo (remaining_quantity) de los lotes
+                // recibidos en este café (FIFO), marcando como "returned" solo el/los lotes que
+                // quedan en 0. NUNCA se toca `quantity`: esa guía ya se emitió y debe mostrar
+                // siempre el número original, sin importar lo que se reenvíe después.
                 $remaining = $item['quantity'];
                 $batches = EquipmentDispatch::where('destination_type', 'cafe')
                     ->where('destination_id', $validated['origin_cafe_id'])
@@ -122,12 +126,12 @@ class StoreController extends Controller
 
                 foreach ($batches as $batch) {
                     if ($remaining <= 0) break;
-                    $take = min($remaining, $batch->quantity);
-                    $newQty = $batch->quantity - $take;
-                    if ($newQty > 0) {
-                        $batch->update(['quantity' => $newQty]);
+                    $take = min($remaining, $batch->remaining_quantity);
+                    $newRemaining = $batch->remaining_quantity - $take;
+                    if ($newRemaining > 0) {
+                        $batch->update(['remaining_quantity' => $newRemaining]);
                     } else {
-                        $batch->update(['quantity' => 0, 'status' => 'returned']);
+                        $batch->update(['remaining_quantity' => 0, 'status' => 'returned']);
                     }
                     $remaining -= $take;
                 }
@@ -139,6 +143,7 @@ class StoreController extends Controller
                     'equipable_type'        => $modelClass,
                     'equipable_id'          => $item['equipable_id'],
                     'quantity'              => $item['quantity'],
+                    'remaining_quantity'    => $item['quantity'],
                     'origin_headquarter_id' => null,
                     'origin_cafe_id'        => $validated['origin_cafe_id'],
                     'destination_type'      => $validated['destination_type'],
@@ -175,6 +180,7 @@ class StoreController extends Controller
             'equipable_type'  => $equipType,
             'equipable_id'    => $d->equipable_id,
             'quantity'        => $d->quantity,
+            'remaining_quantity' => $d->remaining_quantity,
             'equipment_name'  => $d->equipable?->name ?? '—',
             'equipment_brand' => $d->equipable?->brand,
             'equipment_model' => $d->equipable?->model,

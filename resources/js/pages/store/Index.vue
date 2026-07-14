@@ -49,6 +49,7 @@ interface Dispatch {
     equipable_type: 'computer' | 'kitchen';
     equipable_id: number;
     quantity: number;
+    remaining_quantity: number;
     equipment_name: string;
     equipment_brand: string | null;
     equipment_model: string | null;
@@ -107,7 +108,7 @@ function openSendModal() {
                 max: 0,
             };
         }
-        byEquip[key].max += d.quantity;
+        byEquip[key].max += d.remaining_quantity;
     }
     sendForm.value = {
         destination_type: 'cafe',
