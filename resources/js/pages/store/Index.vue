@@ -22,6 +22,7 @@ import { computed, ref } from 'vue';
 interface CafeUnit { id: number; name: string; mine: { id: number; name: string } | null }
 interface Cafe     { id: number; name: string; unit_id: number; unit: CafeUnit | null }
 interface HQ       { id: number; name: string; business: { id: number; name: string } | null }
+interface UnitDest { id: number; name: string; mine: { id: number; name: string } | null }
 
 interface Dispatch {
     id: number;
@@ -36,6 +37,7 @@ interface Dispatch {
     equipment_model: string | null;
     equipment_code: string | null;
     origin_name: string;
+    destination_type: string;
     destination_id: number;
     dispatched_by: string;
     dispatched_at: string;
@@ -47,14 +49,17 @@ interface Dispatch {
 const props = defineProps<{
     dispatches:   Dispatch[];
     cafes:        Cafe[];
+    units:        UnitDest[];
     allCafes:     Cafe[];
     headquarters: HQ[];
 }>();
 
 // ── State ──────────────────────────────────────────────────────────────────
 type TabKey = 'all' | 'computer' | 'kitchen' | 'epp' | 'supplies';
+type TargetType = 'cafe' | 'unit';
 
-const selectedCafeId = ref<number | null>(props.cafes[0]?.id ?? null);
+const selectedType   = ref<TargetType>('cafe');
+const selectedId     = ref<number | null>(props.cafes[0]?.id ?? null);
 const activeTab      = ref<TabKey>('all');
 const confirmId      = ref<number | null>(null);
 const receptionNote  = ref('');
@@ -72,7 +77,7 @@ const sendProcessing = ref(false);
 
 function openSendModal() {
     // Build the equipment list from received dispatches at this cafe
-    const received = cafeDispatches.value.filter(d => d.received_at);
+    const received = targetDispatches.value.filter(d => d.received_at);
     const byEquip: Record<string, typeof sendForm.value['items'][0]> = {};
     for (const d of received) {
         const key = `${d.equipable_type}-${d.equipable_id}`;
@@ -107,7 +112,7 @@ const sendableItems = computed(() =>
 const destOptions = computed(() => {
     if (sendForm.value.destination_type === 'cafe') {
         return props.allCafes
-            .filter(c => c.id !== selectedCafeId.value)
+            .filter(c => c.id !== selectedId.value)
             .map(c => ({ id: String(c.id), label: `${c.name} — ${c.unit?.name ?? ''}` }));
     }
     return props.headquarters.map(h => ({
@@ -117,10 +122,10 @@ const destOptions = computed(() => {
 });
 
 function submitSend() {
-    if (!selectedCafeId.value || !sendForm.value.destination_id || sendableItems.value.length === 0) return;
+    if (selectedType.value !== 'cafe' || !selectedId.value || !sendForm.value.destination_id || sendableItems.value.length === 0) return;
     sendProcessing.value = true;
     router.post(route('store.dispatch'), {
-        origin_cafe_id:   selectedCafeId.value,
+        origin_cafe_id:   selectedId.value,
         destination_type: sendForm.value.destination_type,
         destination_id:   Number(sendForm.value.destination_id),
         description:      sendForm.value.description || null,
@@ -138,22 +143,26 @@ function submitSend() {
 
 // ── Computed ───────────────────────────────────────────────────────────────
 const selectedCafe = computed(() =>
-    props.cafes.find(c => c.id === selectedCafeId.value) ?? null
+    selectedType.value === 'cafe' ? (props.cafes.find(c => c.id === selectedId.value) ?? null) : null
 );
 
-const cafeDispatches = computed(() =>
-    props.dispatches.filter(d => d.destination_id === selectedCafeId.value)
+const selectedUnit = computed(() =>
+    selectedType.value === 'unit' ? (props.units.find(u => u.id === selectedId.value) ?? null) : null
+);
+
+const targetDispatches = computed(() =>
+    props.dispatches.filter(d => d.destination_type === selectedType.value && d.destination_id === selectedId.value)
 );
 
 const filteredDispatches = computed(() => {
-    if (activeTab.value === 'all')      return cafeDispatches.value;
-    if (activeTab.value === 'computer') return cafeDispatches.value.filter(d => d.equipable_type === 'computer');
-    if (activeTab.value === 'kitchen')  return cafeDispatches.value.filter(d => d.equipable_type === 'kitchen');
+    if (activeTab.value === 'all')      return targetDispatches.value;
+    if (activeTab.value === 'computer') return targetDispatches.value.filter(d => d.equipable_type === 'computer');
+    if (activeTab.value === 'kitchen')  return targetDispatches.value.filter(d => d.equipable_type === 'kitchen');
     return [];
 });
 
 const stats = computed(() => {
-    const all = cafeDispatches.value;
+    const all = targetDispatches.value;
     return {
         pending:   all.filter(d => !d.received_at).length,
         received:  all.filter(d =>  d.received_at).length,
@@ -163,13 +172,17 @@ const stats = computed(() => {
 });
 
 function pendingForCafe(cafeId: number) {
-    return props.dispatches.filter(d => d.destination_id === cafeId && !d.received_at).length;
+    return props.dispatches.filter(d => d.destination_type === 'cafe' && d.destination_id === cafeId && !d.received_at).length;
+}
+
+function pendingForUnit(unitId: number) {
+    return props.dispatches.filter(d => d.destination_type === 'unit' && d.destination_id === unitId && !d.received_at).length;
 }
 
 function tabPending(key: TabKey) {
-    if (key === 'all')      return cafeDispatches.value.filter(d => !d.received_at).length;
-    if (key === 'computer') return cafeDispatches.value.filter(d => d.equipable_type === 'computer' && !d.received_at).length;
-    if (key === 'kitchen')  return cafeDispatches.value.filter(d => d.equipable_type === 'kitchen'  && !d.received_at).length;
+    if (key === 'all')      return targetDispatches.value.filter(d => !d.received_at).length;
+    if (key === 'computer') return targetDispatches.value.filter(d => d.equipable_type === 'computer' && !d.received_at).length;
+    if (key === 'kitchen')  return targetDispatches.value.filter(d => d.equipable_type === 'kitchen'  && !d.received_at).length;
     return 0;
 }
 
@@ -216,29 +229,65 @@ const tabs: { key: TabKey; label: string; icon: any }[] = [
 
             <div class="flex flex-1 overflow-hidden">
 
-                <!-- ── Sidebar: lista de cafés ── -->
+                <!-- ── Sidebar: unidades (general) + lista de cafés ── -->
                 <aside class="w-60 shrink-0 overflow-y-auto border-r bg-slate-50 dark:bg-gray-800/40">
                     <p class="px-4 pt-4 pb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Unidades (envío general)
+                    </p>
+                    <ul class="space-y-0.5 px-2 pb-2">
+                        <li v-for="unit in units" :key="`unit-${unit.id}`">
+                            <button
+                                @click="selectedType = 'unit'; selectedId = unit.id; activeTab = 'all'; confirmId = null"
+                                class="group flex w-full items-start gap-2 rounded-lg px-3 py-2.5 text-left transition-colors"
+                                :class="selectedType === 'unit' && selectedId === unit.id
+                                    ? 'bg-indigo-600 text-white shadow-sm'
+                                    : 'hover:bg-white dark:hover:bg-gray-700 text-slate-700 dark:text-slate-200'"
+                            >
+                                <Building2
+                                    class="mt-0.5 h-4 w-4 shrink-0"
+                                    :class="selectedType === 'unit' && selectedId === unit.id ? 'text-white' : 'text-indigo-500'"
+                                />
+                                <div class="min-w-0 flex-1">
+                                    <p class="truncate text-sm font-semibold">{{ unit.name }}</p>
+                                    <p
+                                        class="truncate text-[11px] leading-tight"
+                                        :class="selectedType === 'unit' && selectedId === unit.id ? 'text-indigo-100' : 'text-slate-400'"
+                                    >
+                                        Envíos sin café específico
+                                    </p>
+                                </div>
+                                <span
+                                    v-if="pendingForUnit(unit.id) > 0"
+                                    class="mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                                    :class="selectedType === 'unit' && selectedId === unit.id ? 'bg-white text-indigo-600' : 'bg-indigo-100 text-indigo-700'"
+                                >
+                                    {{ pendingForUnit(unit.id) }}
+                                </span>
+                            </button>
+                        </li>
+                    </ul>
+
+                    <p class="px-4 pt-3 pb-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">
                         Comedores / Cafés
                     </p>
                     <ul class="space-y-0.5 px-2 pb-4">
                         <li v-for="cafe in cafes" :key="cafe.id">
                             <button
-                                @click="selectedCafeId = cafe.id; activeTab = 'all'; confirmId = null"
+                                @click="selectedType = 'cafe'; selectedId = cafe.id; activeTab = 'all'; confirmId = null"
                                 class="group flex w-full items-start gap-2 rounded-lg px-3 py-2.5 text-left transition-colors"
-                                :class="selectedCafeId === cafe.id
+                                :class="selectedType === 'cafe' && selectedId === cafe.id
                                     ? 'bg-amber-500 text-white shadow-sm'
                                     : 'hover:bg-white dark:hover:bg-gray-700 text-slate-700 dark:text-slate-200'"
                             >
                                 <Coffee
                                     class="mt-0.5 h-4 w-4 shrink-0"
-                                    :class="selectedCafeId === cafe.id ? 'text-white' : 'text-amber-500'"
+                                    :class="selectedType === 'cafe' && selectedId === cafe.id ? 'text-white' : 'text-amber-500'"
                                 />
                                 <div class="min-w-0 flex-1">
                                     <p class="truncate text-sm font-semibold">{{ cafe.name }}</p>
                                     <p
                                         class="truncate text-[11px] leading-tight"
-                                        :class="selectedCafeId === cafe.id ? 'text-amber-100' : 'text-slate-400'"
+                                        :class="selectedType === 'cafe' && selectedId === cafe.id ? 'text-amber-100' : 'text-slate-400'"
                                     >
                                         {{ cafe.unit?.name ?? '—' }}
                                         <span v-if="cafe.unit?.mine"> · {{ cafe.unit.mine.name }}</span>
@@ -247,7 +296,7 @@ const tabs: { key: TabKey; label: string; icon: any }[] = [
                                 <span
                                     v-if="pendingForCafe(cafe.id) > 0"
                                     class="mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
-                                    :class="selectedCafeId === cafe.id ? 'bg-white text-amber-600' : 'bg-amber-100 text-amber-700'"
+                                    :class="selectedType === 'cafe' && selectedId === cafe.id ? 'bg-white text-amber-600' : 'bg-amber-100 text-amber-700'"
                                 >
                                     {{ pendingForCafe(cafe.id) }}
                                 </span>
@@ -259,26 +308,34 @@ const tabs: { key: TabKey; label: string; icon: any }[] = [
                 <!-- ── Main content ── -->
                 <main class="flex-1 overflow-y-auto p-5">
 
-                    <div v-if="!selectedCafe" class="flex h-60 flex-col items-center justify-center text-slate-400">
+                    <div v-if="!selectedCafe && !selectedUnit" class="flex h-60 flex-col items-center justify-center text-slate-400">
                         <Coffee class="mb-3 h-10 w-10 opacity-40" />
-                        <p class="text-sm">Selecciona un comedor para ver sus envíos</p>
+                        <p class="text-sm">Selecciona un comedor o una unidad para ver sus envíos</p>
                     </div>
 
                     <template v-else>
 
-                        <!-- Cafe title -->
+                        <!-- Título: café o unidad -->
                         <div class="mb-5 flex items-center gap-3">
-                            <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-100">
-                                <Coffee class="h-5 w-5 text-amber-600" />
+                            <div
+                                class="flex h-10 w-10 items-center justify-center rounded-xl"
+                                :class="selectedCafe ? 'bg-amber-100' : 'bg-indigo-100'"
+                            >
+                                <Coffee v-if="selectedCafe" class="h-5 w-5 text-amber-600" />
+                                <Building2 v-else class="h-5 w-5 text-indigo-600" />
                             </div>
                             <div class="flex-1">
-                                <h2 class="text-xl font-bold">{{ selectedCafe.name }}</h2>
-                                <p class="text-sm text-slate-500">
+                                <h2 class="text-xl font-bold">{{ selectedCafe?.name ?? selectedUnit?.name }}</h2>
+                                <p v-if="selectedCafe" class="text-sm text-slate-500">
                                     {{ selectedCafe.unit?.name ?? '—' }}
                                     <span v-if="selectedCafe.unit?.mine"> · {{ selectedCafe.unit.mine.name }}</span>
                                 </p>
+                                <p v-else class="text-sm text-slate-500">
+                                    Envíos dirigidos a la unidad en general, sin café específico
+                                </p>
                             </div>
                             <button
+                                v-if="selectedCafe"
                                 @click="openSendModal"
                                 class="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 transition-colors"
                             >

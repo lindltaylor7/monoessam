@@ -7,6 +7,7 @@ use App\Models\ComputerEquipment;
 use App\Models\EquipmentDispatch;
 use App\Models\Headquarter;
 use App\Models\KitchenEquipment;
+use App\Models\Unit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -25,9 +26,23 @@ class StoreController extends Controller
 
         $cafeIds = $cafes->pluck('id');
 
+        // Unidades a las que se le puede enviar de forma general (sin especificar un café),
+        // p. ej. una guía dirigida a "Southern" en vez de a un comedor puntual de esa unidad.
+        $units = Unit::with('mine:id,name')
+            ->when($mineId, fn($q) => $q->where('mine_id', $mineId))
+            ->orderBy('name')
+            ->get(['id', 'name', 'mine_id']);
+
+        $unitIds = $units->pluck('id');
+
         $dispatches = EquipmentDispatch::with(['equipable', 'origin', 'originCafe', 'dispatcher', 'receiver'])
-            ->where('destination_type', 'cafe')
-            ->whereIn('destination_id', $cafeIds)
+            ->where(function ($q) use ($cafeIds, $unitIds) {
+                $q->where(function ($q2) use ($cafeIds) {
+                    $q2->where('destination_type', 'cafe')->whereIn('destination_id', $cafeIds);
+                })->orWhere(function ($q2) use ($unitIds) {
+                    $q2->where('destination_type', 'unit')->whereIn('destination_id', $unitIds);
+                });
+            })
             ->where('status', 'active')
             ->latest()
             ->get()
@@ -45,6 +60,7 @@ class StoreController extends Controller
         return Inertia::render('store/Index', [
             'dispatches'   => $dispatches,
             'cafes'        => $cafes,
+            'units'        => $units,
             'allCafes'     => $allCafes,
             'headquarters' => $headquarters,
         ]);
@@ -164,6 +180,7 @@ class StoreController extends Controller
             'equipment_model' => $d->equipable?->model,
             'equipment_code'  => $d->equipable?->code,
             'origin_name'     => $originName,
+            'destination_type' => $d->destination_type,
             'destination_id'  => $d->destination_id,
             'dispatched_by'   => $d->dispatcher?->name ?? '—',
             'dispatched_at'   => $d->dispatched_at?->format('d/m/Y H:i'),

@@ -1233,12 +1233,12 @@ const kitchenTotalPages = computed(() => Math.max(1, Math.ceil(filteredKitchenEq
                                             <span
                                                 :class="[
                                                     'inline-flex min-w-[28px] items-center justify-center rounded-full border px-2 py-0.5 font-mono text-xs font-black',
-                                                    displayQuantity(eq) > 0
+                                                    eq.quantity > 0
                                                         ? 'border-blue-200 bg-blue-50 text-blue-700'
                                                         : 'border-red-200 bg-red-50 text-red-600',
                                                 ]"
                                             >
-                                                {{ displayQuantity(eq) }}
+                                                {{ eq.quantity }}
                                             </span>
                                         </TableCell>
                                         <TableCell>

@@ -142,10 +142,13 @@ class EquipmentDispatchController extends Controller
             'reception_notes' => $request->input('reception_notes'),
         ]);
 
-        // Si el despacho vuelve a una Sede/Almacén, repone el stock del equipo — de lo contrario
-        // el equipo queda descontado para siempre (se descontó al despacharlo) aunque ya esté de
-        // vuelta físicamente en almacén.
-        if ($dispatch->destination_type === 'headquarter') {
+        // Solo se repone el stock cuando el equipo regresa de un CAFÉ a una Sede/Almacén: el
+        // descuento original ocurrió al despacharlo del almacén hacia el café, así que al volver
+        // hay que deshacer ese descuento. Si el origen ya era una Sede/Almacén (transferencia
+        // directa entre almacenes), el descuento hecho al generar la guía es definitivo — el
+        // equipo se fue de ahí — y no debe reponerse al recepcionar, o el traslado quedaría en
+        // cero neto (se descuenta y se vuelve a sumar, como si nunca se hubiera movido).
+        if ($dispatch->destination_type === 'headquarter' && $dispatch->origin_cafe_id) {
             $dispatch->equipable?->increment('quantity', $dispatch->quantity);
         }
 
