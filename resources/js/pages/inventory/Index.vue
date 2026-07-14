@@ -15,6 +15,7 @@ import {
     AlertCircle,
     AlertTriangle,
     ArrowDownRight,
+    ArrowRight,
     ArrowUpRight,
     Box,
     Building2,
@@ -72,6 +73,8 @@ interface CafeOutboundDispatch {
     origin_cafe: string;
     destination_type: string;
     destination_id: number;
+    destination_name: string;
+    destination_label: string;
     dispatched_by: string;
     dispatched_at: string;
     received_at: string | null;
@@ -93,6 +96,7 @@ interface ComputerEquipment {
     responsible: StaffRef | null;
     storage_headquarter: HQRef | null;
     current_cafe: CafeRef | null;
+    current_cafe_quantity: number | null;
 }
 
 interface KitchenEquipment {
@@ -109,6 +113,7 @@ interface KitchenEquipment {
     responsible: StaffRef | null;
     storage_headquarter: HQRef | null;
     current_cafe: CafeRef | null;
+    current_cafe_quantity: number | null;
 }
 
 const props = defineProps<{
@@ -592,6 +597,12 @@ const EQUIPMENT_STATUSES = [
 
 function equipmentStatusInfo(val: number) {
     return EQUIPMENT_STATUSES.find((s) => s.value === val) ?? EQUIPMENT_STATUSES[0];
+}
+
+// Mientras el equipo está despachado a un café, `quantity` (stock en almacén) queda en 0
+// porque se descontó al despacharlo; mostramos en su lugar la cantidad que hay en ese café.
+function displayQuantity(eq: ComputerEquipment | KitchenEquipment) {
+    return eq.current_cafe ? (eq.current_cafe_quantity ?? 0) : eq.quantity;
 }
 
 const filteredComputerEquipments = computed(() => {
@@ -1198,7 +1209,6 @@ const kitchenTotalPages = computed(() => Math.max(1, Math.ceil(filteredKitchenEq
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">N° Serie</TableHead>
                                         <TableHead class="text-muted-foreground text-center text-[10px] font-bold uppercase">Cant.</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Sede</TableHead>
-                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Café / Comedor</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Estado</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Responsable</TableHead>
                                     </TableRow>
@@ -1220,12 +1230,12 @@ const kitchenTotalPages = computed(() => Math.max(1, Math.ceil(filteredKitchenEq
                                             <span
                                                 :class="[
                                                     'inline-flex min-w-[28px] items-center justify-center rounded-full border px-2 py-0.5 font-mono text-xs font-black',
-                                                    eq.quantity > 0
+                                                    displayQuantity(eq) > 0
                                                         ? 'border-blue-200 bg-blue-50 text-blue-700'
                                                         : 'border-red-200 bg-red-50 text-red-600',
                                                 ]"
                                             >
-                                                {{ eq.quantity }}
+                                                {{ displayQuantity(eq) }}
                                             </span>
                                         </TableCell>
                                         <TableCell>
@@ -1239,16 +1249,6 @@ const kitchenTotalPages = computed(() => Math.max(1, Math.ceil(filteredKitchenEq
                                                 </div>
                                             </div>
                                             <span v-else class="text-xs text-slate-400">Sin sede</span>
-                                        </TableCell>
-                                        <TableCell>
-                                            <span
-                                                v-if="eq.current_cafe"
-                                                class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700"
-                                            >
-                                                <Coffee class="h-3 w-3 shrink-0" />
-                                                {{ eq.current_cafe.name }}
-                                            </span>
-                                            <span v-else class="text-xs text-slate-300 italic">En almacén</span>
                                         </TableCell>
                                         <TableCell>
                                             <span
@@ -1365,12 +1365,12 @@ const kitchenTotalPages = computed(() => Math.max(1, Math.ceil(filteredKitchenEq
                                             <span
                                                 :class="[
                                                     'inline-flex min-w-[28px] items-center justify-center rounded-full border px-2 py-0.5 font-mono text-xs font-black',
-                                                    eq.quantity > 0
+                                                    displayQuantity(eq) > 0
                                                         ? 'border-orange-200 bg-orange-50 text-orange-700'
                                                         : 'border-red-200 bg-red-50 text-red-600',
                                                 ]"
                                             >
-                                                {{ eq.quantity }}
+                                                {{ displayQuantity(eq) }}
                                             </span>
                                         </TableCell>
                                         <TableCell>
@@ -1475,177 +1475,180 @@ const kitchenTotalPages = computed(() => Math.max(1, Math.ceil(filteredKitchenEq
                             <p class="text-sm font-semibold text-slate-400">Sin envíos desde cafés</p>
                         </div>
 
-                        <div v-else class="bg-card mb-6 overflow-hidden rounded-2xl border shadow-sm">
-                            <Table>
-                                <TableHeader>
-                                    <TableRow class="bg-muted/50 hover:bg-muted/50">
-                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">N° Despacho</TableHead>
-                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Equipo</TableHead>
-                                        <TableHead class="text-muted-foreground text-center text-[10px] font-bold uppercase">Cant.</TableHead>
-                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Origen (Café)</TableHead>
-                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Despachado</TableHead>
-                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Estado</TableHead>
-                                        <TableHead class="text-muted-foreground text-center text-[10px] font-bold uppercase">Acción</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    <template v-for="group in groupedCafeDispatches" :key="group.key">
-                                        <!-- Cabecera de la guía de remisión -->
-                                        <TableRow class="bg-indigo-50/60 hover:bg-indigo-50/60">
-                                            <TableCell colspan="7" class="py-2">
-                                                <div class="flex flex-wrap items-center justify-between gap-2">
-                                                    <div class="flex items-center gap-2">
-                                                        <FileText class="h-3.5 w-3.5 text-indigo-500" />
-                                                        <span class="font-mono text-xs font-bold text-indigo-700">
-                                                            {{ group.guide_number ?? group.items[0].dispatch_number }}
-                                                        </span>
-                                                        <span
-                                                            class="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700"
-                                                        >
-                                                            {{ group.items.length }} equipo{{ group.items.length !== 1 ? 's' : '' }}
-                                                        </span>
-                                                        <span
-                                                            class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700"
-                                                        >
-                                                            {{ group.items.filter((i) => i.received_at).length }}/{{
-                                                                group.items.length
-                                                            }}
-                                                            recepcionados
-                                                        </span>
-                                                    </div>
-                                                    <div class="flex items-center gap-3 text-[11px] text-slate-500">
-                                                        <span class="inline-flex items-center gap-1">
-                                                            <Coffee class="h-3 w-3 shrink-0 text-amber-500" />
-                                                            {{ group.origin_cafe }}
-                                                        </span>
-                                                        <span>{{ group.dispatched_at }} · por {{ group.dispatched_by }}</span>
-                                                    </div>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
+                        <!-- Una tarjeta por guía de remisión: agrupa origen/destino/fecha una sola vez
+                             y lista debajo sus equipos, cada uno con su propia acción de recepción. -->
+                        <div v-else class="space-y-4 pb-6">
+                            <div
+                                v-for="group in groupedCafeDispatches"
+                                :key="group.key"
+                                class="bg-card overflow-hidden rounded-2xl border shadow-sm transition-shadow hover:shadow-md"
+                                :class="
+                                    group.items.every((i) => i.received_at)
+                                        ? 'border-l-[3px] border-l-emerald-400'
+                                        : 'border-l-[3px] border-l-indigo-400'
+                                "
+                            >
+                                <!-- Cabecera de la guía -->
+                                <div
+                                    class="bg-muted/30 flex flex-col gap-3 border-b px-5 py-3.5 lg:flex-row lg:items-center lg:justify-between"
+                                >
+                                    <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                                        <div class="flex items-center gap-2.5">
+                                            <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-100">
+                                                <FileText class="h-4 w-4 text-indigo-600" />
+                                            </div>
+                                            <div class="leading-tight">
+                                                <p class="font-mono text-sm font-bold text-slate-800">
+                                                    {{ group.guide_number ?? group.items[0].dispatch_number }}
+                                                </p>
+                                                <p class="text-[11px] text-slate-400">
+                                                    {{ group.dispatched_at }} · {{ group.dispatched_by }}
+                                                </p>
+                                            </div>
+                                        </div>
 
-                                        <TableRow
-                                            v-for="d in group.items"
-                                            :key="d.id"
-                                            class="hover:bg-muted/30 transition-colors"
-                                            :class="d.received_at ? 'bg-emerald-50/40' : ''"
+                                        <!-- Ruta origen → destino -->
+                                        <div class="flex items-center gap-1.5 text-xs">
+                                            <span
+                                                class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-semibold text-amber-700"
+                                            >
+                                                <Coffee class="h-3 w-3 shrink-0" />
+                                                {{ group.origin_cafe }}
+                                            </span>
+                                            <ArrowRight class="h-3.5 w-3.5 shrink-0 text-slate-300" />
+                                            <span
+                                                class="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 font-semibold text-indigo-700"
+                                            >
+                                                <component
+                                                    :is="group.items[0].destination_type === 'cafe' ? Coffee : Building2"
+                                                    class="h-3 w-3 shrink-0"
+                                                />
+                                                {{ group.items[0].destination_name }}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Resumen de estado del envío -->
+                                    <div class="flex items-center gap-2">
+                                        <span
+                                            :class="[
+                                                'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold',
+                                                group.items.every((i) => i.received_at)
+                                                    ? 'bg-emerald-100 text-emerald-700'
+                                                    : 'bg-indigo-100 text-indigo-700',
+                                            ]"
                                         >
-                                            <!-- N° Despacho -->
-                                            <TableCell>
-                                                <p class="font-mono text-xs font-semibold text-slate-700">{{ d.dispatch_number }}</p>
-                                                <p v-if="d.guide_number" class="font-mono text-[10px] text-slate-400">{{ d.guide_number }}</p>
-                                            </TableCell>
+                                            <CheckCircle2 v-if="group.items.every((i) => i.received_at)" class="h-3 w-3" />
+                                            <Clock v-else class="h-3 w-3" />
+                                            {{ group.items.filter((i) => i.received_at).length }}/{{ group.items.length }}
+                                            recepcionados
+                                        </span>
+                                    </div>
+                                </div>
 
-                                            <!-- Equipo -->
-                                            <TableCell>
-                                                <div class="flex items-center gap-2">
-                                                    <div
-                                                        class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
-                                                        :class="d.equipable_type === 'computer' ? 'bg-blue-100' : 'bg-orange-100'"
-                                                    >
-                                                        <Monitor v-if="d.equipable_type === 'computer'" class="h-3.5 w-3.5 text-blue-600" />
-                                                        <Utensils v-else class="h-3.5 w-3.5 text-orange-600" />
-                                                    </div>
-                                                    <div>
-                                                        <p class="text-sm leading-tight font-semibold">{{ d.equipment_name }}</p>
-                                                        <p class="text-[11px] text-slate-400">
-                                                            {{ [d.equipment_brand, d.equipment_model].filter(Boolean).join(' · ') || '—' }}
-                                                        </p>
+                                <!-- Equipos de la guía -->
+                                <div class="divide-y">
+                                    <div
+                                        v-for="d in group.items"
+                                        :key="d.id"
+                                        class="flex flex-col gap-3 px-5 py-3 transition-colors sm:flex-row sm:items-center"
+                                        :class="d.received_at ? 'bg-emerald-50/30' : 'hover:bg-muted/20'"
+                                    >
+                                        <!-- Equipo -->
+                                        <div class="flex min-w-0 flex-1 items-center gap-3">
+                                            <div
+                                                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
+                                                :class="d.equipable_type === 'computer' ? 'bg-blue-100' : 'bg-orange-100'"
+                                            >
+                                                <Monitor v-if="d.equipable_type === 'computer'" class="h-4 w-4 text-blue-600" />
+                                                <Utensils v-else class="h-4 w-4 text-orange-600" />
+                                            </div>
+                                            <div class="min-w-0">
+                                                <p class="truncate text-sm leading-tight font-semibold text-slate-800">{{ d.equipment_name }}</p>
+                                                <p class="truncate text-[11px] text-slate-400">
+                                                    <span class="font-mono">{{ d.dispatch_number }}</span>
+                                                    <span v-if="d.equipment_brand || d.equipment_model">
+                                                        · {{ [d.equipment_brand, d.equipment_model].filter(Boolean).join(' ') }}
+                                                    </span>
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <!-- Cantidad -->
+                                        <div class="flex items-center gap-1.5 sm:w-16 sm:justify-center">
+                                            <span class="text-[10px] font-semibold text-slate-400 uppercase sm:hidden">Cant.</span>
+                                            <span
+                                                class="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs font-bold text-slate-600"
+                                            >
+                                                ×{{ d.quantity }}
+                                            </span>
+                                        </div>
+
+                                        <!-- Estado -->
+                                        <div class="sm:w-36">
+                                            <span
+                                                v-if="d.received_at"
+                                                class="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700"
+                                            >
+                                                <CheckCircle2 class="h-3 w-3" /> Recepcionado
+                                            </span>
+                                            <span
+                                                v-else
+                                                class="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-600"
+                                            >
+                                                <Clock class="h-3 w-3" /> En tránsito
+                                            </span>
+                                        </div>
+
+                                        <!-- Acción / detalle de recepción -->
+                                        <div class="sm:w-56 sm:shrink-0 sm:text-right">
+                                            <template v-if="d.received_at">
+                                                <p class="text-[11px] font-medium text-slate-500">{{ d.received_by ?? '—' }}</p>
+                                                <p
+                                                    v-if="d.reception_notes"
+                                                    class="mt-1 rounded bg-slate-100 px-2 py-1 text-left text-[10px] text-slate-500 italic"
+                                                >
+                                                    {{ d.reception_notes }}
+                                                </p>
+                                            </template>
+
+                                            <template v-else-if="cafeConfirmId === d.id">
+                                                <div class="space-y-1.5 text-left">
+                                                    <textarea
+                                                        v-model="cafeNote"
+                                                        placeholder="Observación (opcional)…"
+                                                        rows="2"
+                                                        class="w-full resize-none rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
+                                                    />
+                                                    <div class="flex gap-1">
+                                                        <button
+                                                            :disabled="cafeProcessing"
+                                                            class="flex-1 rounded-lg bg-emerald-600 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                                                            @click="doCafeReceive(d.id)"
+                                                        >
+                                                            Confirmar
+                                                        </button>
+                                                        <button
+                                                            class="rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-50"
+                                                            @click="cafeConfirmId = null"
+                                                        >
+                                                            Cancelar
+                                                        </button>
                                                     </div>
                                                 </div>
-                                            </TableCell>
+                                            </template>
 
-                                            <!-- Cantidad -->
-                                            <TableCell class="text-center">
-                                                <span
-                                                    class="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 font-mono text-xs font-bold text-indigo-700"
-                                                >
-                                                    {{ d.quantity }}
-                                                </span>
-                                            </TableCell>
-
-                                            <!-- Origen café -->
-                                            <TableCell>
-                                                <span
-                                                    class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700"
-                                                >
-                                                    <Coffee class="h-3 w-3 shrink-0" />
-                                                    {{ d.origin_cafe }}
-                                                </span>
-                                            </TableCell>
-
-                                            <!-- Despachado -->
-                                            <TableCell>
-                                                <p class="text-xs text-slate-700">{{ d.dispatched_at }}</p>
-                                                <p class="text-[10px] text-slate-400">por {{ d.dispatched_by }}</p>
-                                            </TableCell>
-
-                                            <!-- Estado -->
-                                            <TableCell>
-                                                <span
-                                                    v-if="d.received_at"
-                                                    class="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700"
-                                                >
-                                                    <CheckCircle2 class="h-3 w-3" /> Recepcionado
-                                                </span>
-                                                <span
-                                                    v-else
-                                                    class="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-600"
-                                                >
-                                                    <Clock class="h-3 w-3" /> En tránsito
-                                                </span>
-                                            </TableCell>
-
-                                            <!-- Acción -->
-                                            <TableCell class="text-center">
-                                                <template v-if="d.received_at">
-                                                    <p class="text-[11px] text-slate-500">{{ d.received_by ?? '—' }}</p>
-                                                    <p
-                                                        v-if="d.reception_notes"
-                                                        class="mt-1 max-w-[180px] rounded bg-slate-100 px-2 py-1 text-[10px] text-slate-500 italic"
-                                                    >
-                                                        {{ d.reception_notes }}
-                                                    </p>
-                                                </template>
-
-                                                <template v-else-if="cafeConfirmId === d.id">
-                                                    <div class="space-y-1.5 text-left">
-                                                        <textarea
-                                                            v-model="cafeNote"
-                                                            placeholder="Observación (opcional)…"
-                                                            rows="2"
-                                                            class="w-full min-w-[180px] resize-none rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
-                                                        />
-                                                        <div class="flex gap-1">
-                                                            <button
-                                                                :disabled="cafeProcessing"
-                                                                class="flex-1 rounded-lg bg-emerald-600 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
-                                                                @click="doCafeReceive(d.id)"
-                                                            >
-                                                                Confirmar
-                                                            </button>
-                                                            <button
-                                                                class="rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-50"
-                                                                @click="cafeConfirmId = null"
-                                                            >
-                                                                Cancelar
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </template>
-
-                                                <button
-                                                    v-else
-                                                    class="rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-[11px] font-bold text-emerald-700 shadow-sm hover:bg-emerald-50"
-                                                    @click="startCafeReceive(d.id)"
-                                                >
-                                                    Recepcionar
-                                                </button>
-                                            </TableCell>
-                                        </TableRow>
-                                    </template>
-                                </TableBody>
-                            </Table>
+                                            <button
+                                                v-else
+                                                class="rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-[11px] font-bold text-emerald-700 shadow-sm hover:bg-emerald-50"
+                                                @click="startCafeReceive(d.id)"
+                                            >
+                                                Recepcionar
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </template>
 

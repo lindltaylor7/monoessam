@@ -59,7 +59,7 @@ class InventoryController extends Controller
         $activeDispatches = EquipmentDispatch::where('destination_type', 'cafe')
             ->where('status', 'active')
             ->orderByDesc('id')
-            ->get(['equipable_type', 'equipable_id', 'destination_id'])
+            ->get(['equipable_type', 'equipable_id', 'destination_id', 'quantity'])
             ->unique(fn($d) => $d->equipable_type . '-' . $d->equipable_id)
             ->keyBy(fn($d) => $d->equipable_type . '-' . $d->equipable_id);
 
@@ -72,6 +72,10 @@ class InventoryController extends Controller
             $key  = $morphClass . '-' . $equipment->id;
             $disp = $activeDispatches->get($key);
             $equipment->current_cafe = $disp ? $cafeMap->get($disp->destination_id) : null;
+            // Mientras el equipo está despachado a un café, su "quantity" en almacén queda en 0
+            // (se descuenta al despachar). Para no mostrar "0" engañosamente, exponemos también
+            // la cantidad que efectivamente está en ese café (la del despacho activo).
+            $equipment->current_cafe_quantity = $disp?->quantity;
             return $equipment;
         };
 
@@ -96,12 +100,33 @@ class InventoryController extends Controller
             ->map(fn($e) => $attachCafe($e, 'App\\Models\\KitchenEquipment'));
 
         // Dispatches FROM a café (origin_cafe_id set) awaiting reception at HQ or another location
-        $cafeOutboundDispatches = EquipmentDispatch::with(['equipable', 'originCafe', 'dispatcher', 'receiver'])
+        $outboundRaw = EquipmentDispatch::with(['equipable', 'originCafe', 'dispatcher', 'receiver'])
             ->whereNotNull('origin_cafe_id')
             ->where('status', 'active')
             ->orderByDesc('created_at')
-            ->get()
-            ->map(fn($d) => [
+            ->orderByDesc('id')
+            ->get();
+
+        // Resolve destination names in bulk (no N+1) — origin_cafe_id dispatches only ever target 'cafe' or 'headquarter'
+        $destCafes = Cafe::whereIn('id', $outboundRaw->where('destination_type', 'cafe')->pluck('destination_id')->unique())
+            ->select('id', 'name')->get()->keyBy('id');
+        $destHeadquarters = Headquarter::whereIn('id', $outboundRaw->where('destination_type', 'headquarter')->pluck('destination_id')->unique())
+            ->select('id', 'name')->get()->keyBy('id');
+
+        $cafeOutboundDispatches = $outboundRaw->map(function ($d) use ($destCafes, $destHeadquarters) {
+            $destinationName = match ($d->destination_type) {
+                'cafe'        => $destCafes->get($d->destination_id)?->name,
+                'headquarter' => $destHeadquarters->get($d->destination_id)?->name,
+                default       => null,
+            } ?? '—';
+
+            $destinationLabel = match ($d->destination_type) {
+                'cafe'        => 'Café / Comedor',
+                'headquarter' => 'Sede / Almacén',
+                default       => '—',
+            };
+
+            return [
                 'id'              => $d->id,
                 'dispatch_number' => $d->dispatch_number,
                 'guide_number'    => $d->guide_number,
@@ -114,12 +139,15 @@ class InventoryController extends Controller
                 'origin_cafe'     => $d->originCafe?->name ?? '—',
                 'destination_type' => $d->destination_type,
                 'destination_id'   => $d->destination_id,
+                'destination_name'  => $destinationName,
+                'destination_label' => $destinationLabel,
                 'dispatched_by'   => $d->dispatcher?->name ?? '—',
                 'dispatched_at'   => $d->dispatched_at?->format('d/m/Y H:i'),
                 'received_at'     => $d->received_at?->format('d/m/Y H:i'),
                 'received_by'     => $d->receiver?->name,
                 'reception_notes' => $d->reception_notes,
-            ]);
+            ];
+        });
 
         return Inertia::render('inventory/Index', [
             'colors' => $colors,

@@ -142,6 +142,13 @@ class EquipmentDispatchController extends Controller
             'reception_notes' => $request->input('reception_notes'),
         ]);
 
+        // Si el despacho vuelve a una Sede/Almacén, repone el stock del equipo — de lo contrario
+        // el equipo queda descontado para siempre (se descontó al despacharlo) aunque ya esté de
+        // vuelta físicamente en almacén.
+        if ($dispatch->destination_type === 'headquarter') {
+            $dispatch->equipable?->increment('quantity', $dispatch->quantity);
+        }
+
         return back()->with('success', "Despacho {$dispatch->dispatch_number} confirmado como recibido.");
     }
 
