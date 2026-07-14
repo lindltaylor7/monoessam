@@ -45,9 +45,10 @@ class PlanningController extends Controller
 
         return Inertia::render('planning/Index', [
             'cafes' => Cafe::all(),
-            'programs' => WeeklyProgram::with('cafe')->get(),
+            'programs' => WeeklyProgram::with(['cafe', 'structure'])->get(),
             'dish_categories' => Dish_category::all(),
             'menu_structure' => MenuStructure::with('dish_category')->get(),
+            'structures' => \App\Models\Structure::with('costs')->get(),
             'dishes' => Dish::with('dish_categories')->get(),
             'menu_cycles' => $menuCycles,
             'mines' => \App\Models\Mine::with(['units', 'units.cafes', 'units.cafes.services'])->get(),
@@ -58,6 +59,7 @@ class PlanningController extends Controller
     {
         $validated = $request->validate([
             'cafe_id' => 'required|exists:cafes,id',
+            'structure_id' => 'nullable|exists:structures,id',
             'start_date' => 'required|date',
             'end_date' => 'required|date',
             'items' => 'required|array',
@@ -66,6 +68,7 @@ class PlanningController extends Controller
 
         $program = WeeklyProgram::create([
             'cafe_id' => $validated['cafe_id'],
+            'structure_id' => $validated['structure_id'] ?? null,
             'start_date' => $validated['start_date'],
             'end_date' => $validated['end_date'],
             'user_id' => Auth::id(),

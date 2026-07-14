@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Cafe, Dish, DishCategory, MealType, MenuStructure, WeeklyProgram } from '@/types';
+import { Cafe, Dish, DishCategory, MealType, MenuStructure, Structure, WeeklyProgram } from '@/types';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import dayjs from 'dayjs';
 import 'dayjs/locale/es';
@@ -19,6 +19,7 @@ interface Props {
     programs: WeeklyProgram[];
     dish_categories: DishCategory[];
     menu_structure: MenuStructure[];
+    structures?: Structure[];
     dishes: Dish[];
     menu_cycles?: any[];
     mines?: any[];
@@ -32,6 +33,7 @@ const daysCount = ref(7);
 
 const form = useForm({
     cafe_id: '',
+    structure_id: null as number | null,
     start_date: startDate.value,
     end_date: dayjs(startDate.value).add(6, 'days').format('YYYY-MM-DD'),
     items: [] as any[],
@@ -105,12 +107,29 @@ const activeMealType = computed(() => {
     return matchedMeal || srv.name;
 });
 
+// serviceable_id (fila de la tabla `serviceables`, id del pivot café↔servicio) — mismo dato que usa
+// structure-menu/MenuDisplay.vue para relacionar una Structure con un café+servicio específico.
+const selectedServiceableId = computed(() => {
+    if (!selectedServiceId.value || !availableServices.value) return null;
+    const srv = availableServices.value.find((s: any) => String(s.id) === String(selectedServiceId.value));
+    return srv?.pivot?.id ?? null;
+});
+
+const structuresForService = computed(() => {
+    if (!selectedServiceableId.value || !props.structures) return [];
+    return props.structures.filter((s) => String(s.serviceable_id) === String(selectedServiceableId.value));
+});
+
+const selectedStructureId = ref<string>('');
+
 watch(
     () => form.cafe_id,
     (newCafeId) => {
         if (newCafeId && (!selectedMineId.value || !selectedUnitId.value)) {
             resolveMineAndUnitFromCafe(newCafeId);
         }
+        selectedStructureId.value = '';
+        form.structure_id = null;
         setTimeout(() => {
             if (availableServices.value && availableServices.value.length > 0) {
                 selectedServiceId.value = String(availableServices.value[0].id);
@@ -470,6 +489,95 @@ const loadMenuCycle = (cycleIdStr: string) => {
         }
     });
 };
+
+// Carga una Estructura de Costos (del café+servicio activo) como las filas/categorías de la matriz
+// para el servicio activo, con sus techos de costo (L.Inferior/L.Superior) visibles por fila.
+const loadStructure = (structureIdStr: string) => {
+    const structureId = parseInt(structureIdStr);
+    const structure = structuresForService.value.find((s) => s.id === structureId);
+    if (!structure) return;
+
+    const mealType = activeMealType.value;
+    if (!mealType) return;
+
+    Swal.fire({
+        title: '¿Cargar Estructura de Costos?',
+        text: `¿Desea cargar las categorías de "${structure.name}" para el servicio de "${mealType}"? Se conservarán los platos ya asignados donde la categoría coincida.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, cargar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#FF5A1F',
+    }).then((result) => {
+        if (!result.isConfirmed) return;
+
+        form.structure_id = structure.id;
+
+        // 1. Capturar asignaciones actuales del servicio activo, indexadas por categoría (no por id de
+        //    fila, que va a cambiar) para poder preservarlas si la nueva categoría coincide.
+        const oldByCategory: Record<string, string> = {};
+        localMenuStructure.value
+            .filter((s) => s.meal_type === mealType)
+            .forEach((s) => {
+                dates.value.forEach((date) => {
+                    const oldKey = `${date}_${mealType}_${s.id}`;
+                    const val = itemsGrid.value[oldKey];
+                    if (val) {
+                        oldByCategory[`${date}_${s.dish_category_id}`] = val;
+                    }
+                });
+            });
+
+        // 2. Reconstruir localMenuStructure para este mealType a partir de la Estructura de Costos
+        const otherMeals = localMenuStructure.value.filter((s) => s.meal_type !== mealType);
+        const costs = [...(structure.costs ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+        const newMealStructure: MenuStructure[] = costs.map((cost, index) => ({
+            id: 30000 + (cost.id ?? index), // rango de ids temporales separado del que usa loadMenuCycle (20000+)
+            meal_type: mealType as MealType,
+            dish_category_id: cost.dish_category_id as number,
+            dish_category: { id: cost.dish_category_id as number, name: cost.name ?? '' } as DishCategory,
+            sort_order: cost.order,
+            ration: cost.ration,
+            unit_cost: cost.unit_cost,
+            total_cost: cost.total_cost,
+            unit_cost_superior: cost.unit_cost_superior,
+            total_cost_superior: cost.total_cost_superior,
+        }));
+        localMenuStructure.value = [...otherMeals, ...newMealStructure];
+
+        // 3. Reconstruir la cuadrícula preservando otras comidas y remapeando por categoría para el
+        //    servicio activo (en vez de vaciarlo, como hace loadMenuCycle).
+        const oldPortions = { ...portionsGrid.value };
+        const oldItems = { ...itemsGrid.value };
+        portionsGrid.value = {};
+        itemsGrid.value = {};
+
+        dates.value.forEach((date) => {
+            meals.forEach((meal) => {
+                const portKey = `${date}_${meal}`;
+                portionsGrid.value[portKey] = oldPortions[portKey] !== undefined ? oldPortions[portKey] : 0;
+
+                const structureForMeal = localMenuStructure.value.filter((s) => s.meal_type === meal);
+                structureForMeal.forEach((s) => {
+                    const itemKey = `${date}_${meal}_${s.id}`;
+                    if (meal === mealType) {
+                        itemsGrid.value[itemKey] = oldByCategory[`${date}_${s.dish_category_id}`] || '';
+                    } else {
+                        itemsGrid.value[itemKey] = oldItems[itemKey] || '';
+                    }
+                });
+            });
+        });
+
+        Swal.fire({
+            icon: 'success',
+            title: 'Estructura Cargada',
+            text: `Se configuraron ${newMealStructure.length} categorías de costo para el servicio de "${mealType}".`,
+            timer: 2000,
+            showConfirmButton: false,
+        });
+    });
+};
 </script>
 
 <template>
@@ -732,6 +840,39 @@ const loadMenuCycle = (cycleIdStr: string) => {
                                 </SelectContent>
                             </Select>
                         </div>
+
+                        <div class="flex flex-col gap-2">
+                            <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
+                                <svg
+                                    class="h-4 w-4 text-slate-400"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    viewBox="0 0 24 24"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        d="M9 7h6m0 10v-3m-3 3v-3m-3 3v-3m9-4H3m18 0a2 2 0 00-2-2H5a2 2 0 00-2 2m18 0v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6"
+                                    ></path>
+                                </svg>
+                                <span>Estructura de Costos</span>
+                            </label>
+                            <Select v-model="selectedStructureId" @update:modelValue="loadStructure($event)" :disabled="!selectedServiceableId">
+                                <SelectTrigger class="h-10 rounded-xl border-slate-200 focus:ring-[#FF5A1F]">
+                                    <SelectValue placeholder="Elegir una estructura" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem v-for="structure in structuresForService" :key="structure.id" :value="structure.id.toString()">
+                                        {{ structure.name }}
+                                    </SelectItem>
+                                    <div v-if="structuresForService.length === 0" class="p-2 text-center text-xs text-slate-400">
+                                        Sin estructuras para este servicio
+                                    </div>
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </CardContent>
                 </Card>
 
@@ -869,6 +1010,10 @@ const loadMenuCycle = (cycleIdStr: string) => {
                                                     </SelectItem>
                                                 </SelectContent>
                                             </Select>
+                                            <p v-if="struct.total_cost != null" class="mt-1 text-[10px] font-normal text-slate-400">
+                                                L.Inf S/ {{ Number(struct.total_cost).toFixed(2) }} · L.Sup S/
+                                                {{ Number(struct.total_cost_superior).toFixed(2) }}
+                                            </p>
                                         </TableCell>
                                         <TableCell v-for="date in dates" :key="date" class="min-w-[160px] border-l border-slate-100/55 p-2">
                                             <Select v-model="itemsGrid[`${date}_${meal}_${struct.id}`]">
@@ -921,6 +1066,10 @@ const loadMenuCycle = (cycleIdStr: string) => {
                                 <div class="flex justify-between">
                                     <span class="text-muted-foreground">Estado:</span>
                                     <span class="capitalize">{{ program.status }}</span>
+                                </div>
+                                <div v-if="program.structure" class="flex justify-between">
+                                    <span class="text-muted-foreground">Estructura:</span>
+                                    <span>{{ program.structure.name }}</span>
                                 </div>
                                 <Button @click="generatePO(program)" class="mt-4 rounded-xl" variant="secondary"> Generar Quebrado (PO) </Button>
                             </div>

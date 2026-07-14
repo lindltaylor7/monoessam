@@ -310,12 +310,43 @@ export interface MenuStructure {
     dish_category?: DishCategory;
     sort_order: number;
     cost_percentage?: number;
+    // Presentes solo cuando la fila proviene de una Estructura de Costos cargada (ver Structure/StructureCost)
+    ration?: number | null;
+    unit_cost?: number | null;
+    total_cost?: number | null;
+    unit_cost_superior?: number | null;
+    total_cost_superior?: number | null;
+}
+
+export interface StructureCost {
+    id: number;
+    structure_id: number;
+    dish_category_id: number | null;
+    name: string | null;
+    order: number;
+    reference_volume: number | null;
+    measurement_unit: string | null;
+    ration: number | null;
+    unit_cost: number | null;
+    total_cost: number | null;
+    unit_cost_superior: number | null;
+    total_cost_superior: number | null;
+}
+
+export interface Structure {
+    id: number;
+    name: string;
+    serviceable_id: number;
+    selling_price: number | null;
+    costs?: StructureCost[];
 }
 
 export interface WeeklyProgram {
     id: number;
     cafe_id: number;
     cafe?: Cafe;
+    structure_id?: number | null;
+    structure?: Structure | null;
     start_date: string;
     end_date: string;
     status: 'borrador' | 'aprobado';

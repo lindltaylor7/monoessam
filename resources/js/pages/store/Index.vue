@@ -372,6 +372,7 @@ const tabs: { key: TabKey; label: string; icon: any }[] = [
                                     <thead class="border-b bg-slate-50 dark:bg-gray-700/50">
                                         <tr>
                                             <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">N° Despacho</th>
+                                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">Guía</th>
                                             <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">Equipo</th>
                                             <th class="px-4 py-3 text-center text-xs font-bold text-slate-500">Cant.</th>
                                             <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">Origen</th>
@@ -394,9 +395,14 @@ const tabs: { key: TabKey; label: string; icon: any }[] = [
                                                 <p class="font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
                                                     {{ d.dispatch_number }}
                                                 </p>
-                                                <p v-if="d.guide_number" class="font-mono text-[10px] text-slate-400">
+                                            </td>
+
+                                            <!-- Guía -->
+                                            <td class="px-4 py-3">
+                                                <p v-if="d.guide_number" class="font-mono text-xs text-slate-600 dark:text-slate-300">
                                                     {{ d.guide_number }}
                                                 </p>
+                                                <span v-else class="text-xs text-slate-300">—</span>
                                             </td>
 
                                             <!-- Equipo -->
