@@ -71,10 +71,13 @@ interface CafeOutboundDispatch {
     equipment_model: string | null;
     equipment_code: string | null;
     origin_cafe: string;
+    origin_unit: string | null;
     destination_type: string;
     destination_id: number;
     destination_name: string;
     destination_label: string;
+    destination_unit: string | null;
+    destination_business: string | null;
     dispatched_by: string;
     dispatched_at: string;
     received_at: string | null;
@@ -1509,22 +1512,35 @@ const kitchenTotalPages = computed(() => Math.max(1, Math.ceil(filteredKitchenEq
 
                                         <!-- Ruta origen → destino -->
                                         <div class="flex items-center gap-1.5 text-xs">
-                                            <span
-                                                class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-semibold text-amber-700"
-                                            >
-                                                <Coffee class="h-3 w-3 shrink-0" />
-                                                {{ group.origin_cafe }}
-                                            </span>
+                                            <div class="flex flex-col items-start gap-0.5">
+                                                <span
+                                                    class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 font-semibold text-amber-700"
+                                                >
+                                                    <Coffee class="h-3 w-3 shrink-0" />
+                                                    {{ group.origin_cafe }}
+                                                </span>
+                                                <span v-if="group.items[0].origin_unit" class="pl-1 text-[10px] text-slate-400">
+                                                    {{ group.items[0].origin_unit }}
+                                                </span>
+                                            </div>
                                             <ArrowRight class="h-3.5 w-3.5 shrink-0 text-slate-300" />
-                                            <span
-                                                class="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 font-semibold text-indigo-700"
-                                            >
-                                                <component
-                                                    :is="group.items[0].destination_type === 'cafe' ? Coffee : Building2"
-                                                    class="h-3 w-3 shrink-0"
-                                                />
-                                                {{ group.items[0].destination_name }}
-                                            </span>
+                                            <div class="flex flex-col items-start gap-0.5">
+                                                <span
+                                                    class="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 font-semibold text-indigo-700"
+                                                >
+                                                    <component
+                                                        :is="group.items[0].destination_type === 'cafe' ? Coffee : Building2"
+                                                        class="h-3 w-3 shrink-0"
+                                                    />
+                                                    {{ group.items[0].destination_name }}
+                                                </span>
+                                                <span
+                                                    v-if="group.items[0].destination_unit || group.items[0].destination_business"
+                                                    class="pl-1 text-[10px] text-slate-400"
+                                                >
+                                                    {{ group.items[0].destination_unit || group.items[0].destination_business }}
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
 

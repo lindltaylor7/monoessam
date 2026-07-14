@@ -100,7 +100,7 @@ class InventoryController extends Controller
             ->map(fn($e) => $attachCafe($e, 'App\\Models\\KitchenEquipment'));
 
         // Dispatches FROM a café (origin_cafe_id set) awaiting reception at HQ or another location
-        $outboundRaw = EquipmentDispatch::with(['equipable', 'originCafe', 'dispatcher', 'receiver'])
+        $outboundRaw = EquipmentDispatch::with(['equipable', 'originCafe.unit', 'dispatcher', 'receiver'])
             ->whereNotNull('origin_cafe_id')
             ->where('status', 'active')
             ->orderByDesc('created_at')
@@ -108,15 +108,20 @@ class InventoryController extends Controller
             ->get();
 
         // Resolve destination names in bulk (no N+1) — origin_cafe_id dispatches only ever target 'cafe' or 'headquarter'
-        $destCafes = Cafe::whereIn('id', $outboundRaw->where('destination_type', 'cafe')->pluck('destination_id')->unique())
-            ->select('id', 'name')->get()->keyBy('id');
-        $destHeadquarters = Headquarter::whereIn('id', $outboundRaw->where('destination_type', 'headquarter')->pluck('destination_id')->unique())
-            ->select('id', 'name')->get()->keyBy('id');
+        $destCafes = Cafe::with('unit:id,name')
+            ->whereIn('id', $outboundRaw->where('destination_type', 'cafe')->pluck('destination_id')->unique())
+            ->select('id', 'name', 'unit_id')->get()->keyBy('id');
+        $destHeadquarters = Headquarter::with('business:id,name')
+            ->whereIn('id', $outboundRaw->where('destination_type', 'headquarter')->pluck('destination_id')->unique())
+            ->select('id', 'name', 'business_id')->get()->keyBy('id');
 
         $cafeOutboundDispatches = $outboundRaw->map(function ($d) use ($destCafes, $destHeadquarters) {
+            $destCafe = $d->destination_type === 'cafe' ? $destCafes->get($d->destination_id) : null;
+            $destHq   = $d->destination_type === 'headquarter' ? $destHeadquarters->get($d->destination_id) : null;
+
             $destinationName = match ($d->destination_type) {
-                'cafe'        => $destCafes->get($d->destination_id)?->name,
-                'headquarter' => $destHeadquarters->get($d->destination_id)?->name,
+                'cafe'        => $destCafe?->name,
+                'headquarter' => $destHq?->name,
                 default       => null,
             } ?? '—';
 
@@ -137,10 +142,13 @@ class InventoryController extends Controller
                 'equipment_model' => $d->equipable?->model,
                 'equipment_code'  => $d->equipable?->code,
                 'origin_cafe'     => $d->originCafe?->name ?? '—',
+                'origin_unit'     => $d->originCafe?->unit?->name,
                 'destination_type' => $d->destination_type,
                 'destination_id'   => $d->destination_id,
                 'destination_name'  => $destinationName,
                 'destination_label' => $destinationLabel,
+                'destination_unit'     => $destCafe?->unit?->name,
+                'destination_business' => $destHq?->business?->name,
                 'dispatched_by'   => $d->dispatcher?->name ?? '—',
                 'dispatched_at'   => $d->dispatched_at?->format('d/m/Y H:i'),
                 'received_at'     => $d->received_at?->format('d/m/Y H:i'),
