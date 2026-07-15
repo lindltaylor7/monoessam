@@ -4,6 +4,8 @@ import { Head, router } from '@inertiajs/vue3';
 import {
     Building2,
     CheckCircle2,
+    ChevronDown,
+    ChevronUp,
     Clock,
     Coffee,
     HardHat,
@@ -83,6 +85,7 @@ const activeTab = ref<TabKey>('all');
 const confirmId = ref<number | null>(null);
 const receptionNote = ref('');
 const processing = ref(false);
+const showHistory = ref(false);
 
 // ── Send modal ─────────────────────────────────────────────────────────────
 const sendOpen = ref(false);
@@ -126,12 +129,28 @@ function closeSendModal() {
     sendOpen.value = false;
 }
 
-// Cuánto hay AHORA de este equipo en el café/unidad seleccionado — no el número original
-// de esta guía en particular, que puede diferir si parte ya se reenvió o llegó por otra guía.
-function currentStock(d: Dispatch): number {
+// Stock actual del café/unidad seleccionado — una fila por equipo, sin repetirse aunque el
+// mismo equipo aparezca en varias guías del historial. Independiente de la tabla de Despachos.
+const currentLocationStock = computed(() => {
     const stocks = selectedType.value === 'cafe' ? props.cafeStocks : props.unitStocks;
-    return stocks[String(selectedId.value)]?.[`${d.equipable_type}-${d.equipable_id}`] ?? 0;
-}
+    const stockMap = stocks[String(selectedId.value)] ?? {};
+    return Object.entries(stockMap)
+        .filter(([, qty]) => qty > 0)
+        .map(([key, qty]) => {
+            const [equipableType, equipableIdStr] = key.split('-') as ['computer' | 'kitchen', string];
+            const equipableId = Number(equipableIdStr);
+            const match = props.dispatches.find((d) => d.equipable_type === equipableType && d.equipable_id === equipableId);
+            return {
+                key,
+                equipable_type: equipableType,
+                equipment_name: match?.equipment_name ?? '—',
+                equipment_brand: match?.equipment_brand ?? null,
+                equipment_model: match?.equipment_model ?? null,
+                quantity: qty,
+            };
+        })
+        .sort((a, b) => a.equipment_name.localeCompare(b.equipment_name));
+});
 
 const sendableItems = computed(() => sendForm.value.items.filter((i) => i.quantity > 0));
 
@@ -438,6 +457,54 @@ const tabs: { key: TabKey; label: string; icon: any }[] = [
                             </div>
                         </div>
 
+                        <!-- Stock actual: una fila por equipo, sin repetirse aunque el historial tenga varias guías -->
+                        <div class="mb-5 overflow-hidden rounded-xl border bg-white shadow-sm dark:bg-gray-800">
+                            <p class="border-b bg-slate-50 px-4 py-2.5 text-xs font-bold tracking-widest text-slate-500 uppercase dark:bg-gray-700/50">
+                                Stock actual en {{ selectedCafe?.name ?? selectedUnit?.name }}
+                            </p>
+                            <div v-if="currentLocationStock.length === 0" class="px-4 py-6 text-center text-sm text-slate-400">
+                                Sin equipos disponibles aquí por ahora
+                            </div>
+                            <ul v-else class="divide-y">
+                                <li
+                                    v-for="item in currentLocationStock"
+                                    :key="item.key"
+                                    class="flex items-center justify-between gap-3 px-4 py-2.5"
+                                >
+                                    <div class="flex items-center gap-2.5">
+                                        <div
+                                            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+                                            :class="item.equipable_type === 'computer' ? 'bg-blue-100' : 'bg-orange-100'"
+                                        >
+                                            <Laptop v-if="item.equipable_type === 'computer'" class="h-3.5 w-3.5 text-blue-600" />
+                                            <UtensilsCrossed v-else class="h-3.5 w-3.5 text-orange-600" />
+                                        </div>
+                                        <div>
+                                            <p class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ item.equipment_name }}</p>
+                                            <p class="text-[11px] text-slate-400">
+                                                {{ [item.equipment_brand, item.equipment_model].filter(Boolean).join(' · ') || '—' }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span
+                                        class="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 font-mono text-xs font-bold text-amber-700"
+                                    >
+                                        {{ item.quantity }}
+                                    </span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <!-- Historial de despachos: colapsado por defecto para no competir con "Stock actual" -->
+                        <button
+                            @click="showHistory = !showHistory"
+                            class="mb-4 flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                        >
+                            <component :is="showHistory ? ChevronUp : ChevronDown" class="h-4 w-4" />
+                            {{ showHistory ? 'Ocultar' : 'Ver' }} historial de despachos
+                        </button>
+
+                        <template v-if="showHistory">
                         <!-- Tabs -->
                         <div class="mb-4 flex gap-1 rounded-xl border bg-slate-100 p-1 dark:bg-gray-800">
                             <button
@@ -537,12 +604,12 @@ const tabs: { key: TabKey; label: string; icon: any }[] = [
                                                 </div>
                                             </td>
 
-                                            <!-- Cantidad: stock actual de este equipo aquí, no el número original de esta guía -->
+                                            <!-- Cantidad -->
                                             <td class="px-4 py-3 text-center">
                                                 <span
                                                     class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 font-mono text-xs font-bold text-amber-700"
                                                 >
-                                                    {{ currentStock(d) }}
+                                                    {{ d.quantity }}
                                                 </span>
                                             </td>
 
@@ -649,6 +716,7 @@ const tabs: { key: TabKey; label: string; icon: any }[] = [
                             <p class="font-medium">Insumos — Sin envíos registrados</p>
                             <p class="mt-1 text-xs">Los despachos de insumos aparecerán aquí cuando estén disponibles</p>
                         </div>
+                        </template>
                     </template>
                 </main>
             </div>
