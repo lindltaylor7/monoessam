@@ -13,7 +13,7 @@ class ComputerEquipment extends Model
     protected $fillable = [
         'name', 'description', 'brand', 'model', 'presentation',
         'color', 'series', 'code', 'status', 'responsible_id',
-        'storage_headquarter_id', 'equipment_invoice_id', 'unit_price', 'quantity',
+        'storage_headquarter_id', 'equipment_invoice_id', 'unit_price', 'quantity', 'invoiced_quantity',
     ];
 
     public function responsible(): BelongsTo

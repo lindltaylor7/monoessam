@@ -55,10 +55,13 @@ class InventoryController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
-        // Map equipment → current cafe via active dispatch (2 extra queries, no N+1)
+        // Map equipment → current cafe via active dispatch (2 extra queries, no N+1).
+        // Solo cuenta como "está en ese café" si ya fue RECEPCIONADO ahí — mientras el envío
+        // sigue en tránsito, el equipo sigue físicamente (y en `quantity`) en el almacén de origen.
         $activeDispatches = EquipmentDispatch::where('destination_type', 'cafe')
             ->where('status', 'active')
             ->where('remaining_quantity', '>', 0)
+            ->whereNotNull('received_at')
             ->orderByDesc('id')
             ->get(['equipable_type', 'equipable_id', 'destination_id', 'remaining_quantity'])
             ->unique(fn($d) => $d->equipable_type . '-' . $d->equipable_id)
@@ -73,10 +76,8 @@ class InventoryController extends Controller
             $key  = $morphClass . '-' . $equipment->id;
             $disp = $activeDispatches->get($key);
             $equipment->current_cafe = $disp ? $cafeMap->get($disp->destination_id) : null;
-            // Mientras el equipo está despachado a un café, su "quantity" en almacén queda en 0
-            // (se descuenta al despachar). Para no mostrar "0" engañosamente, exponemos también
-            // el saldo (remaining_quantity) que efectivamente queda en ese café — no `quantity`,
-            // que es el número original de la guía y debe quedar fijo aunque se reenvíe después.
+            // Informativo únicamente (badge "Café/Comedor" en Cocina) — la columna "Cant." de la
+            // tabla siempre muestra `quantity` (el stock real del almacén), nunca este valor.
             $equipment->current_cafe_quantity = $disp?->remaining_quantity;
             return $equipment;
         };

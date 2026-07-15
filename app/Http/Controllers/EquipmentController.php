@@ -157,6 +157,7 @@ class EquipmentController extends Controller
                     'status'                 => $item['status'] ?? 0,
                     'unit_price'             => $item['unit_price'],
                     'quantity'               => $item['quantity'] ?? 1,
+                    'invoiced_quantity'      => $item['quantity'] ?? 1,
                     'equipment_invoice_id'   => $invoice->id,
                     'storage_headquarter_id' => $validated['headquarter_id'] ?? null,
                     // kitchen-specific (ignored by ComputerEquipment's $fillable)

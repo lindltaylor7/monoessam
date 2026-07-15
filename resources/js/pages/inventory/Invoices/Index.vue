@@ -2412,14 +2412,16 @@ const saveInlinePrice = (cp: any) => {
                                                 <TableCell class="py-2 font-mono text-xs text-slate-500">{{ eq.series || '—' }}</TableCell>
                                                 <TableCell class="py-2 text-xs text-slate-500">{{ eq.color || '—' }}</TableCell>
                                                 <TableCell class="py-2 text-center text-xs font-black text-slate-700">{{
-                                                    eq.quantity ?? 1
+                                                    eq.invoiced_quantity ?? eq.quantity ?? 1
                                                 }}</TableCell>
                                                 <TableCell class="py-2 text-right text-[10px] font-medium text-slate-500">
                                                     S/.{{ Number(eq.unit_price ?? 0).toFixed(2) }}
                                                 </TableCell>
                                                 <TableCell class="py-2 text-right text-xs font-black text-blue-600">
                                                     S/.{{
-                                                        (Number(eq.unit_price ?? 0) * (eq.quantity ?? 1)).toLocaleString(undefined, {
+                                                        (
+                                                            Number(eq.unit_price ?? 0) * (eq.invoiced_quantity ?? eq.quantity ?? 1)
+                                                        ).toLocaleString(undefined, {
                                                             minimumFractionDigits: 2,
                                                         })
                                                     }}

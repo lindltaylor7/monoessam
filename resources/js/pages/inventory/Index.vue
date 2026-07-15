@@ -602,12 +602,6 @@ function equipmentStatusInfo(val: number) {
     return EQUIPMENT_STATUSES.find((s) => s.value === val) ?? EQUIPMENT_STATUSES[0];
 }
 
-// Mientras el equipo está despachado a un café, `quantity` (stock en almacén) queda en 0
-// porque se descontó al despacharlo; mostramos en su lugar la cantidad que hay en ese café.
-function displayQuantity(eq: ComputerEquipment | KitchenEquipment) {
-    return eq.current_cafe ? (eq.current_cafe_quantity ?? 0) : eq.quantity;
-}
-
 const filteredComputerEquipments = computed(() => {
     const q = searchQuery.value.toLowerCase();
     const hq = selectedHeadquarterId.value;
@@ -1367,12 +1361,12 @@ const kitchenTotalPages = computed(() => Math.max(1, Math.ceil(filteredKitchenEq
                                             <span
                                                 :class="[
                                                     'inline-flex min-w-[28px] items-center justify-center rounded-full border px-2 py-0.5 font-mono text-xs font-black',
-                                                    displayQuantity(eq) > 0
+                                                    eq.quantity > 0
                                                         ? 'border-orange-200 bg-orange-50 text-orange-700'
                                                         : 'border-red-200 bg-red-50 text-red-600',
                                                 ]"
                                             >
-                                                {{ displayQuantity(eq) }}
+                                                {{ eq.quantity }}
                                             </span>
                                         </TableCell>
                                         <TableCell>
