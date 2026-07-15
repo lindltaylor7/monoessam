@@ -1346,7 +1346,6 @@ const kitchenTotalPages = computed(() => Math.max(1, Math.ceil(filteredKitchenEq
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">N° Serie</TableHead>
                                         <TableHead class="text-muted-foreground text-center text-[10px] font-bold uppercase">Cant.</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Sede</TableHead>
-                                        <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Café / Comedor</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Estado</TableHead>
                                         <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Responsable</TableHead>
                                     </TableRow>
@@ -1387,16 +1386,6 @@ const kitchenTotalPages = computed(() => Math.max(1, Math.ceil(filteredKitchenEq
                                                 </div>
                                             </div>
                                             <span v-else class="text-xs text-slate-400">Sin sede</span>
-                                        </TableCell>
-                                        <TableCell>
-                                            <span
-                                                v-if="eq.current_cafe"
-                                                class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700"
-                                            >
-                                                <Coffee class="h-3 w-3 shrink-0" />
-                                                {{ eq.current_cafe.name }}
-                                            </span>
-                                            <span v-else class="text-xs text-slate-300 italic">En almacén</span>
                                         </TableCell>
                                         <TableCell>
                                             <span
@@ -1492,9 +1481,7 @@ const kitchenTotalPages = computed(() => Math.max(1, Math.ceil(filteredKitchenEq
                                 "
                             >
                                 <!-- Cabecera de la guía -->
-                                <div
-                                    class="bg-muted/30 flex flex-col gap-3 border-b px-5 py-3.5 lg:flex-row lg:items-center lg:justify-between"
-                                >
+                                <div class="bg-muted/30 flex flex-col gap-3 border-b px-5 py-3.5 lg:flex-row lg:items-center lg:justify-between">
                                     <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
                                         <div class="flex items-center gap-2.5">
                                             <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-100">
@@ -1504,9 +1491,7 @@ const kitchenTotalPages = computed(() => Math.max(1, Math.ceil(filteredKitchenEq
                                                 <p class="font-mono text-sm font-bold text-slate-800">
                                                     {{ group.guide_number ?? group.items[0].dispatch_number }}
                                                 </p>
-                                                <p class="text-[11px] text-slate-400">
-                                                    {{ group.dispatched_at }} · {{ group.dispatched_by }}
-                                                </p>
+                                                <p class="text-[11px] text-slate-400">{{ group.dispatched_at }} · {{ group.dispatched_by }}</p>
                                             </div>
                                         </div>
 
