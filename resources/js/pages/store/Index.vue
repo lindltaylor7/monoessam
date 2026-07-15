@@ -49,7 +49,6 @@ interface Dispatch {
     equipable_type: 'computer' | 'kitchen';
     equipable_id: number;
     quantity: number;
-    remaining_quantity: number;
     equipment_name: string;
     equipment_brand: string | null;
     equipment_model: string | null;
@@ -70,6 +69,8 @@ const props = defineProps<{
     units: UnitDest[];
     allCafes: Cafe[];
     headquarters: HQ[];
+    cafeStocks: Record<string, Record<string, number>>;
+    unitStocks: Record<string, Record<string, number>>;
 }>();
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -94,33 +95,42 @@ const sendForm = ref({
 const sendProcessing = ref(false);
 
 function openSendModal() {
-    // Build the equipment list from received dispatches at this cafe
-    const received = targetDispatches.value.filter((d) => d.received_at);
+    // "Disponible" se lee directo del ledger de stock del café (equipment_stocks), no del
+    // historial de guías — el nombre/marca del equipo sí se toma de cualquier guía que lo
+    // mencione, solo para mostrarlo en la lista.
+    const stockForCafe = props.cafeStocks[String(selectedId.value)] ?? {};
     const byEquip: Record<string, (typeof sendForm.value)['items'][0]> = {};
-    for (const d of received) {
-        const key = `${d.equipable_type}-${d.equipable_id}`;
-        if (!byEquip[key]) {
-            byEquip[key] = {
-                equipable_type: d.equipable_type,
-                equipable_id: d.equipable_id,
-                equipment_name: d.equipment_name,
-                quantity: 0,
-                max: 0,
-            };
-        }
-        byEquip[key].max += d.remaining_quantity;
+    for (const [key, qty] of Object.entries(stockForCafe)) {
+        if (qty <= 0) continue;
+        const [equipableType, equipableIdStr] = key.split('-') as ['computer' | 'kitchen', string];
+        const equipableId = Number(equipableIdStr);
+        const match = props.dispatches.find((d) => d.equipable_type === equipableType && d.equipable_id === equipableId);
+        byEquip[key] = {
+            equipable_type: equipableType,
+            equipable_id: equipableId,
+            equipment_name: match?.equipment_name ?? '—',
+            quantity: 0,
+            max: qty,
+        };
     }
     sendForm.value = {
         destination_type: 'cafe',
         destination_id: '',
         description: '',
-        items: Object.values(byEquip).map((e) => ({ ...e, quantity: 1 })),
+        items: Object.values(byEquip).map((e) => ({ ...e, quantity: 0 })),
     };
     sendOpen.value = true;
 }
 
 function closeSendModal() {
     sendOpen.value = false;
+}
+
+// Cuánto hay AHORA de este equipo en el café/unidad seleccionado — no el número original
+// de esta guía en particular, que puede diferir si parte ya se reenvió o llegó por otra guía.
+function currentStock(d: Dispatch): number {
+    const stocks = selectedType.value === 'cafe' ? props.cafeStocks : props.unitStocks;
+    return stocks[String(selectedId.value)]?.[`${d.equipable_type}-${d.equipable_id}`] ?? 0;
 }
 
 const sendableItems = computed(() => sendForm.value.items.filter((i) => i.quantity > 0));
@@ -527,12 +537,12 @@ const tabs: { key: TabKey; label: string; icon: any }[] = [
                                                 </div>
                                             </td>
 
-                                            <!-- Cantidad -->
+                                            <!-- Cantidad: stock actual de este equipo aquí, no el número original de esta guía -->
                                             <td class="px-4 py-3 text-center">
                                                 <span
                                                     class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 font-mono text-xs font-bold text-amber-700"
                                                 >
-                                                    {{ d.quantity }}
+                                                    {{ currentStock(d) }}
                                                 </span>
                                             </td>
 

@@ -36,6 +36,11 @@ class KitchenEquipment extends Model
         return $this->morphMany(InventoryStock::class, 'stockable');
     }
 
+    public function equipmentStocks(): MorphMany
+    {
+        return $this->morphMany(EquipmentStock::class, 'stockable');
+    }
+
     public function dispatches(): MorphMany
     {
         return $this->morphMany(EquipmentDispatch::class, 'equipable')->latest();

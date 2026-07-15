@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Cafe;
 use App\Models\ComputerEquipment;
 use App\Models\EquipmentDispatch;
+use App\Models\EquipmentStock;
 use App\Models\Headquarter;
 use App\Models\KitchenEquipment;
 use App\Models\Mine;
@@ -13,6 +14,7 @@ use App\Models\Unit;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class EquipmentDispatchController extends Controller
@@ -90,7 +92,6 @@ class EquipmentDispatchController extends Controller
                 'equipable_type'        => $modelClass,
                 'equipable_id'          => $item['equipable_id'],
                 'quantity'              => $item['quantity'],
-                'remaining_quantity'    => $item['quantity'],
                 'origin_headquarter_id' => $validated['origin_headquarter_id'],
                 'destination_type'      => $validated['destination_type'],
                 'destination_id'        => $validated['destination_id'],
@@ -143,14 +144,41 @@ class EquipmentDispatchController extends Controller
             'reception_notes' => $request->input('reception_notes'),
         ]);
 
-        // Solo se repone el stock cuando el equipo regresa de un CAFÉ a una Sede/Almacén: el
-        // descuento original ocurrió al despacharlo del almacén hacia el café, así que al volver
-        // hay que deshacer ese descuento. Si el origen ya era una Sede/Almacén (transferencia
-        // directa entre almacenes), el descuento hecho al generar la guía es definitivo — el
-        // equipo se fue de ahí — y no debe reponerse al recepcionar, o el traslado quedaría en
-        // cero neto (se descuenta y se vuelve a sumar, como si nunca se hubiera movido).
+        // Solo se repone el stock del almacén cuando el equipo regresa de un CAFÉ a una
+        // Sede/Almacén: el descuento original ocurrió al despacharlo del almacén hacia el café,
+        // así que al volver hay que deshacer ese descuento. Si el origen ya era una Sede/Almacén
+        // (transferencia directa entre almacenes), el descuento hecho al generar la guía es
+        // definitivo — el equipo se fue de ahí — y no debe reponerse al recepcionar, o el
+        // traslado quedaría en cero neto (se descuenta y se vuelve a sumar, como si nunca se
+        // hubiera movido).
         if ($dispatch->destination_type === 'headquarter' && $dispatch->origin_cafe_id) {
             $dispatch->equipable?->increment('quantity', $dispatch->quantity);
+        }
+
+        // Si el destino es un café o una unidad, se acredita al ledger de stock de ese lugar
+        // (equipment_stocks) — es la única fuente de verdad de "cuánto hay ahí", independiente
+        // de cualquier guía.
+        if (in_array($dispatch->destination_type, ['cafe', 'unit'], true)) {
+            $locationCol = $dispatch->destination_type === 'cafe' ? 'cafe_id' : 'unit_id';
+
+            DB::transaction(function () use ($dispatch, $locationCol) {
+                $stock = EquipmentStock::where('stockable_type', $dispatch->equipable_type)
+                    ->where('stockable_id', $dispatch->equipable_id)
+                    ->where($locationCol, $dispatch->destination_id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($stock) {
+                    $stock->increment('quantity', $dispatch->quantity);
+                } else {
+                    EquipmentStock::create([
+                        'stockable_type' => $dispatch->equipable_type,
+                        'stockable_id'   => $dispatch->equipable_id,
+                        $locationCol     => $dispatch->destination_id,
+                        'quantity'       => $dispatch->quantity,
+                    ]);
+                }
+            });
         }
 
         return back()->with('success', "Despacho {$dispatch->dispatch_number} confirmado como recibido.");

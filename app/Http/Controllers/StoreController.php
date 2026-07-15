@@ -5,12 +5,14 @@ namespace App\Http\Controllers;
 use App\Models\Cafe;
 use App\Models\ComputerEquipment;
 use App\Models\EquipmentDispatch;
+use App\Models\EquipmentStock;
 use App\Models\Headquarter;
 use App\Models\KitchenEquipment;
 use App\Models\Unit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class StoreController extends Controller
@@ -57,12 +59,28 @@ class StoreController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'business_id']);
 
+        // Stock real por café/unidad (ledger), agrupado para que la tabla de Despachos y el
+        // modal de envío lo lean directo — sin reconstruirlo a partir del historial de guías.
+        $stocksByLocation = function (string $locationCol, $ids) {
+            return EquipmentStock::whereIn($locationCol, $ids)
+                ->get(['stockable_type', 'stockable_id', $locationCol, 'quantity'])
+                ->groupBy($locationCol)
+                ->map(fn($group) => $group->mapWithKeys(fn($r) => [
+                    (str_contains($r->stockable_type, 'Computer') ? 'computer' : 'kitchen') . '-' . $r->stockable_id => $r->quantity,
+                ]));
+        };
+
+        $cafeStocks = $stocksByLocation('cafe_id', $cafeIds);
+        $unitStocks = $stocksByLocation('unit_id', $unitIds);
+
         return Inertia::render('store/Index', [
             'dispatches'   => $dispatches,
             'cafes'        => $cafes,
             'units'        => $units,
             'allCafes'     => $allCafes,
             'headquarters' => $headquarters,
+            'cafeStocks'   => $cafeStocks,
+            'unitStocks'   => $unitStocks,
         ]);
     }
 
@@ -87,63 +105,37 @@ class StoreController extends Controller
         $guideSeq    = EquipmentDispatch::whereYear('created_at', now()->year)->whereNotNull('guide_number')->distinct('guide_number')->count() + 1;
         $guideNumber = 'GR-' . now()->year . '-' . str_pad($guideSeq, 4, '0', STR_PAD_LEFT);
 
-        // Validate there's enough stock at this café before mutating anything.
-        // "Disponible" se mide por remaining_quantity (saldo vivo), nunca por quantity
-        // (que es el número original de cada guía y debe quedar fijo para siempre).
-        foreach ($validated['items'] as $item) {
-            $modelClass = $modelMap[$item['equipable_type']];
-
-            $available = EquipmentDispatch::where('destination_type', 'cafe')
-                ->where('destination_id', $validated['origin_cafe_id'])
-                ->where('status', 'active')
-                ->where('equipable_type', $modelClass)
-                ->where('equipable_id', $item['equipable_id'])
-                ->sum('remaining_quantity');
-
-            if ($item['quantity'] > $available) {
-                return back()->withErrors(['items' => "No hay suficiente stock disponible para uno de los equipos seleccionados."]);
-            }
-        }
-
         $created = DB::transaction(function () use ($validated, $modelMap, $guideNumber) {
             $created = [];
             foreach ($validated['items'] as $item) {
                 $modelClass = $modelMap[$item['equipable_type']];
 
-                // Descuenta la cantidad enviada del saldo (remaining_quantity) de los lotes
-                // recibidos en este café (FIFO), marcando como "returned" solo el/los lotes que
-                // quedan en 0. NUNCA se toca `quantity`: esa guía ya se emitió y debe mostrar
-                // siempre el número original, sin importar lo que se reenvíe después.
-                $remaining = $item['quantity'];
-                $batches = EquipmentDispatch::where('destination_type', 'cafe')
-                    ->where('destination_id', $validated['origin_cafe_id'])
-                    ->where('status', 'active')
-                    ->where('equipable_type', $modelClass)
-                    ->where('equipable_id', $item['equipable_id'])
-                    ->oldest('dispatched_at')
+                // "Disponible" se lee directo del ledger de stock por café (equipment_stocks),
+                // no reconstruyéndolo desde el historial de guías. El lock + chequeo dentro de
+                // la transacción evita que dos envíos simultáneos sobrevendan el mismo stock.
+                $stock = EquipmentStock::where('stockable_type', $modelClass)
+                    ->where('stockable_id', $item['equipable_id'])
+                    ->where('cafe_id', $validated['origin_cafe_id'])
                     ->lockForUpdate()
-                    ->get();
+                    ->first();
 
-                foreach ($batches as $batch) {
-                    if ($remaining <= 0) break;
-                    $take = min($remaining, $batch->remaining_quantity);
-                    $newRemaining = $batch->remaining_quantity - $take;
-                    if ($newRemaining > 0) {
-                        $batch->update(['remaining_quantity' => $newRemaining]);
-                    } else {
-                        $batch->update(['remaining_quantity' => 0, 'status' => 'returned']);
-                    }
-                    $remaining -= $take;
+                if (($stock->quantity ?? 0) < $item['quantity']) {
+                    throw ValidationException::withMessages([
+                        'items' => 'No hay suficiente stock disponible para uno de los equipos seleccionados.',
+                    ]);
                 }
+
+                $stock->decrement('quantity', $item['quantity']);
 
                 $seq            = EquipmentDispatch::whereYear('created_at', now()->year)->count() + 1;
                 $dispatchNumber = 'DESP-' . now()->year . '-' . str_pad($seq, 4, '0', STR_PAD_LEFT);
 
+                // La guía se crea con su propio `quantity` fijo — es un documento histórico
+                // independiente, no se ve afectado por lo que pase después con el stock del café.
                 EquipmentDispatch::create([
                     'equipable_type'        => $modelClass,
                     'equipable_id'          => $item['equipable_id'],
                     'quantity'              => $item['quantity'],
-                    'remaining_quantity'    => $item['quantity'],
                     'origin_headquarter_id' => null,
                     'origin_cafe_id'        => $validated['origin_cafe_id'],
                     'destination_type'      => $validated['destination_type'],
@@ -180,7 +172,6 @@ class StoreController extends Controller
             'equipable_type'  => $equipType,
             'equipable_id'    => $d->equipable_id,
             'quantity'        => $d->quantity,
-            'remaining_quantity' => $d->remaining_quantity,
             'equipment_name'  => $d->equipable?->name ?? '—',
             'equipment_brand' => $d->equipable?->brand,
             'equipment_model' => $d->equipable?->model,

@@ -23,6 +23,7 @@ use App\Models\Epp;
 use App\Models\EppSize;
 use App\Models\EquipmentDispatch;
 use App\Models\EquipmentInvoice;
+use App\Models\EquipmentStock;
 use App\Models\Size;
 use App\Models\City;
 use App\Models\InventoryTransfer;
@@ -55,30 +56,24 @@ class InventoryController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
-        // Map equipment → current cafe via active dispatch (2 extra queries, no N+1).
-        // Solo cuenta como "está en ese café" si ya fue RECEPCIONADO ahí — mientras el envío
-        // sigue en tránsito, el equipo sigue físicamente (y en `quantity`) en el almacén de origen.
-        $activeDispatches = EquipmentDispatch::where('destination_type', 'cafe')
-            ->where('status', 'active')
-            ->where('remaining_quantity', '>', 0)
-            ->whereNotNull('received_at')
-            ->orderByDesc('id')
-            ->get(['equipable_type', 'equipable_id', 'destination_id', 'remaining_quantity'])
-            ->unique(fn($d) => $d->equipable_type . '-' . $d->equipable_id)
-            ->keyBy(fn($d) => $d->equipable_type . '-' . $d->equipable_id);
+        // Map equipment → current cafe leyendo directo el ledger de stock por café
+        // (equipment_stocks), no reconstruyéndolo desde el historial de guías.
+        $equipmentStocks = EquipmentStock::whereNotNull('cafe_id')
+            ->get(['stockable_type', 'stockable_id', 'cafe_id', 'quantity'])
+            ->groupBy(fn($s) => $s->stockable_type . '-' . $s->stockable_id);
 
-        $cafeMap = Cafe::whereIn('id', $activeDispatches->pluck('destination_id')->unique()->values())
+        $cafeMap = Cafe::whereIn('id', $equipmentStocks->flatten()->pluck('cafe_id')->unique())
             ->select('id', 'name')
             ->get()
             ->keyBy('id');
 
-        $attachCafe = function ($equipment, string $morphClass) use ($activeDispatches, $cafeMap) {
-            $key  = $morphClass . '-' . $equipment->id;
-            $disp = $activeDispatches->get($key);
-            $equipment->current_cafe = $disp ? $cafeMap->get($disp->destination_id) : null;
-            // Informativo únicamente (badge "Café/Comedor" en Cocina) — la columna "Cant." de la
-            // tabla siempre muestra `quantity` (el stock real del almacén), nunca este valor.
-            $equipment->current_cafe_quantity = $disp?->remaining_quantity;
+        $attachCafe = function ($equipment, string $morphClass) use ($equipmentStocks, $cafeMap) {
+            // Si el mismo equipo está repartido en más de un café, se muestra el de mayor
+            // cantidad — informativo únicamente (badge "Café/Comedor" en Cocina), la columna
+            // "Cant." de la tabla siempre muestra `quantity` (el stock real del almacén).
+            $best = $equipmentStocks->get($morphClass . '-' . $equipment->id, collect())->sortByDesc('quantity')->first();
+            $equipment->current_cafe = $best ? $cafeMap->get($best->cafe_id) : null;
+            $equipment->current_cafe_quantity = $best?->quantity;
             return $equipment;
         };
 
