@@ -169,6 +169,7 @@ class StaffController extends Controller
                     'file_type'       => $request->fileTypeKey,
                     'file_path'       => $this->storeUploadedFile($request),
                     'expiration_date' => $request->expirationDate,
+                    'start_date'      => $request->startDate,
                 ]);
             }
         } else {
@@ -180,6 +181,7 @@ class StaffController extends Controller
                     'file_type'       => $request->fileTypeKey,
                     'file_path'       => $this->storeUploadedFile($request),
                     'expiration_date' => $request->expirationDate,
+                    'start_date'      => $request->startDate,
                 ]);
             }
         }
