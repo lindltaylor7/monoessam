@@ -23,7 +23,7 @@ class ClothController extends Controller
     public function index()
     {
         $staff = Staff::with(['role', 'staff_clothes.cloth', 'staff_clothes.epp.sizes', 'staff_clothes.color', 'photo', 'staffable.unit.mine', 'staff_financial', 'clothes_histories.user'])
-            ->where('status', 2)
+            ->whereIn('status', [2, 3])
             ->whereHasMorph('staffable', [Cafe::class])
             ->get();
 
@@ -50,10 +50,10 @@ class ClothController extends Controller
         }
 
         // GET EPP ASSIGNMENTS (roleEpps)
-        $epps = \App\Models\Epp::with(['roles' => function($q) {
+        $epps = \App\Models\Epp::with(['roles' => function ($q) {
             $q->withPivot(['cafe_id', 'quantity', 'color_id']);
         }, 'sizes'])->get();
-        
+
         $roleEpps = [];
         foreach ($epps as $epp) {
             foreach ($epp->roles as $role) {
@@ -68,7 +68,7 @@ class ClothController extends Controller
                 if (!isset($roleEpps[$roleId][$key])) {
                     $roleEpps[$roleId][$key] = [];
                 }
-                
+
                 // Prevent duplicates: skip if this epp_id already exists in this role/cafe bucket
                 $alreadyExists = collect($roleEpps[$roleId][$key])->contains('id', $epp->id);
                 if ($alreadyExists) continue;
@@ -206,7 +206,7 @@ class ClothController extends Controller
         $validated = $request->validate([
             'staff_id'     => 'required|exists:staff,id',
             'clothe_name'  => 'required|string|max:100',
-            'clothing_size'=> 'nullable|string|max:50',
+            'clothing_size' => 'nullable|string|max:50',
         ]);
 
         Staff_clothes::create([
@@ -263,7 +263,7 @@ class ClothController extends Controller
         ]);
 
         $entry = Staff_clothes::findOrFail($request->id);
-        
+
         if ($request->has('epp_id')) $entry->epp_id = $request->epp_id;
         if ($request->has('clothing_size')) $entry->clothing_size = $request->clothing_size;
         $oldStatus = $entry->status;
