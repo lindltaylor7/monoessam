@@ -8,6 +8,7 @@ use App\Models\EquipmentDispatch;
 use App\Models\EquipmentStock;
 use App\Models\Headquarter;
 use App\Models\KitchenEquipment;
+use App\Models\Staff;
 use App\Models\Unit;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -152,7 +153,7 @@ class StoreController extends Controller
         $dispatchesPaginator->appends($request->query());
 
         // ── Stock: paginación estándar de Laravel, 15 por página ──
-        $stockQuery = EquipmentStock::with('stockable')->where('quantity', '>', 0);
+        $stockQuery = EquipmentStock::with('stockable.responsible:id,name')->where('quantity', '>', 0);
         if ($locationId && $locationType === 'cafe') {
             $stockQuery->where('cafe_id', $locationId);
         } elseif ($locationId) {
@@ -169,6 +170,7 @@ class StoreController extends Controller
         $stockPaginator = $stockQuery->orderBy('id')->paginate(self::STOCK_PER_PAGE, ['*'], 'stock_page')->withQueryString();
         $stockPaginator->getCollection()->transform(fn($s) => [
             'id'                => $s->id,
+            'equipable_id'      => $s->stockable_id,
             'equipable_type'    => str_contains($s->stockable_type, 'Computer') ? 'computer' : 'kitchen',
             'equipment_name'    => $s->stockable?->name ?? '—',
             'equipment_brand'   => $s->stockable?->brand,
@@ -176,8 +178,21 @@ class StoreController extends Controller
             'equipment_code'    => $s->stockable?->code,
             'equipment_series'  => $s->stockable?->series,
             'equipment_status'  => $s->stockable?->status,
+            'responsible_id'    => $s->stockable?->responsible_id,
+            'responsible_name'  => $s->stockable?->responsible?->name,
             'quantity'          => $s->quantity,
         ]);
+
+        // Personal (Staff) que pertenece a la Unidad del café/unidad seleccionado — para poder
+        // asignar equipos del stock directamente desde acá.
+        $staffUnitId = $locationType === 'unit' ? $locationId : $cafes->firstWhere('id', $locationId)?->unit_id;
+        $staffOptions = $staffUnitId
+            ? Staff::where('status', '!=', 0)
+                ->whereHasMorph('staffable', [Cafe::class], fn($q) => $q->where('unit_id', $staffUnitId))
+                ->select('id', 'name')
+                ->orderBy('name')
+                ->get()
+            : collect();
 
         // Pendientes por café/unidad, para los badges del sidebar (sin importar la selección actual).
         $pendingByCafe = EquipmentDispatch::where('status', 'active')->where('destination_type', 'cafe')
@@ -196,6 +211,7 @@ class StoreController extends Controller
             'headquarters'  => $headquarters,
             'cafeStocks'    => $cafeStocks,
             'unitStocks'    => $unitStocks,
+            'staffOptions'  => $staffOptions,
             'stats'         => $stats,
             'pendingByCafe' => $pendingByCafe,
             'pendingByUnit' => $pendingByUnit,

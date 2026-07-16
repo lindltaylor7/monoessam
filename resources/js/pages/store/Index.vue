@@ -71,6 +71,7 @@ interface Dispatch {
 
 interface StockItem {
     id: number;
+    equipable_id: number;
     equipable_type: 'computer' | 'kitchen';
     equipment_name: string;
     equipment_brand: string | null;
@@ -78,7 +79,14 @@ interface StockItem {
     equipment_code: string | null;
     equipment_series: string | null;
     equipment_status: number | null;
+    responsible_id: number | null;
+    responsible_name: string | null;
     quantity: number;
+}
+
+interface StaffOption {
+    id: number;
+    name: string;
 }
 
 interface PaginationLinks {
@@ -123,6 +131,7 @@ const props = defineProps<{
     headquarters: HQ[];
     cafeStocks: Record<string, Record<string, StockLedgerEntry>>;
     unitStocks: Record<string, Record<string, StockLedgerEntry>>;
+    staffOptions: StaffOption[];
     stats: Stats;
     pendingByCafe: Record<number, number>;
     pendingByUnit: Record<number, number>;
@@ -141,7 +150,7 @@ type ViewSection = 'guides' | 'stock';
 const selectedType = ref<TargetType>(props.filters.location_type);
 const selectedId = ref<number | null>(props.filters.location_id || (props.cafes[0]?.id ?? null));
 const activeTab = ref<TabKey>(props.filters.type);
-const viewSection = ref<ViewSection>('guides');
+const viewSection = ref<ViewSection>('stock');
 const confirmId = ref<number | null>(null);
 const receptionNote = ref('');
 const processing = ref(false);
@@ -340,6 +349,25 @@ function doReceive(id: number) {
 function startConfirm(id: number) {
     confirmId.value = id;
     receptionNote.value = '';
+}
+
+// ── Asignación de responsable (Stock) ────────────────────────────────────────
+const assigningStock = ref<number | null>(null);
+
+function assignStaff(item: StockItem, staffId: string) {
+    if (!staffId) return;
+    assigningStock.value = item.id;
+    router.post(
+        route('equipments.history.store', { type: item.equipable_type, id: item.equipable_id }),
+        { action: 'Asignación', staff_id: staffId },
+        {
+            preserveScroll: true,
+            preserveState: true,
+            onFinish: () => {
+                assigningStock.value = null;
+            },
+        },
+    );
 }
 
 const tabs: { key: TabKey; label: string; icon: any }[] = [
@@ -550,6 +578,13 @@ function equipmentStatusInfo(val: number | null) {
                         <Tabs :model-value="viewSection" @update:model-value="(v) => (viewSection = v as ViewSection)" class="mb-4">
                             <TabsList class="bg-slate-100 p-1 dark:bg-gray-800">
                                 <TabsTrigger
+                                    value="stock"
+                                    class="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-gray-700"
+                                >
+                                    <PackageCheck class="h-4 w-4" />
+                                    Stock
+                                </TabsTrigger>
+                                <TabsTrigger
                                     value="guides"
                                     class="relative gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-gray-700"
                                 >
@@ -561,13 +596,6 @@ function equipmentStatusInfo(val: number | null) {
                                     >
                                         {{ stats.pending }}
                                     </span>
-                                </TabsTrigger>
-                                <TabsTrigger
-                                    value="stock"
-                                    class="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-gray-700"
-                                >
-                                    <PackageCheck class="h-4 w-4" />
-                                    Stock
                                 </TabsTrigger>
                             </TabsList>
                         </Tabs>
@@ -584,11 +612,7 @@ function equipmentStatusInfo(val: number | null) {
                                     <component :is="tab.icon" class="h-3.5 w-3.5 shrink-0" />
                                     <span class="hidden sm:inline">{{ tab.label }}</span>
                                     <span
-                                        v-if="
-                                            viewSection === 'guides' &&
-                                            tabPending(tab.key) > 0 &&
-                                            ['all', 'computer', 'kitchen'].includes(tab.key)
-                                        "
+                                        v-if="viewSection === 'guides' && tabPending(tab.key) > 0 && ['all', 'computer', 'kitchen'].includes(tab.key)"
                                         class="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-black text-white"
                                     >
                                         {{ tabPending(tab.key) }}
@@ -622,7 +646,7 @@ function equipmentStatusInfo(val: number | null) {
                                     >
                                         <!-- Cabecera de la guía -->
                                         <div
-                                            class="bg-muted/30 flex flex-col gap-3 border-b px-5 py-3.5 dark:bg-gray-700/30 lg:flex-row lg:items-center lg:justify-between"
+                                            class="bg-muted/30 flex flex-col gap-3 border-b px-5 py-3.5 lg:flex-row lg:items-center lg:justify-between dark:bg-gray-700/30"
                                         >
                                             <div class="flex items-center gap-2.5">
                                                 <div
@@ -639,7 +663,9 @@ function equipmentStatusInfo(val: number | null) {
                                                         </p>
                                                         <span
                                                             class="rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase"
-                                                            :class="group.is_outgoing ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'"
+                                                            :class="
+                                                                group.is_outgoing ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'
+                                                            "
                                                         >
                                                             {{ group.is_outgoing ? 'Saliente' : 'Entrante' }}
                                                         </span>
@@ -857,6 +883,7 @@ function equipmentStatusInfo(val: number | null) {
                                                 <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">N° Serie</th>
                                                 <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">Tipo</th>
                                                 <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">Estado</th>
+                                                <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">Responsable</th>
                                                 <th class="px-4 py-3 text-center text-xs font-bold text-slate-500">Cant.</th>
                                             </tr>
                                         </thead>
@@ -885,11 +912,25 @@ function equipmentStatusInfo(val: number | null) {
                                                 <td class="px-4 py-3">
                                                     <span
                                                         v-if="item.equipment_status !== null"
-                                                        :class="['inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', equipmentStatusInfo(item.equipment_status).cls]"
+                                                        :class="[
+                                                            'inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold',
+                                                            equipmentStatusInfo(item.equipment_status).cls,
+                                                        ]"
                                                     >
                                                         {{ equipmentStatusInfo(item.equipment_status).label }}
                                                     </span>
                                                     <span v-else class="text-xs text-slate-300">—</span>
+                                                </td>
+                                                <td class="px-4 py-3">
+                                                    <select
+                                                        :value="item.responsible_id ?? ''"
+                                                        :disabled="assigningStock === item.id"
+                                                        @change="assignStaff(item, ($event.target as HTMLSelectElement).value)"
+                                                        class="w-full max-w-[160px] rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs outline-none focus:border-indigo-400 disabled:opacity-50 dark:bg-gray-700 dark:text-white"
+                                                    >
+                                                        <option value="">{{ item.responsible_name ?? 'Sin asignar' }}</option>
+                                                        <option v-for="s in staffOptions" :key="s.id" :value="s.id">{{ s.name }}</option>
+                                                    </select>
                                                 </td>
                                                 <td class="px-4 py-3 text-center">
                                                     <span
