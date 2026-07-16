@@ -57,11 +57,7 @@ defineProps<Props>();
                                 ><SelectValue placeholder="Talla"
                             /></SelectTrigger>
                             <SelectContent>
-                                <SelectItem value="s">S</SelectItem>
-                                <SelectItem value="m">M</SelectItem>
-                                <SelectItem value="l">L</SelectItem>
-                                <SelectItem value="xl">XL</SelectItem>
-                                <SelectItem value="xxl">XXL</SelectItem>
+                                <SelectItem v-for="s in ['S', 'M', 'L', 'XL', 'XXL']" :key="s" :value="s">{{ s }}</SelectItem>
                             </SelectContent>
                         </Select>
 

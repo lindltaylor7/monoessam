@@ -78,6 +78,16 @@ watch(
     { immediate: true },
 );
 
+// El diálogo vive montado (oculto) desde que carga la tabla completa de Personal, mucho antes de
+// que el usuario lo abra — así que la copia inicial de arriba puede quedar desactualizada respecto
+// a cambios hechos después en Ropa/EPP. Al abrirlo, se vuelve a sincronizar contra los datos
+// actuales de `props.staff`, igual que hace en vivo el modal de Ropa/EPP.
+watch(isOpen, (open) => {
+    if (!open) return;
+    initializeStaffData(props.staff, props.units);
+    updateAvailableClothes(props.staff?.staff_clothes);
+});
+
 // Handlers
 const onSubmit = () => {
     const onSuccess = () => {

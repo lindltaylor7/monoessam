@@ -100,7 +100,6 @@ class StaffController extends Controller
             );
         }
 
-        $staff->staff_clothes->each->delete();
         $this->syncStaffClothes($request, $staff);
 
         return redirect()->route('staff.index');
@@ -377,16 +376,32 @@ class StaffController extends Controller
 
     private function syncStaffClothes(Request $request, Staff $staff): void
     {
+        if (!$request->has('prendas')) {
+            return;
+        }
+
         foreach ($request->prendas as $clothe) {
             if (empty($clothe['talla'])) {
                 continue;
             }
-            Staff_clothes::create([
-                'staff_id'      => $staff->id,
-                'clothe_name'   => $clothe['label'],
-                'clothing_size' => $clothe['talla'],
-                'cloth_id'      => $clothe['id'] ?? null,
-            ]);
+
+            // Actualiza/crea únicamente la fila de "talla de referencia" (cloth_id y epp_id
+            // nulos) para esta prenda. Nunca toca las entregas reales de EPP/Ropa (que sí
+            // tienen cloth_id/epp_id) registradas desde la página de Ropa/EPP — antes esta
+            // función se llamaba después de borrar TODO staff_clothes, lo que eliminaba esas
+            // entregas para siempre y revertía cambios hechos ahí con la foto vieja que tenía
+            // este formulario al abrirse.
+            Staff_clothes::updateOrCreate(
+                [
+                    'staff_id'    => $staff->id,
+                    'clothe_name' => $clothe['label'],
+                    'cloth_id'    => null,
+                    'epp_id'      => null,
+                ],
+                [
+                    'clothing_size' => $clothe['talla'],
+                ],
+            );
         }
     }
 
