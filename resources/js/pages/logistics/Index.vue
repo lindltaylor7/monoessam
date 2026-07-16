@@ -63,6 +63,8 @@ const mapCenter = computed(() => mapRouteData.value?.center ?? DEFAULT_CENTER);
 interface StaffRef {
     id: number;
     name: string;
+    cafe_id: number | null;
+    unit_id: number | null;
 }
 interface HQRef {
     id: number;
@@ -530,6 +532,59 @@ const destinationOptions = computed(() => {
         default:
             return [];
     }
+});
+
+// ── Buscador de "Encargado de Recepción": filtra el personal al café/unidad del destino
+// elegido — para otros tipos de destino (mina, sede) no hay a qué café/unidad acotar, así que
+// se muestra el listado completo.
+const staffSearch = ref('');
+const staffDropdownOpen = ref(false);
+
+const selectedStaff = computed(() => props.staff.find((s) => String(s.id) === String(form.staff_id)) ?? null);
+
+const destinationScopedStaff = computed(() => {
+    if (form.destination_type === 'cafe' && form.destination_id) {
+        return props.staff.filter((s) => s.cafe_id === Number(form.destination_id));
+    }
+    if (form.destination_type === 'unit' && form.destination_id) {
+        return props.staff.filter((s) => s.unit_id === Number(form.destination_id));
+    }
+    return props.staff;
+});
+
+const staffSearchResults = computed(() => {
+    const q = staffSearch.value.trim().toLowerCase();
+    if (!q) return destinationScopedStaff.value;
+    return destinationScopedStaff.value.filter((s) => s.name.toLowerCase().includes(q));
+});
+
+function openStaffDropdown() {
+    staffDropdownOpen.value = true;
+    staffSearch.value = '';
+}
+
+function closeStaffDropdown() {
+    setTimeout(() => {
+        staffDropdownOpen.value = false;
+        staffSearch.value = selectedStaff.value?.name ?? '';
+    }, 150);
+}
+
+function pickStaff(id: string) {
+    form.staff_id = id;
+    staffDropdownOpen.value = false;
+    staffSearch.value = selectedStaff.value?.name ?? '';
+}
+
+// Mantiene el texto mostrado sincronizado con la selección mientras no se está buscando, y
+// limpia al encargado si deja de pertenecer al destino recién elegido.
+watch(selectedStaff, (s) => {
+    if (!staffDropdownOpen.value) staffSearch.value = s?.name ?? '';
+});
+watch([() => form.destination_type, () => form.destination_id], () => {
+    if (form.staff_id === 'none' || !form.staff_id) return;
+    const stillValid = destinationScopedStaff.value.some((s) => String(s.id) === String(form.staff_id));
+    if (!stillValid) form.staff_id = 'none';
 });
 
 function openCreate() {
@@ -1390,15 +1445,42 @@ function pctCls(v: number | null): string {
                         </Select>
                         <p v-if="form.errors.destination_id" class="text-xs text-red-500">{{ form.errors.destination_id }}</p>
                     </div>
-                    <div class="space-y-1.5">
+                    <div class="relative space-y-1.5">
                         <Label>Encargado de Recepción</Label>
-                        <Select v-model="form.staff_id">
-                            <SelectTrigger><SelectValue placeholder="Sin asignar" /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="none">Sin asignar</SelectItem>
-                                <SelectItem v-for="s in staff" :key="s.id" :value="String(s.id)">{{ s.name }}</SelectItem>
-                            </SelectContent>
-                        </Select>
+                        <input
+                            v-model="staffSearch"
+                            type="text"
+                            placeholder="Buscar por nombre…"
+                            class="border-input flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200"
+                            @focus="openStaffDropdown"
+                            @blur="closeStaffDropdown"
+                        />
+                        <div
+                            v-if="staffDropdownOpen"
+                            class="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-white shadow-lg dark:bg-gray-800"
+                        >
+                            <button
+                                type="button"
+                                class="block w-full px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50 dark:hover:bg-gray-700"
+                                @mousedown.prevent="pickStaff('none')"
+                            >
+                                Sin asignar
+                            </button>
+                            <button
+                                v-for="s in staffSearchResults"
+                                :key="s.id"
+                                type="button"
+                                class="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-gray-700"
+                                :class="String(s.id) === String(form.staff_id) ? 'bg-indigo-50 font-semibold text-indigo-700' : ''"
+                                @mousedown.prevent="pickStaff(String(s.id))"
+                            >
+                                {{ s.name }}
+                            </button>
+                            <p v-if="staffSearchResults.length === 0" class="px-3 py-2 text-xs text-slate-400">Sin resultados</p>
+                        </div>
+                        <p v-if="form.destination_type === 'cafe' || form.destination_type === 'unit'" class="text-[11px] text-slate-400">
+                            Solo se muestra personal del destino seleccionado
+                        </p>
                     </div>
                 </div>
 

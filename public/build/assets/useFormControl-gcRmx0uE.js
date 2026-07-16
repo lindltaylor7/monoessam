@@ -1,1 +1,0 @@
-import{g as t}from"./useForwardExpose-CTNotla-.js";import{c as e,bC as m}from"./app-7eoM1w9n.js";function s(o){return e(()=>{var r;return m(o)?!!((r=t(o))!=null&&r.closest("form")):!0})}export{s as u};
