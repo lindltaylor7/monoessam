@@ -385,6 +385,14 @@ class StaffController extends Controller
                 continue;
             }
 
+            // Rechaza formatos que no coincidan con las opciones vigentes del <Select> (p. ej. "S"
+            // en vez de "S - 28" para Pantalón) para no volver a guardar valores que luego no
+            // coinciden con ninguna opción de ninguno de los dos forms.
+            $allowed = Staff_clothes::allowedSizesFor($clothe['label']);
+            if ($allowed && !in_array($clothe['talla'], $allowed, true)) {
+                continue;
+            }
+
             // Actualiza/crea únicamente la fila de "talla de referencia" (cloth_id y epp_id
             // nulos) para esta prenda. Nunca toca las entregas reales de EPP/Ropa (que sí
             // tienen cloth_id/epp_id) registradas desde la página de Ropa/EPP — antes esta

@@ -206,7 +206,7 @@ class ClothController extends Controller
         $validated = $request->validate([
             'staff_id'     => 'required|exists:staff,id',
             'clothe_name'  => 'required|string|max:100',
-            'clothing_size' => 'nullable|string|max:50',
+            'clothing_size' => ['nullable', 'string', 'max:50', $this->allowedSizeRule($request->clothe_name)],
         ]);
 
         Staff_clothes::create([
@@ -224,17 +224,34 @@ class ClothController extends Controller
     /** Update clothe_name / clothing_size of a profile item. */
     public function updateProfileItem(Request $request, $id)
     {
-        $validated = $request->validate([
-            'clothe_name'   => 'nullable|string|max:100',
-            'clothing_size' => 'nullable|string|max:50',
-        ]);
-
         $entry = Staff_clothes::findOrFail($id);
         abort_if($entry->cloth_id || $entry->epp_id, 403, 'No es un ítem de perfil.');
+
+        $effectiveClotheName = $request->clothe_name ?? $entry->clothe_name;
+
+        $validated = $request->validate([
+            'clothe_name'   => 'nullable|string|max:100',
+            'clothing_size' => ['nullable', 'string', 'max:50', $this->allowedSizeRule($effectiveClotheName)],
+        ]);
 
         $entry->update(array_filter($validated, fn($v) => $v !== null));
 
         return back()->with('success', 'Actualizado correctamente.');
+    }
+
+    /**
+     * Rechaza tallas que no coincidan con las opciones vigentes del <Select> para esta prenda
+     * (mismo mapa que usa el form de Staff en Staff_clothes::allowedSizesFor), para que ambos
+     * forms sigan coincidiendo siempre. Sin restricción para prendas de texto libre.
+     */
+    private function allowedSizeRule(?string $clotheName)
+    {
+        return function (string $attribute, $value, $fail) use ($clotheName) {
+            $allowed = Staff_clothes::allowedSizesFor($clotheName);
+            if ($allowed && $value !== null && !in_array($value, $allowed, true)) {
+                $fail('La talla seleccionada no es válida para esta prenda.');
+            }
+        };
     }
 
     /** Delete a profile item. */
