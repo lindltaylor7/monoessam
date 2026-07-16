@@ -10,6 +10,7 @@ use App\Models\Headquarter;
 use App\Models\KitchenEquipment;
 use App\Models\Unit;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -17,7 +18,10 @@ use Inertia\Inertia;
 
 class StoreController extends Controller
 {
-    public function index()
+    private const GUIDES_PER_PAGE = 10;
+    private const STOCK_PER_PAGE  = 15;
+
+    public function index(Request $request)
     {
         $mineId = Auth::user()?->mine_id;
 
@@ -37,19 +41,6 @@ class StoreController extends Controller
 
         $unitIds = $units->pluck('id');
 
-        $dispatches = EquipmentDispatch::with(['equipable', 'origin', 'originCafe', 'dispatcher', 'receiver'])
-            ->where(function ($q) use ($cafeIds, $unitIds) {
-                $q->where(function ($q2) use ($cafeIds) {
-                    $q2->where('destination_type', 'cafe')->whereIn('destination_id', $cafeIds);
-                })->orWhere(function ($q2) use ($unitIds) {
-                    $q2->where('destination_type', 'unit')->whereIn('destination_id', $unitIds);
-                });
-            })
-            ->where('status', 'active')
-            ->latest()
-            ->get()
-            ->map(fn($d) => $this->transform($d));
-
         // Destinations for the send modal
         $allCafes = Cafe::with('unit:id,name,mine_id', 'unit.mine:id,name')
             ->orderBy('name')
@@ -59,28 +50,160 @@ class StoreController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'business_id']);
 
-        // Stock real por café/unidad (ledger), agrupado para que la tabla de Despachos y el
-        // modal de envío lo lean directo — sin reconstruirlo a partir del historial de guías.
+        // Stock real por café/unidad (ledger completo, sin paginar) — lo usa el modal "Nueva
+        // Guía de Remisión" para calcular "Disponible", independiente de la tabla paginada.
+        // Incluye el nombre del equipo directamente (no depende de que esté en la página
+        // actualmente cargada de `dispatches`/`stock`, que sí están paginados).
         $stocksByLocation = function (string $locationCol, $ids) {
-            return EquipmentStock::whereIn($locationCol, $ids)
-                ->get(['stockable_type', 'stockable_id', $locationCol, 'quantity'])
+            return EquipmentStock::with('stockable:id,name,brand,model')
+                ->whereIn($locationCol, $ids)
+                ->get(['id', 'stockable_type', 'stockable_id', $locationCol, 'quantity'])
                 ->groupBy($locationCol)
                 ->map(fn($group) => $group->mapWithKeys(fn($r) => [
-                    (str_contains($r->stockable_type, 'Computer') ? 'computer' : 'kitchen') . '-' . $r->stockable_id => $r->quantity,
+                    (str_contains($r->stockable_type, 'Computer') ? 'computer' : 'kitchen') . '-' . $r->stockable_id => [
+                        'quantity' => $r->quantity,
+                        'name'     => $r->stockable?->name ?? '—',
+                        'brand'    => $r->stockable?->brand,
+                        'model'    => $r->stockable?->model,
+                    ],
                 ]));
         };
 
         $cafeStocks = $stocksByLocation('cafe_id', $cafeIds);
         $unitStocks = $stocksByLocation('unit_id', $unitIds);
 
+        // ── Ubicación y filtro seleccionados (llegan por query string) ──
+        $locationType = $request->input('location_type', 'cafe') === 'unit' ? 'unit' : 'cafe';
+        $locationId   = (int) $request->input('location_id', $cafes->first()?->id ?? 0);
+        $typeFilter   = $request->input('type', 'all');
+
+        $modelMap          = ['computer' => ComputerEquipment::class, 'kitchen' => KitchenEquipment::class];
+        $modelClassFilter  = $modelMap[$typeFilter] ?? null;
+        $noResultsForType  = in_array($typeFilter, ['epp', 'supplies'], true);
+
+        // Query base de despachos relacionados a esta ubicación: si es un café, incluye tanto lo
+        // que le llega (destino) como lo que sale de él hacia cualquier otro lado (origen) — así
+        // la pestaña "Guías" muestra el movimiento completo, no solo lo recibido.
+        $guideBase = EquipmentDispatch::query()->where('status', 'active');
+        if ($locationId && $locationType === 'cafe') {
+            $guideBase->where(function ($q) use ($locationId) {
+                $q->where(function ($q2) use ($locationId) {
+                    $q2->where('destination_type', 'cafe')->where('destination_id', $locationId);
+                })->orWhere('origin_cafe_id', $locationId);
+            });
+        } elseif ($locationId) {
+            $guideBase->where('destination_type', 'unit')->where('destination_id', $locationId);
+        } else {
+            $guideBase->whereRaw('1 = 0');
+        }
+
+        // Stats generales de la ubicación (no filtran por tipo — siempre reflejan el total).
+        $statsRows = (clone $guideBase)->get(['id', 'equipable_type', 'received_at']);
+        $stats = [
+            'pending'          => $statsRows->whereNull('received_at')->count(),
+            'received'         => $statsRows->whereNotNull('received_at')->count(),
+            'computers'        => $statsRows->where('equipable_type', ComputerEquipment::class)->count(),
+            'kitchen'          => $statsRows->where('equipable_type', KitchenEquipment::class)->count(),
+            'pending_computer' => $statsRows->whereNull('received_at')->where('equipable_type', ComputerEquipment::class)->count(),
+            'pending_kitchen'  => $statsRows->whereNull('received_at')->where('equipable_type', KitchenEquipment::class)->count(),
+        ];
+
+        if ($modelClassFilter) {
+            $guideBase->where('equipable_type', $modelClassFilter);
+        } elseif ($noResultsForType) {
+            $guideBase->whereRaw('1 = 0');
+        }
+
+        // ── Guías: se pagina por GUÍA (guide_number), no por fila individual, para que cada
+        // página muestre grupos completos y no corte una guía a la mitad. ──
+        $guidesPage = max(1, (int) $request->input('guides_page', 1));
+
+        $guideGroups = (clone $guideBase)
+            ->select('guide_number', DB::raw('MAX(id) as sort_id'))
+            ->groupBy('guide_number')
+            ->orderByDesc('sort_id')
+            ->get();
+
+        $totalGuides       = $guideGroups->count();
+        $pagedGuideNumbers = $guideGroups->forPage($guidesPage, self::GUIDES_PER_PAGE)->pluck('guide_number');
+
+        $dispatchesRaw = EquipmentDispatch::with(['equipable', 'origin', 'originCafe', 'dispatcher', 'receiver'])
+            ->whereIn('guide_number', $pagedGuideNumbers)
+            ->orderByDesc('id')
+            ->get();
+
+        // Resuelve el nombre del destino en bloque (no N+1) para las guías salientes.
+        $destCafes = Cafe::whereIn('id', $dispatchesRaw->where('destination_type', 'cafe')->pluck('destination_id')->unique())
+            ->select('id', 'name')->get()->keyBy('id');
+        $destHeadquarters = Headquarter::whereIn('id', $dispatchesRaw->where('destination_type', 'headquarter')->pluck('destination_id')->unique())
+            ->select('id', 'name')->get()->keyBy('id');
+        $destUnits = Unit::whereIn('id', $dispatchesRaw->where('destination_type', 'unit')->pluck('destination_id')->unique())
+            ->select('id', 'name')->get()->keyBy('id');
+
+        $dispatchesTransformed = $dispatchesRaw->map(fn($d) => $this->transform($d, $destCafes, $destHeadquarters, $destUnits))->values();
+
+        $dispatchesPaginator = new LengthAwarePaginator(
+            $dispatchesTransformed,
+            $totalGuides,
+            self::GUIDES_PER_PAGE,
+            $guidesPage,
+            ['path' => $request->url(), 'pageName' => 'guides_page'],
+        );
+        $dispatchesPaginator->appends($request->query());
+
+        // ── Stock: paginación estándar de Laravel, 15 por página ──
+        $stockQuery = EquipmentStock::with('stockable')->where('quantity', '>', 0);
+        if ($locationId && $locationType === 'cafe') {
+            $stockQuery->where('cafe_id', $locationId);
+        } elseif ($locationId) {
+            $stockQuery->where('unit_id', $locationId);
+        } else {
+            $stockQuery->whereRaw('1 = 0');
+        }
+        if ($modelClassFilter) {
+            $stockQuery->where('stockable_type', $modelClassFilter);
+        } elseif ($noResultsForType) {
+            $stockQuery->whereRaw('1 = 0');
+        }
+
+        $stockPaginator = $stockQuery->orderBy('id')->paginate(self::STOCK_PER_PAGE, ['*'], 'stock_page')->withQueryString();
+        $stockPaginator->getCollection()->transform(fn($s) => [
+            'id'                => $s->id,
+            'equipable_type'    => str_contains($s->stockable_type, 'Computer') ? 'computer' : 'kitchen',
+            'equipment_name'    => $s->stockable?->name ?? '—',
+            'equipment_brand'   => $s->stockable?->brand,
+            'equipment_model'   => $s->stockable?->model,
+            'equipment_code'    => $s->stockable?->code,
+            'equipment_series'  => $s->stockable?->series,
+            'equipment_status'  => $s->stockable?->status,
+            'quantity'          => $s->quantity,
+        ]);
+
+        // Pendientes por café/unidad, para los badges del sidebar (sin importar la selección actual).
+        $pendingByCafe = EquipmentDispatch::where('status', 'active')->where('destination_type', 'cafe')
+            ->whereIn('destination_id', $cafeIds)->whereNull('received_at')
+            ->select('destination_id', DB::raw('count(*) as cnt'))->groupBy('destination_id')->pluck('cnt', 'destination_id');
+        $pendingByUnit = EquipmentDispatch::where('status', 'active')->where('destination_type', 'unit')
+            ->whereIn('destination_id', $unitIds)->whereNull('received_at')
+            ->select('destination_id', DB::raw('count(*) as cnt'))->groupBy('destination_id')->pluck('cnt', 'destination_id');
+
         return Inertia::render('store/Index', [
-            'dispatches'   => $dispatches,
-            'cafes'        => $cafes,
-            'units'        => $units,
-            'allCafes'     => $allCafes,
-            'headquarters' => $headquarters,
-            'cafeStocks'   => $cafeStocks,
-            'unitStocks'   => $unitStocks,
+            'dispatches'    => $dispatchesPaginator,
+            'stock'         => $stockPaginator,
+            'cafes'         => $cafes,
+            'units'         => $units,
+            'allCafes'      => $allCafes,
+            'headquarters'  => $headquarters,
+            'cafeStocks'    => $cafeStocks,
+            'unitStocks'    => $unitStocks,
+            'stats'         => $stats,
+            'pendingByCafe' => $pendingByCafe,
+            'pendingByUnit' => $pendingByUnit,
+            'filters'       => [
+                'location_type' => $locationType,
+                'location_id'   => $locationId,
+                'type'          => $typeFilter,
+            ],
         ]);
     }
 
@@ -158,11 +281,18 @@ class StoreController extends Controller
         return back()->with('success', "Guía {$guideNumber} generada — {$count} ítem(s) enviado(s).");
     }
 
-    private function transform(EquipmentDispatch $d): array
+    private function transform(EquipmentDispatch $d, $destCafes = null, $destHeadquarters = null, $destUnits = null): array
     {
         $equipType = str_contains($d->equipable_type, 'Computer') ? 'computer' : 'kitchen';
 
         $originName = $d->origin?->name ?? $d->originCafe?->name ?? '—';
+
+        $destinationName = match ($d->destination_type) {
+            'cafe'        => $destCafes?->get($d->destination_id)?->name,
+            'headquarter' => $destHeadquarters?->get($d->destination_id)?->name,
+            'unit'        => $destUnits?->get($d->destination_id)?->name,
+            default       => null,
+        } ?? '—';
 
         return [
             'id'              => $d->id,
@@ -176,9 +306,13 @@ class StoreController extends Controller
             'equipment_brand' => $d->equipable?->brand,
             'equipment_model' => $d->equipable?->model,
             'equipment_code'  => $d->equipable?->code,
+            'equipment_series' => $d->equipable?->series,
+            'equipment_status' => $d->equipable?->status,
+            'origin_cafe_id'  => $d->origin_cafe_id,
             'origin_name'     => $originName,
             'destination_type' => $d->destination_type,
             'destination_id'  => $d->destination_id,
+            'destination_name' => $destinationName,
             'dispatched_by'   => $d->dispatcher?->name ?? '—',
             'dispatched_at'   => $d->dispatched_at?->format('d/m/Y H:i'),
             'received_at'     => $d->received_at?->format('d/m/Y H:i'),

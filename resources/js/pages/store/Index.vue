@@ -1,13 +1,13 @@
 <script setup lang="ts">
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import {
     Building2,
     CheckCircle2,
-    ChevronDown,
-    ChevronUp,
     Clock,
     Coffee,
+    FileText,
     HardHat,
     Laptop,
     PackageCheck,
@@ -55,9 +55,13 @@ interface Dispatch {
     equipment_brand: string | null;
     equipment_model: string | null;
     equipment_code: string | null;
+    equipment_series: string | null;
+    equipment_status: number | null;
+    origin_cafe_id: number | null;
     origin_name: string;
     destination_type: string;
     destination_id: number;
+    destination_name: string;
     dispatched_by: string;
     dispatched_at: string;
     received_at: string | null;
@@ -65,27 +69,82 @@ interface Dispatch {
     reception_notes: string | null;
 }
 
+interface StockItem {
+    id: number;
+    equipable_type: 'computer' | 'kitchen';
+    equipment_name: string;
+    equipment_brand: string | null;
+    equipment_model: string | null;
+    equipment_code: string | null;
+    equipment_series: string | null;
+    equipment_status: number | null;
+    quantity: number;
+}
+
+interface PaginationLinks {
+    url: string | null;
+    label: string;
+    active: boolean;
+}
+
+interface Paginated<T> {
+    data: T[];
+    links: PaginationLinks[];
+    total: number;
+    current_page: number;
+    last_page: number;
+    per_page: number;
+    from: number | null;
+    to: number | null;
+}
+
+interface Stats {
+    pending: number;
+    received: number;
+    computers: number;
+    kitchen: number;
+    pending_computer: number;
+    pending_kitchen: number;
+}
+
+interface StockLedgerEntry {
+    quantity: number;
+    name: string;
+    brand: string | null;
+    model: string | null;
+}
+
 const props = defineProps<{
-    dispatches: Dispatch[];
+    dispatches: Paginated<Dispatch>;
+    stock: Paginated<StockItem>;
     cafes: Cafe[];
     units: UnitDest[];
     allCafes: Cafe[];
     headquarters: HQ[];
-    cafeStocks: Record<string, Record<string, number>>;
-    unitStocks: Record<string, Record<string, number>>;
+    cafeStocks: Record<string, Record<string, StockLedgerEntry>>;
+    unitStocks: Record<string, Record<string, StockLedgerEntry>>;
+    stats: Stats;
+    pendingByCafe: Record<number, number>;
+    pendingByUnit: Record<number, number>;
+    filters: {
+        location_type: 'cafe' | 'unit';
+        location_id: number;
+        type: 'all' | 'computer' | 'kitchen' | 'epp' | 'supplies';
+    };
 }>();
 
 // ── State ──────────────────────────────────────────────────────────────────
 type TabKey = 'all' | 'computer' | 'kitchen' | 'epp' | 'supplies';
 type TargetType = 'cafe' | 'unit';
+type ViewSection = 'guides' | 'stock';
 
-const selectedType = ref<TargetType>('cafe');
-const selectedId = ref<number | null>(props.cafes[0]?.id ?? null);
-const activeTab = ref<TabKey>('all');
+const selectedType = ref<TargetType>(props.filters.location_type);
+const selectedId = ref<number | null>(props.filters.location_id || (props.cafes[0]?.id ?? null));
+const activeTab = ref<TabKey>(props.filters.type);
+const viewSection = ref<ViewSection>('guides');
 const confirmId = ref<number | null>(null);
 const receptionNote = ref('');
 const processing = ref(false);
-const showHistory = ref(false);
 
 // ── Send modal ─────────────────────────────────────────────────────────────
 const sendOpen = ref(false);
@@ -98,22 +157,20 @@ const sendForm = ref({
 const sendProcessing = ref(false);
 
 function openSendModal() {
-    // "Disponible" se lee directo del ledger de stock del café (equipment_stocks), no del
-    // historial de guías — el nombre/marca del equipo sí se toma de cualquier guía que lo
-    // mencione, solo para mostrarlo en la lista.
+    // "Disponible" y el nombre del equipo se leen directo del ledger de stock del café
+    // (equipment_stocks) — no dependen de qué página de guías/stock esté cargada.
     const stockForCafe = props.cafeStocks[String(selectedId.value)] ?? {};
     const byEquip: Record<string, (typeof sendForm.value)['items'][0]> = {};
-    for (const [key, qty] of Object.entries(stockForCafe)) {
-        if (qty <= 0) continue;
+    for (const [key, entry] of Object.entries(stockForCafe)) {
+        if (entry.quantity <= 0) continue;
         const [equipableType, equipableIdStr] = key.split('-') as ['computer' | 'kitchen', string];
         const equipableId = Number(equipableIdStr);
-        const match = props.dispatches.find((d) => d.equipable_type === equipableType && d.equipable_id === equipableId);
         byEquip[key] = {
             equipable_type: equipableType,
             equipable_id: equipableId,
-            equipment_name: match?.equipment_name ?? '—',
+            equipment_name: entry.name,
             quantity: 0,
-            max: qty,
+            max: entry.quantity,
         };
     }
     sendForm.value = {
@@ -128,29 +185,6 @@ function openSendModal() {
 function closeSendModal() {
     sendOpen.value = false;
 }
-
-// Stock actual del café/unidad seleccionado — una fila por equipo, sin repetirse aunque el
-// mismo equipo aparezca en varias guías del historial. Independiente de la tabla de Despachos.
-const currentLocationStock = computed(() => {
-    const stocks = selectedType.value === 'cafe' ? props.cafeStocks : props.unitStocks;
-    const stockMap = stocks[String(selectedId.value)] ?? {};
-    return Object.entries(stockMap)
-        .filter(([, qty]) => qty > 0)
-        .map(([key, qty]) => {
-            const [equipableType, equipableIdStr] = key.split('-') as ['computer' | 'kitchen', string];
-            const equipableId = Number(equipableIdStr);
-            const match = props.dispatches.find((d) => d.equipable_type === equipableType && d.equipable_id === equipableId);
-            return {
-                key,
-                equipable_type: equipableType,
-                equipment_name: match?.equipment_name ?? '—',
-                equipment_brand: match?.equipment_brand ?? null,
-                equipment_model: match?.equipment_model ?? null,
-                quantity: qty,
-            };
-        })
-        .sort((a, b) => a.equipment_name.localeCompare(b.equipment_name));
-});
 
 const sendableItems = computed(() => sendForm.value.items.filter((i) => i.quantity > 0));
 
@@ -197,40 +231,93 @@ const selectedCafe = computed(() => (selectedType.value === 'cafe' ? (props.cafe
 
 const selectedUnit = computed(() => (selectedType.value === 'unit' ? (props.units.find((u) => u.id === selectedId.value) ?? null) : null));
 
-const targetDispatches = computed(() =>
-    props.dispatches.filter((d) => d.destination_type === selectedType.value && d.destination_id === selectedId.value),
-);
+// Agrupa los despachos por guía de remisión (ya vienen filtrados y paginados desde el backend
+// — 10 guías por página) — igual al patrón de "Desde Café" en Inventario: una tarjeta por guía,
+// con sus equipos listados debajo. `is_outgoing` indica si el café/unidad seleccionado es el
+// ORIGEN de la guía (salió de aquí) en vez del destino (llegó aquí) — cambia qué se muestra en
+// la cabecera y si corresponde ofrecer la acción de recepcionar.
+interface DispatchGroup {
+    key: string;
+    guide_number: string | null;
+    items: Dispatch[];
+    origin_name: string;
+    destination_name: string;
+    is_outgoing: boolean;
+    dispatched_at: string;
+    dispatched_by: string;
+}
 
-const filteredDispatches = computed(() => {
-    if (activeTab.value === 'all') return targetDispatches.value;
-    if (activeTab.value === 'computer') return targetDispatches.value.filter((d) => d.equipable_type === 'computer');
-    if (activeTab.value === 'kitchen') return targetDispatches.value.filter((d) => d.equipable_type === 'kitchen');
-    return [];
-});
-
-const stats = computed(() => {
-    const all = targetDispatches.value;
-    return {
-        pending: all.filter((d) => !d.received_at).length,
-        received: all.filter((d) => d.received_at).length,
-        computers: all.filter((d) => d.equipable_type === 'computer').length,
-        kitchen: all.filter((d) => d.equipable_type === 'kitchen').length,
-    };
+const groupedDispatches = computed((): DispatchGroup[] => {
+    const map = new Map<string, DispatchGroup>();
+    for (const d of props.dispatches.data) {
+        const key = d.guide_number ?? `solo-${d.id}`;
+        if (map.has(key)) {
+            map.get(key)!.items.push(d);
+        } else {
+            map.set(key, {
+                key,
+                guide_number: d.guide_number,
+                items: [d],
+                origin_name: d.origin_name,
+                destination_name: d.destination_name,
+                is_outgoing: selectedType.value === 'cafe' && d.origin_cafe_id === selectedId.value,
+                dispatched_at: d.dispatched_at,
+                dispatched_by: d.dispatched_by,
+            });
+        }
+    }
+    return [...map.values()];
 });
 
 function pendingForCafe(cafeId: number) {
-    return props.dispatches.filter((d) => d.destination_type === 'cafe' && d.destination_id === cafeId && !d.received_at).length;
+    return props.pendingByCafe[cafeId] ?? 0;
 }
 
 function pendingForUnit(unitId: number) {
-    return props.dispatches.filter((d) => d.destination_type === 'unit' && d.destination_id === unitId && !d.received_at).length;
+    return props.pendingByUnit[unitId] ?? 0;
 }
 
 function tabPending(key: TabKey) {
-    if (key === 'all') return targetDispatches.value.filter((d) => !d.received_at).length;
-    if (key === 'computer') return targetDispatches.value.filter((d) => d.equipable_type === 'computer' && !d.received_at).length;
-    if (key === 'kitchen') return targetDispatches.value.filter((d) => d.equipable_type === 'kitchen' && !d.received_at).length;
+    if (key === 'all') return props.stats.pending;
+    if (key === 'computer') return props.stats.pending_computer;
+    if (key === 'kitchen') return props.stats.pending_kitchen;
     return 0;
+}
+
+// ── Selección de café/unidad y filtro por tipo: paginación y filtrado ocurren en el backend,
+// así que cambiar cualquiera de estos dispara una nueva visita (reseteando ambas páginas a 1).
+function reload(overrides: Partial<{ location_type: TargetType; location_id: number; type: TabKey }> = {}) {
+    router.get(
+        route('store'),
+        {
+            location_type: overrides.location_type ?? selectedType.value,
+            location_id: overrides.location_id ?? selectedId.value,
+            type: overrides.type ?? activeTab.value,
+        },
+        { preserveScroll: true, preserveState: true, replace: true },
+    );
+}
+
+function selectCafe(cafeId: number) {
+    selectedType.value = 'cafe';
+    selectedId.value = cafeId;
+    activeTab.value = 'all';
+    confirmId.value = null;
+    reload({ location_type: 'cafe', location_id: cafeId, type: 'all' });
+}
+
+function selectUnit(unitId: number) {
+    selectedType.value = 'unit';
+    selectedId.value = unitId;
+    activeTab.value = 'all';
+    confirmId.value = null;
+    reload({ location_type: 'unit', location_id: unitId, type: 'all' });
+}
+
+function selectTypeTab(key: TabKey) {
+    activeTab.value = key;
+    confirmId.value = null;
+    reload({ type: key });
 }
 
 // ── Reception ──────────────────────────────────────────────────────────────
@@ -262,6 +349,18 @@ const tabs: { key: TabKey; label: string; icon: any }[] = [
     { key: 'epp', label: 'EPP', icon: ShieldCheck },
     { key: 'supplies', label: 'Insumos', icon: HardHat },
 ];
+
+const EQUIPMENT_STATUSES = [
+    { value: 0, label: 'Nuevo', cls: 'bg-blue-100 text-blue-700 border-blue-200' },
+    { value: 1, label: 'Bueno', cls: 'bg-green-100 text-green-700 border-green-200' },
+    { value: 2, label: 'Regular', cls: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
+    { value: 3, label: 'Dañado', cls: 'bg-red-100 text-red-700 border-red-200' },
+    { value: 4, label: 'Baja', cls: 'bg-gray-100 text-gray-600 border-gray-200' },
+];
+
+function equipmentStatusInfo(val: number | null) {
+    return EQUIPMENT_STATUSES.find((s) => s.value === val) ?? EQUIPMENT_STATUSES[0];
+}
 </script>
 
 <template>
@@ -288,12 +387,7 @@ const tabs: { key: TabKey; label: string; icon: any }[] = [
                     <ul class="space-y-0.5 px-2 pb-2">
                         <li v-for="unit in units" :key="`unit-${unit.id}`">
                             <button
-                                @click="
-                                    selectedType = 'unit';
-                                    selectedId = unit.id;
-                                    activeTab = 'all';
-                                    confirmId = null;
-                                "
+                                @click="selectUnit(unit.id)"
                                 class="group flex w-full items-start gap-2 rounded-lg px-3 py-2.5 text-left transition-colors"
                                 :class="
                                     selectedType === 'unit' && selectedId === unit.id
@@ -333,12 +427,7 @@ const tabs: { key: TabKey; label: string; icon: any }[] = [
                     <ul class="space-y-0.5 px-2 pb-4">
                         <li v-for="cafe in cafes" :key="cafe.id">
                             <button
-                                @click="
-                                    selectedType = 'cafe';
-                                    selectedId = cafe.id;
-                                    activeTab = 'all';
-                                    confirmId = null;
-                                "
+                                @click="selectCafe(cafe.id)"
                                 class="group flex w-full items-start gap-2 rounded-lg px-3 py-2.5 text-left transition-colors"
                                 :class="
                                     selectedType === 'cafe' && selectedId === cafe.id
@@ -457,265 +546,412 @@ const tabs: { key: TabKey; label: string; icon: any }[] = [
                             </div>
                         </div>
 
-                        <!-- Stock actual: una fila por equipo, sin repetirse aunque el historial tenga varias guías -->
-                        <div class="mb-5 overflow-hidden rounded-xl border bg-white shadow-sm dark:bg-gray-800">
-                            <p class="border-b bg-slate-50 px-4 py-2.5 text-xs font-bold tracking-widest text-slate-500 uppercase dark:bg-gray-700/50">
-                                Stock actual en {{ selectedCafe?.name ?? selectedUnit?.name }}
-                            </p>
-                            <div v-if="currentLocationStock.length === 0" class="px-4 py-6 text-center text-sm text-slate-400">
-                                Sin equipos disponibles aquí por ahora
-                            </div>
-                            <ul v-else class="divide-y">
-                                <li
-                                    v-for="item in currentLocationStock"
-                                    :key="item.key"
-                                    class="flex items-center justify-between gap-3 px-4 py-2.5"
+                        <!-- Sección: Guías vs Stock -->
+                        <Tabs :model-value="viewSection" @update:model-value="(v) => (viewSection = v as ViewSection)" class="mb-4">
+                            <TabsList class="bg-slate-100 p-1 dark:bg-gray-800">
+                                <TabsTrigger
+                                    value="guides"
+                                    class="relative gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-gray-700"
                                 >
-                                    <div class="flex items-center gap-2.5">
-                                        <div
-                                            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
-                                            :class="item.equipable_type === 'computer' ? 'bg-blue-100' : 'bg-orange-100'"
-                                        >
-                                            <Laptop v-if="item.equipable_type === 'computer'" class="h-3.5 w-3.5 text-blue-600" />
-                                            <UtensilsCrossed v-else class="h-3.5 w-3.5 text-orange-600" />
-                                        </div>
-                                        <div>
-                                            <p class="text-sm font-semibold text-slate-800 dark:text-slate-100">{{ item.equipment_name }}</p>
-                                            <p class="text-[11px] text-slate-400">
-                                                {{ [item.equipment_brand, item.equipment_model].filter(Boolean).join(' · ') || '—' }}
-                                            </p>
-                                        </div>
-                                    </div>
+                                    <FileText class="h-4 w-4" />
+                                    Guías
                                     <span
-                                        class="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 font-mono text-xs font-bold text-amber-700"
+                                        v-if="stats.pending > 0"
+                                        class="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-black text-white"
                                     >
-                                        {{ item.quantity }}
+                                        {{ stats.pending }}
                                     </span>
-                                </li>
-                            </ul>
-                        </div>
-
-                        <!-- Historial de despachos: colapsado por defecto para no competir con "Stock actual" -->
-                        <button
-                            @click="showHistory = !showHistory"
-                            class="mb-4 flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-                        >
-                            <component :is="showHistory ? ChevronUp : ChevronDown" class="h-4 w-4" />
-                            {{ showHistory ? 'Ocultar' : 'Ver' }} historial de despachos
-                        </button>
-
-                        <template v-if="showHistory">
-                        <!-- Tabs -->
-                        <div class="mb-4 flex gap-1 rounded-xl border bg-slate-100 p-1 dark:bg-gray-800">
-                            <button
-                                v-for="tab in tabs"
-                                :key="tab.key"
-                                @click="
-                                    activeTab = tab.key;
-                                    confirmId = null;
-                                "
-                                class="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-semibold transition-all"
-                                :class="
-                                    activeTab === tab.key
-                                        ? 'bg-white text-slate-800 shadow dark:bg-gray-700 dark:text-white'
-                                        : 'text-slate-500 hover:text-slate-700'
-                                "
-                            >
-                                <component :is="tab.icon" class="h-3.5 w-3.5 shrink-0" />
-                                <span class="hidden sm:inline">{{ tab.label }}</span>
-                                <span
-                                    v-if="tabPending(tab.key) > 0 && ['all', 'computer', 'kitchen'].includes(tab.key)"
-                                    class="rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white"
+                                </TabsTrigger>
+                                <TabsTrigger
+                                    value="stock"
+                                    class="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-gray-700"
                                 >
-                                    {{ tabPending(tab.key) }}
-                                </span>
-                            </button>
-                        </div>
+                                    <PackageCheck class="h-4 w-4" />
+                                    Stock
+                                </TabsTrigger>
+                            </TabsList>
+                        </Tabs>
 
-                        <!-- ── Equipment dispatches table ── -->
-                        <template v-if="activeTab !== 'epp' && activeTab !== 'supplies'">
-                            <div
-                                v-if="filteredDispatches.length === 0"
-                                class="flex flex-col items-center justify-center rounded-xl border border-dashed py-16 text-slate-400"
-                            >
-                                <PackageSearch class="mb-3 h-10 w-10 text-slate-300" />
-                                <p class="font-medium">Sin envíos registrados</p>
-                                <p class="mt-1 text-xs">No hay despachos de equipos para este comedor</p>
-                            </div>
+                        <!-- Filtro por tipo -->
+                        <Tabs :model-value="activeTab" @update:model-value="(v) => selectTypeTab(v as TabKey)" class="mb-4">
+                            <TabsList class="w-full bg-slate-100 p-1 dark:bg-gray-800">
+                                <TabsTrigger
+                                    v-for="tab in tabs"
+                                    :key="tab.key"
+                                    :value="tab.key"
+                                    class="relative flex-1 gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm dark:data-[state=active]:bg-gray-700"
+                                >
+                                    <component :is="tab.icon" class="h-3.5 w-3.5 shrink-0" />
+                                    <span class="hidden sm:inline">{{ tab.label }}</span>
+                                    <span
+                                        v-if="
+                                            viewSection === 'guides' &&
+                                            tabPending(tab.key) > 0 &&
+                                            ['all', 'computer', 'kitchen'].includes(tab.key)
+                                        "
+                                        class="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-black text-white"
+                                    >
+                                        {{ tabPending(tab.key) }}
+                                    </span>
+                                </TabsTrigger>
+                            </TabsList>
+                        </Tabs>
 
-                            <div v-else class="overflow-hidden rounded-xl border bg-white shadow-sm dark:bg-gray-800">
-                                <table class="w-full text-sm">
-                                    <thead class="border-b bg-slate-50 dark:bg-gray-700/50">
-                                        <tr>
-                                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">N° Despacho</th>
-                                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">Guía</th>
-                                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">Equipo</th>
-                                            <th class="px-4 py-3 text-center text-xs font-bold text-slate-500">Cant.</th>
-                                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">Origen</th>
-                                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">Despachado</th>
-                                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">Estado</th>
-                                            <th class="px-4 py-3 text-center text-xs font-bold text-slate-500">Acción</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="divide-y">
-                                        <tr
-                                            v-for="d in filteredDispatches"
-                                            :key="d.id"
-                                            class="transition-colors"
-                                            :class="
-                                                d.received_at
-                                                    ? 'bg-emerald-50/40 dark:bg-emerald-900/10'
-                                                    : 'hover:bg-slate-50 dark:hover:bg-gray-700/30'
-                                            "
+                        <!-- ═══ Guías: una tarjeta por guía de remisión, igual al patrón de "Desde Café" ═══ -->
+                        <template v-if="viewSection === 'guides'">
+                            <template v-if="activeTab !== 'epp' && activeTab !== 'supplies'">
+                                <div
+                                    v-if="groupedDispatches.length === 0"
+                                    class="flex flex-col items-center justify-center rounded-xl border border-dashed py-16 text-slate-400"
+                                >
+                                    <PackageSearch class="mb-3 h-10 w-10 text-slate-300" />
+                                    <p class="font-medium">Sin envíos registrados</p>
+                                    <p class="mt-1 text-xs">No hay despachos de equipos para este comedor</p>
+                                </div>
+
+                                <div v-else class="space-y-4 pb-2">
+                                    <div
+                                        v-for="group in groupedDispatches"
+                                        :key="group.key"
+                                        class="bg-card overflow-hidden rounded-2xl border shadow-sm transition-shadow hover:shadow-md dark:bg-gray-800"
+                                        :class="[
+                                            group.items.every((i) => i.received_at) ? 'border-l-[3px] border-l-emerald-400' : 'border-l-[3px]',
+                                            !group.items.every((i) => i.received_at) && group.is_outgoing ? 'border-l-amber-400' : '',
+                                            !group.items.every((i) => i.received_at) && !group.is_outgoing ? 'border-l-indigo-400' : '',
+                                        ]"
+                                    >
+                                        <!-- Cabecera de la guía -->
+                                        <div
+                                            class="bg-muted/30 flex flex-col gap-3 border-b px-5 py-3.5 dark:bg-gray-700/30 lg:flex-row lg:items-center lg:justify-between"
                                         >
-                                            <!-- N° Despacho -->
-                                            <td class="px-4 py-3">
-                                                <p class="font-mono text-xs font-semibold text-slate-700 dark:text-slate-200">
-                                                    {{ d.dispatch_number }}
-                                                </p>
-                                            </td>
+                                            <div class="flex items-center gap-2.5">
+                                                <div
+                                                    class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl"
+                                                    :class="group.is_outgoing ? 'bg-amber-100' : 'bg-indigo-100'"
+                                                >
+                                                    <SendHorizonal v-if="group.is_outgoing" class="h-4 w-4 text-amber-600" />
+                                                    <FileText v-else class="h-4 w-4 text-indigo-600" />
+                                                </div>
+                                                <div class="leading-tight">
+                                                    <div class="flex items-center gap-1.5">
+                                                        <p class="font-mono text-sm font-bold text-slate-800 dark:text-slate-100">
+                                                            {{ group.guide_number ?? group.items[0].dispatch_number }}
+                                                        </p>
+                                                        <span
+                                                            class="rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase"
+                                                            :class="group.is_outgoing ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'"
+                                                        >
+                                                            {{ group.is_outgoing ? 'Saliente' : 'Entrante' }}
+                                                        </span>
+                                                    </div>
+                                                    <p class="text-[11px] text-slate-400">
+                                                        <template v-if="group.is_outgoing">Hacia {{ group.destination_name }}</template>
+                                                        <template v-else>Desde {{ group.origin_name }}</template>
+                                                        · {{ group.dispatched_at }} · {{ group.dispatched_by }}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <span
+                                                :class="[
+                                                    'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold',
+                                                    group.items.every((i) => i.received_at)
+                                                        ? 'bg-emerald-100 text-emerald-700'
+                                                        : 'bg-indigo-100 text-indigo-700',
+                                                ]"
+                                            >
+                                                <CheckCircle2 v-if="group.items.every((i) => i.received_at)" class="h-3 w-3" />
+                                                <Clock v-else class="h-3 w-3" />
+                                                {{ group.items.filter((i) => i.received_at).length }}/{{ group.items.length }}
+                                                recepcionados
+                                            </span>
+                                        </div>
 
-                                            <!-- Guía -->
-                                            <td class="px-4 py-3">
-                                                <p v-if="d.guide_number" class="font-mono text-xs text-slate-600 dark:text-slate-300">
-                                                    {{ d.guide_number }}
-                                                </p>
-                                                <span v-else class="text-xs text-slate-300">—</span>
-                                            </td>
-
-                                            <!-- Equipo -->
-                                            <td class="px-4 py-3">
-                                                <div class="flex items-center gap-2">
+                                        <!-- Equipos de la guía -->
+                                        <div class="divide-y">
+                                            <div
+                                                v-for="d in group.items"
+                                                :key="d.id"
+                                                class="flex flex-col gap-3 px-5 py-3 transition-colors sm:flex-row sm:items-center"
+                                                :class="d.received_at ? 'bg-emerald-50/30 dark:bg-emerald-900/10' : 'hover:bg-muted/20'"
+                                            >
+                                                <!-- Equipo -->
+                                                <div class="flex min-w-0 flex-1 items-center gap-3">
                                                     <div
-                                                        class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+                                                        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
                                                         :class="d.equipable_type === 'computer' ? 'bg-blue-100' : 'bg-orange-100'"
                                                     >
-                                                        <Laptop v-if="d.equipable_type === 'computer'" class="h-3.5 w-3.5 text-blue-600" />
-                                                        <UtensilsCrossed v-else class="h-3.5 w-3.5 text-orange-600" />
+                                                        <Laptop v-if="d.equipable_type === 'computer'" class="h-4 w-4 text-blue-600" />
+                                                        <UtensilsCrossed v-else class="h-4 w-4 text-orange-600" />
                                                     </div>
-                                                    <div>
-                                                        <p class="leading-tight font-semibold text-slate-800 dark:text-slate-100">
+                                                    <div class="min-w-0">
+                                                        <p class="truncate text-sm leading-tight font-semibold text-slate-800 dark:text-slate-100">
                                                             {{ d.equipment_name }}
                                                         </p>
-                                                        <p class="text-[11px] text-slate-400">
-                                                            {{ [d.equipment_brand, d.equipment_model].filter(Boolean).join(' · ') || '—' }}
+                                                        <p class="truncate text-[11px] text-slate-400">
+                                                            <span class="font-mono">{{ d.dispatch_number }}</span>
+                                                            <span v-if="d.equipment_brand || d.equipment_model">
+                                                                · {{ [d.equipment_brand, d.equipment_model].filter(Boolean).join(' ') }}
+                                                            </span>
                                                         </p>
                                                     </div>
                                                 </div>
-                                            </td>
 
-                                            <!-- Cantidad -->
-                                            <td class="px-4 py-3 text-center">
-                                                <span
-                                                    class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 font-mono text-xs font-bold text-amber-700"
-                                                >
-                                                    {{ d.quantity }}
-                                                </span>
-                                            </td>
-
-                                            <!-- Origen -->
-                                            <td class="px-4 py-3 text-xs text-slate-600 dark:text-slate-300">
-                                                {{ d.origin_name }}
-                                            </td>
-
-                                            <!-- Despachado -->
-                                            <td class="px-4 py-3">
-                                                <p class="text-xs text-slate-700 dark:text-slate-200">{{ d.dispatched_at }}</p>
-                                                <p class="text-[10px] text-slate-400">por {{ d.dispatched_by }}</p>
-                                            </td>
-
-                                            <!-- Estado -->
-                                            <td class="px-4 py-3">
-                                                <span
-                                                    v-if="d.received_at"
-                                                    class="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700"
-                                                >
-                                                    <CheckCircle2 class="h-3 w-3" />
-                                                    Recepcionado
-                                                </span>
-                                                <span
-                                                    v-else
-                                                    class="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-600"
-                                                >
-                                                    <Clock class="h-3 w-3" />
-                                                    En tránsito
-                                                </span>
-                                            </td>
-
-                                            <!-- Acción -->
-                                            <td class="px-4 py-3">
-                                                <!-- Ya recepcionado -->
-                                                <template v-if="d.received_at">
-                                                    <p class="text-[11px] text-slate-500">{{ d.received_by ?? '—' }}</p>
-                                                    <p
-                                                        v-if="d.reception_notes"
-                                                        class="mt-1 max-w-[180px] rounded bg-slate-100 px-2 py-1 text-[10px] text-slate-500 italic"
+                                                <!-- Cantidad -->
+                                                <div class="flex items-center gap-1.5 sm:w-16 sm:justify-center">
+                                                    <span class="text-[10px] font-semibold text-slate-400 uppercase sm:hidden">Cant.</span>
+                                                    <span
+                                                        class="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 font-mono text-xs font-bold text-slate-600"
                                                     >
-                                                        {{ d.reception_notes }}
-                                                    </p>
-                                                </template>
+                                                        ×{{ d.quantity }}
+                                                    </span>
+                                                </div>
 
-                                                <!-- Formulario de confirmación -->
-                                                <template v-else-if="confirmId === d.id">
-                                                    <div class="space-y-1.5">
-                                                        <textarea
-                                                            v-model="receptionNote"
-                                                            placeholder="Observación (opcional)…"
-                                                            rows="2"
-                                                            class="w-full min-w-[180px] resize-none rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
-                                                        />
-                                                        <div class="flex gap-1">
-                                                            <button
-                                                                :disabled="processing"
-                                                                class="flex-1 rounded-lg bg-emerald-600 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
-                                                                @click="doReceive(d.id)"
-                                                            >
-                                                                Confirmar
-                                                            </button>
-                                                            <button
-                                                                class="rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-50"
-                                                                @click="confirmId = null"
-                                                            >
-                                                                Cancelar
-                                                            </button>
+                                                <!-- Estado -->
+                                                <div class="sm:w-36">
+                                                    <span
+                                                        v-if="d.received_at"
+                                                        class="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700"
+                                                    >
+                                                        <CheckCircle2 class="h-3 w-3" /> Recepcionado
+                                                    </span>
+                                                    <span
+                                                        v-else
+                                                        class="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-600"
+                                                    >
+                                                        <Clock class="h-3 w-3" /> En tránsito
+                                                    </span>
+                                                </div>
+
+                                                <!-- Acción -->
+                                                <div class="sm:w-56 sm:shrink-0 sm:text-right">
+                                                    <template v-if="d.received_at">
+                                                        <p class="text-[11px] font-medium text-slate-500">
+                                                            {{ group.is_outgoing ? 'Recibido por' : '' }} {{ d.received_by ?? '—' }}
+                                                        </p>
+                                                        <p
+                                                            v-if="d.reception_notes"
+                                                            class="mt-1 rounded bg-slate-100 px-2 py-1 text-left text-[10px] text-slate-500 italic"
+                                                        >
+                                                            {{ d.reception_notes }}
+                                                        </p>
+                                                    </template>
+
+                                                    <!-- Guía saliente: se recepciona del otro lado, no desde acá -->
+                                                    <template v-else-if="group.is_outgoing">
+                                                        <span class="text-[11px] text-slate-400 italic">Pendiente en destino</span>
+                                                    </template>
+
+                                                    <template v-else-if="confirmId === d.id">
+                                                        <div class="space-y-1.5 text-left">
+                                                            <textarea
+                                                                v-model="receptionNote"
+                                                                placeholder="Observación (opcional)…"
+                                                                rows="2"
+                                                                class="w-full resize-none rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] outline-none focus:border-emerald-400 focus:ring-1 focus:ring-emerald-200"
+                                                            />
+                                                            <div class="flex gap-1">
+                                                                <button
+                                                                    :disabled="processing"
+                                                                    class="flex-1 rounded-lg bg-emerald-600 py-1.5 text-[11px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                                                                    @click="doReceive(d.id)"
+                                                                >
+                                                                    Confirmar
+                                                                </button>
+                                                                <button
+                                                                    class="rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold hover:bg-slate-50"
+                                                                    @click="confirmId = null"
+                                                                >
+                                                                    Cancelar
+                                                                </button>
+                                                            </div>
                                                         </div>
-                                                    </div>
-                                                </template>
+                                                    </template>
 
-                                                <!-- Botón inicial -->
-                                                <button
-                                                    v-else
-                                                    class="rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-[11px] font-bold text-emerald-700 shadow-sm hover:bg-emerald-50 dark:bg-transparent dark:hover:bg-emerald-900/20"
-                                                    @click="startConfirm(d.id)"
-                                                >
-                                                    Recepcionar
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                                                    <button
+                                                        v-else
+                                                        class="rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-[11px] font-bold text-emerald-700 shadow-sm hover:bg-emerald-50"
+                                                        @click="startConfirm(d.id)"
+                                                    >
+                                                        Recepcionar
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Paginación: 10 guías por página -->
+                                <div
+                                    v-if="dispatches.total > dispatches.per_page"
+                                    class="mt-3 flex items-center justify-between rounded-xl border bg-white px-4 py-3 shadow-sm dark:bg-gray-800"
+                                >
+                                    <div class="text-xs text-slate-400">
+                                        Mostrando <span class="font-medium">{{ dispatches.from }}</span> a
+                                        <span class="font-medium">{{ dispatches.to }}</span> de
+                                        <span class="font-medium">{{ dispatches.total }}</span> guías
+                                    </div>
+                                    <div class="flex items-center gap-1">
+                                        <template v-for="(link, k) in dispatches.links" :key="k">
+                                            <div
+                                                v-if="link.url === null"
+                                                class="flex h-7 min-w-[28px] items-center justify-center rounded-md px-2 text-xs text-slate-300"
+                                                v-html="link.label"
+                                            />
+                                            <Link
+                                                v-else
+                                                :href="link.url"
+                                                class="flex h-7 min-w-[28px] items-center justify-center rounded-md border px-2 text-xs transition-all"
+                                                :class="
+                                                    link.active
+                                                        ? 'border-indigo-600 bg-indigo-600 font-bold text-white shadow-sm'
+                                                        : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                                                "
+                                                v-html="link.label"
+                                                preserve-scroll
+                                                preserve-state
+                                            />
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <!-- ── EPP placeholder ── -->
+                            <div
+                                v-else-if="activeTab === 'epp'"
+                                class="flex flex-col items-center justify-center rounded-xl border border-dashed py-20 text-slate-400"
+                            >
+                                <ShieldCheck class="mb-3 h-10 w-10 text-slate-300" />
+                                <p class="font-medium">EPP — Sin envíos registrados</p>
+                                <p class="mt-1 text-xs">Los despachos de EPP aparecerán aquí cuando estén disponibles</p>
+                            </div>
+
+                            <!-- ── Insumos placeholder ── -->
+                            <div
+                                v-else-if="activeTab === 'supplies'"
+                                class="flex flex-col items-center justify-center rounded-xl border border-dashed py-20 text-slate-400"
+                            >
+                                <HardHat class="mb-3 h-10 w-10 text-slate-300" />
+                                <p class="font-medium">Insumos — Sin envíos registrados</p>
+                                <p class="mt-1 text-xs">Los despachos de insumos aparecerán aquí cuando estén disponibles</p>
                             </div>
                         </template>
 
-                        <!-- ── EPP placeholder ── -->
-                        <div
-                            v-else-if="activeTab === 'epp'"
-                            class="flex flex-col items-center justify-center rounded-xl border border-dashed py-20 text-slate-400"
-                        >
-                            <ShieldCheck class="mb-3 h-10 w-10 text-slate-300" />
-                            <p class="font-medium">EPP — Sin envíos registrados</p>
-                            <p class="mt-1 text-xs">Los despachos de EPP aparecerán aquí cuando estén disponibles</p>
-                        </div>
+                        <!-- ═══ Stock: una fila por equipo, sin repetirse aunque el historial tenga varias guías ═══ -->
+                        <template v-else>
+                            <template v-if="activeTab !== 'epp' && activeTab !== 'supplies'">
+                                <div
+                                    v-if="stock.data.length === 0"
+                                    class="flex flex-col items-center justify-center rounded-xl border border-dashed py-16 text-slate-400"
+                                >
+                                    <PackageCheck class="mb-3 h-10 w-10 text-slate-300" />
+                                    <p class="font-medium">Sin equipos disponibles aquí por ahora</p>
+                                </div>
 
-                        <!-- ── Insumos placeholder ── -->
-                        <div
-                            v-else-if="activeTab === 'supplies'"
-                            class="flex flex-col items-center justify-center rounded-xl border border-dashed py-20 text-slate-400"
-                        >
-                            <HardHat class="mb-3 h-10 w-10 text-slate-300" />
-                            <p class="font-medium">Insumos — Sin envíos registrados</p>
-                            <p class="mt-1 text-xs">Los despachos de insumos aparecerán aquí cuando estén disponibles</p>
-                        </div>
+                                <div v-else class="overflow-hidden rounded-xl border bg-white shadow-sm dark:bg-gray-800">
+                                    <table class="w-full text-sm">
+                                        <thead class="border-b bg-slate-50 dark:bg-gray-700/50">
+                                            <tr>
+                                                <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">Código</th>
+                                                <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">Equipo</th>
+                                                <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">Marca / Modelo</th>
+                                                <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">N° Serie</th>
+                                                <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">Tipo</th>
+                                                <th class="px-4 py-3 text-left text-xs font-bold text-slate-500">Estado</th>
+                                                <th class="px-4 py-3 text-center text-xs font-bold text-slate-500">Cant.</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y">
+                                            <tr v-for="item in stock.data" :key="item.id" class="hover:bg-slate-50 dark:hover:bg-gray-700/30">
+                                                <td class="px-4 py-3 font-mono text-xs text-slate-400">{{ item.equipment_code || '—' }}</td>
+                                                <td class="px-4 py-3">
+                                                    <div class="flex items-center gap-2">
+                                                        <div
+                                                            class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
+                                                            :class="item.equipable_type === 'computer' ? 'bg-blue-100' : 'bg-orange-100'"
+                                                        >
+                                                            <Laptop v-if="item.equipable_type === 'computer'" class="h-3.5 w-3.5 text-blue-600" />
+                                                            <UtensilsCrossed v-else class="h-3.5 w-3.5 text-orange-600" />
+                                                        </div>
+                                                        <p class="font-semibold text-slate-800 dark:text-slate-100">{{ item.equipment_name }}</p>
+                                                    </div>
+                                                </td>
+                                                <td class="px-4 py-3 text-slate-600 dark:text-slate-300">
+                                                    {{ [item.equipment_brand, item.equipment_model].filter(Boolean).join(' · ') || '—' }}
+                                                </td>
+                                                <td class="px-4 py-3 font-mono text-xs text-slate-400">{{ item.equipment_series || '—' }}</td>
+                                                <td class="px-4 py-3 text-xs text-slate-500">
+                                                    {{ item.equipable_type === 'computer' ? 'Tecnológico' : 'Menaje' }}
+                                                </td>
+                                                <td class="px-4 py-3">
+                                                    <span
+                                                        v-if="item.equipment_status !== null"
+                                                        :class="['inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold', equipmentStatusInfo(item.equipment_status).cls]"
+                                                    >
+                                                        {{ equipmentStatusInfo(item.equipment_status).label }}
+                                                    </span>
+                                                    <span v-else class="text-xs text-slate-300">—</span>
+                                                </td>
+                                                <td class="px-4 py-3 text-center">
+                                                    <span
+                                                        class="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 font-mono text-xs font-bold text-amber-700"
+                                                    >
+                                                        {{ item.quantity }}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+
+                                    <!-- Paginación: 15 por página -->
+                                    <div
+                                        v-if="stock.total > stock.per_page"
+                                        class="bg-muted/20 flex items-center justify-between border-t px-4 py-3 dark:bg-gray-700/20"
+                                    >
+                                        <div class="text-xs text-slate-400">
+                                            Mostrando <span class="font-medium">{{ stock.from }}</span> a
+                                            <span class="font-medium">{{ stock.to }}</span> de <span class="font-medium">{{ stock.total }}</span>
+                                        </div>
+                                        <div class="flex items-center gap-1">
+                                            <template v-for="(link, k) in stock.links" :key="k">
+                                                <div
+                                                    v-if="link.url === null"
+                                                    class="flex h-7 min-w-[28px] items-center justify-center rounded-md px-2 text-xs text-slate-300"
+                                                    v-html="link.label"
+                                                />
+                                                <Link
+                                                    v-else
+                                                    :href="link.url"
+                                                    class="flex h-7 min-w-[28px] items-center justify-center rounded-md border px-2 text-xs transition-all"
+                                                    :class="
+                                                        link.active
+                                                            ? 'border-amber-500 bg-amber-500 font-bold text-white shadow-sm'
+                                                            : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                                                    "
+                                                    v-html="link.label"
+                                                    preserve-scroll
+                                                    preserve-state
+                                                />
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <div
+                                v-else-if="activeTab === 'epp'"
+                                class="flex flex-col items-center justify-center rounded-xl border border-dashed py-20 text-slate-400"
+                            >
+                                <ShieldCheck class="mb-3 h-10 w-10 text-slate-300" />
+                                <p class="font-medium">EPP — Sin stock registrado</p>
+                            </div>
+
+                            <div
+                                v-else-if="activeTab === 'supplies'"
+                                class="flex flex-col items-center justify-center rounded-xl border border-dashed py-20 text-slate-400"
+                            >
+                                <HardHat class="mb-3 h-10 w-10 text-slate-300" />
+                                <p class="font-medium">Insumos — Sin stock registrado</p>
+                            </div>
                         </template>
                     </template>
                 </main>
