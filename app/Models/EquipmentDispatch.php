@@ -11,6 +11,7 @@ class EquipmentDispatch extends Model
 {
     protected $fillable = [
         'equipable_type', 'equipable_id', 'quantity',
+        'size', 'color_id',
         'origin_headquarter_id',
         'destination_type', 'destination_id',
         'staff_id', 'description',
@@ -54,5 +55,10 @@ class EquipmentDispatch extends Model
     public function receiver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'received_by');
+    }
+
+    public function color(): BelongsTo
+    {
+        return $this->belongsTo(Color::class);
     }
 }

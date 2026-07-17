@@ -89,9 +89,11 @@ interface Dispatch {
     dispatch_number: string;
     guide_number: string | null;
     status: 'active' | 'returned';
-    equipable_type: 'computer' | 'kitchen';
+    equipable_type: 'computer' | 'kitchen' | 'epp';
     equipable_id: number;
     quantity: number;
+    size?: string | null;
+    color_name?: string | null;
     equipment_name: string;
     equipment_brand: string | null;
     equipment_model: string | null;
@@ -139,7 +141,7 @@ interface MineRef {
 }
 interface EquipRow {
     id: number;
-    equipable_type: 'computer' | 'kitchen';
+    equipable_type: 'computer' | 'kitchen' | 'epp';
     name: string;
     brand: string | null;
     model: string | null;
@@ -147,6 +149,20 @@ interface EquipRow {
     quantity: number;
     storage_headquarter: HQRef | null;
     qty_to_dispatch: number;
+    size?: string | null;
+    color_id?: number | null;
+    color_name?: string | null;
+    color_hex?: string | null;
+}
+interface EppStockRow {
+    id: number;
+    name: string;
+    size: string | null;
+    color_id: number | null;
+    color_name: string | null;
+    color_hex: string | null;
+    quantity: number;
+    storage_headquarter_id: number;
 }
 
 // ── Props ─────────────────────────────────────────────────────────────────
@@ -155,6 +171,7 @@ const props = defineProps<{
     dispatches: Dispatch[];
     computerEquipments: EquipmentBase[];
     kitchenEquipments: EquipmentBase[];
+    eppStocks: EppStockRow[];
     cafes: Array<{ id: number; name: string; unit: { id: number; name: string; mine: { id: number; name: string } } }>;
     units: Array<{ id: number; name: string; mine: { id: number; name: string } }>;
     mines: MineRef[];
@@ -478,7 +495,7 @@ const showForm = ref(false);
 const confirmReturn = ref<Dispatch | null>(null);
 const equipmentTable = ref<EquipRow[]>([]);
 const itemSearch = ref('');
-const itemTypeFilter = ref<'all' | 'computer' | 'kitchen'>('all');
+const itemTypeFilter = ref<'all' | 'computer' | 'kitchen' | 'epp'>('all');
 
 const form = useForm({
     origin_headquarter_id: '' as string | number,
@@ -511,7 +528,13 @@ watch(
 const dispatchItems = computed(() =>
     equipmentTable.value
         .filter((eq) => eq.qty_to_dispatch > 0)
-        .map((eq) => ({ equipable_type: eq.equipable_type, equipable_id: eq.id, quantity: eq.qty_to_dispatch })),
+        .map((eq) => ({
+            equipable_type: eq.equipable_type,
+            equipable_id: eq.id,
+            quantity: eq.qty_to_dispatch,
+            size: eq.size ?? null,
+            color_id: eq.color_id ?? null,
+        })),
 );
 
 const formValid = computed(() => {
@@ -619,6 +642,23 @@ function openCreate() {
                 storage_headquarter: e.storage_headquarter,
                 qty_to_dispatch: 0,
             })),
+        // El stock de EPP viene aplanado por (EPP, talla, color, sede) desde el backend —
+        // cada fila es una variante despachable, igual que un renglón de equipo.
+        ...props.eppStocks.map((s) => ({
+            id: s.id,
+            equipable_type: 'epp' as const,
+            name: s.name,
+            brand: null,
+            model: null,
+            code: null,
+            quantity: s.quantity,
+            storage_headquarter: props.headquarters.find((h) => h.id === s.storage_headquarter_id) ?? null,
+            qty_to_dispatch: 0,
+            size: s.size,
+            color_id: s.color_id,
+            color_name: s.color_name,
+            color_hex: s.color_hex,
+        })),
     ];
     showForm.value = true;
 }
@@ -1336,7 +1376,7 @@ function pctCls(v: number | null): string {
 
                 <!-- Items de la guía -->
                 <div>
-                    <p class="mb-1.5 text-xs text-slate-400">Equipos ({{ detailGroup.items.length }})</p>
+                    <p class="mb-1.5 text-xs text-slate-400">Ítems ({{ detailGroup.items.length }})</p>
                     <div class="max-h-48 space-y-1.5 overflow-y-auto">
                         <div
                             v-for="item in detailGroup.items"
@@ -1345,12 +1385,15 @@ function pctCls(v: number | null): string {
                         >
                             <div class="flex min-w-0 items-center gap-1.5">
                                 <component
-                                    :is="item.equipable_type === 'computer' ? Laptop : UtensilsCrossed"
+                                    :is="item.equipable_type === 'computer' ? Laptop : item.equipable_type === 'kitchen' ? UtensilsCrossed : Package"
                                     class="h-3.5 w-3.5 shrink-0 text-slate-400"
                                 />
                                 <div class="min-w-0">
                                     <p class="truncate text-xs font-medium text-slate-800">{{ item.equipment_name }}</p>
-                                    <p v-if="item.equipment_brand || item.equipment_model" class="truncate text-[10px] text-slate-400">
+                                    <p v-if="item.equipable_type === 'epp' && (item.size || item.color_name)" class="truncate text-[10px] text-slate-400">
+                                        {{ [item.size ? `Talla ${item.size}` : null, item.color_name].filter(Boolean).join(' · ') }}
+                                    </p>
+                                    <p v-else-if="item.equipment_brand || item.equipment_model" class="truncate text-[10px] text-slate-400">
                                         {{ [item.equipment_brand, item.equipment_model].filter(Boolean).join(' · ') }}
                                     </p>
                                 </div>
@@ -1394,7 +1437,7 @@ function pctCls(v: number | null): string {
 
     <!-- ═══ DIALOG: Nueva Guía de Remisión ═══ -->
     <Dialog :open="showForm" @update:open="(v) => !v && (showForm = false)">
-        <DialogScrollContent class="max-w-2xl">
+        <DialogScrollContent class="max-w-4xl">
             <DialogHeader>
                 <DialogTitle class="flex items-center gap-2">
                     <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-red-100">
@@ -1404,204 +1447,215 @@ function pctCls(v: number | null): string {
                 </DialogTitle>
             </DialogHeader>
 
-            <div class="space-y-4 py-2">
+            <div class="space-y-5 py-2">
                 <!-- Origin & Dest type -->
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="space-y-1.5">
-                        <Label>Sede Origen <span class="text-red-500">*</span></Label>
-                        <Select v-model="form.origin_headquarter_id">
-                            <SelectTrigger><SelectValue placeholder="Seleccionar sede…" /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem v-for="h in headquarters" :key="h.id" :value="String(h.id)">
-                                    {{ h.name }}{{ h.business ? ` — ${h.business.name}` : '' }}
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <p v-if="form.errors.origin_headquarter_id" class="text-xs text-red-500">{{ form.errors.origin_headquarter_id }}</p>
-                    </div>
-                    <div class="space-y-1.5">
-                        <Label>Tipo Destino <span class="text-red-500">*</span></Label>
-                        <Select v-model="form.destination_type" @update:model-value="() => (form.destination_id = '')">
-                            <SelectTrigger><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="cafe">Café / Comedor</SelectItem>
-                                <SelectItem value="unit">Unidad</SelectItem>
-                                <SelectItem value="mine">Mina</SelectItem>
-                                <SelectItem value="headquarter">Sede</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                </div>
-
-                <!-- Destination & Staff -->
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="space-y-1.5">
-                        <Label>Destino <span class="text-red-500">*</span></Label>
-                        <Select v-model="form.destination_id">
-                            <SelectTrigger><SelectValue placeholder="Seleccionar destino…" /></SelectTrigger>
-                            <SelectContent>
-                                <SelectItem v-for="opt in destinationOptions" :key="opt.id" :value="String(opt.id)">{{ opt.label }}</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <p v-if="form.errors.destination_id" class="text-xs text-red-500">{{ form.errors.destination_id }}</p>
-                    </div>
-                    <div class="relative space-y-1.5">
-                        <Label>Encargado de Recepción</Label>
-                        <input
-                            v-model="staffSearch"
-                            type="text"
-                            placeholder="Buscar por nombre…"
-                            class="border-input flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200"
-                            @focus="openStaffDropdown"
-                            @blur="closeStaffDropdown"
-                        />
-                        <div
-                            v-if="staffDropdownOpen"
-                            class="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-white shadow-lg dark:bg-gray-800"
-                        >
-                            <button
-                                type="button"
-                                class="block w-full px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50 dark:hover:bg-gray-700"
-                                @mousedown.prevent="pickStaff('none')"
-                            >
-                                Sin asignar
-                            </button>
-                            <button
-                                v-for="s in staffSearchResults"
-                                :key="s.id"
-                                type="button"
-                                class="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-gray-700"
-                                :class="String(s.id) === String(form.staff_id) ? 'bg-indigo-50 font-semibold text-indigo-700' : ''"
-                                @mousedown.prevent="pickStaff(String(s.id))"
-                            >
-                                {{ s.name }}
-                            </button>
-                            <p v-if="staffSearchResults.length === 0" class="px-3 py-2 text-xs text-slate-400">Sin resultados</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-1.5">
+                            <Label>Sede Origen <span class="text-red-500">*</span></Label>
+                            <Select v-model="form.origin_headquarter_id">
+                                <SelectTrigger><SelectValue placeholder="Seleccionar sede…" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem v-for="h in headquarters" :key="h.id" :value="String(h.id)">
+                                        {{ h.name }}{{ h.business ? ` — ${h.business.name}` : '' }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <p v-if="form.errors.origin_headquarter_id" class="text-xs text-red-500">{{ form.errors.origin_headquarter_id }}</p>
                         </div>
-                        <p v-if="form.destination_type === 'cafe' || form.destination_type === 'unit'" class="text-[11px] text-slate-400">
-                            Solo se muestra personal del destino seleccionado
-                        </p>
+                        <div class="space-y-1.5">
+                            <Label>Tipo Destino <span class="text-red-500">*</span></Label>
+                            <Select v-model="form.destination_type" @update:model-value="() => (form.destination_id = '')">
+                                <SelectTrigger><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="cafe">Café / Comedor</SelectItem>
+                                    <SelectItem value="unit">Unidad</SelectItem>
+                                    <SelectItem value="mine">Mina</SelectItem>
+                                    <SelectItem value="headquarter">Sede</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
-                </div>
 
-                <!-- Equipment Table -->
-                <div class="space-y-2">
-                    <Label>Equipos a Despachar <span class="text-red-500">*</span></Label>
-
-                    <!-- Search + type filter -->
-                    <div class="flex gap-2">
-                        <div class="relative flex-1">
-                            <Search class="absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                    <!-- Destination & Staff -->
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="space-y-1.5">
+                            <Label>Destino <span class="text-red-500">*</span></Label>
+                            <Select v-model="form.destination_id">
+                                <SelectTrigger><SelectValue placeholder="Seleccionar destino…" /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem v-for="opt in destinationOptions" :key="opt.id" :value="String(opt.id)">{{ opt.label }}</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <p v-if="form.errors.destination_id" class="text-xs text-red-500">{{ form.errors.destination_id }}</p>
+                        </div>
+                        <div class="relative space-y-1.5">
+                            <Label>Encargado de Recepción</Label>
                             <input
-                                v-model="itemSearch"
-                                placeholder="Buscar por nombre o sede…"
-                                class="h-9 w-full rounded-lg border border-slate-200 pr-3 pl-8 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+                                v-model="staffSearch"
+                                type="text"
+                                placeholder="Buscar por nombre…"
+                                class="border-input flex h-9 w-full rounded-md border bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200"
+                                @focus="openStaffDropdown"
+                                @blur="closeStaffDropdown"
                             />
-                        </div>
-                        <div class="flex overflow-hidden rounded-lg border border-slate-200">
-                            <button
-                                @click="itemTypeFilter = 'all'"
-                                class="px-3 py-2 text-xs font-medium transition-colors"
-                                :class="itemTypeFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'"
+                            <div
+                                v-if="staffDropdownOpen"
+                                class="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-md border bg-white shadow-lg dark:bg-gray-800"
                             >
-                                Todos
-                            </button>
-                            <button
-                                @click="itemTypeFilter = 'computer'"
-                                class="border-x px-3 py-2 transition-colors"
-                                :class="itemTypeFilter === 'computer' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'"
-                            >
-                                <Laptop class="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                                @click="itemTypeFilter = 'kitchen'"
-                                class="px-3 py-2 transition-colors"
-                                :class="itemTypeFilter === 'kitchen' ? 'bg-orange-500 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'"
-                            >
-                                <UtensilsCrossed class="h-3.5 w-3.5" />
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Table -->
-                    <div class="max-h-64 overflow-y-auto rounded-lg border">
-                        <table class="w-full text-xs">
-                            <thead class="sticky top-0 bg-slate-50">
-                                <tr class="border-b">
-                                    <th class="px-3 py-2 text-left font-semibold text-slate-500">Tipo</th>
-                                    <th class="px-3 py-2 text-left font-semibold text-slate-500">Equipo</th>
-                                    <th class="px-3 py-2 text-left font-semibold text-slate-500">Sede</th>
-                                    <th class="px-3 py-2 text-center font-semibold text-slate-500">Stock</th>
-                                    <th class="px-3 py-2 text-center font-semibold text-slate-500">Despachar</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr
-                                    v-for="eq in filteredEquipmentTable"
-                                    :key="`${eq.equipable_type}-${eq.id}`"
-                                    class="border-b transition-colors last:border-0"
-                                    :class="eq.qty_to_dispatch > 0 ? 'bg-red-50/60' : 'hover:bg-slate-50'"
+                                <button
+                                    type="button"
+                                    class="block w-full px-3 py-2 text-left text-sm text-slate-500 hover:bg-slate-50 dark:hover:bg-gray-700"
+                                    @mousedown.prevent="pickStaff('none')"
                                 >
-                                    <td class="px-3 py-2">
-                                        <span
-                                            class="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
-                                            :class="eq.equipable_type === 'computer' ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'"
-                                        >
-                                            <component :is="eq.equipable_type === 'computer' ? Laptop : UtensilsCrossed" class="h-2.5 w-2.5" />
-                                            {{ eq.equipable_type === 'computer' ? 'IT' : 'Cocina' }}
-                                        </span>
-                                    </td>
-                                    <td class="px-3 py-2">
-                                        <p class="font-medium text-slate-800">{{ eq.name }}</p>
-                                        <p v-if="eq.brand || eq.model" class="text-slate-400">
-                                            {{ [eq.brand, eq.model].filter(Boolean).join(' · ') }}
-                                        </p>
-                                    </td>
-                                    <td class="px-3 py-2 text-slate-600">{{ eq.storage_headquarter?.name ?? '—' }}</td>
-                                    <td class="px-3 py-2 text-center">
-                                        <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-700">{{
-                                            eq.quantity
-                                        }}</span>
-                                    </td>
-                                    <td class="px-3 py-2 text-center">
-                                        <input
-                                            v-model.number="eq.qty_to_dispatch"
-                                            type="number"
-                                            min="0"
-                                            :max="eq.quantity"
-                                            class="w-16 rounded-lg border border-slate-200 px-2 py-1 text-center text-xs outline-none focus:ring-2 focus:ring-red-300"
-                                            :class="eq.qty_to_dispatch > 0 ? 'border-red-300 bg-red-50 font-bold text-red-700' : ''"
-                                            @input="eq.qty_to_dispatch = eq.qty_to_dispatch > eq.quantity ? eq.quantity : eq.qty_to_dispatch"
-                                        />
-                                    </td>
-                                </tr>
-                                <tr v-if="filteredEquipmentTable.length === 0">
-                                    <td colspan="5" class="px-4 py-6 text-center text-slate-400">
-                                        {{
-                                            form.origin_headquarter_id
-                                                ? 'Esta sede no tiene equipos disponibles'
-                                                : 'Selecciona una sede origen para ver sus equipos'
-                                        }}
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                                    Sin asignar
+                                </button>
+                                <button
+                                    v-for="s in staffSearchResults"
+                                    :key="s.id"
+                                    type="button"
+                                    class="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-gray-700"
+                                    :class="String(s.id) === String(form.staff_id) ? 'bg-indigo-50 font-semibold text-indigo-700' : ''"
+                                    @mousedown.prevent="pickStaff(String(s.id))"
+                                >
+                                    {{ s.name }}
+                                </button>
+                                <p v-if="staffSearchResults.length === 0" class="px-3 py-2 text-xs text-slate-400">Sin resultados</p>
+                            </div>
+                            <p v-if="form.destination_type === 'cafe' || form.destination_type === 'unit'" class="text-[11px] text-slate-400">
+                                Solo se muestra personal del destino seleccionado
+                            </p>
+                        </div>
                     </div>
 
-                    <!-- Selected summary chips -->
-                    <div v-if="dispatchItems.length > 0" class="flex flex-wrap gap-1.5">
-                        <span
-                            v-for="item in dispatchItems"
-                            :key="`${item.equipable_type}-${item.equipable_id}`"
-                            class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-[11px] font-semibold text-red-700"
-                        >
-                            <component :is="item.equipable_type === 'computer' ? Laptop : UtensilsCrossed" class="h-3 w-3" />
-                            {{ equipmentTable.find((e) => e.id === item.equipable_id && e.equipable_type === item.equipable_type)?.name }}
-                            × {{ item.quantity }}
-                        </span>
+                    <!-- Equipment cards -->
+                    <div class="space-y-2">
+                        <Label>Equipos a Despachar <span class="text-red-500">*</span></Label>
+
+                        <!-- Search + type filter -->
+                        <div class="flex gap-2">
+                            <div class="relative flex-1">
+                                <Search class="absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                                <input
+                                    v-model="itemSearch"
+                                    placeholder="Buscar por nombre o sede…"
+                                    class="h-9 w-full rounded-lg border border-slate-200 pr-3 pl-8 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+                                />
+                            </div>
+                            <div class="flex overflow-hidden rounded-lg border border-slate-200">
+                                <button
+                                    @click="itemTypeFilter = 'all'"
+                                    class="px-3 py-2 text-xs font-medium transition-colors"
+                                    :class="itemTypeFilter === 'all' ? 'bg-slate-800 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'"
+                                >
+                                    Todos
+                                </button>
+                                <button
+                                    @click="itemTypeFilter = 'computer'"
+                                    class="border-x px-3 py-2 transition-colors"
+                                    :class="itemTypeFilter === 'computer' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'"
+                                >
+                                    <Laptop class="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                    @click="itemTypeFilter = 'kitchen'"
+                                    class="border-r px-3 py-2 transition-colors"
+                                    :class="itemTypeFilter === 'kitchen' ? 'bg-orange-500 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'"
+                                >
+                                    <UtensilsCrossed class="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                    @click="itemTypeFilter = 'epp'"
+                                    class="px-3 py-2 transition-colors"
+                                    :class="itemTypeFilter === 'epp' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'"
+                                >
+                                    <Package class="h-3.5 w-3.5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Card grid -->
+                        <div class="grid max-h-72 grid-cols-1 gap-2 overflow-y-auto rounded-xl border border-slate-100 p-2 sm:grid-cols-2">
+                            <label
+                                v-for="eq in filteredEquipmentTable"
+                                :key="`${eq.equipable_type}-${eq.id}-${eq.size ?? ''}-${eq.color_id ?? ''}`"
+                                class="flex items-center gap-3 rounded-xl border p-3 transition-colors"
+                                :class="eq.qty_to_dispatch > 0 ? 'border-red-300 bg-red-50/60' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'"
+                            >
+                                <div
+                                    class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+                                    :class="{
+                                        'bg-blue-100 text-blue-600': eq.equipable_type === 'computer',
+                                        'bg-orange-100 text-orange-600': eq.equipable_type === 'kitchen',
+                                        'bg-indigo-100 text-indigo-600': eq.equipable_type === 'epp',
+                                    }"
+                                >
+                                    <component
+                                        :is="eq.equipable_type === 'computer' ? Laptop : eq.equipable_type === 'kitchen' ? UtensilsCrossed : Package"
+                                        class="h-5 w-5"
+                                    />
+                                </div>
+                                <div class="min-w-0 flex-1">
+                                    <p class="truncate text-sm font-semibold text-slate-800">{{ eq.name }}</p>
+                                    <p v-if="eq.equipable_type === 'epp'" class="truncate text-[11px] text-slate-400">
+                                        {{ [eq.size ? `Talla ${eq.size}` : null, eq.color_name].filter(Boolean).join(' · ') || '—' }}
+                                    </p>
+                                    <p v-else class="truncate text-[11px] text-slate-400">
+                                        {{ [eq.brand, eq.model].filter(Boolean).join(' · ') || '—' }}
+                                    </p>
+                                    <div class="mt-1 flex items-center gap-1.5">
+                                        <span class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600"
+                                            >Stock: {{ eq.quantity }}</span
+                                        >
+                                        <span v-if="eq.storage_headquarter" class="truncate text-[10px] text-slate-400">{{
+                                            eq.storage_headquarter.name
+                                        }}</span>
+                                    </div>
+                                </div>
+                                <input
+                                    v-model.number="eq.qty_to_dispatch"
+                                    type="number"
+                                    min="0"
+                                    :max="eq.quantity"
+                                    class="w-16 shrink-0 rounded-lg border border-slate-200 px-2 py-1.5 text-center text-sm font-semibold outline-none focus:ring-2 focus:ring-red-300"
+                                    :class="eq.qty_to_dispatch > 0 ? 'border-red-300 bg-white text-red-700' : 'bg-white'"
+                                    @input="eq.qty_to_dispatch = eq.qty_to_dispatch > eq.quantity ? eq.quantity : eq.qty_to_dispatch"
+                                    @click.stop
+                                />
+                            </label>
+                            <p v-if="filteredEquipmentTable.length === 0" class="col-span-full py-8 text-center text-sm text-slate-400">
+                                {{
+                                    form.origin_headquarter_id
+                                        ? 'Esta sede no tiene ítems disponibles'
+                                        : 'Selecciona una sede origen para ver sus ítems'
+                                }}
+                            </p>
+                        </div>
+
+                        <!-- Selected summary chips -->
+                        <div v-if="dispatchItems.length > 0" class="flex flex-wrap gap-1.5">
+                            <span
+                                v-for="item in dispatchItems"
+                                :key="`${item.equipable_type}-${item.equipable_id}-${item.size ?? ''}-${item.color_id ?? ''}`"
+                                class="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 text-[11px] font-semibold text-red-700"
+                            >
+                                <component
+                                    :is="item.equipable_type === 'computer' ? Laptop : item.equipable_type === 'kitchen' ? UtensilsCrossed : Package"
+                                    class="h-3 w-3"
+                                />
+                                {{
+                                    equipmentTable.find(
+                                        (e) =>
+                                            e.id === item.equipable_id &&
+                                            e.equipable_type === item.equipable_type &&
+                                            (e.size ?? null) === item.size &&
+                                            (e.color_id ?? null) === item.color_id,
+                                    )?.name
+                                }}
+                                × {{ item.quantity }}
+                            </span>
+                        </div>
+                        <p v-else class="text-[11px] text-slate-400">Ingresa cantidad mayor a 0 en la columna "Despachar" para añadir equipos.</p>
                     </div>
-                    <p v-else class="text-[11px] text-slate-400">Ingresa cantidad mayor a 0 en la columna "Despachar" para añadir equipos.</p>
-                </div>
 
                 <!-- Description -->
                 <div class="space-y-1.5">

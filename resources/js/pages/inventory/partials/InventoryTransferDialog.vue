@@ -34,14 +34,14 @@ const searchResults = ref<any[]>([]);
 const isSearching = ref(false);
 const selectedType = ref<'cloth' | 'epp'>('epp');
 
-// Filtrar personal por unidad seleccionada
+// Filtrar personal por unidad seleccionada. Distintas páginas pasan `staff` con forma distinta:
+// clothes/Index.vue pasa el Staff completo (unit_id anidado en `cafe.unit_id`), mientras que
+// logistics/Index.vue ya trae `unit_id` aplanado directamente en cada registro.
 const filteredStaff = computed(() => {
     if (!form.value.unit_id) return [];
     return props.staff.filter((s) => {
-        // Asumiendo que s.staffable tiene unit_id o similar
-        // En este sistema Cafe pertenece a Unit.
-        const cafe = s.cafe;
-        return cafe && String(cafe.unit_id) === form.value.unit_id;
+        const unitId = s.unit_id ?? s.cafe?.unit_id;
+        return unitId != null && String(unitId) === form.value.unit_id;
     });
 });
 
