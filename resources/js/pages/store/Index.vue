@@ -48,9 +48,11 @@ interface Dispatch {
     dispatch_number: string;
     guide_number: string | null;
     status: string;
-    equipable_type: 'computer' | 'kitchen';
+    equipable_type: 'computer' | 'kitchen' | 'epp';
     equipable_id: number;
     quantity: number;
+    size?: string | null;
+    color_name?: string | null;
     equipment_name: string;
     equipment_brand: string | null;
     equipment_model: string | null;
@@ -72,13 +74,15 @@ interface Dispatch {
 interface StockItem {
     id: number;
     equipable_id: number;
-    equipable_type: 'computer' | 'kitchen';
+    equipable_type: 'computer' | 'kitchen' | 'epp';
     equipment_name: string;
     equipment_brand: string | null;
     equipment_model: string | null;
     equipment_code: string | null;
     equipment_series: string | null;
     equipment_status: number | null;
+    size?: string | null;
+    color_name?: string | null;
     responsible_id: number | null;
     responsible_name: string | null;
     quantity: number;
@@ -111,8 +115,10 @@ interface Stats {
     received: number;
     computers: number;
     kitchen: number;
+    epp: number;
     pending_computer: number;
     pending_kitchen: number;
+    pending_epp: number;
 }
 
 interface StockLedgerEntry {
@@ -290,6 +296,7 @@ function tabPending(key: TabKey) {
     if (key === 'all') return props.stats.pending;
     if (key === 'computer') return props.stats.pending_computer;
     if (key === 'kitchen') return props.stats.pending_kitchen;
+    if (key === 'epp') return props.stats.pending_epp;
     return 0;
 }
 
@@ -612,7 +619,7 @@ function equipmentStatusInfo(val: number | null) {
                                     <component :is="tab.icon" class="h-3.5 w-3.5 shrink-0" />
                                     <span class="hidden sm:inline">{{ tab.label }}</span>
                                     <span
-                                        v-if="viewSection === 'guides' && tabPending(tab.key) > 0 && ['all', 'computer', 'kitchen'].includes(tab.key)"
+                                        v-if="viewSection === 'guides' && tabPending(tab.key) > 0 && ['all', 'computer', 'kitchen', 'epp'].includes(tab.key)"
                                         class="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-black text-white"
                                     >
                                         {{ tabPending(tab.key) }}
@@ -623,7 +630,7 @@ function equipmentStatusInfo(val: number | null) {
 
                         <!-- ═══ Guías: una tarjeta por guía de remisión, igual al patrón de "Desde Café" ═══ -->
                         <template v-if="viewSection === 'guides'">
-                            <template v-if="activeTab !== 'epp' && activeTab !== 'supplies'">
+                            <template v-if="activeTab !== 'supplies'">
                                 <div
                                     v-if="groupedDispatches.length === 0"
                                     class="flex flex-col items-center justify-center rounded-xl border border-dashed py-16 text-slate-400"
@@ -704,9 +711,14 @@ function equipmentStatusInfo(val: number | null) {
                                                 <div class="flex min-w-0 flex-1 items-center gap-3">
                                                     <div
                                                         class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-                                                        :class="d.equipable_type === 'computer' ? 'bg-blue-100' : 'bg-orange-100'"
+                                                        :class="{
+                                                            'bg-blue-100': d.equipable_type === 'computer',
+                                                            'bg-orange-100': d.equipable_type === 'kitchen',
+                                                            'bg-indigo-100': d.equipable_type === 'epp',
+                                                        }"
                                                     >
                                                         <Laptop v-if="d.equipable_type === 'computer'" class="h-4 w-4 text-blue-600" />
+                                                        <ShieldCheck v-else-if="d.equipable_type === 'epp'" class="h-4 w-4 text-indigo-600" />
                                                         <UtensilsCrossed v-else class="h-4 w-4 text-orange-600" />
                                                     </div>
                                                     <div class="min-w-0">
@@ -715,7 +727,10 @@ function equipmentStatusInfo(val: number | null) {
                                                         </p>
                                                         <p class="truncate text-[11px] text-slate-400">
                                                             <span class="font-mono">{{ d.dispatch_number }}</span>
-                                                            <span v-if="d.equipment_brand || d.equipment_model">
+                                                            <span v-if="d.equipable_type === 'epp' && (d.size || d.color_name)">
+                                                                · {{ [d.size ? `Talla ${d.size}` : null, d.color_name].filter(Boolean).join(' · ') }}
+                                                            </span>
+                                                            <span v-else-if="d.equipment_brand || d.equipment_model">
                                                                 · {{ [d.equipment_brand, d.equipment_model].filter(Boolean).join(' ') }}
                                                             </span>
                                                         </p>
@@ -841,16 +856,6 @@ function equipmentStatusInfo(val: number | null) {
                                 </div>
                             </template>
 
-                            <!-- ── EPP placeholder ── -->
-                            <div
-                                v-else-if="activeTab === 'epp'"
-                                class="flex flex-col items-center justify-center rounded-xl border border-dashed py-20 text-slate-400"
-                            >
-                                <ShieldCheck class="mb-3 h-10 w-10 text-slate-300" />
-                                <p class="font-medium">EPP — Sin envíos registrados</p>
-                                <p class="mt-1 text-xs">Los despachos de EPP aparecerán aquí cuando estén disponibles</p>
-                            </div>
-
                             <!-- ── Insumos placeholder ── -->
                             <div
                                 v-else-if="activeTab === 'supplies'"
@@ -864,7 +869,7 @@ function equipmentStatusInfo(val: number | null) {
 
                         <!-- ═══ Stock: una fila por equipo, sin repetirse aunque el historial tenga varias guías ═══ -->
                         <template v-else>
-                            <template v-if="activeTab !== 'epp' && activeTab !== 'supplies'">
+                            <template v-if="activeTab !== 'supplies'">
                                 <div
                                     v-if="stock.data.length === 0"
                                     class="flex flex-col items-center justify-center rounded-xl border border-dashed py-16 text-slate-400"
@@ -894,20 +899,30 @@ function equipmentStatusInfo(val: number | null) {
                                                     <div class="flex items-center gap-2">
                                                         <div
                                                             class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg"
-                                                            :class="item.equipable_type === 'computer' ? 'bg-blue-100' : 'bg-orange-100'"
+                                                            :class="{
+                                                                'bg-blue-100': item.equipable_type === 'computer',
+                                                                'bg-orange-100': item.equipable_type === 'kitchen',
+                                                                'bg-indigo-100': item.equipable_type === 'epp',
+                                                            }"
                                                         >
                                                             <Laptop v-if="item.equipable_type === 'computer'" class="h-3.5 w-3.5 text-blue-600" />
+                                                            <ShieldCheck v-else-if="item.equipable_type === 'epp'" class="h-3.5 w-3.5 text-indigo-600" />
                                                             <UtensilsCrossed v-else class="h-3.5 w-3.5 text-orange-600" />
                                                         </div>
                                                         <p class="font-semibold text-slate-800 dark:text-slate-100">{{ item.equipment_name }}</p>
                                                     </div>
                                                 </td>
                                                 <td class="px-4 py-3 text-slate-600 dark:text-slate-300">
-                                                    {{ [item.equipment_brand, item.equipment_model].filter(Boolean).join(' · ') || '—' }}
+                                                    <template v-if="item.equipable_type === 'epp'">
+                                                        {{ [item.size ? `Talla ${item.size}` : null, item.color_name].filter(Boolean).join(' · ') || '—' }}
+                                                    </template>
+                                                    <template v-else>
+                                                        {{ [item.equipment_brand, item.equipment_model].filter(Boolean).join(' · ') || '—' }}
+                                                    </template>
                                                 </td>
                                                 <td class="px-4 py-3 font-mono text-xs text-slate-400">{{ item.equipment_series || '—' }}</td>
                                                 <td class="px-4 py-3 text-xs text-slate-500">
-                                                    {{ item.equipable_type === 'computer' ? 'Tecnológico' : 'Menaje' }}
+                                                    {{ item.equipable_type === 'computer' ? 'Tecnológico' : item.equipable_type === 'epp' ? 'EPP' : 'Menaje' }}
                                                 </td>
                                                 <td class="px-4 py-3">
                                                     <span
@@ -922,7 +937,11 @@ function equipmentStatusInfo(val: number | null) {
                                                     <span v-else class="text-xs text-slate-300">—</span>
                                                 </td>
                                                 <td class="px-4 py-3">
+                                                    <!-- Asignación de responsable solo existe para equipos (computer/kitchen);
+                                                    EPP no pasa por ese flujo todavía. -->
+                                                    <span v-if="item.equipable_type === 'epp'" class="text-xs text-slate-300">—</span>
                                                     <select
+                                                        v-else
                                                         :value="item.responsible_id ?? ''"
                                                         :disabled="assigningStock === item.id"
                                                         @change="assignStaff(item, ($event.target as HTMLSelectElement).value)"
@@ -977,14 +996,6 @@ function equipmentStatusInfo(val: number | null) {
                                     </div>
                                 </div>
                             </template>
-
-                            <div
-                                v-else-if="activeTab === 'epp'"
-                                class="flex flex-col items-center justify-center rounded-xl border border-dashed py-20 text-slate-400"
-                            >
-                                <ShieldCheck class="mb-3 h-10 w-10 text-slate-300" />
-                                <p class="font-medium">EPP — Sin stock registrado</p>
-                            </div>
 
                             <div
                                 v-else-if="activeTab === 'supplies'"

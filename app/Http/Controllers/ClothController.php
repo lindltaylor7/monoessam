@@ -289,7 +289,7 @@ class ClothController extends Controller
         $oldColorId = $entry->color_id;
 
         $staff = $entry->staff;
-        $cafeId = $staff->cafe_id;
+        $cafeId = $staff->effective_cafe_id;
 
         if ($entry->cloth_id || $entry->epp_id) {
             $itemId = $entry->cloth_id ?: $entry->epp_id;
@@ -337,7 +337,7 @@ class ClothController extends Controller
                     $stock = $stockQuery->first();
                     if (!$stock || $stock->quantity < $qtyToDecrement) {
                         $itemName = $entry->epp?->name ?: ($entry->cloth?->name ?: $entry->clothe_name);
-                        $locationName = $finalHqId ? \App\Models\Headquarter::find($finalHqId)?->name : ($staff->cafe?->name ?: 'el punto de venta');
+                        $locationName = $finalHqId ? \App\Models\Headquarter::find($finalHqId)?->name : (\App\Models\Cafe::find($cafeId)?->name ?: 'el punto de venta');
                         $colorName = \App\Models\Color::find($newColorId ?? $oldColorId)?->name ?: 'N/A';
                         return back()->with('error', "Stock insuficiente de '{$itemName}' (Talla: {$entry->clothing_size}, Color: {$colorName}) en {$locationName}. Disponible: " . ($stock?->quantity ?: 0));
                     }
@@ -363,7 +363,7 @@ class ClothController extends Controller
                             'color_id' => $oldColorId,
                             'cafe_id' => $cafeId
                         ]);
-                        $oldInventory->increment('quantity');
+                        $oldInventory->increment('quantity', $entry->quantity ?: 1);
                     }
                 }
             } elseif ($oldStatus === 'Entregado' && $newStatus !== 'Entregado') {
@@ -374,29 +374,34 @@ class ClothController extends Controller
                         'color_id' => $oldColorId,
                         'cafe_id' => $cafeId
                     ]);
-                    $inventory->increment('quantity');
+                    $inventory->increment('quantity', $entry->quantity ?: 1);
                 }
 
-                // Add back to global polymorphic stock
+                // Add back to global polymorphic stock. Usa la sede indicada en el request si se
+                // envió (p. ej. desde el modal "Confirmar Retorno de Stock"), igual que la rama de
+                // Entregado — si no, cae a la sede derivada del staffable (Area) y por último al
+                // café real del staff. Nunca ambas columnas de ubicación a la vez.
+                $finalHqId = $request->headquarter_id ?: $headquarterId;
+
                 $stock = \App\Models\InventoryStock::firstOrCreate([
                     'stockable_id' => $itemId,
                     'stockable_type' => $itemType,
                     'size' => $entry->clothing_size,
                     'color_id' => $oldColorId,
                     'condition' => 'En Almacén', // Returned items are always "En Almacén"
-                    'cafe_id' => $cafeId,
-                    'headquarter_id' => $headquarterId,
+                    'cafe_id' => $finalHqId ? null : $cafeId,
+                    'headquarter_id' => $finalHqId,
                 ], [
                     'quantity' => 0
                 ]);
-                $stock->increment('quantity');
+                $stock->increment('quantity', $entry->quantity ?: 1);
 
                 // ADD BACK TO CLOTH_INVOICE_ITEMS
                 $invoiceItem = \App\Models\ClothInvoiceItem::where($itemColumn, $itemId)
                     ->where('color_id', $oldColorId)
                     ->orderBy('created_at', 'desc')
                     ->first();
-                if ($invoiceItem) $invoiceItem->increment('quantity');
+                if ($invoiceItem) $invoiceItem->increment('quantity', $entry->quantity ?: 1);
             }
         }
 

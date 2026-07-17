@@ -62,6 +62,10 @@ const emit = defineEmits(['update:open']);
 
 const isAssigning = ref(false);
 const assignReason = ref('Renovación'); // Default to Regular
+// Sede desde la que sale/regresa el stock en la asignación rápida (submitAssignments) — sin esto,
+// el backend caía a la columna legado `staff.cafe_id` (ya no se mantiene, siempre null) en vez de
+// la Unidad/Café real del staff, dejando el stock sin ubicación (invisible en "Detalle de Tallas").
+const assignHeadquarterId = ref('');
 const selectedKeys = ref<string[]>([]);
 const selectionMode = ref(false);
 
@@ -221,6 +225,28 @@ const deliveryModal = ref({
     stocks: [] as any[],
 });
 
+// Cuando un ítem pasa de "Entregado" a otro estado (p. ej. "Devuelto"), el stock regresa
+// físicamente a algún almacén — igual que al entregar, hace falta preguntar a cuál. Sin esto,
+// el backend intentaba derivarlo del café/sede del staff, pero eso solo funciona si el staff
+// pertenece a un Area (no a un Cafe), dejando el stock devuelto sin ubicación real.
+const returnStatusModal = ref({
+    open: false,
+    item: null as any,
+    newStatus: '',
+    headquarter_id: '',
+});
+
+const openReturnStatusModal = (item: any, newStatus: string) => {
+    returnStatusModal.value = { open: true, item, newStatus, headquarter_id: '' };
+};
+
+const confirmReturnStatus = () => {
+    const { item, newStatus, headquarter_id } = returnStatusModal.value;
+    if (!item || !headquarter_id) return;
+    updateStatus(item.id, newStatus, item.color_id, item.clothing_size, item.epp_id, item.quantity, headquarter_id);
+    returnStatusModal.value.open = false;
+};
+
 const page = usePage();
 watch(
     () => (page.props as any).flash?.error,
@@ -326,18 +352,23 @@ const removePending = (index: number) => {
 
 const submitAssignments = () => {
     if (!props.staff) return;
+    if (!assignHeadquarterId.value) {
+        Swal.fire('Atención', 'Selecciona la sede desde la que sale/regresa el stock.', 'warning');
+        return;
+    }
     router.post(
         route('inventory.assign-clothes'),
         {
             staff_id: props.staff.id,
             reason: assignReason.value,
             create_history: true,
-            items: pendingAssignments.value,
+            items: pendingAssignments.value.map((item) => ({ ...item, headquarter_id: assignHeadquarterId.value })),
         },
         {
             onSuccess: () => {
                 isAssigning.value = false;
                 pendingAssignments.value = [];
+                assignHeadquarterId.value = '';
             },
             preserveScroll: true,
         },
@@ -487,6 +518,8 @@ const updateAssignment = (item: any, field: string, value: any) => {
 
         if (field === 'status' && value === 'Entregado') {
             openDeliveryModal(item);
+        } else if (field === 'status' && item.status === 'Entregado' && value !== 'Entregado') {
+            openReturnStatusModal(item, value);
         } else {
             updateStatus(item.id, payload.status, payload.color_id, payload.clothing_size, payload.epp_id, payload.quantity);
         }
@@ -954,7 +987,7 @@ watch(
                             <div
                                 class="flex flex-col items-center justify-between gap-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 sm:flex-row"
                             >
-                                <div class="flex w-full items-center gap-3 sm:w-auto">
+                                <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
                                     <Label class="text-[10px] font-black whitespace-nowrap text-indigo-700 uppercase">Motivo:</Label>
                                     <Select v-model="assignReason">
                                         <SelectTrigger class="h-10 w-full border-none bg-white text-xs shadow-sm sm:w-40">
@@ -964,6 +997,18 @@ watch(
                                             <SelectItem value="Nuevo">Nuevo Ingreso</SelectItem>
                                             <SelectItem value="Renovación">Renovación regular</SelectItem>
                                             <SelectItem value="Reposición">Reposición</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+
+                                    <Label class="text-[10px] font-black whitespace-nowrap text-indigo-700 uppercase">Sede:</Label>
+                                    <Select v-model="assignHeadquarterId">
+                                        <SelectTrigger class="h-10 w-full border-none bg-white text-xs shadow-sm sm:w-44">
+                                            <SelectValue placeholder="Seleccionar sede..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">
+                                                {{ hq.name }} <span class="ml-1 text-[9px] opacity-50">({{ hq.business?.name }})</span>
+                                            </SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -1130,10 +1175,19 @@ watch(
                                         EPPs y Requerimientos
                                     </h3>
                                     <div v-if="mergedClothes.length > 0" class="overflow-hidden rounded-2xl border shadow-sm">
-                                        <table class="w-full text-sm">
+                                        <table class="w-full table-fixed text-sm">
+                                            <colgroup>
+                                                <col class="w-10" />
+                                                <col />
+                                                <col class="w-16" />
+                                                <col class="w-20" />
+                                                <col class="w-[130px]" />
+                                                <col class="w-[110px]" />
+                                                <col class="w-[130px]" />
+                                            </colgroup>
                                             <thead class="border-b bg-slate-50">
                                                 <tr>
-                                                    <th class="w-10 px-4 py-2">
+                                                    <th class="px-4 py-2">
                                                         <Checkbox
                                                             :checked="
                                                                 selectedKeysCount === mergedClothes.filter((i: any) => i.epp_id).length &&
@@ -1156,17 +1210,21 @@ watch(
                                                 <tr
                                                     v-for="(item, idx) in mergedClothes"
                                                     :key="(item.id ? 'id-' + item.id : 'idx-' + idx) + (item.epp_id ? '-epp-' + item.epp_id : '')"
-                                                    class="cursor-pointer transition-all duration-200"
+                                                    class="transition-colors duration-150"
                                                     :class="[
-                                                        isSelected(item) ? 'border-l-4 border-l-indigo-500 bg-indigo-50/80' : 'hover:bg-slate-50/50',
-                                                        selectionMode && item.epp_id ? 'ring-1 ring-indigo-100' : '',
+                                                        selectionMode ? 'cursor-pointer' : '',
+                                                        isSelected(item)
+                                                            ? 'border-l-4 border-l-indigo-500 bg-indigo-50/80'
+                                                            : !item.id
+                                                              ? 'bg-slate-50/60 hover:bg-slate-100/70'
+                                                              : 'hover:bg-slate-50/50',
                                                     ]"
                                                     @click="selectionMode ? toggleSelection(item) : null"
                                                 >
-                                                    <td class="px-4 py-3">
+                                                    <td class="px-4 py-3 align-top">
                                                         <div
                                                             v-if="item.epp_id"
-                                                            class="flex h-5 w-5 items-center justify-center rounded-md border-2 transition-all"
+                                                            class="mt-0.5 flex h-5 w-5 items-center justify-center rounded-md border-2 transition-all"
                                                             :class="
                                                                 isSelected(item)
                                                                     ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm'
@@ -1177,27 +1235,26 @@ watch(
                                                             <Check v-if="isSelected(item)" class="h-3.5 w-3.5 stroke-[3]" />
                                                         </div>
                                                     </td>
-                                                    <td class="px-4 py-3">
-                                                        <div class="flex flex-col gap-1">
-                                                            <div class="text-xs font-bold text-slate-900">
+                                                    <td class="px-4 py-3 align-top">
+                                                        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                                            <span class="text-xs leading-snug font-bold text-slate-900">
                                                                 {{ item.required_name }}
-                                                            </div>
-                                                            <div v-if="!item.id" class="flex flex-col gap-2">
-                                                                <div
-                                                                    class="inline-block w-fit rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-black text-indigo-600"
-                                                                >
-                                                                    REQUERIDO
-                                                                </div>
-                                                            </div>
-                                                            <div
+                                                            </span>
+                                                            <span
+                                                                v-if="!item.id"
+                                                                class="inline-block w-fit shrink-0 rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-black whitespace-nowrap text-indigo-600"
+                                                            >
+                                                                REQUERIDO
+                                                            </span>
+                                                            <span
                                                                 v-else-if="!item.is_requirement"
-                                                                class="text-[8px] font-black tracking-widest text-slate-400 uppercase"
+                                                                class="shrink-0 text-[8px] font-black tracking-widest whitespace-nowrap text-slate-400 uppercase"
                                                             >
                                                                 Asignación Extra
-                                                            </div>
+                                                            </span>
                                                         </div>
                                                     </td>
-                                                    <td class="px-4 py-3 text-center">
+                                                    <td class="px-4 py-3 text-center align-top">
                                                         <Input
                                                             type="number"
                                                             :model-value="getDraftValue(item.epp_id, 'quantity', item.quantity)"
@@ -1208,7 +1265,7 @@ watch(
                                                             class="h-8 w-12 border-none bg-slate-50 text-center font-black text-slate-900"
                                                         />
                                                     </td>
-                                                    <td class="px-4 py-3 text-center">
+                                                    <td class="px-4 py-3 text-center align-top">
                                                         <Select
                                                             :model-value="getDraftValue(item.epp_id, 'clothing_size', item.clothing_size)"
                                                             @update:model-value="(val: any) => updateAssignment(item, 'clothing_size', val)"
@@ -1231,12 +1288,12 @@ watch(
                                                             </SelectContent>
                                                         </Select>
                                                     </td>
-                                                    <td class="px-4 py-3">
+                                                    <td class="px-4 py-3 align-top">
                                                         <Select
                                                             :model-value="String(getDraftValue(item.epp_id, 'color_id', item.color_id || ''))"
                                                             @update:model-value="(val: any) => updateAssignment(item, 'color_id', parseInt(val))"
                                                         >
-                                                            <SelectTrigger class="h-8 w-[120px] border-slate-200 bg-white text-xs">
+                                                            <SelectTrigger class="h-8 w-full border-slate-200 bg-white text-xs">
                                                                 <SelectValue placeholder="Color" />
                                                             </SelectTrigger>
                                                             <SelectContent>
@@ -1246,11 +1303,11 @@ watch(
                                                             </SelectContent>
                                                         </Select>
                                                     </td>
-                                                    <td class="px-4 py-3">
+                                                    <td class="px-4 py-3 align-top">
                                                         <span
                                                             v-if="item.id"
                                                             :class="[
-                                                                'rounded-full px-2 py-0.5 text-[9px] font-black uppercase',
+                                                                'inline-block rounded-full px-2 py-0.5 text-[9px] font-black whitespace-nowrap uppercase',
                                                                 item.condition === 'Nuevo'
                                                                     ? 'bg-emerald-100 text-emerald-700'
                                                                     : 'border border-amber-200 bg-amber-100 text-amber-700',
@@ -1260,14 +1317,14 @@ watch(
                                                         </span>
                                                         <span v-else class="text-[9px] font-bold text-slate-300 italic">Sin asignar</span>
                                                     </td>
-                                                    <td class="px-4 py-3">
+                                                    <td class="px-4 py-3 align-top">
                                                         <Select
                                                             :model-value="getDraftValue(item.epp_id, 'status', item.status || 'Pendiente')"
                                                             @update:model-value="(val: any) => updateAssignment(item, 'status', val)"
                                                         >
                                                             <SelectTrigger
                                                                 :class="[
-                                                                    'h-8 w-[120px] border-none text-[10px] font-bold tracking-tighter uppercase',
+                                                                    'h-8 w-full border-none text-[10px] font-bold tracking-tighter uppercase',
                                                                     getStatusColorMapped(
                                                                         getDraftValue(item.epp_id, 'status', item.status || 'Pendiente'),
                                                                     ),
@@ -1538,6 +1595,47 @@ watch(
                         class="bg-indigo-600 text-[10px] font-black text-white uppercase hover:bg-indigo-700"
                     >
                         Confirmar y Descontar
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+        <!-- Return Status Modal (Entregado -> otro estado) -->
+        <Dialog :open="returnStatusModal.open" @update:open="returnStatusModal.open = $event">
+            <DialogContent class="sm:max-w-[425px]">
+                <DialogHeader>
+                    <DialogTitle class="text-lg font-black tracking-tight uppercase">Confirmar Retorno de Stock</DialogTitle>
+                    <DialogDescription class="text-xs">
+                        Selecciona a qué almacén regresa
+                        <span class="font-bold text-slate-900">{{
+                            returnStatusModal.item?.required_name || returnStatusModal.item?.epp_name
+                        }}</span>
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div class="space-y-4 py-4">
+                    <div class="space-y-2">
+                        <Label class="text-[10px] font-black text-slate-500 uppercase">Almacén de Destino (Sede)</Label>
+                        <Select v-model="returnStatusModal.headquarter_id">
+                            <SelectTrigger class="h-11 w-full border-none bg-slate-50">
+                                <SelectValue placeholder="Seleccionar sede..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">
+                                    {{ hq.name }} <span class="ml-1 text-[9px] opacity-50">({{ hq.business?.name }})</span>
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+
+                <DialogFooter>
+                    <Button variant="outline" @click="returnStatusModal.open = false" class="text-[10px] font-bold uppercase">Cancelar</Button>
+                    <Button
+                        @click="confirmReturnStatus"
+                        :disabled="!returnStatusModal.headquarter_id"
+                        class="bg-indigo-600 text-[10px] font-black text-white uppercase hover:bg-indigo-700"
+                    >
+                        Confirmar Retorno
                     </Button>
                 </DialogFooter>
             </DialogContent>

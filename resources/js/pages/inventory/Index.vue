@@ -209,7 +209,7 @@ const groupedCafeDispatches = computed((): CafeDispatchGroup[] => {
     return [...map.values()];
 });
 
-const activeTab = ref('clothes');
+const activeTab = ref('epps');
 const viewMode = ref<'cards' | 'table'>('cards');
 const searchQuery = ref('');
 const selectedCafeId = ref('all');
@@ -341,19 +341,19 @@ const openSizesModal = (stock: any) => {
 const filteredStockSizes = computed(() => {
     if (!stockSizes.value) return [];
 
-    // Group sizes by location (Headquarter / Cafe)
+    // Group sizes by Headquarter (Sede) — el backend ya filtra a solo stock con sede asignada.
     const grouped: Record<string, any> = {};
 
     stockSizes.value.forEach((item: any) => {
-        const hqName = item.headquarter?.name || 'Sede Central / Almacén';
-        const cafeName = item.cafe?.name || 'Principal';
-        const groupKey = `${hqName} - ${cafeName}`;
+        const hqName = item.headquarter?.name || 'Sin sede';
+        const businessName = item.headquarter?.business?.name || '';
+        const groupKey = `${businessName}-${hqName}`;
 
         if (!grouped[groupKey]) {
             grouped[groupKey] = {
                 title: groupKey,
                 hq: hqName,
-                cafe: cafeName,
+                business: businessName,
                 items: [],
             };
         }
@@ -1072,10 +1072,6 @@ const kitchenTotalPages = computed(() => Math.max(1, Math.ceil(filteredKitchenEq
                 >
                     <Tabs v-model="activeTab" class="w-full sm:w-auto">
                         <TabsList class="bg-slate-100 p-1">
-                            <TabsTrigger value="clothes" class="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                                <Shirt class="h-4 w-4" />
-                                <span class="hidden sm:inline">Ropa</span>
-                            </TabsTrigger>
                             <TabsTrigger value="epps" class="gap-2 rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
                                 <Box class="h-4 w-4" />
                                 <span class="hidden sm:inline">EPPs</span>
@@ -2155,7 +2151,7 @@ const kitchenTotalPages = computed(() => Math.max(1, Math.ceil(filteredKitchenEq
                                     <div
                                         class="text-muted-foreground rounded border border-slate-200 bg-slate-100 p-1 px-2 text-[9px] font-black uppercase"
                                     >
-                                        {{ group.hq }} - {{ group.cafe }}
+                                        {{ group.hq }}<span v-if="group.business"> — {{ group.business }}</span>
                                     </div>
                                 </div>
                                 <div

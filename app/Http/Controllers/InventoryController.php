@@ -678,10 +678,22 @@ class InventoryController extends Controller
     {
         $stockItem = InventoryStock::findOrFail($id);
 
-        $stocks = InventoryStock::with(['color', 'headquarter', 'cafe'])
+        // Se agrupa por sede + talla + color, sumando la cantidad entre condiciones (Nuevo / En
+        // Almacén) — esta vista muestra cuánto hay disponible en total por talla/color, y esa
+        // distinción de condición (usada para preferir consumir lo "En Almacén" antes que lo
+        // "Nuevo" al asignar EPP) no se expone acá. Sin agrupar, la misma talla/color/sede
+        // aparecía como dos filas separadas (una por cada condición) en vez de un solo total.
+        // Solo se muestra stock con Sede asignada (headquarter_id) — el stock en Almacén
+        // Principal o en cafés/unidades específicas no es relevante para esta vista de "recepción
+        // por sede" y confundía al mezclarse con las sedes reales (Huancayo, Lima, etc.).
+        $stocks = InventoryStock::selectRaw('headquarter_id, size, color_id, SUM(quantity) as quantity, MIN(id) as id')
             ->where('stockable_id', $stockItem->stockable_id)
             ->where('stockable_type', $stockItem->stockable_type)
-            ->get();
+            ->where('quantity', '>', 0)
+            ->whereNotNull('headquarter_id')
+            ->groupBy('headquarter_id', 'size', 'color_id')
+            ->get()
+            ->load(['color', 'headquarter.business']);
 
         return response()->json($stocks);
     }
@@ -897,7 +909,7 @@ class InventoryController extends Controller
                             'condition' => 'En Almacén',
                         ])->where(function($q) use($itemData, $staff) {
                             if (!empty($itemData['headquarter_id'])) $q->where('headquarter_id', $itemData['headquarter_id']);
-                            else $q->where('cafe_id', $staff->cafe_id);
+                            else $q->where('cafe_id', $staff->effective_cafe_id);
                         })->first();
 
                         if (!$stock || $stock->quantity < $itemData['quantity']) {
@@ -910,7 +922,7 @@ class InventoryController extends Controller
                                 'condition' => 'Nuevo',
                             ])->where(function($q) use($itemData, $staff) {
                                 if (!empty($itemData['headquarter_id'])) $q->where('headquarter_id', $itemData['headquarter_id']);
-                                else $q->where('cafe_id', $staff->cafe_id);
+                                else $q->where('cafe_id', $staff->effective_cafe_id);
                             })->first();
                         }
 
@@ -919,7 +931,7 @@ class InventoryController extends Controller
                             $colorName = Color::find($itemData['color_id'])?->name ?: 'N/A';
                             $locationName = !empty($itemData['headquarter_id'])
                                 ? (Headquarter::find($itemData['headquarter_id'])?->name ?: 'la sede seleccionada')
-                                : ($staff->cafe?->name ?: 'el punto de venta');
+                                : (Cafe::find($staff->effective_cafe_id)?->name ?: 'el punto de venta');
                             throw new \Exception("Stock insuficiente de '{$epp->name}' (Talla: {$itemData['size']}, Color: {$colorName}) en {$locationName}.");
                         }
 
@@ -933,7 +945,7 @@ class InventoryController extends Controller
                             'color_id' => $itemData['color_id'],
                             'condition' => 'En Almacén', // They become "En Almacén" when returned
                             'headquarter_id' => $itemData['headquarter_id'] ?? null,
-                            'cafe_id' => empty($itemData['headquarter_id']) ? $staff->cafe_id : null,
+                            'cafe_id' => empty($itemData['headquarter_id']) ? $staff->effective_cafe_id : null,
                         ], [
                             'quantity' => 0
                         ]);
@@ -1017,10 +1029,18 @@ class InventoryController extends Controller
         $type = $request->input('type', 'epp');
         $modelType = $type === 'cloth' ? \App\Models\Cloth::class : \App\Models\Epp::class;
 
-        $stocks = InventoryStock::where([
-            'stockable_id' => $id,
-            'stockable_type' => $modelType
-        ])->get(['headquarter_id', 'cafe_id', 'quantity', 'size', 'color_id']);
+        // Se agrupa por sede + talla + color, sumando la cantidad entre condiciones (Nuevo / En
+        // Almacén). El frontend hace un solo match por sede+talla+color (getStockForHq /
+        // getMultiStockForHq) — si había dos filas para la misma combinación (una por
+        // condición), tomaba solo la primera y mostraba menos stock del que realmente hay
+        // disponible para entregar. Solo sedes (headquarter_id): este selector es "Almacén de
+        // Origen (Sede)", no lista cafés/unidades.
+        $stocks = InventoryStock::selectRaw('headquarter_id, cafe_id, size, color_id, SUM(quantity) as quantity')
+            ->where('stockable_id', $id)
+            ->where('stockable_type', $modelType)
+            ->whereNotNull('headquarter_id')
+            ->groupBy('headquarter_id', 'cafe_id', 'size', 'color_id')
+            ->get();
 
         return response()->json($stocks);
     }
@@ -1054,8 +1074,8 @@ class InventoryController extends Controller
         
         // Find staff headquarters or cafe
         $location = null;
-        if ($history->staff->cafe_id) {
-            $location = Cafe::with('unit')->find($history->staff->cafe_id);
+        if ($history->staff->effective_cafe_id) {
+            $location = Cafe::with('unit')->find($history->staff->effective_cafe_id);
         }
 
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.epp_delivery', [
@@ -1082,8 +1102,8 @@ class InventoryController extends Controller
             ->get();
         
         $location = null;
-        if ($staff->cafe_id) {
-            $location = Cafe::with('unit')->find($staff->cafe_id);
+        if ($staff->effective_cafe_id) {
+            $location = Cafe::with('unit')->find($staff->effective_cafe_id);
         }
 
         $flatItems = [];

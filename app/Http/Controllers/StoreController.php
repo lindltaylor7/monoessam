@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Cafe;
 use App\Models\ComputerEquipment;
+use App\Models\Epp;
 use App\Models\EquipmentDispatch;
 use App\Models\EquipmentStock;
 use App\Models\Headquarter;
+use App\Models\InventoryStock;
 use App\Models\KitchenEquipment;
 use App\Models\Staff;
 use App\Models\Unit;
@@ -78,9 +80,10 @@ class StoreController extends Controller
         $locationId   = (int) $request->input('location_id', $cafes->first()?->id ?? 0);
         $typeFilter   = $request->input('type', 'all');
 
-        $modelMap          = ['computer' => ComputerEquipment::class, 'kitchen' => KitchenEquipment::class];
+        $modelMap          = ['computer' => ComputerEquipment::class, 'kitchen' => KitchenEquipment::class, 'epp' => Epp::class];
         $modelClassFilter  = $modelMap[$typeFilter] ?? null;
-        $noResultsForType  = in_array($typeFilter, ['epp', 'supplies'], true);
+        // "Insumos" (Ingredient) todavía no tiene guías/stock implementado en esta vista.
+        $noResultsForType  = $typeFilter === 'supplies';
 
         // Query base de despachos relacionados a esta ubicación: si es un café, incluye tanto lo
         // que le llega (destino) como lo que sale de él hacia cualquier otro lado (origen) — así
@@ -105,8 +108,10 @@ class StoreController extends Controller
             'received'         => $statsRows->whereNotNull('received_at')->count(),
             'computers'        => $statsRows->where('equipable_type', ComputerEquipment::class)->count(),
             'kitchen'          => $statsRows->where('equipable_type', KitchenEquipment::class)->count(),
+            'epp'              => $statsRows->where('equipable_type', Epp::class)->count(),
             'pending_computer' => $statsRows->whereNull('received_at')->where('equipable_type', ComputerEquipment::class)->count(),
             'pending_kitchen'  => $statsRows->whereNull('received_at')->where('equipable_type', KitchenEquipment::class)->count(),
+            'pending_epp'      => $statsRows->whereNull('received_at')->where('equipable_type', Epp::class)->count(),
         ];
 
         if ($modelClassFilter) {
@@ -128,7 +133,7 @@ class StoreController extends Controller
         $totalGuides       = $guideGroups->count();
         $pagedGuideNumbers = $guideGroups->forPage($guidesPage, self::GUIDES_PER_PAGE)->pluck('guide_number');
 
-        $dispatchesRaw = EquipmentDispatch::with(['equipable', 'origin', 'originCafe', 'dispatcher', 'receiver'])
+        $dispatchesRaw = EquipmentDispatch::with(['equipable', 'origin', 'originCafe', 'dispatcher', 'receiver', 'color'])
             ->whereIn('guide_number', $pagedGuideNumbers)
             ->orderByDesc('id')
             ->get();
@@ -153,35 +158,70 @@ class StoreController extends Controller
         $dispatchesPaginator->appends($request->query());
 
         // ── Stock: paginación estándar de Laravel, 15 por página ──
-        $stockQuery = EquipmentStock::with('stockable.responsible:id,name')->where('quantity', '>', 0);
-        if ($locationId && $locationType === 'cafe') {
-            $stockQuery->where('cafe_id', $locationId);
-        } elseif ($locationId) {
-            $stockQuery->where('unit_id', $locationId);
-        } else {
-            $stockQuery->whereRaw('1 = 0');
-        }
-        if ($modelClassFilter) {
-            $stockQuery->where('stockable_type', $modelClassFilter);
-        } elseif ($noResultsForType) {
-            $stockQuery->whereRaw('1 = 0');
-        }
+        // El stock de EPP vive en InventoryStock (dimensionado por talla/color), no en el ledger
+        // equipment_stocks (solo computer/kitchen) — se consulta aparte cuando el tab activo es
+        // "EPP". "Todos" sigue mostrando solo computer/kitchen (unificar ambas tablas en una sola
+        // paginación requeriría un UNION; queda fuera de este alcance).
+        if ($typeFilter === 'epp') {
+            $stockQuery = InventoryStock::with(['stockable:id,name', 'color:id,name,hex_code'])
+                ->where('stockable_type', Epp::class)
+                ->where('quantity', '>', 0);
+            if ($locationId && $locationType === 'cafe') {
+                $stockQuery->where('cafe_id', $locationId);
+            } elseif ($locationId) {
+                $stockQuery->where('unit_id', $locationId);
+            } else {
+                $stockQuery->whereRaw('1 = 0');
+            }
 
-        $stockPaginator = $stockQuery->orderBy('id')->paginate(self::STOCK_PER_PAGE, ['*'], 'stock_page')->withQueryString();
-        $stockPaginator->getCollection()->transform(fn($s) => [
-            'id'                => $s->id,
-            'equipable_id'      => $s->stockable_id,
-            'equipable_type'    => str_contains($s->stockable_type, 'Computer') ? 'computer' : 'kitchen',
-            'equipment_name'    => $s->stockable?->name ?? '—',
-            'equipment_brand'   => $s->stockable?->brand,
-            'equipment_model'   => $s->stockable?->model,
-            'equipment_code'    => $s->stockable?->code,
-            'equipment_series'  => $s->stockable?->series,
-            'equipment_status'  => $s->stockable?->status,
-            'responsible_id'    => $s->stockable?->responsible_id,
-            'responsible_name'  => $s->stockable?->responsible?->name,
-            'quantity'          => $s->quantity,
-        ]);
+            $stockPaginator = $stockQuery->orderBy('id')->paginate(self::STOCK_PER_PAGE, ['*'], 'stock_page')->withQueryString();
+            $stockPaginator->getCollection()->transform(fn($s) => [
+                'id'                => $s->id,
+                'equipable_id'      => $s->stockable_id,
+                'equipable_type'    => 'epp',
+                'equipment_name'    => $s->stockable?->name ?? '—',
+                'equipment_brand'   => null,
+                'equipment_model'   => null,
+                'equipment_code'    => null,
+                'equipment_series'  => null,
+                'equipment_status'  => null,
+                'size'              => $s->size,
+                'color_name'        => $s->color?->name,
+                'responsible_id'    => null,
+                'responsible_name'  => null,
+                'quantity'          => $s->quantity,
+            ]);
+        } else {
+            $stockQuery = EquipmentStock::with('stockable.responsible:id,name')->where('quantity', '>', 0);
+            if ($locationId && $locationType === 'cafe') {
+                $stockQuery->where('cafe_id', $locationId);
+            } elseif ($locationId) {
+                $stockQuery->where('unit_id', $locationId);
+            } else {
+                $stockQuery->whereRaw('1 = 0');
+            }
+            if ($modelClassFilter) {
+                $stockQuery->where('stockable_type', $modelClassFilter);
+            } elseif ($noResultsForType) {
+                $stockQuery->whereRaw('1 = 0');
+            }
+
+            $stockPaginator = $stockQuery->orderBy('id')->paginate(self::STOCK_PER_PAGE, ['*'], 'stock_page')->withQueryString();
+            $stockPaginator->getCollection()->transform(fn($s) => [
+                'id'                => $s->id,
+                'equipable_id'      => $s->stockable_id,
+                'equipable_type'    => str_contains($s->stockable_type, 'Computer') ? 'computer' : 'kitchen',
+                'equipment_name'    => $s->stockable?->name ?? '—',
+                'equipment_brand'   => $s->stockable?->brand,
+                'equipment_model'   => $s->stockable?->model,
+                'equipment_code'    => $s->stockable?->code,
+                'equipment_series'  => $s->stockable?->series,
+                'equipment_status'  => $s->stockable?->status,
+                'responsible_id'    => $s->stockable?->responsible_id,
+                'responsible_name'  => $s->stockable?->responsible?->name,
+                'quantity'          => $s->quantity,
+            ]);
+        }
 
         // Personal (Staff) que pertenece a la Unidad del café/unidad seleccionado — para poder
         // asignar equipos del stock directamente desde acá.
@@ -299,7 +339,11 @@ class StoreController extends Controller
 
     private function transform(EquipmentDispatch $d, $destCafes = null, $destHeadquarters = null, $destUnits = null): array
     {
-        $equipType = str_contains($d->equipable_type, 'Computer') ? 'computer' : 'kitchen';
+        $equipType = match (true) {
+            str_contains($d->equipable_type, 'Computer') => 'computer',
+            str_contains($d->equipable_type, 'Epp')      => 'epp',
+            default                                       => 'kitchen',
+        };
 
         $originName = $d->origin?->name ?? $d->originCafe?->name ?? '—';
 
@@ -318,6 +362,8 @@ class StoreController extends Controller
             'equipable_type'  => $equipType,
             'equipable_id'    => $d->equipable_id,
             'quantity'        => $d->quantity,
+            'size'            => $d->size,
+            'color_name'      => $d->color?->name,
             'equipment_name'  => $d->equipable?->name ?? '—',
             'equipment_brand' => $d->equipable?->brand,
             'equipment_model' => $d->equipable?->model,

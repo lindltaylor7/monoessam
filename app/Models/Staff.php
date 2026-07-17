@@ -69,6 +69,21 @@ class Staff extends Model
         return $this->morphTo();
     }
 
+    /**
+     * Café real del staff, para código que todavía depende de un cafe_id — esa columna ya no se
+     * mantiene desde que la ubicación se maneja vía la relación polimórfica `staffable` (Cafe o
+     * Area). Cae al valor de la columna legado solo si existe; si no, lo deriva de `staffable`
+     * cuando apunta a un Cafe.
+     */
+    public function getEffectiveCafeIdAttribute(): ?int
+    {
+        if ($this->cafe_id) {
+            return $this->cafe_id;
+        }
+
+        return $this->staffable_type === Cafe::class ? $this->staffable_id : null;
+    }
+
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class, 'role_id', 'id');
