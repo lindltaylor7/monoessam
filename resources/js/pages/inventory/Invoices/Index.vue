@@ -382,6 +382,7 @@ const isProviderModalOpen = ref(false);
 const editingProvider = ref<any>(null);
 const providerForm = ref({
     name: '',
+    ruc: '',
     email: '',
     phone: '',
 });
@@ -391,24 +392,31 @@ const openProviderModal = (provider: any = null) => {
         editingProvider.value = provider;
         providerForm.value = {
             name: provider.name || '',
+            ruc: provider.ruc || '',
             email: provider.email || '',
             phone: provider.phone || '',
         };
     } else {
         editingProvider.value = null;
-        providerForm.value = { name: '', email: '', phone: '' };
+        providerForm.value = { name: '', ruc: '', email: '', phone: '' };
     }
     isProviderModalOpen.value = true;
+};
+
+const showValidationErrors = (errors: Record<string, string>) => {
+    alert(Object.values(errors).join('\n'));
 };
 
 const handleProviderSubmit = () => {
     if (editingProvider.value) {
         router.put(route('inventory.providers.update', editingProvider.value.id), providerForm.value, {
             onSuccess: () => (isProviderModalOpen.value = false),
+            onError: showValidationErrors,
         });
     } else {
         router.post(route('inventory.providers.store'), providerForm.value, {
             onSuccess: () => (isProviderModalOpen.value = false),
+            onError: showValidationErrors,
         });
     }
 };
@@ -437,11 +445,13 @@ const handleEqProviderSubmit = () => {
         router.put(route('equipments.providers.update', editingEqProvider.value.id), eqProviderForm.value, {
             preserveScroll: true,
             onSuccess: () => (isEqProviderModalOpen.value = false),
+            onError: showValidationErrors,
         });
     } else {
         router.post(route('equipments.providers.store'), eqProviderForm.value, {
             preserveScroll: true,
             onSuccess: () => (isEqProviderModalOpen.value = false),
+            onError: showValidationErrors,
         });
     }
 };
@@ -1640,6 +1650,7 @@ const saveInlinePrice = (cp: any) => {
                                 <TableHeader>
                                     <TableRow class="bg-slate-50/50 hover:bg-slate-50/50">
                                         <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Nombre</TableHead>
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">RUC</TableHead>
                                         <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Email</TableHead>
                                         <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Teléfono</TableHead>
                                         <TableHead class="w-[100px]"></TableHead>
@@ -1648,6 +1659,7 @@ const saveInlinePrice = (cp: any) => {
                                 <TableBody>
                                     <TableRow v-for="prov in clothProviders" :key="prov.id" class="group transition-colors">
                                         <TableCell class="font-bold text-slate-900">{{ prov.name }}</TableCell>
+                                        <TableCell class="font-mono text-slate-600">{{ prov.ruc || '-' }}</TableCell>
                                         <TableCell>{{ prov.email || '-' }}</TableCell>
                                         <TableCell>{{ prov.phone || '-' }}</TableCell>
                                         <TableCell class="flex justify-end gap-2">
@@ -1679,7 +1691,7 @@ const saveInlinePrice = (cp: any) => {
                                         </TableCell>
                                     </TableRow>
                                     <TableRow v-if="clothProviders.length === 0">
-                                        <TableCell colspan="4" class="h-32 text-center text-slate-400 italic">
+                                        <TableCell colspan="5" class="h-32 text-center text-slate-400 italic">
                                             No hay proveedores de ropa registrados.
                                         </TableCell>
                                     </TableRow>
@@ -1886,6 +1898,11 @@ const saveInlinePrice = (cp: any) => {
                             <Input v-model="providerForm.name" placeholder="Ej: Textiles S.A." />
                         </div>
                         <div class="grid gap-2">
+                            <Label>RUC</Label>
+                            <Input v-model="providerForm.ruc" placeholder="Ej: 20123456789" maxlength="11" class="font-mono" />
+                            <p class="text-xs text-slate-400">Opcional. Si se indica, debe tener exactamente 11 dígitos.</p>
+                        </div>
+                        <div class="grid gap-2">
                             <Label>Email</Label>
                             <Input v-model="providerForm.email" type="email" placeholder="ventas@empresa.com" />
                         </div>
@@ -1921,6 +1938,7 @@ const saveInlinePrice = (cp: any) => {
                         <div class="grid gap-2">
                             <Label>RUC</Label>
                             <Input v-model="eqProviderForm.ruc" placeholder="Ej: 20123456789" maxlength="11" class="font-mono" />
+                            <p class="text-xs text-slate-400">Opcional. Si se indica, debe tener exactamente 11 dígitos.</p>
                         </div>
                         <div class="grid gap-2">
                             <Label>Email</Label>

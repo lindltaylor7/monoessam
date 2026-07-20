@@ -551,6 +551,7 @@ class InventoryController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'ruc' => 'nullable|string|size:11',
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:255',
         ]);
@@ -566,6 +567,7 @@ class InventoryController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'ruc' => 'nullable|string|size:11',
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:255',
         ]);
