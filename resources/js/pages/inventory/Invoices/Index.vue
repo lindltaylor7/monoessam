@@ -855,9 +855,9 @@ const saveInlinePrice = (cp: any) => {
                                                         <Select v-model="invoiceForm.cloth_provider_id">
                                                             <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                                                             <SelectContent>
-                                                                <SelectItem v-for="p in clothProviders" :key="p.id" :value="String(p.id)">{{
-                                                                    p.name
-                                                                }}</SelectItem>
+                                                                <SelectItem v-for="p in clothProviders" :key="p.id" :value="String(p.id)">
+                                                                    {{ p.name }}<span v-if="p.ruc" class="text-slate-400"> — RUC: {{ p.ruc }}</span>
+                                                                </SelectItem>
                                                             </SelectContent>
                                                         </Select>
                                                     </div>
@@ -2545,7 +2545,9 @@ const saveInlinePrice = (cp: any) => {
                             <Select v-model="priceForm.cloth_provider_id">
                                 <SelectTrigger><SelectValue placeholder="Seleccionar proveedor" /></SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem v-for="prov in clothProviders" :key="prov.id" :value="String(prov.id)">{{ prov.name }}</SelectItem>
+                                    <SelectItem v-for="prov in clothProviders" :key="prov.id" :value="String(prov.id)">
+                                        {{ prov.name }}<span v-if="prov.ruc" class="text-slate-400"> — RUC: {{ prov.ruc }}</span>
+                                    </SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>

@@ -28,7 +28,6 @@ const props = defineProps<{
 
 const newEppName = ref('');
 const isCreating = ref(false);
-const searchQuery = ref('');
 const selectedCafeId = ref(props.cafes.length > 0 ? String(props.cafes[0].id) : '');
 const eppSearchQuery = ref('');
 
@@ -38,15 +37,12 @@ const filteredEpps = computed(() => {
     return props.epps.filter((epp) => epp.name.toLowerCase().includes(eppSearchQuery.value.toLowerCase()));
 });
 
-// Filtrar roles según el café seleccionado y la búsqueda
+// Roles del café seleccionado (sin filtro de texto — la búsqueda en la tabla es por EPP, no por cargo)
 const filteredRoles = computed(() => {
     const currentCafe = props.cafes.find((c) => String(c.id) === selectedCafeId.value);
     const cafeRoleIds = currentCafe?.roles?.map((r) => r.id) || [];
 
-    const roles = props.roles.filter((role) => cafeRoleIds.includes(role.id));
-
-    if (!searchQuery.value) return roles;
-    return roles.filter((role) => role.name.toLowerCase().includes(searchQuery.value.toLowerCase()));
+    return props.roles.filter((role) => cafeRoleIds.includes(role.id));
 });
 
 // Obtener EPPs asignados a un rol específico y café seleccionado
@@ -209,9 +205,9 @@ const prevRoles = () => {
     }
 };
 
-// Resetear página solo cuando el usuario cambia filtro/café
+// Resetear página solo cuando el usuario cambia de café
 import { watch } from 'vue';
-watch([searchQuery, selectedCafeId], () => {
+watch(selectedCafeId, () => {
     roleStartIndex.value = 0;
 });
 
@@ -282,7 +278,7 @@ const hasRoleInSelection = (roleId: number) => {
             <div
                 class="flex flex-none flex-col items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-2xl shadow-indigo-100 xl:flex-row"
             >
-                <div class="grid w-full min-w-0 flex-1 grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
+                <div class="grid w-full min-w-0 flex-1 grid-cols-1 gap-3 md:grid-cols-2">
                     <div class="min-w-0 space-y-1">
                         <Label class="ml-1 text-[9px] font-black text-slate-400 uppercase">Unidad / Comedor</Label>
                         <Select v-model="selectedCafeId">
@@ -304,30 +300,6 @@ const hasRoleInSelection = (roleId: number) => {
                                 </SelectItem>
                             </SelectContent>
                         </Select>
-                    </div>
-
-                    <div class="min-w-0 space-y-1">
-                        <Label class="ml-1 text-[9px] font-black text-slate-400 uppercase">Buscar Cargo</Label>
-                        <div class="relative min-w-0">
-                            <Briefcase class="absolute top-2.5 left-2.5 h-3.5 w-3.5 text-slate-500" />
-                            <Input
-                                v-model="searchQuery"
-                                placeholder="..."
-                                class="h-9 border-none bg-slate-800 pl-8 text-[10px] text-white shadow-none placeholder:text-slate-600 focus:ring-1 focus:ring-indigo-500"
-                            />
-                        </div>
-                    </div>
-
-                    <div class="min-w-0 space-y-1">
-                        <Label class="ml-1 text-[9px] font-black text-slate-400 uppercase">Buscar EPP</Label>
-                        <div class="relative min-w-0">
-                            <Box class="absolute top-2.5 left-2.5 h-3.5 w-3.5 text-slate-500" />
-                            <Input
-                                v-model="eppSearchQuery"
-                                placeholder="..."
-                                class="h-9 border-none bg-slate-800 pl-8 text-[10px] text-white shadow-none placeholder:text-slate-600 focus:ring-1 focus:ring-indigo-500"
-                            />
-                        </div>
                     </div>
 
                     <div class="min-w-0 space-y-1">
@@ -408,9 +380,17 @@ const hasRoleInSelection = (roleId: number) => {
                                             <span class="text-xs leading-none font-black tracking-tighter text-slate-900 uppercase italic"
                                                 >Roles / Cargos →</span
                                             >
-                                            <span class="mt-1 flex items-center gap-1 text-[9px] font-medium text-slate-400">
+                                            <span class="flex items-center gap-1 text-[9px] font-medium text-slate-400">
                                                 EPP / Elemento <ArrowLeft class="h-2 w-2 rotate-270" />
                                             </span>
+                                            <div class="relative mt-1 min-w-0">
+                                                <Box class="absolute top-2 left-2 h-3 w-3 text-slate-400" />
+                                                <Input
+                                                    v-model="eppSearchQuery"
+                                                    placeholder="Buscar EPP..."
+                                                    class="h-7 border-slate-200 bg-white pl-7 text-[10px] shadow-none focus:ring-1 focus:ring-indigo-500"
+                                                />
+                                            </div>
                                         </div>
                                     </TableHead>
 
