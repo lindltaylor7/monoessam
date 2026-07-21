@@ -14,7 +14,21 @@ import StaffHistoryDialog from '@/pages/clothes/partials/StaffHistoryDialog.vue'
 import InventoryTransferDialog from '@/pages/inventory/partials/InventoryTransferDialog.vue';
 import { Staff } from '@/types';
 import { Head, router } from '@inertiajs/vue3';
-import { Building2, ChevronLeft, ChevronRight, Eye, History, Package, RotateCcw, Truck, User } from 'lucide-vue-next';
+import {
+    Briefcase,
+    Building2,
+    Calendar,
+    ChevronLeft,
+    ChevronRight,
+    Coffee,
+    Eye,
+    History,
+    Package,
+    RotateCcw,
+    Truck,
+    User,
+} from 'lucide-vue-next';
+import Swal from 'sweetalert2';
 import { computed, ref, watch } from 'vue';
 
 interface ExtendedStaff extends Staff {
@@ -181,6 +195,13 @@ const confirmDirectReturn = () => {
             preserveScroll: true,
             onSuccess: () => {
                 directReturnModal.value.open = false;
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Devolución registrada',
+                    text: 'La devolución del EPP se realizó correctamente.',
+                    timer: 2000,
+                    showConfirmButton: false,
+                });
             },
         },
     );
@@ -213,6 +234,13 @@ const handleReturn = () => {
     router.post(route('inventory.transfer.return'), returnForm.value, {
         onSuccess: () => {
             isReturnModalOpen.value = false;
+            Swal.fire({
+                icon: 'success',
+                title: 'Devolución registrada',
+                text: 'La devolución se realizó correctamente.',
+                timer: 2000,
+                showConfirmButton: false,
+            });
         },
         preserveScroll: true,
     });
@@ -304,58 +332,74 @@ const getInitials = (name: string) => {
                     <table class="w-full text-left text-sm">
                         <thead class="border-b bg-gray-50 text-gray-500">
                             <tr>
-                                <th class="p-4 font-medium">Personal</th>
-                                <th class="p-4 font-medium">Fecha de ingreso</th>
-                                <th class="p-4 font-medium">Cargo</th>
-                                <th class="p-4 font-medium">Comedor</th>
-                                <th class="p-4 font-medium">Unidad</th>
+                                <th class="p-4 font-medium">
+                                    <span class="flex items-center gap-1.5"><User class="h-3.5 w-3.5" /> Personal</span>
+                                </th>
+                                <th class="p-4 font-medium">
+                                    <span class="flex items-center gap-1.5"><Calendar class="h-3.5 w-3.5" /> Fecha de ingreso</span>
+                                </th>
+                                <th class="p-4 font-medium">
+                                    <span class="flex items-center gap-1.5"><Briefcase class="h-3.5 w-3.5" /> Cargo</span>
+                                </th>
+                                <th class="p-4 font-medium">
+                                    <span class="flex items-center gap-1.5"><Coffee class="h-3.5 w-3.5" /> Comedor</span>
+                                </th>
+                                <th class="p-4 font-medium">
+                                    <span class="flex items-center gap-1.5"><Building2 class="h-3.5 w-3.5" /> Unidad</span>
+                                </th>
                                 <!-- <th class="p-4 font-medium">Tallas</th> -->
                                 <th class="w-36 p-4 text-right font-medium">Acciones</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100">
-                            <tr v-for="person in paginatedStaff" :key="person.id" class="hover:bg-gray-50/50">
+                            <tr v-for="person in paginatedStaff" :key="person.id" class="transition-colors hover:bg-indigo-50/30">
                                 <td class="p-4">
                                     <div class="flex items-center gap-3">
-                                        <Avatar class="h-9 w-9 border">
+                                        <Avatar class="h-10 w-10 border-2 border-white shadow ring-2 ring-indigo-100">
                                             <AvatarImage v-if="person.photo?.url" :src="`/storage/${person.photo?.url}`" class="object-cover" />
-                                            <AvatarFallback>{{ getInitials(person.name) }}</AvatarFallback>
+                                            <AvatarFallback class="bg-indigo-50 font-bold text-indigo-600">{{
+                                                getInitials(person.name)
+                                            }}</AvatarFallback>
                                         </Avatar>
-                                        <div class="font-medium text-gray-900">{{ person.name }}</div>
+                                        <div class="font-semibold text-gray-900">{{ person.name }}</div>
                                     </div>
                                 </td>
                                 <td class="p-4">
                                     <span
-                                        class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-green-700/10 ring-inset"
+                                        class="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700"
                                         v-if="person.staff_financial && person.staff_financial.start_date"
                                     >
+                                        <Calendar class="h-3 w-3" />
                                         {{ person.staff_financial.start_date }}
                                     </span>
                                     <span v-else class="text-gray-400 italic">Sin fecha de ingreso</span>
                                 </td>
                                 <td class="p-4">
                                     <span
-                                        class="inline-flex items-center rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 ring-1 ring-blue-700/10 ring-inset"
+                                        class="inline-flex items-center gap-1.5 rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700"
                                         v-if="person.role"
                                     >
+                                        <Briefcase class="h-3 w-3" />
                                         {{ person.role.name }}
                                     </span>
                                     <span v-else class="text-gray-400 italic">Sin cargo</span>
                                 </td>
                                 <td class="p-4">
                                     <span
-                                        class="inline-flex items-center rounded-md bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700 ring-1 ring-orange-700/10 ring-inset"
+                                        class="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700"
                                         v-if="person.staffable"
                                     >
+                                        <Coffee class="h-3 w-3" />
                                         {{ person.staffable.name }}
                                     </span>
                                     <span v-else class="text-gray-400 italic">Sin café</span>
                                 </td>
                                 <td class="p-4">
                                     <span
-                                        class="inline-flex items-center rounded-md bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-green-700/10 ring-inset"
+                                        class="inline-flex items-center gap-1.5 rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700"
                                         v-if="person.staffable?.unit"
                                     >
+                                        <Building2 class="h-3 w-3" />
                                         {{ person.staffable?.unit?.name }} - {{ person.staffable?.unit?.mine?.name }}
                                     </span>
                                     <span v-else class="text-gray-400 italic">Sin unidad</span>

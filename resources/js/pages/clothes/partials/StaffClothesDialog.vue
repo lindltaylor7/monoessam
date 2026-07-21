@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { router, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
-import { Check, Loader2, Package, Plus, Search, Trash2 } from 'lucide-vue-next';
+import { Check, Loader2, Package, Pencil, Plus, Search, Trash2 } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
 import { computed, ref, watch } from 'vue';
 
@@ -59,20 +59,22 @@ const props = defineProps<{
 
 const emit = defineEmits(['update:open']);
 
-const isAssigning = ref(false);
+// Panel secundario para registrar un EPP que no está en el listado de requerimientos del cargo
+const showQuickAdd = ref(false);
+// Panel secundario para editar las tallas fijas del trabajador (colapsado por defecto)
+const showSizeEditor = ref(false);
 const assignReason = ref('Renovación'); // Default to Regular
-// Comparte estado de "enviando" entre los 3 flujos que postean a inventory.assign-clothes
-// (asignación rápida, entrega individual, entrega múltiple) — sin esto, un doble clic en
-// "Confirmar" dispara dos requests casi simultáneos que no llegan a verse entre sí dentro de la
-// transacción de cada uno, y el backend termina creando dos filas duplicadas de Staff_clothes en
-// vez de una sola con la cantidad correcta.
+// Comparte estado de "enviando" entre los 2 flujos que postean a inventory.assign-clothes
+// (asignación rápida, entrega múltiple) — sin esto, un doble clic en "Confirmar" dispara dos
+// requests casi simultáneos que no llegan a verse entre sí dentro de la transacción de cada uno,
+// y el backend termina creando dos filas duplicadas de Staff_clothes en vez de una sola con la
+// cantidad correcta.
 const isSubmittingAssignment = ref(false);
 // Sede desde la que sale/regresa el stock en la asignación rápida (submitAssignments) — sin esto,
 // el backend caía a la columna legado `staff.cafe_id` (ya no se mantiene, siempre null) en vez de
 // la Unidad/Café real del staff, dejando el stock sin ubicación (invisible en "Detalle de Tallas").
 const assignHeadquarterId = ref('');
 const selectedKeys = ref<string[]>([]);
-const selectionMode = ref(false);
 
 const toggleSelection = (item: any) => {
     if (!item.epp_id) return;
@@ -82,6 +84,7 @@ const toggleSelection = (item: any) => {
         selectedKeys.value.splice(idx, 1);
     } else {
         selectedKeys.value.push(key);
+        checkItemStock(item);
     }
 };
 
@@ -93,6 +96,59 @@ const isSelected = (item: any) => {
     return selectedKeys.value.includes(getRowKey(item));
 };
 
+// Stock total (sumado en todos los almacenes) para la talla/color actual de un item en
+// selección. No deselecciona automáticamente al llegar a 0 — el usuario puede seguir
+// probando otras combinaciones de talla/color sin perder la selección. Solo bloquea el botón
+// "Registrar Entrega" (hasOutOfStockSelection) y la validación final en openMultiDeliveryModal.
+const stockTotals = ref<Record<string, number>>({});
+const stockLoading = ref<Record<string, boolean>>({});
+
+// Si ya se conoce talla y color, suma solo esa combinación exacta. Si todavía falta uno de los
+// dos, suma sobre todas las variantes del otro campo (ej. talla ya elegida, color pendiente ->
+// stock de esa talla en cualquier color) — así se detecta "sin stock" sin obligar a completar
+// ambos campos primero.
+const checkItemStock = async (item: any) => {
+    if (!item.epp_id) return;
+    const key = getRowKey(item);
+    const size = getDraftValue(item.epp_id, 'clothing_size', item.clothing_size);
+    const colorId = getDraftValue(item.epp_id, 'color_id', item.color_id);
+    if (!size && !colorId) {
+        delete stockTotals.value[key];
+        return;
+    }
+
+    stockLoading.value[key] = true;
+    try {
+        const response = await axios.get(route('inventory.items.stock', item.epp_id), { params: { type: 'epp' } });
+        const total = (response.data as any[])
+            .filter((s) => (!size || String(s.size) === String(size)) && (!colorId || String(s.color_id) === String(colorId)))
+            .reduce((sum, s) => sum + (s.quantity || 0), 0);
+        stockTotals.value[key] = total;
+    } catch (e) {
+        console.error('Error al comprobar stock', e);
+    } finally {
+        stockLoading.value[key] = false;
+    }
+};
+
+// Texto descriptivo del resultado de stock, aclarando si es una combinación exacta o un
+// agregado (mientras falta talla o color por elegir).
+const getStockLabel = (item: any): string | null => {
+    const key = getRowKey(item);
+    const total = stockTotals.value[key];
+    if (total === undefined) return null;
+
+    const size = getDraftValue(item.epp_id, 'clothing_size', item.clothing_size);
+    const colorId = getDraftValue(item.epp_id, 'color_id', item.color_id);
+
+    if (size && colorId) return total > 0 ? `Stock disponible: ${total}` : 'Sin stock disponible en ningún almacén';
+    if (size && !colorId) return total > 0 ? `Stock (todos los colores): ${total}` : 'Sin stock en ningún color';
+    if (!size && colorId) return total > 0 ? `Stock (todas las tallas): ${total}` : 'Sin stock en ninguna talla';
+    return null;
+};
+
+const hasOutOfStockSelection = computed(() => selectedKeys.value.some((key) => stockTotals.value[key] === 0));
+
 const selectedKeysCount = computed(() => {
     return selectedKeys.value.length;
 });
@@ -101,9 +157,12 @@ const getSelectedItems = () => {
     return mergedClothes.value.filter((i) => selectedKeys.value.includes(getRowKey(i)));
 };
 
+const eppItems = computed(() => mergedClothes.value.filter((i: any) => i.epp_id));
+const allSelected = computed(() => eppItems.value.length > 0 && selectedKeysCount.value === eppItems.value.length);
+
 const selectAll = (checked: boolean) => {
     if (checked) {
-        selectedKeys.value = mergedClothes.value.filter((i: any) => i.epp_id).map((i) => getRowKey(i));
+        selectedKeys.value = eppItems.value.map((i) => getRowKey(i));
     } else {
         selectedKeys.value = [];
     }
@@ -129,6 +188,17 @@ const openMultiDeliveryModal = async () => {
             title: 'Faltan Datos',
             text: 'Asegúrate de seleccionar Talla y Color para todos los items seleccionados.',
             confirmButtonColor: '#4f46e5',
+        });
+        return;
+    }
+
+    const outOfStockItems = selectedItems.filter((i) => stockTotals.value[getRowKey(i)] === 0);
+    if (outOfStockItems.length > 0) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Sin Stock',
+            text: `No hay stock disponible en ningún almacén para: ${outOfStockItems.map((i) => i.required_name || i.epp_name).join(', ')}.`,
+            confirmButtonColor: '#e11d48',
         });
         return;
     }
@@ -228,35 +298,6 @@ const isSearching = ref(false);
 const pendingAssignments = ref<any[]>([]);
 const requirementDrafts = ref<Record<number, any>>({}); // key: epp_id
 
-const deliveryModal = ref({
-    open: false,
-    item: null as any,
-    headquarter_id: '',
-    stocks: [] as any[],
-});
-
-// Cuando un ítem pasa de "Entregado" a otro estado (p. ej. "Devuelto"), el stock regresa
-// físicamente a algún almacén — igual que al entregar, hace falta preguntar a cuál. Sin esto,
-// el backend intentaba derivarlo del café/sede del staff, pero eso solo funciona si el staff
-// pertenece a un Area (no a un Cafe), dejando el stock devuelto sin ubicación real.
-const returnStatusModal = ref({
-    open: false,
-    item: null as any,
-    newStatus: '',
-    headquarter_id: '',
-});
-
-const openReturnStatusModal = (item: any, newStatus: string) => {
-    returnStatusModal.value = { open: true, item, newStatus, headquarter_id: '' };
-};
-
-const confirmReturnStatus = () => {
-    const { item, newStatus, headquarter_id } = returnStatusModal.value;
-    if (!item || !headquarter_id) return;
-    updateStatus(item.id, newStatus, item.color_id, item.clothing_size, item.epp_id, item.quantity, headquarter_id);
-    returnStatusModal.value.open = false;
-};
-
 const page = usePage();
 watch(
     () => (page.props as any).flash?.error,
@@ -297,6 +338,8 @@ const getDraftValue = (eppId: number, field: string, originalValue: any) => {
     }
     return originalValue;
 };
+
+const colorName = (colorId: any) => props.colors.find((c) => String(c.id) === String(colorId))?.name || '';
 
 const newAssignment = ref({
     epp_id: '',
@@ -378,7 +421,7 @@ const submitAssignments = () => {
         },
         {
             onSuccess: () => {
-                isAssigning.value = false;
+                showQuickAdd.value = false;
                 pendingAssignments.value = [];
                 assignHeadquarterId.value = '';
             },
@@ -393,14 +436,26 @@ const submitAssignments = () => {
 const getStatusColorMapped = (status: string) => {
     switch (status) {
         case 'Entregado':
-            return 'bg-green-100 text-green-700 border-green-200';
+            return 'bg-emerald-50 text-emerald-700 border-emerald-200';
         case 'En Proceso':
-            return 'bg-blue-100 text-blue-700 border-blue-200';
+            return 'bg-sky-50 text-sky-700 border-sky-200';
         case 'Devuelto':
-            return 'bg-red-100 text-red-700 border-red-200';
+            return 'bg-rose-50 text-rose-700 border-rose-200';
         default:
-            return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+            return 'bg-amber-50 text-amber-700 border-amber-200';
     }
+};
+
+// Vocabulario de estado para la tarjeta: un item sin registro (id null) todavía no tiene
+// nada asignado ("Sin Asignar"), distinto de "Pendiente" (ya asignado, entrega en curso).
+const getStatusLabel = (item: any) => {
+    if (!item.id) return 'Sin Asignar';
+    return getDraftValue(item.epp_id, 'status', item.status || 'Pendiente');
+};
+
+const getStatusClasses = (item: any) => {
+    if (!item.id) return 'bg-slate-100 text-slate-500 border-slate-200';
+    return getStatusColorMapped(getDraftValue(item.epp_id, 'status', item.status || 'Pendiente'));
 };
 
 const staffRequirements = computed(() => {
@@ -518,14 +573,7 @@ const updateAssignment = (item: any, field: string, value: any) => {
             quantity: item.quantity,
         };
         payload[field] = value;
-
-        if (field === 'status' && value === 'Entregado') {
-            openDeliveryModal(item);
-        } else if (field === 'status' && item.status === 'Entregado' && value !== 'Entregado') {
-            openReturnStatusModal(item, value);
-        } else {
-            updateStatus(item.id, payload.status, payload.color_id, payload.clothing_size, payload.epp_id, payload.quantity);
-        }
+        updateStatus(item.id, payload.status, payload.color_id, payload.clothing_size, payload.epp_id, payload.quantity);
     } else {
         // Draft for requirement
         if (!requirementDrafts.value[item.epp_id]) {
@@ -541,40 +589,6 @@ const updateAssignment = (item: any, field: string, value: any) => {
     }
 };
 
-const openDeliveryModal = async (item: any) => {
-    deliveryModal.value.item = item;
-    deliveryModal.value.open = true;
-    deliveryModal.value.stocks = [];
-
-    try {
-        const itemId = item.epp_id || item.cloth_id;
-        const type = item.epp_id ? 'epp' : 'cloth';
-        if (itemId) {
-            const response = await axios.get(route('inventory.items.stock', itemId), {
-                params: { type },
-            });
-            deliveryModal.value.stocks = response.data;
-        }
-    } catch (error) {
-        console.error('Error al cargar stock:', error);
-    }
-};
-
-const getStockForHq = (hqId: number) => {
-    const size = deliveryModal.value.item.epp_id
-        ? getDraftValue(deliveryModal.value.item.epp_id, 'clothing_size', deliveryModal.value.item.clothing_size)
-        : deliveryModal.value.item.clothing_size;
-
-    const colorId = deliveryModal.value.item.epp_id
-        ? getDraftValue(deliveryModal.value.item.epp_id, 'color_id', deliveryModal.value.item.color_id)
-        : deliveryModal.value.item.color_id;
-
-    const stock = deliveryModal.value.stocks.find(
-        (s) => s.headquarter_id === hqId && String(s.size) === String(size) && String(s.color_id) === String(colorId),
-    );
-    return stock ? stock.quantity : 0;
-};
-
 const getMultiStockForHq = (item: any, hqId: number) => {
     const key = getRowKey(item);
     const stocks = multiDeliveryModal.value.stocks[key] || [];
@@ -587,30 +601,8 @@ const getMultiStockForHq = (item: any, hqId: number) => {
     return stock ? stock.quantity : 0;
 };
 
-const updateStatus = (
-    clothEntryId: number,
-    status: string,
-    colorId?: number | null,
-    size?: string,
-    eppId?: number | null,
-    quantity?: number,
-    headquarterId?: string | null,
-) => {
+const updateStatus = (clothEntryId: number, status: string, colorId?: number | null, size?: string, eppId?: number | null, quantity?: number) => {
     if (isSubmittingAssignment.value) return;
-
-    // Stock validation for delivery
-    if (status === 'Entregado' && headquarterId && quantity !== undefined) {
-        const stock = getStockForHq(Number(headquarterId));
-        if (stock < quantity) {
-            Swal.fire({
-                icon: 'error',
-                title: 'Stock Insuficiente',
-                text: `No hay suficiente stock en esta sede (${stock} disponibles).`,
-                confirmButtonColor: '#e11d48',
-            });
-            return;
-        }
-    }
 
     isSubmittingAssignment.value = true;
     router.post(
@@ -622,7 +614,6 @@ const updateStatus = (
             clothing_size: size,
             epp_id: eppId,
             quantity: quantity,
-            headquarter_id: headquarterId,
         },
         {
             preserveScroll: true,
@@ -631,55 +622,6 @@ const updateStatus = (
             onFinish: () => {
                 isSubmittingAssignment.value = false;
             },
-        },
-    );
-};
-
-const confirmAssignment = (draft: any, headquarterId: string | null = null) => {
-    if (isSubmittingAssignment.value) return;
-    // Stock validation
-    if (headquarterId && draft.quantity !== undefined) {
-        const stock = getStockForHq(Number(headquarterId));
-        if (stock < draft.quantity) {
-            Swal.fire({
-                icon: 'error',
-                title: 'Stock Insuficiente',
-                text: `No hay suficiente stock en esta sede (${stock} disponibles).`,
-                confirmButtonColor: '#e11d48',
-            });
-            return;
-        }
-    }
-
-    isSubmittingAssignment.value = true;
-    router.post(
-        route('inventory.assign-clothes'),
-        {
-            staff_id: props.staff?.id,
-            reason: assignReason.value,
-            create_history: true,
-            items: [
-                {
-                    epp_id: draft.epp_id,
-                    size: draft.clothing_size || draft.size,
-                    color_id: draft.color_id,
-                    quantity: draft.quantity || 1,
-                    status: draft.status || 'Entregado',
-                    headquarter_id: headquarterId,
-                },
-            ],
-        },
-        {
-            onSuccess: () => {
-                if (draft.epp_id) delete requirementDrafts.value[draft.epp_id];
-                deliveryModal.value.open = false;
-            },
-            onFinish: () => {
-                isSubmittingAssignment.value = false;
-            },
-            preserveScroll: true,
-            preserveState: true,
-            only: ['staff', 'flash'],
         },
     );
 };
@@ -708,6 +650,9 @@ const prendasFijas = computed(() =>
     }),
 );
 
+// Resumen compacto: solo las prendas que ya tienen talla registrada
+const sizeChips = computed(() => prendasFijas.value.filter((p) => p.talla));
+
 function updatePrendaSize(label: string, existingId: number | null, size: string) {
     if (!props.staff || !size) return;
     if (existingId) {
@@ -725,75 +670,6 @@ function updatePrendaSize(label: string, existingId: number | null, size: string
     }
 }
 
-// ── Perfil de Referencia (profile items: !cloth_id && !epp_id) ────────────
-const isAddingProfile = ref(false);
-const newProfileItem = ref({ clothe_name: '', clothing_size: '' });
-const profileEdits = ref<Record<number, { clothe_name: string; clothing_size: string }>>({});
-
-const profileItems = computed(() => props.staff?.staff_clothes.filter((c: StaffCloth) => !c.cloth_id && !c.epp_id) ?? []);
-
-function startEditProfile(item: StaffCloth) {
-    profileEdits.value[item.id] = {
-        clothe_name: item.clothe_name ?? '',
-        clothing_size: item.clothing_size ?? '',
-    };
-}
-
-function cancelEditProfile(id: number) {
-    delete profileEdits.value[id];
-}
-
-function saveProfileItem(item: StaffCloth) {
-    const draft = profileEdits.value[item.id];
-    if (!draft) return;
-    router.put(
-        route('clothes.profile.update', item.id),
-        { clothe_name: draft.clothe_name, clothing_size: draft.clothing_size },
-        {
-            preserveScroll: true,
-            preserveState: true,
-            only: ['staff', 'flash'],
-            onSuccess: () => delete profileEdits.value[item.id],
-        },
-    );
-}
-
-function addProfileItem() {
-    if (!props.staff || !newProfileItem.value.clothe_name.trim()) return;
-    router.post(
-        route('clothes.profile.store'),
-        { staff_id: props.staff.id, ...newProfileItem.value },
-        {
-            preserveScroll: true,
-            preserveState: true,
-            only: ['staff', 'flash'],
-            onSuccess: () => {
-                newProfileItem.value = { clothe_name: '', clothing_size: '' };
-                isAddingProfile.value = false;
-            },
-        },
-    );
-}
-
-function deleteProfileItem(id: number) {
-    Swal.fire({
-        icon: 'warning',
-        title: '¿Eliminar prenda?',
-        text: 'Esta acción no se puede deshacer.',
-        showCancelButton: true,
-        confirmButtonColor: '#e11d48',
-        cancelButtonText: 'Cancelar',
-        confirmButtonText: 'Eliminar',
-    }).then((result) => {
-        if (!result.isConfirmed) return;
-        router.delete(route('clothes.profile.destroy', id), {
-            preserveScroll: true,
-            preserveState: true,
-            only: ['staff', 'flash'],
-        });
-    });
-}
-
 // Evita que el diálogo se cierre cuando el usuario interactúa con SweetAlert
 function preventCloseOnSwal(e: Event) {
     if (document.querySelector('.swal2-container')) {
@@ -801,27 +677,100 @@ function preventCloseOnSwal(e: Event) {
     }
 }
 
-const evidenceFile = ref<File | null>(null);
-const handleFileChange = (e: Event) => {
-    const target = e.target as HTMLInputElement;
-    if (target.files && target.files.length > 0) {
-        evidenceFile.value = target.files[0];
-    } else {
-        evidenceFile.value = null;
+// Relaciona el nombre de un EPP con la prenda fija equivalente del perfil del trabajador, para
+// poder precargar su talla conocida (Ej: "GUANTES KEVLAR" -> talla de "Guantes" del perfil).
+const PRENDA_EPP_PATTERNS: Record<string, RegExp> = {
+    Polo: /POLO/i,
+    Cafarena: /CAFARENA/i,
+    Overall: /OVEROL|OVERALL/i,
+    Casaca: /CASACA/i,
+    Chaleco: /CHALECO/i,
+    'Chaqueta Blanca': /CHAQUETA/i,
+    Pantalón: /PANTAL[OÓ]N/i,
+    'Camisa/Blusa': /CAMISA|BLUSA/i,
+    Guardapolvo: /GUARDAPOLVO/i,
+    Guantes: /GUANTE/i,
+    'Botas Blancas': /BOTA/i,
+    Zapatos: /ZAPATO/i,
+    Lentes: /LENTE/i,
+};
+
+// Intenta deducir la talla de un EPP sin talla asignada: si solo tiene una opción de talla no
+// hay ambigüedad posible, y si su nombre coincide con una prenda fija del perfil, se usa la
+// talla que el trabajador ya tiene registrada para esa prenda (siempre que exista como opción
+// válida dentro de las tallas propias del EPP).
+const guessSizeForEpp = (item: any): string | null => {
+    if (!item.sizes || item.sizes.length === 0) return null;
+    if (item.sizes.length === 1) return item.sizes[0].size;
+
+    const name = String(item.required_name || '').toUpperCase();
+    for (const prenda of prendasFijas.value) {
+        if (!prenda.talla) continue;
+        const pattern = PRENDA_EPP_PATTERNS[prenda.label];
+        if (!pattern || !pattern.test(name)) continue;
+
+        const direct = item.sizes.find((s: any) => s.size === prenda.talla);
+        if (direct) return direct.size;
+
+        // Caso Pantalón: el perfil guarda "L - 32", el catálogo de EPP suele tener solo "32"
+        const numeric = prenda.talla.split(' - ').pop()?.trim();
+        if (numeric) {
+            const numMatch = item.sizes.find((s: any) => s.size === numeric);
+            if (numMatch) return numMatch.size;
+        }
     }
+    return null;
+};
+
+// Solo aplica a requerimientos nuevos (sin asignación real todavía) — nunca reescribe la talla
+// de una entrega ya registrada.
+const autoFillDraftSize = (item: any) => {
+    if (item.id || !item.epp_id) return;
+    if (getDraftValue(item.epp_id, 'clothing_size', item.clothing_size)) return;
+
+    const guessed = guessSizeForEpp(item);
+    if (!guessed) return;
+
+    if (!requirementDrafts.value[item.epp_id]) {
+        requirementDrafts.value[item.epp_id] = {
+            epp_id: item.epp_id,
+            clothing_size: item.clothing_size,
+            color_id: item.color_id,
+            quantity: item.quantity || 1,
+            status: item.status || 'Pendiente',
+        };
+    }
+    requirementDrafts.value[item.epp_id].clothing_size = guessed;
+};
+
+// Comprueba el stock de todos los EPPs que ya tienen talla y color conocidos (sea porque el
+// trabajador ya los tuvo asignados antes, por el color por defecto del requerimiento del cargo,
+// o porque se acaba de precargar la talla automáticamente), para que el usuario vea
+// disponibilidad de un vistazo sin tener que marcar cada fila.
+const checkAllStock = () => {
+    mergedClothes.value.forEach((item) => {
+        if (!item.epp_id) return;
+        autoFillDraftSize(item);
+        if (getDraftValue(item.epp_id, 'clothing_size', item.clothing_size) || getDraftValue(item.epp_id, 'color_id', item.color_id)) {
+            checkItemStock(item);
+        }
+    });
 };
 
 watch(
     () => props.open,
     (val) => {
-        if (!val) {
-            isAssigning.value = false;
+        if (val) {
+            stockTotals.value = {};
+            checkAllStock();
+        } else {
+            showQuickAdd.value = false;
+            showSizeEditor.value = false;
             pendingAssignments.value = [];
             searchResults.value = [];
             requirementDrafts.value = {};
             selectedKeys.value = [];
             multiDeliveryModal.value.open = false;
-            evidenceFile.value = null;
         }
     },
 );
@@ -830,49 +779,177 @@ watch(
 <template>
     <div class="contents">
         <Dialog :open="open" @update:open="$emit('update:open', $event)">
-            <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-[850px]" @interact-outside="preventCloseOnSwal">
+            <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-[640px]" @interact-outside="preventCloseOnSwal">
                 <DialogHeader>
-                    <div class="flex items-start justify-between">
-                        <div>
-                            <DialogTitle class="text-xl font-black">Control de EPPs</DialogTitle>
-                            <DialogDescription>
-                                Gestión de tallas y asignación de EPP para {{ staff?.name }}
-                                <span
-                                    v-if="staff?.role || staff?.staffable"
-                                    class="mt-1 block text-[10px] font-bold tracking-widest text-indigo-500 uppercase"
-                                >
-                                    {{ staff?.role?.name || 'Sin cargo' }} • {{ staff?.staffable?.name || 'Sin comedor' }}
-                                </span>
-                            </DialogDescription>
-                        </div>
-                        <Button
-                            v-if="!isAssigning"
-                            @click="isAssigning = true"
-                            size="sm"
-                            class="gap-2 bg-indigo-600 text-white shadow-lg hover:bg-indigo-700"
-                        >
-                            <Plus class="h-4 w-4" /> Nueva Asignación EPP
-                        </Button>
-                        <Button v-else @click="isAssigning = false" size="sm" variant="ghost" class="text-[10px] font-bold text-slate-500 uppercase">
-                            Cancelar
-                        </Button>
-                    </div>
+                    <DialogTitle class="flex items-center gap-2 text-lg font-black">
+                        <Package class="h-5 w-5 text-indigo-600" />
+                        Entrega de EPP
+                    </DialogTitle>
+                    <DialogDescription>
+                        {{ staff?.name }}
+                        <span v-if="staff?.role || staff?.staffable" class="mt-0.5 block text-[10px] font-bold tracking-widest text-indigo-500 uppercase">
+                            {{ staff?.role?.name || 'Sin cargo' }} • {{ staff?.staffable?.name || 'Sin comedor' }}
+                        </span>
+                    </DialogDescription>
                 </DialogHeader>
 
-                <div class="grid gap-6 py-4" v-if="staff">
-                    <!-- Assignment Mode -->
-                    <div v-if="isAssigning" class="animate-in fade-in slide-in-from-top-4 space-y-6 duration-300">
-                        <div class="space-y-4 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
-                            <h3 class="flex items-center gap-2 text-xs font-black tracking-widest text-indigo-600 uppercase">
-                                <Plus class="h-4 w-4" /> Agregar EPP al Listado
-                            </h3>
+                <div class="space-y-4 py-2" v-if="staff">
+                    <!-- Resumen de Tallas -->
+                    <div class="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-[10px] font-black tracking-widest text-slate-400 uppercase">Tallas del Trabajador</span>
+                            <Button
+                                @click="showSizeEditor = !showSizeEditor"
+                                size="sm"
+                                variant="ghost"
+                                class="h-7 gap-1.5 px-2 text-[10px] font-bold text-indigo-600 uppercase hover:bg-indigo-50"
+                            >
+                                <Pencil class="h-3 w-3" /> {{ showSizeEditor ? 'Cerrar' : 'Editar tallas' }}
+                            </Button>
+                        </div>
 
-                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-                                <div class="relative space-y-2">
-                                    <Label class="text-[10px] font-bold text-slate-500 uppercase">Buscar EPP</Label>
+                        <div v-if="sizeChips.length > 0" class="mt-2 flex flex-wrap gap-1.5">
+                            <span
+                                v-for="chip in sizeChips"
+                                :key="chip.label"
+                                class="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-600"
+                            >
+                                {{ chip.label }}: <span class="text-indigo-600">{{ chip.talla }}</span>
+                            </span>
+                        </div>
+                        <p v-else class="mt-2 text-[10px] font-medium text-slate-400 italic">
+                            Sin tallas registradas todavía. Usa "Editar tallas" para completarlas.
+                        </p>
+
+                        <!-- Editor expandible -->
+                        <div v-if="showSizeEditor" class="mt-3 grid grid-cols-2 gap-2 border-t border-slate-200 pt-3 sm:grid-cols-4">
+                            <div
+                                v-for="prenda in prendasFijas"
+                                :key="prenda.label"
+                                class="flex flex-col gap-1 rounded-lg border bg-white p-2 shadow-sm"
+                                :class="prenda.talla ? 'border-indigo-100' : 'border-slate-100'"
+                            >
+                                <span class="truncate text-[9px] font-bold text-slate-500 uppercase">{{ prenda.label }}</span>
+
+                                <!-- Pantalón -->
+                                <Select
+                                    v-if="prenda.label === 'Pantalón'"
+                                    :model-value="prenda.talla || undefined"
+                                    @update:model-value="
+                                        (val) => {
+                                            if (val) updatePrendaSize(prenda.label, prenda.id, String(val));
+                                        }
+                                    "
+                                >
+                                    <SelectTrigger class="h-7 border-none bg-slate-50 text-[11px] shadow-sm"><SelectValue placeholder="Talla" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem
+                                            v-for="s in ['S - 28', 'M - 30', 'L - 32', 'XL - 34', 'XXL - 36', 'XXXL - 38', 'XXXXL - 40']"
+                                            :key="s"
+                                            :value="s"
+                                            >{{ s }}</SelectItem
+                                        >
+                                    </SelectContent>
+                                </Select>
+
+                                <!-- Ropa estándar -->
+                                <Select
+                                    v-else-if="
+                                        ['Polo', 'Cafarena', 'Overall', 'Casaca', 'Chaleco', 'Chaqueta Blanca', 'Camisa/Blusa', 'Guardapolvo'].includes(
+                                            prenda.label,
+                                        )
+                                    "
+                                    :model-value="prenda.talla || undefined"
+                                    @update:model-value="
+                                        (val) => {
+                                            if (val) updatePrendaSize(prenda.label, prenda.id, String(val));
+                                        }
+                                    "
+                                >
+                                    <SelectTrigger class="h-7 border-none bg-slate-50 text-[11px] shadow-sm"><SelectValue placeholder="Talla" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem v-for="s in ['S', 'M', 'L', 'XL', 'XXL']" :key="s" :value="s">{{ s }}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+
+                                <!-- Guantes -->
+                                <Select
+                                    v-else-if="prenda.label === 'Guantes'"
+                                    :model-value="prenda.talla || undefined"
+                                    @update:model-value="
+                                        (val) => {
+                                            if (val) updatePrendaSize(prenda.label, prenda.id, String(val));
+                                        }
+                                    "
+                                >
+                                    <SelectTrigger class="h-7 border-none bg-slate-50 text-[11px] shadow-sm"><SelectValue placeholder="Talla" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem v-for="s in ['8', '9', '10']" :key="s" :value="s">{{ s }}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+
+                                <!-- Calzado -->
+                                <Select
+                                    v-else-if="prenda.label === 'Zapatos' || prenda.label === 'Botas Blancas'"
+                                    :model-value="prenda.talla || undefined"
+                                    @update:model-value="
+                                        (val) => {
+                                            if (val) updatePrendaSize(prenda.label, prenda.id, String(val));
+                                        }
+                                    "
+                                >
+                                    <SelectTrigger class="h-7 border-none bg-slate-50 text-[11px] shadow-sm"><SelectValue placeholder="Talla" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem v-for="s in [35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45]" :key="s" :value="String(s)">{{
+                                            s
+                                        }}</SelectItem>
+                                    </SelectContent>
+                                </Select>
+
+                                <!-- Lentes -->
+                                <Select
+                                    v-else-if="prenda.label === 'Lentes'"
+                                    :model-value="prenda.talla || undefined"
+                                    @update:model-value="
+                                        (val) => {
+                                            if (val) updatePrendaSize(prenda.label, prenda.id, String(val));
+                                        }
+                                    "
+                                >
+                                    <SelectTrigger class="h-7 border-none bg-slate-50 text-[11px] shadow-sm"><SelectValue placeholder="Tipo" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="Lentes">Lentes</SelectItem>
+                                        <SelectItem value="Sobrelentes">Sobrelentes</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Listado de EPPs -->
+                    <div class="space-y-2">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <h3 class="text-[10px] font-black tracking-widest text-slate-400 uppercase">EPP Requeridos</h3>
+                                <span v-if="mergedClothes.length > 0" class="text-[10px] font-bold text-slate-300">({{ mergedClothes.length }})</span>
+                            </div>
+                            <button
+                                @click="showQuickAdd = !showQuickAdd"
+                                type="button"
+                                class="flex items-center gap-1 text-[10px] font-black text-indigo-600 uppercase hover:text-indigo-700"
+                            >
+                                <Plus class="h-3 w-3" /> {{ showQuickAdd ? 'Cerrar' : 'Agregar EPP no listado' }}
+                            </button>
+                        </div>
+
+                        <!-- Panel de asignación rápida (EPP fuera del listado de requerimientos) -->
+                        <div v-if="showQuickAdd" class="animate-in fade-in slide-in-from-top-2 space-y-3 rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 duration-200">
+                            <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                <div class="relative space-y-1.5">
+                                    <Label class="text-[9px] font-bold text-slate-500 uppercase">Buscar EPP</Label>
                                     <div class="relative">
                                         <Search class="absolute top-2.5 left-3 h-4 w-4 text-slate-400" />
-                                        <Input v-model="eppSearch" placeholder="Casco, Guantes..." class="h-10 border-none bg-white pl-9 shadow-sm" />
+                                        <Input v-model="eppSearch" placeholder="Casco, Guantes..." class="h-9 border-none bg-white pl-9 text-xs shadow-sm" />
                                         <div v-if="isSearching" class="absolute top-2.5 right-3">
                                             <Loader2 class="h-4 w-4 animate-spin text-indigo-500" />
                                         </div>
@@ -892,19 +969,16 @@ watch(
                                             <Check v-if="newAssignment.epp_id === String(epp.id)" class="h-4 w-4 text-indigo-500" />
                                         </div>
                                     </div>
-                                    <div
-                                        v-if="newAssignment.epp_name"
-                                        class="mt-1 flex items-center gap-1 text-[10px] font-black text-indigo-600 uppercase"
-                                    >
+                                    <div v-if="newAssignment.epp_name" class="mt-1 flex items-center gap-1 text-[10px] font-black text-indigo-600 uppercase">
                                         <Check class="h-3 w-3" /> Seleccionado: {{ newAssignment.epp_name }}
                                     </div>
                                 </div>
 
-                                <div class="grid grid-cols-2 gap-3">
-                                    <div class="space-y-2">
-                                        <Label class="text-[10px] font-bold text-slate-500 uppercase">Talla</Label>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div class="space-y-1.5">
+                                        <Label class="text-[9px] font-bold text-slate-500 uppercase">Talla</Label>
                                         <Select v-model="newAssignment.size">
-                                            <SelectTrigger class="h-10 border-none bg-white shadow-sm">
+                                            <SelectTrigger class="h-9 border-none bg-white text-xs shadow-sm">
                                                 <SelectValue :placeholder="newAssignment.available_sizes.length ? 'Seleccionar...' : '-'" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -917,10 +991,10 @@ watch(
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                    <div class="space-y-2">
-                                        <Label class="text-[10px] font-bold text-slate-500 uppercase">Color</Label>
+                                    <div class="space-y-1.5">
+                                        <Label class="text-[9px] font-bold text-slate-500 uppercase">Color</Label>
                                         <Select v-model="newAssignment.color_id">
-                                            <SelectTrigger class="h-10 border-none bg-white shadow-sm">
+                                            <SelectTrigger class="h-9 border-none bg-white text-xs shadow-sm">
                                                 <SelectValue placeholder="-" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -936,567 +1010,277 @@ watch(
                             <Button
                                 @click="addPending"
                                 :disabled="!newAssignment.epp_id || !newAssignment.size || !newAssignment.color_id || !newAssignment.quantity"
-                                class="h-10 w-full bg-slate-900 text-[10px] font-black tracking-widest text-white uppercase"
+                                class="h-9 w-full bg-slate-900 text-[10px] font-black tracking-widest text-white uppercase"
                             >
                                 Añadir a la Lista
                             </Button>
-                        </div>
 
-                        <!-- Pending List -->
-                        <div v-if="pendingAssignments.length > 0" class="space-y-4">
-                            <div class="overflow-hidden rounded-2xl border border-slate-100 shadow-sm">
-                                <table class="w-full text-sm">
-                                    <thead class="border-b bg-slate-50">
-                                        <tr>
-                                            <th class="px-4 py-2 text-left text-[10px] font-black text-slate-400 uppercase">EPP</th>
-                                            <th class="px-4 py-2 text-center text-[10px] font-black text-slate-400 uppercase">Talla</th>
-                                            <th class="px-4 py-2 text-left text-[10px] font-black text-slate-400 uppercase">Color</th>
-                                            <th class="w-10 px-4 py-2"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody class="divide-y">
-                                        <tr v-for="(item, idx) in pendingAssignments" :key="idx" class="transition-colors hover:bg-slate-50/50">
-                                            <td class="px-4 py-3 font-bold text-slate-700">{{ item.epp_name }}</td>
-                                            <td class="px-4 py-3 text-center font-black text-indigo-600">{{ item.size }}</td>
-                                            <td class="px-4 py-3 text-slate-500">{{ colors.find((c) => String(c.id) === item.color_id)?.name }}</td>
-                                            <td class="px-4 py-3">
-                                                <Button
-                                                    variant="ghost"
-                                                    size="icon"
-                                                    @click="removePending(idx)"
-                                                    class="h-8 w-8 text-slate-300 hover:text-rose-500"
-                                                >
-                                                    <Trash2 class="h-4 w-4" />
-                                                </Button>
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            <div
-                                class="flex flex-col items-center justify-between gap-4 rounded-2xl border border-indigo-100 bg-indigo-50 p-4 sm:flex-row"
-                            >
-                                <div class="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-                                    <Label class="text-[10px] font-black whitespace-nowrap text-indigo-700 uppercase">Motivo:</Label>
-                                    <Select v-model="assignReason">
-                                        <SelectTrigger class="h-10 w-full border-none bg-white text-xs shadow-sm sm:w-40">
-                                            <SelectValue placeholder="Motivo..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="Nuevo">Nuevo Ingreso</SelectItem>
-                                            <SelectItem value="Renovación">Renovación regular</SelectItem>
-                                            <SelectItem value="Reposición">Reposición</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-
-                                    <Label class="text-[10px] font-black whitespace-nowrap text-indigo-700 uppercase">Sede:</Label>
-                                    <Select v-model="assignHeadquarterId">
-                                        <SelectTrigger class="h-10 w-full border-none bg-white text-xs shadow-sm sm:w-44">
-                                            <SelectValue placeholder="Seleccionar sede..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">
-                                                {{ hq.name }} <span class="ml-1 text-[9px] opacity-50">({{ hq.business?.name }})</span>
-                                            </SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                <Button
-                                    @click="submitAssignments"
-                                    :disabled="isSubmittingAssignment"
-                                    class="h-10 w-full bg-indigo-600 text-[11px] font-black tracking-widest text-white uppercase shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50 sm:w-auto"
+                            <!-- Lista de pendientes -->
+                            <div v-if="pendingAssignments.length > 0" class="space-y-2">
+                                <div
+                                    v-for="(item, idx) in pendingAssignments"
+                                    :key="idx"
+                                    class="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-white p-2"
                                 >
-                                    {{ isSubmittingAssignment ? 'Guardando…' : 'Confirmar Asignación y Descontar' }}
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Normal View (Summary) -->
-                    <div v-else class="space-y-6">
-                        <div class="animate-in fade-in zoom-in-95 space-y-6 duration-200">
-                                <!-- Tallas del Staff (Implementos) -->
-                                <div class="space-y-3">
-                                    <h3 class="border-l-2 border-slate-200 pl-3 text-xs font-black tracking-widest text-slate-400 uppercase">
-                                        Implementos
-                                    </h3>
-                                    <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                                        <div
-                                            v-for="prenda in prendasFijas"
-                                            :key="prenda.label"
-                                            class="flex flex-col gap-1.5 rounded-2xl border bg-slate-50 p-3 shadow-sm transition-colors"
-                                            :class="prenda.talla ? 'border-indigo-100 bg-indigo-50/30' : 'border-slate-100'"
-                                        >
-                                            <span class="truncate text-[10px] font-bold text-slate-500 uppercase">{{ prenda.label }}</span>
-
-                                            <!-- Pantalón -->
-                                            <Select
-                                                v-if="prenda.label === 'Pantalón'"
-                                                :model-value="prenda.talla || undefined"
-                                                @update:model-value="
-                                                    (val) => {
-                                                        if (val) updatePrendaSize(prenda.label, prenda.id, String(val));
-                                                    }
-                                                "
-                                            >
-                                                <SelectTrigger class="h-8 border-none bg-white text-xs shadow-sm"
-                                                    ><SelectValue placeholder="Talla"
-                                                /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem
-                                                        v-for="s in ['S - 28', 'M - 30', 'L - 32', 'XL - 34', 'XXL - 36', 'XXXL - 38', 'XXXXL - 40']"
-                                                        :key="s"
-                                                        :value="s"
-                                                        >{{ s }}</SelectItem
-                                                    >
-                                                </SelectContent>
-                                            </Select>
-
-                                            <!-- Ropa estándar -->
-                                            <Select
-                                                v-else-if="
-                                                    [
-                                                        'Polo',
-                                                        'Cafarena',
-                                                        'Overall',
-                                                        'Casaca',
-                                                        'Chaleco',
-                                                        'Chaqueta Blanca',
-                                                        'Camisa/Blusa',
-                                                        'Guardapolvo',
-                                                    ].includes(prenda.label)
-                                                "
-                                                :model-value="prenda.talla || undefined"
-                                                @update:model-value="
-                                                    (val) => {
-                                                        if (val) updatePrendaSize(prenda.label, prenda.id, String(val));
-                                                    }
-                                                "
-                                            >
-                                                <SelectTrigger class="h-8 border-none bg-white text-xs shadow-sm"
-                                                    ><SelectValue placeholder="Talla"
-                                                /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem v-for="s in ['S', 'M', 'L', 'XL', 'XXL']" :key="s" :value="s">{{ s }}</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-
-                                            <!-- Guantes -->
-                                            <Select
-                                                v-else-if="prenda.label === 'Guantes'"
-                                                :model-value="prenda.talla || undefined"
-                                                @update:model-value="
-                                                    (val) => {
-                                                        if (val) updatePrendaSize(prenda.label, prenda.id, String(val));
-                                                    }
-                                                "
-                                            >
-                                                <SelectTrigger class="h-8 border-none bg-white text-xs shadow-sm"
-                                                    ><SelectValue placeholder="Talla"
-                                                /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem v-for="s in ['8', '9', '10']" :key="s" :value="s">{{ s }}</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-
-                                            <!-- Calzado -->
-                                            <Select
-                                                v-else-if="prenda.label === 'Zapatos' || prenda.label === 'Botas Blancas'"
-                                                :model-value="prenda.talla || undefined"
-                                                @update:model-value="
-                                                    (val) => {
-                                                        if (val) updatePrendaSize(prenda.label, prenda.id, String(val));
-                                                    }
-                                                "
-                                            >
-                                                <SelectTrigger class="h-8 border-none bg-white text-xs shadow-sm"
-                                                    ><SelectValue placeholder="Talla"
-                                                /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem
-                                                        v-for="s in [35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45]"
-                                                        :key="s"
-                                                        :value="String(s)"
-                                                        >{{ s }}</SelectItem
-                                                    >
-                                                </SelectContent>
-                                            </Select>
-
-                                            <!-- Lentes -->
-                                            <Select
-                                                v-else-if="prenda.label === 'Lentes'"
-                                                :model-value="prenda.talla || undefined"
-                                                @update:model-value="
-                                                    (val) => {
-                                                        if (val) updatePrendaSize(prenda.label, prenda.id, String(val));
-                                                    }
-                                                "
-                                            >
-                                                <SelectTrigger class="h-8 border-none bg-white text-xs shadow-sm"
-                                                    ><SelectValue placeholder="Tipo"
-                                                /></SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="Lentes">Lentes</SelectItem>
-                                                    <SelectItem value="Sobrelentes">Sobrelentes</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
+                                    <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 text-[11px]">
+                                        <span class="font-bold text-slate-700">{{ item.epp_name }}</span>
+                                        <span class="font-black text-indigo-600">{{ item.size }}</span>
+                                        <span class="text-slate-500">{{ colorName(item.color_id) }}</span>
                                     </div>
+                                    <Button variant="ghost" size="icon" @click="removePending(idx)" class="h-7 w-7 text-slate-300 hover:text-rose-500">
+                                        <Trash2 class="h-3.5 w-3.5" />
+                                    </Button>
                                 </div>
 
-                                <!-- EPP Asignaciones (Actual tracking) -->
-                                <div class="space-y-3">
-                                    <h3 class="border-l-2 border-indigo-400 px-1 pl-3 text-xs font-black tracking-widest text-slate-400 uppercase">
-                                        EPPs y Requerimientos
-                                    </h3>
-                                    <div v-if="mergedClothes.length > 0" class="overflow-hidden rounded-2xl border shadow-sm">
-                                        <table class="w-full table-fixed text-sm">
-                                            <colgroup>
-                                                <col class="w-10" />
-                                                <col />
-                                                <col class="w-16" />
-                                                <col class="w-20" />
-                                                <col class="w-[130px]" />
-                                                <col class="w-[110px]" />
-                                                <col class="w-[130px]" />
-                                            </colgroup>
-                                            <thead class="border-b bg-slate-50">
-                                                <tr>
-                                                    <th class="px-4 py-2">
-                                                        <Checkbox
-                                                            :checked="
-                                                                selectedKeysCount === mergedClothes.filter((i: any) => i.epp_id).length &&
-                                                                selectedKeysCount > 0
-                                                            "
-                                                            @update:checked="selectAll"
-                                                        />
-                                                    </th>
-                                                    <th class="px-4 py-2 text-left text-[10px] font-black text-slate-400 uppercase">
-                                                        Requerimiento / Item
-                                                    </th>
-                                                    <th class="px-4 py-2 text-center text-[10px] font-black text-slate-400 uppercase">Cant</th>
-                                                    <th class="px-4 py-2 text-center text-[10px] font-black text-slate-400 uppercase">Talla</th>
-                                                    <th class="px-4 py-2 text-left text-[10px] font-black text-slate-400 uppercase">Color</th>
-                                                    <th class="px-4 py-2 text-left text-[10px] font-black text-slate-400 uppercase">Condición</th>
-                                                    <th class="px-4 py-2 text-left text-[10px] font-black text-slate-400 uppercase">Estado</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody class="divide-y divide-slate-100">
-                                                <tr
-                                                    v-for="(item, idx) in mergedClothes"
-                                                    :key="(item.id ? 'id-' + item.id : 'idx-' + idx) + (item.epp_id ? '-epp-' + item.epp_id : '')"
-                                                    class="transition-colors duration-150"
-                                                    :class="[
-                                                        selectionMode ? 'cursor-pointer' : '',
-                                                        isSelected(item)
-                                                            ? 'border-l-4 border-l-indigo-500 bg-indigo-50/80'
-                                                            : !item.id
-                                                              ? 'bg-slate-50/60 hover:bg-slate-100/70'
-                                                              : 'hover:bg-slate-50/50',
-                                                    ]"
-                                                    @click="selectionMode ? toggleSelection(item) : null"
-                                                >
-                                                    <td class="px-4 py-3 align-top">
-                                                        <div
-                                                            v-if="item.epp_id"
-                                                            class="mt-0.5 flex h-5 w-5 items-center justify-center rounded-md border-2 transition-all"
-                                                            :class="
-                                                                isSelected(item)
-                                                                    ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm'
-                                                                    : 'border-slate-300 bg-white'
-                                                            "
-                                                            @click.stop="toggleSelection(item)"
-                                                        >
-                                                            <Check v-if="isSelected(item)" class="h-3.5 w-3.5 stroke-[3]" />
-                                                        </div>
-                                                    </td>
-                                                    <td class="px-4 py-3 align-top">
-                                                        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                                            <span class="text-xs leading-snug font-bold text-slate-900">
-                                                                {{ item.required_name }}
-                                                            </span>
-                                                            <span
-                                                                v-if="!item.id"
-                                                                class="inline-block w-fit shrink-0 rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-black whitespace-nowrap text-indigo-600"
-                                                            >
-                                                                REQUERIDO
-                                                            </span>
-                                                            <span
-                                                                v-else-if="!item.is_requirement"
-                                                                class="shrink-0 text-[8px] font-black tracking-widest whitespace-nowrap text-slate-400 uppercase"
-                                                            >
-                                                                Asignación Extra
-                                                            </span>
-                                                        </div>
-                                                    </td>
-                                                    <td class="px-4 py-3 text-center align-top">
-                                                        <Input
-                                                            type="number"
-                                                            :model-value="getDraftValue(item.epp_id, 'quantity', item.quantity)"
-                                                            @change="
-                                                                (e: Event) =>
-                                                                    updateAssignment(item, 'quantity', parseInt((e.target as HTMLInputElement).value))
-                                                            "
-                                                            class="h-8 w-12 border-none bg-slate-50 text-center font-black text-slate-900"
-                                                        />
-                                                    </td>
-                                                    <td class="px-4 py-3 text-center align-top">
-                                                        <Select
-                                                            :model-value="getDraftValue(item.epp_id, 'clothing_size', item.clothing_size)"
-                                                            @update:model-value="(val: any) => updateAssignment(item, 'clothing_size', val)"
-                                                        >
-                                                            <SelectTrigger
-                                                                class="flex h-8 w-16 justify-center border-none bg-slate-50 p-0 pr-1 text-center font-black text-slate-900"
-                                                            >
-                                                                <SelectValue placeholder="-" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem v-for="size in item.sizes" :key="size.id" :value="size.size">
-                                                                    {{ size.size }}
-                                                                </SelectItem>
-                                                                <div
-                                                                    v-if="!item.sizes || item.sizes.length === 0"
-                                                                    class="p-2 text-[10px] text-slate-400 italic"
-                                                                >
-                                                                    No hay tallas
-                                                                </div>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </td>
-                                                    <td class="px-4 py-3 align-top">
-                                                        <Select
-                                                            :model-value="String(getDraftValue(item.epp_id, 'color_id', item.color_id || ''))"
-                                                            @update:model-value="(val: any) => updateAssignment(item, 'color_id', parseInt(val))"
-                                                        >
-                                                            <SelectTrigger class="h-8 w-full border-slate-200 bg-white text-xs">
-                                                                <SelectValue placeholder="Color" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem v-for="color in colors" :key="color.id" :value="String(color.id)">
-                                                                    {{ color.name }}
-                                                                </SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </td>
-                                                    <td class="px-4 py-3 align-top">
-                                                        <span
-                                                            v-if="item.id"
-                                                            :class="[
-                                                                'inline-block rounded-full px-2 py-0.5 text-[9px] font-black whitespace-nowrap uppercase',
-                                                                item.condition === 'Nuevo'
-                                                                    ? 'bg-emerald-100 text-emerald-700'
-                                                                    : 'border border-amber-200 bg-amber-100 text-amber-700',
-                                                            ]"
-                                                        >
-                                                            {{ item.condition || 'Nuevo' }}
-                                                        </span>
-                                                        <span v-else class="text-[9px] font-bold text-slate-300 italic">Sin asignar</span>
-                                                    </td>
-                                                    <td class="px-4 py-3 align-top">
-                                                        <span
-                                                            :class="[
-                                                                'inline-block rounded-full border px-2 py-1 text-center text-[10px] font-bold tracking-tighter uppercase',
-                                                                getStatusColorMapped(
-                                                                    getDraftValue(item.epp_id, 'status', item.status || 'Pendiente'),
-                                                                ),
-                                                            ]"
-                                                        >
-                                                            {{ getDraftValue(item.epp_id, 'status', item.status || 'Pendiente') }}
-                                                        </span>
-                                                    </td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
+                                <div class="flex flex-col gap-2 rounded-xl border border-indigo-100 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                        <Select v-model="assignReason">
+                                            <SelectTrigger class="h-9 w-full border-slate-200 bg-white text-[11px] shadow-sm sm:w-36">
+                                                <SelectValue placeholder="Motivo..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="Nuevo">Nuevo Ingreso</SelectItem>
+                                                <SelectItem value="Renovación">Renovación regular</SelectItem>
+                                                <SelectItem value="Reposición">Reposición</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <Select v-model="assignHeadquarterId">
+                                            <SelectTrigger class="h-9 w-full border-slate-200 bg-white text-[11px] shadow-sm sm:w-40">
+                                                <SelectValue placeholder="Sede de origen..." />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">
+                                                    {{ hq.name }} <span class="ml-1 text-[9px] opacity-50">({{ hq.business?.name }})</span>
+                                                </SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </div>
-
-                                    <div
-                                        v-else
-                                        class="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 py-10 text-center text-slate-400"
+                                    <Button
+                                        @click="submitAssignments"
+                                        :disabled="isSubmittingAssignment"
+                                        class="h-9 w-full bg-indigo-600 text-[10px] font-black tracking-widest text-white uppercase shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50 sm:w-auto"
                                     >
-                                        <Package class="mx-auto mb-2 h-8 w-8 opacity-20" />
-                                        <p class="text-[11px] font-black tracking-widest uppercase">No hay EPPs asignados todavía.</p>
-                                    </div>
+                                        {{ isSubmittingAssignment ? 'Guardando…' : 'Confirmar y Descontar' }}
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
 
-                                    <!-- Action Bar -->
-                                    <div
-                                        class="sticky bottom-0 z-20 flex flex-col items-center justify-between gap-4 rounded-b-2xl border-t border-slate-200 bg-slate-50/90 p-4 shadow-xl backdrop-blur-md sm:flex-row"
-                                    >
-                                        <div class="flex items-center gap-4">
-                                            <Button
-                                                @click="selectionMode = !selectionMode"
-                                                size="sm"
-                                                variant="outline"
-                                                :class="
-                                                    selectionMode
-                                                        ? 'border-indigo-600 bg-indigo-600 text-white hover:bg-indigo-700'
-                                                        : 'border-slate-200 bg-white'
-                                                "
-                                                class="h-10 px-4 text-[10px] font-black tracking-widest uppercase shadow-sm transition-all"
+                        <!-- Seleccionar todos -->
+                        <div v-if="eppItems.length > 0" class="flex items-center gap-2 px-1">
+                            <Checkbox :checked="allSelected" @update:checked="selectAll" />
+                            <span class="text-[10px] font-bold text-slate-500 uppercase">Seleccionar todos</span>
+                        </div>
+
+                        <!-- Cards de EPP (progressive disclosure) -->
+                        <div v-if="mergedClothes.length > 0" class="-mr-1 max-h-[320px] space-y-2 overflow-y-auto pr-1">
+                            <div
+                                v-for="(item, idx) in mergedClothes"
+                                :key="(item.id ? 'id-' + item.id : 'idx-' + idx) + (item.epp_id ? '-epp-' + item.epp_id : '')"
+                                class="rounded-xl border p-3 transition-all"
+                                :class="isSelected(item) ? 'border-indigo-300 bg-indigo-50/60 ring-1 ring-indigo-200' : 'border-slate-200 bg-white hover:border-slate-300'"
+                            >
+                                <div class="flex items-start gap-3" :class="item.epp_id ? 'cursor-pointer' : ''" @click="item.epp_id && toggleSelection(item)">
+                                    <Checkbox
+                                        v-if="item.epp_id"
+                                        :checked="isSelected(item)"
+                                        @click.stop
+                                        @update:checked="toggleSelection(item)"
+                                        class="mt-0.5 shrink-0"
+                                    />
+                                    <div v-else class="mt-0.5 h-4 w-4 shrink-0" />
+
+                                    <div class="min-w-0 flex-1">
+                                        <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                            <span class="text-xs font-bold text-slate-900">{{ item.required_name }}</span>
+                                            <span
+                                                v-if="!item.id"
+                                                class="inline-block shrink-0 rounded-full bg-indigo-50 px-2 py-0.5 text-[9px] font-black whitespace-nowrap text-indigo-600"
                                             >
-                                                {{ selectionMode ? 'Finalizar Selección' : 'Modo Selección' }}
-                                            </Button>
+                                                REQUERIDO
+                                            </span>
+                                            <span
+                                                v-else-if="!item.is_requirement"
+                                                class="shrink-0 text-[8px] font-black tracking-widest whitespace-nowrap text-slate-400 uppercase"
+                                            >
+                                                Asignación Extra
+                                            </span>
+                                        </div>
 
-                                            <div class="flex flex-col">
-                                                <span
-                                                    class="text-[11px] font-black uppercase"
-                                                    :class="selectedKeysCount > 0 ? 'text-indigo-700' : 'text-slate-400'"
+                                        <!-- Resumen compacto cuando no está seleccionado -->
+                                        <div v-if="!isSelected(item)" class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-500">
+                                            <span v-if="getDraftValue(item.epp_id, 'clothing_size', item.clothing_size)">
+                                                Talla <strong class="text-slate-700">{{ getDraftValue(item.epp_id, 'clothing_size', item.clothing_size) }}</strong>
+                                            </span>
+                                            <span v-if="getDraftValue(item.epp_id, 'color_id', item.color_id)">
+                                                Color <strong class="text-slate-700">{{ colorName(getDraftValue(item.epp_id, 'color_id', item.color_id)) }}</strong>
+                                            </span>
+                                            <span>
+                                                Cant <strong class="text-slate-700">{{ getDraftValue(item.epp_id, 'quantity', item.quantity) }}</strong>
+                                            </span>
+                                            <span
+                                                v-if="
+                                                    !getDraftValue(item.epp_id, 'clothing_size', item.clothing_size) &&
+                                                    !getDraftValue(item.epp_id, 'color_id', item.color_id)
+                                                "
+                                                class="font-bold text-amber-600 italic"
+                                            >
+                                                Talla y color pendientes
+                                            </span>
+                                            <span v-else-if="stockLoading[getRowKey(item)]" class="flex items-center gap-1 text-slate-400">
+                                                <Loader2 class="h-2.5 w-2.5 animate-spin" /> Verificando stock...
+                                            </span>
+                                            <span
+                                                v-else-if="getStockLabel(item)"
+                                                class="font-bold"
+                                                :class="stockTotals[getRowKey(item)] > 0 ? 'text-emerald-600' : 'text-rose-600'"
+                                            >
+                                                {{ getStockLabel(item) }}
+                                            </span>
+                                        </div>
+
+                                        <!-- Editores en línea cuando está seleccionado -->
+                                        <div v-else class="mt-2 grid grid-cols-3 gap-2" @click.stop>
+                                            <div class="space-y-1">
+                                                <Label class="text-[9px] font-bold text-slate-400 uppercase">Cant</Label>
+                                                <Input
+                                                    type="number"
+                                                    :model-value="getDraftValue(item.epp_id, 'quantity', item.quantity)"
+                                                    @change="
+                                                        (e: Event) => updateAssignment(item, 'quantity', parseInt((e.target as HTMLInputElement).value))
+                                                    "
+                                                    class="h-8 border-slate-200 bg-white text-center text-xs font-black text-slate-900"
+                                                />
+                                            </div>
+                                            <div class="space-y-1">
+                                                <Label class="text-[9px] font-bold text-slate-400 uppercase">Talla</Label>
+                                                <Select
+                                                    :model-value="getDraftValue(item.epp_id, 'clothing_size', item.clothing_size)"
+                                                    @update:model-value="
+                                                        (val: any) => {
+                                                            updateAssignment(item, 'clothing_size', val);
+                                                            checkItemStock({ ...item, clothing_size: val });
+                                                        }
+                                                    "
                                                 >
-                                                    {{ selectedKeysCount }} items seleccionados
-                                                </span>
-                                                <span v-if="selectionMode" class="text-[9px] leading-none font-bold text-indigo-400 uppercase"
-                                                    >Haz click en las filas</span
+                                                    <SelectTrigger class="h-8 border-slate-200 bg-white text-xs">
+                                                        <SelectValue placeholder="-" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem v-for="size in item.sizes" :key="size.id" :value="size.size">
+                                                            {{ size.size }}
+                                                        </SelectItem>
+                                                        <div v-if="!item.sizes || item.sizes.length === 0" class="p-2 text-[10px] text-slate-400 italic">
+                                                            No hay tallas
+                                                        </div>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div class="space-y-1">
+                                                <Label class="text-[9px] font-bold text-slate-400 uppercase">Color</Label>
+                                                <Select
+                                                    :model-value="String(getDraftValue(item.epp_id, 'color_id', item.color_id || ''))"
+                                                    @update:model-value="
+                                                        (val: any) => {
+                                                            const colorId = parseInt(val);
+                                                            updateAssignment(item, 'color_id', colorId);
+                                                            checkItemStock({ ...item, color_id: colorId });
+                                                        }
+                                                    "
                                                 >
+                                                    <SelectTrigger class="h-8 border-slate-200 bg-white text-xs">
+                                                        <SelectValue placeholder="-" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem v-for="color in colors" :key="color.id" :value="String(color.id)">
+                                                            {{ color.name }}
+                                                        </SelectItem>
+                                                    </SelectContent>
+                                                </Select>
                                             </div>
                                         </div>
 
-                                        <div class="flex w-full items-center gap-3 sm:w-auto">
-                                            <!-- <Select v-model="assignReason" v-if="selectedKeysCount > 0">
-                                                <SelectTrigger class="h-10 w-full border-slate-200 bg-white text-xs font-bold shadow-sm sm:w-48">
-                                                    <SelectValue placeholder="Motivo..." />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="Nuevo">Nuevo Ingreso</SelectItem>
-                                                    <SelectItem value="Renovación">Renovación regular</SelectItem>
-                                                    <SelectItem value="Reposición">Reposición</SelectItem>
-                                                </SelectContent>
-                                            </Select> -->
-                                            <Button
-                                                @click="openMultiDeliveryModal"
-                                                :disabled="selectedKeysCount === 0"
-                                                class="h-10 w-full bg-indigo-600 px-6 text-[10px] font-black tracking-widest text-white uppercase shadow-lg shadow-indigo-200 transition-all hover:bg-indigo-700 active:scale-95 disabled:opacity-50 disabled:shadow-none sm:w-auto"
-                                            >
-                                                Registrar Entrega
-                                            </Button>
+                                        <!-- Indicador de stock disponible (todas las sedes) -->
+                                        <div
+                                            v-if="
+                                                getDraftValue(item.epp_id, 'clothing_size', item.clothing_size) ||
+                                                getDraftValue(item.epp_id, 'color_id', item.color_id)
+                                            "
+                                            class="mt-2 flex items-center gap-1.5 text-[10px] font-bold"
+                                            @click.stop
+                                        >
+                                            <Loader2 v-if="stockLoading[getRowKey(item)]" class="h-3 w-3 animate-spin text-slate-400" />
+                                            <span v-else-if="getStockLabel(item)" :class="stockTotals[getRowKey(item)] > 0 ? 'text-emerald-600' : 'text-rose-600'">
+                                                {{ getStockLabel(item) }}
+                                            </span>
                                         </div>
+                                    </div>
+
+                                    <div class="flex shrink-0 flex-col items-end gap-1">
+                                        <span
+                                            :class="[
+                                                'inline-block rounded-full border px-2 py-0.5 text-center text-[9px] font-bold tracking-tight whitespace-nowrap uppercase',
+                                                getStatusClasses(item),
+                                            ]"
+                                        >
+                                            {{ getStatusLabel(item) }}
+                                        </span>
+                                        <span v-if="item.id" class="text-[9px] font-bold text-slate-400">{{ item.condition || 'Nuevo' }}</span>
                                     </div>
                                 </div>
                             </div>
-                    </div>
-                </div>
+                        </div>
 
-                <DialogFooter class="mt-6 border-t bg-slate-50/50 p-4">
-                    <Button
-                        variant="outline"
-                        @click="$emit('update:open', false)"
-                        class="text-[10px] font-bold tracking-widest text-slate-500 uppercase"
-                    >
-                        Cerrar Panel
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-
-        <!-- Delivery Location Modal -->
-        <Dialog :open="deliveryModal.open" @update:open="deliveryModal.open = $event">
-            <DialogContent class="sm:max-w-[400px]">
-                <DialogHeader>
-                    <DialogTitle class="text-lg font-black tracking-tight uppercase">Confirmar Entrega de Stock</DialogTitle>
-                    <DialogDescription class="text-xs">
-                        Selecciona desde qué almacén/ciudad se está retirando el EPP:
-                        <span class="font-bold text-slate-900">{{ deliveryModal.item?.required_name || deliveryModal.item?.epp_name }}</span>
-                    </DialogDescription>
-                </DialogHeader>
-
-                <div class="space-y-4 py-4">
-                    <div class="space-y-2">
-                        <Label class="text-[10px] font-black text-slate-500 uppercase">Almacén de Origen (Sede)</Label>
-                        <Select v-model="deliveryModal.headquarter_id">
-                            <SelectTrigger class="h-11 w-full border-none bg-slate-50">
-                                <SelectValue placeholder="Seleccionar sede..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">
-                                    <div class="flex w-64 items-center justify-between">
-                                        <span
-                                            >{{ hq.name }} <span class="ml-1 text-[9px] opacity-50">({{ hq.business?.name }})</span></span
-                                        >
-                                        <span
-                                            :class="[
-                                                'rounded-full px-2 py-0.5 text-[10px] font-black',
-                                                getStockForHq(hq.id) > 0 ? 'bg-green-100 text-green-700' : 'bg-rose-100 text-rose-700',
-                                            ]"
-                                        >
-                                            Stock: {{ getStockForHq(hq.id) }}
-                                        </span>
-                                    </div>
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-
-                    <div class="rounded-xl border border-indigo-100 bg-indigo-50 p-3">
-                        <div class="flex items-center justify-between text-[10px] font-bold">
-                            <span class="text-indigo-600">Cant. a Descontar:</span>
-                            <span class="rounded-full bg-indigo-600 px-2 py-0.5 text-white">{{ deliveryModal.item?.quantity }}</span>
+                        <div v-else class="rounded-xl border-2 border-dashed border-slate-200 bg-slate-50/50 py-8 text-center text-slate-400">
+                            <Package class="mx-auto mb-2 h-7 w-7 opacity-20" />
+                            <p class="text-[11px] font-black tracking-widest uppercase">No hay EPPs asignados todavía.</p>
                         </div>
                     </div>
                 </div>
 
-                <DialogFooter>
-                    <Button variant="outline" @click="deliveryModal.open = false" class="text-[10px] font-bold uppercase">Cancelar</Button>
-                    <Button
-                        @click="
-                            deliveryModal.item?.id
-                                ? updateStatus(
-                                      deliveryModal.item.id,
-                                      'Entregado',
-                                      deliveryModal.item.color_id,
-                                      deliveryModal.item.clothing_size,
-                                      deliveryModal.item.epp_id,
-                                      deliveryModal.item.quantity,
-                                      deliveryModal.headquarter_id,
-                                  )
-                                : confirmAssignment(deliveryModal.item, deliveryModal.headquarter_id)
-                        "
-                        :disabled="!deliveryModal.headquarter_id || isSubmittingAssignment"
-                        class="bg-indigo-600 text-[10px] font-black text-white uppercase hover:bg-indigo-700 disabled:opacity-50"
-                    >
-                        {{ isSubmittingAssignment ? 'Guardando…' : 'Confirmar y Descontar' }}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-        <!-- Return Status Modal (Entregado -> otro estado) -->
-        <Dialog :open="returnStatusModal.open" @update:open="returnStatusModal.open = $event">
-            <DialogContent class="sm:max-w-[425px]">
-                <DialogHeader>
-                    <DialogTitle class="text-lg font-black tracking-tight uppercase">Confirmar Retorno de Stock</DialogTitle>
-                    <DialogDescription class="text-xs">
-                        Selecciona a qué almacén regresa
-                        <span class="font-bold text-slate-900">{{ returnStatusModal.item?.required_name || returnStatusModal.item?.epp_name }}</span>
-                    </DialogDescription>
-                </DialogHeader>
-
-                <div class="space-y-4 py-4">
-                    <div class="space-y-2">
-                        <Label class="text-[10px] font-black text-slate-500 uppercase">Almacén de Destino (Sede)</Label>
-                        <Select v-model="returnStatusModal.headquarter_id">
-                            <SelectTrigger class="h-11 w-full border-none bg-slate-50">
-                                <SelectValue placeholder="Seleccionar sede..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem v-for="hq in headquarters" :key="hq.id" :value="String(hq.id)">
-                                    {{ hq.name }} <span class="ml-1 text-[9px] opacity-50">({{ hq.business?.name }})</span>
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
+                <DialogFooter class="border-t bg-slate-50/70 p-4">
+                    <div class="flex w-full flex-col gap-3">
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="flex flex-col">
+                                <span class="text-[11px] font-black uppercase" :class="selectedKeysCount > 0 ? 'text-indigo-700' : 'text-slate-400'">
+                                    {{ selectedKeysCount }} EPP{{ selectedKeysCount === 1 ? '' : 's' }} para entregar
+                                </span>
+                                <span v-if="hasOutOfStockSelection" class="text-[9px] font-bold text-rose-600 uppercase">
+                                    Hay items sin stock disponible
+                                </span>
+                            </div>
+                            <Select v-model="assignReason">
+                                <SelectTrigger class="h-8 w-36 border-slate-200 bg-white text-[10px] font-bold shadow-sm">
+                                    <SelectValue placeholder="Motivo..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Nuevo">Nuevo Ingreso</SelectItem>
+                                    <SelectItem value="Renovación">Renovación regular</SelectItem>
+                                    <SelectItem value="Reposición">Reposición</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div class="flex gap-2">
+                            <Button
+                                variant="outline"
+                                @click="$emit('update:open', false)"
+                                class="text-[10px] font-bold tracking-widest text-slate-500 uppercase"
+                            >
+                                Cerrar Panel
+                            </Button>
+                            <Button
+                                @click="openMultiDeliveryModal"
+                                :disabled="selectedKeysCount === 0 || hasOutOfStockSelection"
+                                class="h-9 flex-1 bg-indigo-600 text-[10px] font-black tracking-widest text-white uppercase shadow-lg shadow-indigo-200 transition-all hover:bg-indigo-700 active:scale-95 disabled:opacity-50 disabled:shadow-none"
+                            >
+                                Registrar Entrega{{ selectedKeysCount > 0 ? ` (${selectedKeysCount})` : '' }}
+                            </Button>
+                        </div>
                     </div>
-                </div>
-
-                <DialogFooter>
-                    <Button variant="outline" @click="returnStatusModal.open = false" class="text-[10px] font-bold uppercase">Cancelar</Button>
-                    <Button
-                        @click="confirmReturnStatus"
-                        :disabled="!returnStatusModal.headquarter_id"
-                        class="bg-indigo-600 text-[10px] font-black text-white uppercase hover:bg-indigo-700"
-                    >
-                        Confirmar Retorno
-                    </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+
         <!-- Multi Delivery Location Modal -->
         <Dialog :open="multiDeliveryModal.open" @update:open="multiDeliveryModal.open = $event">
             <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-[600px]">
