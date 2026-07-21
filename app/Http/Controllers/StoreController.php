@@ -283,6 +283,27 @@ class StoreController extends Controller
         ]);
     }
 
+    /**
+     * Exporta a Excel todo el stock (Tecnológico, Menaje, EPP) del café/unidad seleccionado.
+     */
+    public function export(Request $request)
+    {
+        $locationType = $request->input('location_type', 'cafe') === 'unit' ? 'unit' : 'cafe';
+        $locationId   = (int) $request->input('location_id');
+
+        $locationName = $locationType === 'unit'
+            ? (Unit::find($locationId)?->name ?? 'Unidad')
+            : (Cafe::find($locationId)?->name ?? 'Café');
+
+        $safeName = preg_replace('/[\/\\\?\*\[\]:]/', '', $locationName) ?: 'Stock';
+        $fileName = 'Stock_' . str_replace(' ', '_', $safeName) . '_' . now()->format('Y-m-d') . '.xlsx';
+
+        return \Maatwebsite\Excel\Facades\Excel::download(
+            new \App\Exports\StoreLocationStockExport($locationType, $locationId, $locationName),
+            $fileName,
+        );
+    }
+
     public function sendDispatch(Request $request)
     {
         $validated = $request->validate([

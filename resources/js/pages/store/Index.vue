@@ -7,6 +7,7 @@ import {
     CheckCircle2,
     Clock,
     Coffee,
+    FileSpreadsheet,
     FileText,
     HardHat,
     Laptop,
@@ -286,6 +287,13 @@ const selectedCafe = computed(() => (selectedType.value === 'cafe' ? (props.cafe
 
 const selectedUnit = computed(() => (selectedType.value === 'unit' ? (props.units.find((u) => u.id === selectedId.value) ?? null) : null));
 
+// Enlace directo de descarga (GET, sin axios) — abre/descarga el Excel con todo el stock
+// (Tecnológico, Menaje, EPP) del café/unidad seleccionado actualmente.
+const exportHref = computed(() => {
+    if (!selectedId.value) return '#';
+    return route('store.export', { location_type: selectedType.value, location_id: selectedId.value });
+});
+
 // Agrupa los despachos por guía de remisión (ya vienen filtrados y paginados desde el backend
 // — 10 guías por página) — igual al patrón de "Desde Café" en Inventario: una tarjeta por guía,
 // con sus equipos listados debajo. `is_outgoing` indica si el café/unidad seleccionado es el
@@ -563,6 +571,14 @@ function equipmentStatusInfo(val: number | null) {
                                 </p>
                                 <p v-else class="text-sm text-slate-500">Envíos dirigidos a la unidad en general, sin café específico</p>
                             </div>
+                            <a
+                                :href="exportHref"
+                                target="_blank"
+                                class="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 shadow-sm transition-colors hover:bg-emerald-100"
+                            >
+                                <FileSpreadsheet class="h-4 w-4" />
+                                Exportar Excel
+                            </a>
                             <button
                                 v-if="selectedCafe"
                                 @click="openSendModal"
