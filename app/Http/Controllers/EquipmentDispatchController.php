@@ -71,9 +71,14 @@ class EquipmentDispatchController extends Controller
         ];
 
         // El stock de EPP vive en InventoryStock, atado a la Sede Origen elegida (no en una
-        // columna `quantity` propia del modelo — Epp no la tiene). Se busca la fila exacta
-        // (sede + talla + color) tal como la ve el usuario en el carrito.
-        $eppStockQuery = fn (array $item) => InventoryStock::where([
+        // columna `quantity` propia del modelo — Epp no la tiene). Puede haber más de una fila
+        // para la misma sede+talla+color si coexisten distintas condiciones (Nuevo / En
+        // Almacén): sin filtrar por condición, un decrement() ejecutado directo sobre el query
+        // builder genera un solo UPDATE que afecta a TODAS las filas que matchean (no "la
+        // primera"), dejando alguna en negativo aunque la que se veía en pantalla tuviera stock
+        // de sobra. Se suman todas las filas para saber el disponible real, y al descontar se
+        // recorren una por una (ya como modelos, nunca por el builder) sin dejar ninguna bajo cero.
+        $eppStockRows = fn (array $item) => InventoryStock::where([
             'stockable_type' => Epp::class,
             'stockable_id'   => $item['equipable_id'],
             'headquarter_id' => $validated['origin_headquarter_id'],
@@ -81,12 +86,22 @@ class EquipmentDispatchController extends Controller
             'unit_id'        => null,
             'size'           => $item['size'] ?? null,
             'color_id'       => $item['color_id'] ?? null,
-        ]);
+        ])->where('quantity', '>', 0)->orderByDesc('quantity')->get();
+
+        $decrementEppStock = function (array $item) use ($eppStockRows) {
+            $remaining = $item['quantity'];
+            foreach ($eppStockRows($item) as $row) {
+                if ($remaining <= 0) break;
+                $take = min($remaining, (float) $row->quantity);
+                $row->decrement('quantity', $take);
+                $remaining -= $take;
+            }
+        };
 
         // Validate stock for every item before creating any dispatch
         foreach ($validated['items'] as $i => $item) {
             if ($item['equipable_type'] === 'epp') {
-                $available = (int) ($eppStockQuery($item)->value('quantity') ?? 0);
+                $available = (int) $eppStockRows($item)->sum('quantity');
                 if ($available < $item['quantity']) {
                     return back()->withErrors(["items.{$i}.quantity" => "Solo hay {$available} unidades disponibles en esa sede."]);
                 }
@@ -112,7 +127,7 @@ class EquipmentDispatchController extends Controller
             $dispatchNumber = 'DESP-' . now()->year . '-' . str_pad($seq, 4, '0', STR_PAD_LEFT);
 
             if ($item['equipable_type'] === 'epp') {
-                $eppStockQuery($item)->decrement('quantity', $item['quantity']);
+                $decrementEppStock($item);
             } else {
                 $modelClass::find($item['equipable_id'])->decrement('quantity', $item['quantity']);
             }

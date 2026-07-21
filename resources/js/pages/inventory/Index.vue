@@ -226,6 +226,11 @@ const filteredStocks = computed(() => {
         if (activeTab.value === 'kitchen' && itemType !== 'App\\Models\\KitchenEquipment') return false;
         if (activeTab.value === 'ingredients' && itemType !== 'App\\Models\\Ingredient') return false;
 
+        // Los EPPs solo se entregan/transfieren desde stock ubicado en una Sede (headquarter_id)
+        // — el stock que quedó registrado en un café o unidad no es utilizable como origen para
+        // ese flujo, así que no debe sumarse al disponible ni aparecer en el desglose de EPPs.
+        if (itemType === 'App\\Models\\Epp' && !stock.headquarter_id) return false;
+
         // Search query
         const itemName = stock.stockable?.name?.toLowerCase() || '';
         const matchesSearch = itemName.includes(searchQuery.value.toLowerCase());
