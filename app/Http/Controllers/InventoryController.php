@@ -833,6 +833,7 @@ class InventoryController extends Controller
     {
         $validated = $request->validate([
             'unit_id' => 'required|exists:units,id',
+            'transfer_id' => 'nullable|exists:inventory_transfers,id',
             'items' => 'required|array|min:1',
             'items.*.stockable_id' => 'required|integer',
             'items.*.stockable_type' => 'required|string',
@@ -875,7 +876,18 @@ class InventoryController extends Controller
 
                 $principalStock->increment('quantity', $itemData['quantity']);
             }
+
+            // Marca el envío como devuelto — sin esto, la tabla de "Registro de Envíos" seguía
+            // mostrando "En Tránsito / Uso" para siempre aunque el stock ya hubiera vuelto.
+            if (!empty($validated['transfer_id'])) {
+                InventoryTransfer::where('id', $validated['transfer_id'])->update([
+                    'status' => 'returned',
+                    'returned_at' => now(),
+                ]);
+            }
         });
+
+        return back()->with('success', 'Devolución registrada correctamente');
     }
 
     public function assignStaffClothes(Request $request)

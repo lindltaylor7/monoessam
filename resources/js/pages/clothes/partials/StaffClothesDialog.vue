@@ -5,10 +5,9 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { router, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
-import { Camera, Check, FileText, Loader2, Package, Plus, Search, Trash2 } from 'lucide-vue-next';
+import { Check, Loader2, Package, Plus, Search, Trash2 } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
 import { computed, ref, watch } from 'vue';
 
@@ -62,6 +61,12 @@ const emit = defineEmits(['update:open']);
 
 const isAssigning = ref(false);
 const assignReason = ref('Renovación'); // Default to Regular
+// Comparte estado de "enviando" entre los 3 flujos que postean a inventory.assign-clothes
+// (asignación rápida, entrega individual, entrega múltiple) — sin esto, un doble clic en
+// "Confirmar" dispara dos requests casi simultáneos que no llegan a verse entre sí dentro de la
+// transacción de cada uno, y el backend termina creando dos filas duplicadas de Staff_clothes en
+// vez de una sola con la cantidad correcta.
+const isSubmittingAssignment = ref(false);
 // Sede desde la que sale/regresa el stock en la asignación rápida (submitAssignments) — sin esto,
 // el backend caía a la columna legado `staff.cafe_id` (ya no se mantiene, siempre null) en vez de
 // la Unidad/Café real del staff, dejando el stock sin ubicación (invisible en "Detalle de Tallas").
@@ -152,6 +157,7 @@ const openMultiDeliveryModal = async () => {
 };
 
 const confirmMultiAssignment = () => {
+    if (isSubmittingAssignment.value) return;
     const selectedItems = multiDeliveryModal.value.items;
 
     for (const item of selectedItems) {
@@ -189,6 +195,7 @@ const confirmMultiAssignment = () => {
         };
     });
 
+    isSubmittingAssignment.value = true;
     router.post(
         route('inventory.assign-clothes'),
         {
@@ -204,6 +211,9 @@ const confirmMultiAssignment = () => {
                 });
                 selectedKeys.value = [];
                 multiDeliveryModal.value.open = false;
+            },
+            onFinish: () => {
+                isSubmittingAssignment.value = false;
             },
             preserveScroll: true,
             preserveState: true,
@@ -351,11 +361,13 @@ const removePending = (index: number) => {
 };
 
 const submitAssignments = () => {
+    if (isSubmittingAssignment.value) return;
     if (!props.staff) return;
     if (!assignHeadquarterId.value) {
         Swal.fire('Atención', 'Selecciona la sede desde la que sale/regresa el stock.', 'warning');
         return;
     }
+    isSubmittingAssignment.value = true;
     router.post(
         route('inventory.assign-clothes'),
         {
@@ -369,6 +381,9 @@ const submitAssignments = () => {
                 isAssigning.value = false;
                 pendingAssignments.value = [];
                 assignHeadquarterId.value = '';
+            },
+            onFinish: () => {
+                isSubmittingAssignment.value = false;
             },
             preserveScroll: true,
         },
@@ -491,18 +506,6 @@ const mergedClothes = computed(() => {
     return result;
 });
 
-const eppOptions = ref<any[]>([]);
-const loadEppOptions = async () => {
-    try {
-        const response = await axios.get(route('inventory.items.search'), {
-            params: { type: 'epp', query: '' }, // Get some default or just search as needed
-        });
-        eppOptions.value = response.data;
-    } catch (e) {
-        console.error(e);
-    }
-};
-
 const updateAssignment = (item: any, field: string, value: any) => {
     if (item.id) {
         // Existing assignment
@@ -593,6 +596,8 @@ const updateStatus = (
     quantity?: number,
     headquarterId?: string | null,
 ) => {
+    if (isSubmittingAssignment.value) return;
+
     // Stock validation for delivery
     if (status === 'Entregado' && headquarterId && quantity !== undefined) {
         const stock = getStockForHq(Number(headquarterId));
@@ -607,6 +612,7 @@ const updateStatus = (
         }
     }
 
+    isSubmittingAssignment.value = true;
     router.post(
         route('clothes.status'),
         {
@@ -622,11 +628,15 @@ const updateStatus = (
             preserveScroll: true,
             preserveState: true,
             only: ['staff', 'flash'],
+            onFinish: () => {
+                isSubmittingAssignment.value = false;
+            },
         },
     );
 };
 
 const confirmAssignment = (draft: any, headquarterId: string | null = null) => {
+    if (isSubmittingAssignment.value) return;
     // Stock validation
     if (headquarterId && draft.quantity !== undefined) {
         const stock = getStockForHq(Number(headquarterId));
@@ -641,6 +651,7 @@ const confirmAssignment = (draft: any, headquarterId: string | null = null) => {
         }
     }
 
+    isSubmittingAssignment.value = true;
     router.post(
         route('inventory.assign-clothes'),
         {
@@ -662,6 +673,9 @@ const confirmAssignment = (draft: any, headquarterId: string | null = null) => {
             onSuccess: () => {
                 if (draft.epp_id) delete requirementDrafts.value[draft.epp_id];
                 deliveryModal.value.open = false;
+            },
+            onFinish: () => {
+                isSubmittingAssignment.value = false;
             },
             preserveScroll: true,
             preserveState: true,
@@ -797,33 +811,9 @@ const handleFileChange = (e: Event) => {
     }
 };
 
-const uploadEvidence = (histId: number, file: File) => {
-    router.post(
-        route('inventory.history.evidence', histId),
-        {
-            evidence_image: file,
-        },
-        {
-            preserveScroll: true,
-            onSuccess: () => {
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Éxito',
-                    text: 'Evidencia subida correctamente',
-                    timer: 1500,
-                    showConfirmButton: false,
-                });
-            },
-        },
-    );
-};
-
 watch(
     () => props.open,
     (val) => {
-        if (val) {
-            loadEppOptions();
-        }
         if (!val) {
             isAssigning.value = false;
             pendingAssignments.value = [];
@@ -1015,9 +1005,10 @@ watch(
 
                                 <Button
                                     @click="submitAssignments"
-                                    class="h-10 w-full bg-indigo-600 text-[11px] font-black tracking-widest text-white uppercase shadow-lg shadow-indigo-200 hover:bg-indigo-700 sm:w-auto"
+                                    :disabled="isSubmittingAssignment"
+                                    class="h-10 w-full bg-indigo-600 text-[11px] font-black tracking-widest text-white uppercase shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50 sm:w-auto"
                                 >
-                                    Confirmar Asignación y Descontar
+                                    {{ isSubmittingAssignment ? 'Guardando…' : 'Confirmar Asignación y Descontar' }}
                                 </Button>
                             </div>
                         </div>
@@ -1025,21 +1016,7 @@ watch(
 
                     <!-- Normal View (Summary) -->
                     <div v-else class="space-y-6">
-                        <Tabs defaultValue="assignments" class="w-full">
-                            <TabsList class="mb-4 grid h-12 w-full grid-cols-2 rounded-xl bg-slate-100 p-1">
-                                <TabsTrigger
-                                    value="assignments"
-                                    class="rounded-lg text-xs font-bold tracking-widest uppercase data-[state=active]:bg-white data-[state=active]:shadow-sm"
-                                    >Estado Actual</TabsTrigger
-                                >
-                                <TabsTrigger
-                                    value="history"
-                                    class="rounded-lg text-xs font-bold tracking-widest uppercase data-[state=active]:bg-white data-[state=active]:shadow-sm"
-                                    >Historial de Entregas</TabsTrigger
-                                >
-                            </TabsList>
-
-                            <TabsContent value="assignments" class="animate-in fade-in zoom-in-95 space-y-6 duration-200">
+                        <div class="animate-in fade-in zoom-in-95 space-y-6 duration-200">
                                 <!-- Tallas del Staff (Implementos) -->
                                 <div class="space-y-3">
                                     <h3 class="border-l-2 border-slate-200 pl-3 text-xs font-black tracking-widest text-slate-400 uppercase">
@@ -1318,27 +1295,16 @@ watch(
                                                         <span v-else class="text-[9px] font-bold text-slate-300 italic">Sin asignar</span>
                                                     </td>
                                                     <td class="px-4 py-3 align-top">
-                                                        <Select
-                                                            :model-value="getDraftValue(item.epp_id, 'status', item.status || 'Pendiente')"
-                                                            @update:model-value="(val: any) => updateAssignment(item, 'status', val)"
+                                                        <span
+                                                            :class="[
+                                                                'inline-block rounded-full border px-2 py-1 text-center text-[10px] font-bold tracking-tighter uppercase',
+                                                                getStatusColorMapped(
+                                                                    getDraftValue(item.epp_id, 'status', item.status || 'Pendiente'),
+                                                                ),
+                                                            ]"
                                                         >
-                                                            <SelectTrigger
-                                                                :class="[
-                                                                    'h-8 w-full border-none text-[10px] font-bold tracking-tighter uppercase',
-                                                                    getStatusColorMapped(
-                                                                        getDraftValue(item.epp_id, 'status', item.status || 'Pendiente'),
-                                                                    ),
-                                                                ]"
-                                                            >
-                                                                <SelectValue placeholder="Estado" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                <SelectItem value="Pendiente">Pendiente</SelectItem>
-                                                                <SelectItem value="En Proceso">En Proceso</SelectItem>
-                                                                <SelectItem value="Entregado">Entregado</SelectItem>
-                                                                <SelectItem value="Devuelto">Devuelto</SelectItem>
-                                                            </SelectContent>
-                                                        </Select>
+                                                            {{ getDraftValue(item.epp_id, 'status', item.status || 'Pendiente') }}
+                                                        </span>
                                                     </td>
                                                 </tr>
                                             </tbody>
@@ -1386,7 +1352,7 @@ watch(
                                         </div>
 
                                         <div class="flex w-full items-center gap-3 sm:w-auto">
-                                            <Select v-model="assignReason" v-if="selectedKeysCount > 0">
+                                            <!-- <Select v-model="assignReason" v-if="selectedKeysCount > 0">
                                                 <SelectTrigger class="h-10 w-full border-slate-200 bg-white text-xs font-bold shadow-sm sm:w-48">
                                                     <SelectValue placeholder="Motivo..." />
                                                 </SelectTrigger>
@@ -1395,125 +1361,18 @@ watch(
                                                     <SelectItem value="Renovación">Renovación regular</SelectItem>
                                                     <SelectItem value="Reposición">Reposición</SelectItem>
                                                 </SelectContent>
-                                            </Select>
+                                            </Select> -->
                                             <Button
                                                 @click="openMultiDeliveryModal"
                                                 :disabled="selectedKeysCount === 0"
                                                 class="h-10 w-full bg-indigo-600 px-6 text-[10px] font-black tracking-widest text-white uppercase shadow-lg shadow-indigo-200 transition-all hover:bg-indigo-700 active:scale-95 disabled:opacity-50 disabled:shadow-none sm:w-auto"
                                             >
-                                                Registrar Entrega Múltiple
+                                                Registrar Entrega
                                             </Button>
                                         </div>
                                     </div>
                                 </div>
-                            </TabsContent>
-
-                            <TabsContent value="history" class="animate-in fade-in zoom-in-95 duration-200">
-                                <div class="mb-4 flex justify-end">
-                                    <a
-                                        :href="route('inventory.history.staff.pdf', staff.id)"
-                                        target="_blank"
-                                        class="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-[10px] font-black tracking-widest text-white uppercase shadow-lg shadow-indigo-200 transition-all hover:bg-indigo-700 active:scale-95"
-                                    >
-                                        <FileText class="h-4 w-4" />
-                                        Descargar Historial Completo PDF
-                                    </a>
-                                </div>
-                                <div v-if="staff.clothes_histories && staff.clothes_histories.length > 0" class="space-y-4">
-                                    <div
-                                        v-for="hist in staff.clothes_histories.slice().reverse()"
-                                        :key="hist.id"
-                                        class="flex flex-col gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm"
-                                    >
-                                        <div class="flex items-start justify-between border-b border-slate-50 pb-3">
-                                            <div class="space-y-1">
-                                                <div class="flex items-center gap-2">
-                                                    <span
-                                                        class="rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-black text-indigo-600 uppercase"
-                                                        >{{ hist.reason }}</span
-                                                    >
-                                                    <span class="text-xs font-medium text-slate-500">{{
-                                                        new Date(hist.created_at).toLocaleString()
-                                                    }}</span>
-                                                </div>
-                                                <div class="text-[10px] font-medium text-slate-400">
-                                                    Asignado por: <span class="font-bold text-slate-700">{{ hist.user?.name || 'Sistema' }}</span>
-                                                </div>
-                                            </div>
-                                            <a
-                                                :href="route('inventory.history.pdf', hist.id)"
-                                                target="_blank"
-                                                class="flex items-center gap-1.5 rounded-xl border border-slate-100 bg-slate-50 p-2 text-slate-500 transition-all hover:bg-slate-100 hover:text-indigo-600"
-                                            >
-                                                <FileText class="h-4 w-4" />
-                                                <span class="hidden text-[9px] font-black tracking-widest uppercase sm:inline">PDF Entrega</span>
-                                            </a>
-                                        </div>
-                                        <div class="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                            <div v-for="(item, idx) in hist.items" :key="idx" class="flex flex-col rounded-xl bg-slate-50 p-2">
-                                                <div class="flex items-start justify-between">
-                                                    <span class="text-[11px] font-bold text-slate-800">{{
-                                                        eppOptions.find((e) => String(e.id) === String(item.epp_id))?.name ||
-                                                        item.epp_name ||
-                                                        `EPP #${item.epp_id}`
-                                                    }}</span>
-                                                    <span
-                                                        v-if="item.condition"
-                                                        :class="[
-                                                            'rounded-full px-2 py-0.5 text-[8px] font-black uppercase',
-                                                            item.condition === 'Nuevo'
-                                                                ? 'bg-emerald-100 text-emerald-700'
-                                                                : 'bg-amber-100 text-amber-700',
-                                                        ]"
-                                                    >
-                                                        {{ item.condition }}
-                                                    </span>
-                                                </div>
-                                                <div class="mt-1 flex gap-3 text-[10px] text-slate-500">
-                                                    <span class="font-medium"
-                                                        >Cant: <strong class="text-indigo-600">{{ item.quantity }}</strong></span
-                                                    >
-                                                    <span class="font-medium"
-                                                        >Talla: <strong class="text-slate-700">{{ item.size || '-' }}</strong></span
-                                                    >
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div v-if="hist.evidence_image" class="mt-2">
-                                            <div class="mb-2 text-[10px] font-bold text-slate-400 uppercase">Evidencia Fotográfica:</div>
-                                            <a
-                                                :href="hist.evidence_image"
-                                                target="_blank"
-                                                class="block w-fit overflow-hidden rounded-xl border border-slate-200"
-                                            >
-                                                <img
-                                                    :src="hist.evidence_image"
-                                                    class="h-20 w-auto object-cover transition-transform hover:scale-105"
-                                                />
-                                            </a>
-                                        </div>
-                                        <div v-else class="mt-2 border-t border-slate-50 pt-2">
-                                            <Label class="mb-1 flex items-center gap-1 text-[9px] font-black text-indigo-400 uppercase">
-                                                <Camera class="h-3 w-3" /> Subir Evidencia
-                                            </Label>
-                                            <Input
-                                                type="file"
-                                                accept="image/*"
-                                                class="h-8 border-dashed border-slate-200 bg-slate-50/50 text-[10px]"
-                                                @change="(e: any) => e.target.files?.[0] && uploadEvidence(hist.id, e.target.files[0])"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-                                <div
-                                    v-else
-                                    class="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 py-10 text-center text-slate-400"
-                                >
-                                    <Package class="mx-auto mb-2 h-8 w-8 opacity-20" />
-                                    <p class="text-[11px] font-black tracking-widest uppercase">No hay historial de asignaciones.</p>
-                                </div>
-                            </TabsContent>
-                        </Tabs>
+                            </div>
                     </div>
                 </div>
 
@@ -1591,10 +1450,10 @@ watch(
                                   )
                                 : confirmAssignment(deliveryModal.item, deliveryModal.headquarter_id)
                         "
-                        :disabled="!deliveryModal.headquarter_id"
-                        class="bg-indigo-600 text-[10px] font-black text-white uppercase hover:bg-indigo-700"
+                        :disabled="!deliveryModal.headquarter_id || isSubmittingAssignment"
+                        class="bg-indigo-600 text-[10px] font-black text-white uppercase hover:bg-indigo-700 disabled:opacity-50"
                     >
-                        Confirmar y Descontar
+                        {{ isSubmittingAssignment ? 'Guardando…' : 'Confirmar y Descontar' }}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -1606,9 +1465,7 @@ watch(
                     <DialogTitle class="text-lg font-black tracking-tight uppercase">Confirmar Retorno de Stock</DialogTitle>
                     <DialogDescription class="text-xs">
                         Selecciona a qué almacén regresa
-                        <span class="font-bold text-slate-900">{{
-                            returnStatusModal.item?.required_name || returnStatusModal.item?.epp_name
-                        }}</span>
+                        <span class="font-bold text-slate-900">{{ returnStatusModal.item?.required_name || returnStatusModal.item?.epp_name }}</span>
                     </DialogDescription>
                 </DialogHeader>
 
@@ -1708,11 +1565,13 @@ watch(
                     <Button
                         @click="confirmMultiAssignment()"
                         :disabled="
-                            multiDeliveryModal.isLoading || Object.keys(multiDeliveryModal.headquarters).length !== multiDeliveryModal.items.length
+                            multiDeliveryModal.isLoading ||
+                            isSubmittingAssignment ||
+                            Object.keys(multiDeliveryModal.headquarters).length !== multiDeliveryModal.items.length
                         "
-                        class="bg-indigo-600 text-[10px] font-black text-white uppercase hover:bg-indigo-700"
+                        class="bg-indigo-600 text-[10px] font-black text-white uppercase hover:bg-indigo-700 disabled:opacity-50"
                     >
-                        Confirmar y Procesar
+                        {{ isSubmittingAssignment ? 'Guardando…' : 'Confirmar y Procesar' }}
                     </Button>
                 </DialogFooter>
             </DialogContent>

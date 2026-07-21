@@ -1,15 +1,20 @@
 <script setup lang="ts">
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useStaffFilter } from '@/composables/useStaffFilter';
 import AppLayout from '@/layouts/AppLayout.vue';
 import StaffClothesDialog from '@/pages/clothes/partials/StaffClothesDialog.vue';
+import StaffHistoryDialog from '@/pages/clothes/partials/StaffHistoryDialog.vue';
 import InventoryTransferDialog from '@/pages/inventory/partials/InventoryTransferDialog.vue';
 import { Staff } from '@/types';
 import { Head, router } from '@inertiajs/vue3';
-import { ChevronLeft, ChevronRight, Eye, Truck } from 'lucide-vue-next';
+import { Building2, ChevronLeft, ChevronRight, Eye, History, Package, RotateCcw, Truck, User } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
 interface ExtendedStaff extends Staff {
@@ -24,6 +29,7 @@ interface ExtendedStaff extends Staff {
         epp?: { name: string; sizes: Array<{ id: number; size: string }> };
         color?: { id: number; name: string };
         status?: string;
+        condition?: string;
         quantity: number;
     }>;
     staff_financial?: {
@@ -38,6 +44,7 @@ const props = defineProps<{
     units: any[];
     colors: Array<{ id: number; name: string }>;
     headquarters?: Array<{ id: number; name: string; business?: { name: string } }>;
+    transfers: any[];
 }>();
 
 const getClothesForStaff = (person: ExtendedStaff) => {
@@ -111,6 +118,106 @@ const openModal = (staff: ExtendedStaff) => {
     isModalOpen.value = true;
 };
 
+const isHistoryModalOpen = ref(false);
+const selectedStaffForHistory = ref<ExtendedStaff | null>(null);
+
+const openHistoryModal = (staff: ExtendedStaff) => {
+    selectedStaffForHistory.value = staff;
+    isHistoryModalOpen.value = true;
+};
+
+// ── Registro de Envíos a Unidad + Devolución (mismo backend que /inventory) ────────────────
+const isTransfersLogOpen = ref(false);
+const transfersFilterStaff = ref<ExtendedStaff | null>(null);
+
+// Sin staff seleccionado (botón de la cabecera) se ven todos los envíos; abierto desde la fila de
+// una persona (botón "Retornar EPP") se filtra solo a los envíos asignados a ella.
+const filteredTransfers = computed(() => {
+    if (!transfersFilterStaff.value) return props.transfers;
+    return props.transfers.filter((t: any) => t.staff_id === transfersFilterStaff.value?.id);
+});
+
+const openTransfersLog = (staff: ExtendedStaff | null = null) => {
+    transfersFilterStaff.value = staff;
+    isTransfersLogOpen.value = true;
+};
+
+// Entregas directas a esta persona (Staff_clothes con status "Entregado") — distintas de los
+// envíos a Unidad de arriba: son EPP/ropa asignados a alguien puntualmente desde la ficha del
+// colaborador (pestaña "Estado Actual"), no un traslado masivo de stock a una unidad.
+const directDeliveries = computed(() => {
+    if (!transfersFilterStaff.value) return [];
+    // Excluye las prendas de "talla de referencia" (Polo, Overall, Casaca, etc. — clothe_name
+    // fijo, sin cloth_id/epp_id): no tienen stock real detrás, así que "Entregado" ahí solo
+    // indica que se le confirmó la talla, no que haya algo que devolver a inventario.
+    return (transfersFilterStaff.value.staff_clothes || []).filter((sc) => sc.status === 'Entregado' && (sc.epp_id || sc.cloth_id));
+});
+
+const directReturnModal = ref({
+    open: false,
+    item: null as ExtendedStaff['staff_clothes'][number] | null,
+    headquarter_id: '',
+});
+
+const openDirectReturnModal = (item: ExtendedStaff['staff_clothes'][number]) => {
+    directReturnModal.value = { open: true, item, headquarter_id: '' };
+};
+
+const confirmDirectReturn = () => {
+    const { item, headquarter_id } = directReturnModal.value;
+    if (!item || !headquarter_id) return;
+    router.post(
+        route('clothes.status'),
+        {
+            id: item.id,
+            status: 'Devuelto',
+            color_id: item.color_id,
+            clothing_size: item.clothing_size,
+            epp_id: item.epp_id,
+            quantity: item.quantity,
+            headquarter_id,
+        },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                directReturnModal.value.open = false;
+            },
+        },
+    );
+};
+
+const isReturnModalOpen = ref(false);
+const returnForm = ref({
+    unit_id: '',
+    transfer_id: null as number | null,
+    items: [] as any[],
+});
+
+const openReturnModal = (transfer: any) => {
+    returnForm.value = {
+        unit_id: String(transfer.unit_id),
+        transfer_id: transfer.id,
+        items: transfer.items.map((i: any) => ({
+            stockable_id: i.stockable_id,
+            stockable_type: i.stockable_type,
+            name: i.stockable?.name,
+            quantity: i.quantity,
+            size: i.size,
+            color_id: i.color_id,
+        })),
+    };
+    isReturnModalOpen.value = true;
+};
+
+const handleReturn = () => {
+    router.post(route('inventory.transfer.return'), returnForm.value, {
+        onSuccess: () => {
+            isReturnModalOpen.value = false;
+        },
+        preserveScroll: true,
+    });
+};
+
 const updateSize = (staffId: number, clothId: number, size: string) => {
     router.post(
         route('clothes.staff-size'),
@@ -166,6 +273,10 @@ const getInitials = (name: string) => {
                             Inventario
                         </Button>
                     </Link> -->
+                    <Button @click="openTransfersLog()" size="sm" variant="outline" class="gap-2">
+                        <History class="h-4 w-4" />
+                        Registro de Envíos
+                    </Button>
                     <Button @click="isTransferModalOpen = true" size="sm" class="gap-2 bg-slate-900 text-white shadow-lg hover:bg-black">
                         <Truck class="h-4 w-4" />
                         Generar Envío a Unidad
@@ -199,7 +310,7 @@ const getInitials = (name: string) => {
                                 <th class="p-4 font-medium">Comedor</th>
                                 <th class="p-4 font-medium">Unidad</th>
                                 <!-- <th class="p-4 font-medium">Tallas</th> -->
-                                <th class="w-16 p-4 font-medium">Prendas</th>
+                                <th class="w-36 p-4 text-right font-medium">Acciones</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100">
@@ -268,10 +379,33 @@ const getInitials = (name: string) => {
                                     </div>
                                 </td>
                                 -->
-                                <td class="p-4 text-right">
-                                    <Button variant="ghost" size="icon" @click="openModal(person as any)">
-                                        <Eye class="h-4 w-4 text-gray-500" />
-                                    </Button>
+                                <td class="p-4">
+                                    <div class="flex items-center justify-end gap-1.5">
+                                        <button
+                                            type="button"
+                                            @click="openModal(person as any)"
+                                            title="Ver / Editar tallas y EPP"
+                                            class="group flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-indigo-50 hover:text-indigo-600"
+                                        >
+                                            <Eye class="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            @click="openHistoryModal(person as any)"
+                                            title="Historial de entregas"
+                                            class="group flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600"
+                                        >
+                                            <History class="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            @click="openTransfersLog(person as any)"
+                                            title="Envíos y devolución de EPP"
+                                            class="group flex h-9 w-9 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-amber-50 hover:text-amber-600"
+                                        >
+                                            <RotateCcw class="h-4 w-4" />
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                             <tr v-if="paginatedStaff.length === 0">
@@ -311,6 +445,8 @@ const getInitials = (name: string) => {
             @update:open="isModalOpen = $event"
         />
 
+        <StaffHistoryDialog :open="isHistoryModalOpen" :staff="selectedStaffForHistory" @update:open="isHistoryModalOpen = $event" />
+
         <InventoryTransferDialog
             v-if="isTransferModalOpen"
             :open="isTransferModalOpen"
@@ -320,5 +456,234 @@ const getInitials = (name: string) => {
             :epps="[]"
             @update:open="isTransferModalOpen = $event"
         />
+
+        <!-- Registro de Envíos a Unidad -->
+        <Dialog v-model:open="isTransfersLogOpen">
+            <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-[900px]">
+                <DialogHeader>
+                    <DialogTitle class="flex items-center gap-2">
+                        <History class="h-5 w-5 text-indigo-600" />
+                        Registro de Envíos a Unidad
+                        <span v-if="transfersFilterStaff" class="text-base font-normal text-slate-400">— {{ transfersFilterStaff.name }}</span>
+                    </DialogTitle>
+                    <DialogDescription>
+                        <template v-if="transfersFilterStaff">EPP y ropa enviados con {{ transfersFilterStaff.name }} como responsable.</template>
+                        <template v-else>EPP y ropa enviados desde el almacén principal hacia una unidad.</template>
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div class="overflow-hidden rounded-2xl border shadow-sm">
+                    <Table>
+                        <TableHeader>
+                            <TableRow class="bg-indigo-50/30">
+                                <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Fecha Envío</TableHead>
+                                <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Destino (Unidad)</TableHead>
+                                <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Personal Asignado</TableHead>
+                                <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Items</TableHead>
+                                <TableHead class="text-muted-foreground text-center text-[10px] font-bold uppercase">Estado</TableHead>
+                                <TableHead class="w-[120px]"></TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            <TableRow v-for="transfer in filteredTransfers" :key="transfer.id" class="group hover:bg-muted/30 transition-colors">
+                                <TableCell class="text-xs font-medium text-slate-600">
+                                    {{ new Date(transfer.created_at).toLocaleDateString() }}
+                                    <span class="block font-mono text-[10px] text-slate-400">{{
+                                        new Date(transfer.created_at).toLocaleTimeString()
+                                    }}</span>
+                                </TableCell>
+                                <TableCell>
+                                    <div class="flex items-center gap-2">
+                                        <div class="rounded-lg bg-indigo-100 p-1.5 text-indigo-600">
+                                            <Building2 class="h-3.5 w-3.5" />
+                                        </div>
+                                        <div class="flex flex-col">
+                                            <span class="text-foreground leading-tight font-bold">{{ transfer.unit?.name }}</span>
+                                            <span class="text-[10px] font-black tracking-tighter text-slate-400 uppercase">{{
+                                                transfer.unit?.mine?.name
+                                            }}</span>
+                                        </div>
+                                    </div>
+                                </TableCell>
+                                <TableCell>
+                                    <div class="flex items-center gap-2">
+                                        <User class="h-3.5 w-3.5 text-slate-300" />
+                                        <span class="text-sm text-slate-600">{{ transfer.staff?.name || 'Stock de Unidad' }}</span>
+                                    </div>
+                                </TableCell>
+                                <TableCell>
+                                    <div class="flex flex-wrap gap-1">
+                                        <Badge
+                                            v-for="item in transfer.items"
+                                            :key="item.id"
+                                            variant="outline"
+                                            class="bg-card text-muted-foreground border px-1.5 py-0 text-[10px] lowercase"
+                                        >
+                                            {{ item.quantity }}x {{ item.stockable?.name }} ({{ item.size || 'U' }})
+                                        </Badge>
+                                    </div>
+                                </TableCell>
+                                <TableCell class="text-center">
+                                    <Badge
+                                        :class="[
+                                            'rounded-full border-none px-2 text-[9px] font-black tracking-tighter uppercase shadow-none',
+                                            transfer.status === 'sent' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700',
+                                        ]"
+                                    >
+                                        {{ transfer.status === 'sent' ? 'En Tránsito / Uso' : 'Devuelto' }}
+                                    </Badge>
+                                </TableCell>
+                                <TableCell>
+                                    <Button
+                                        v-if="transfer.status === 'sent'"
+                                        @click="openReturnModal(transfer)"
+                                        variant="outline"
+                                        size="sm"
+                                        class="bg-card h-8 gap-1 rounded-lg border text-[10px] font-black tracking-tighter uppercase transition-all hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                                    >
+                                        <History class="h-3.5 w-3.5" /> DEVOLVER
+                                    </Button>
+                                </TableCell>
+                            </TableRow>
+                            <TableRow v-if="filteredTransfers.length === 0">
+                                <TableCell colspan="6" class="h-32 text-center text-slate-400 italic">
+                                    {{ transfersFilterStaff ? 'No hay envíos registrados para esta persona.' : 'No hay envíos registrados.' }}
+                                </TableCell>
+                            </TableRow>
+                        </TableBody>
+                    </Table>
+                </div>
+
+                <!-- Entregas directas a la persona (Staff_clothes, distinto de un envío a Unidad) -->
+                <div v-if="transfersFilterStaff" class="space-y-2">
+                    <p class="text-xs font-bold tracking-widest text-slate-400 uppercase">Entregas Directas a {{ transfersFilterStaff.name }}</p>
+                    <div class="overflow-hidden rounded-2xl border shadow-sm">
+                        <Table>
+                            <TableHeader>
+                                <TableRow class="bg-indigo-50/30">
+                                    <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Ítem</TableHead>
+                                    <TableHead class="text-muted-foreground text-center text-[10px] font-bold uppercase">Talla</TableHead>
+                                    <TableHead class="text-muted-foreground text-[10px] font-bold uppercase">Color</TableHead>
+                                    <TableHead class="text-muted-foreground text-center text-[10px] font-bold uppercase">Cant</TableHead>
+                                    <TableHead class="w-[120px]"></TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                <TableRow v-for="item in directDeliveries" :key="item.id" class="group hover:bg-muted/30 transition-colors">
+                                    <TableCell class="flex items-center gap-2 text-sm font-bold text-slate-700">
+                                        <Package class="h-3.5 w-3.5 text-slate-300" />
+                                        {{ item.epp?.name || item.cloth?.name || item.clothe_name }}
+                                    </TableCell>
+                                    <TableCell class="text-center text-sm text-slate-600">{{ item.clothing_size || '—' }}</TableCell>
+                                    <TableCell class="text-sm text-slate-600">{{ item.color?.name || '—' }}</TableCell>
+                                    <TableCell class="text-center text-sm font-bold text-slate-700">{{ item.quantity }}</TableCell>
+                                    <TableCell>
+                                        <Button
+                                            @click="openDirectReturnModal(item)"
+                                            variant="outline"
+                                            size="sm"
+                                            class="bg-card h-8 gap-1 rounded-lg border text-[10px] font-black tracking-tighter uppercase transition-all hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                                        >
+                                            <RotateCcw class="h-3.5 w-3.5" /> DEVOLVER
+                                        </Button>
+                                    </TableCell>
+                                </TableRow>
+                                <TableRow v-if="directDeliveries.length === 0">
+                                    <TableCell colspan="5" class="h-24 text-center text-slate-400 italic">
+                                        No hay entregas directas activas para esta persona.
+                                    </TableCell>
+                                </TableRow>
+                            </TableBody>
+                        </Table>
+                    </div>
+                </div>
+            </DialogContent>
+        </Dialog>
+
+        <!-- Confirmar Devolución -->
+        <Dialog v-model:open="isReturnModalOpen">
+            <DialogContent class="overflow-hidden rounded-2xl border-none p-0 shadow-2xl sm:max-w-[500px]">
+                <DialogHeader class="bg-rose-600 p-6 text-white">
+                    <DialogTitle class="flex items-center gap-3 text-xl font-black">
+                        <History class="h-6 w-6 text-rose-200" />
+                        Confirmar Devolución
+                    </DialogTitle>
+                    <DialogDescription class="text-rose-100"> Estos items retornarán al stock general (Principal). </DialogDescription>
+                </DialogHeader>
+
+                <div class="space-y-4 bg-white p-6">
+                    <div class="space-y-3 rounded-xl border border-slate-100 bg-slate-50 p-4">
+                        <div v-for="(item, idx) in returnForm.items" :key="idx" class="flex items-center justify-between text-sm">
+                            <div class="flex items-center gap-2">
+                                <Package class="h-4 w-4 text-slate-400" />
+                                <span class="font-bold text-slate-700">{{ item.name }} ({{ item.size || 'U' }})</span>
+                            </div>
+                            <span class="rounded-lg border border-slate-100 bg-white px-2 py-0.5 font-black text-rose-600">{{ item.quantity }}</span>
+                        </div>
+                    </div>
+
+                    <p class="text-center text-[10px] font-bold tracking-widest text-slate-400 uppercase">
+                        ¿Estás seguro de que este stock regresó al almacén?
+                    </p>
+                </div>
+
+                <DialogFooter class="flex gap-3 border-t bg-slate-50 p-6 sm:justify-center">
+                    <Button variant="ghost" @click="isReturnModalOpen = false" class="text-muted-foreground text-[10px] font-bold uppercase">
+                        Cancelar
+                    </Button>
+                    <Button
+                        @click="handleReturn"
+                        class="bg-rose-600 px-8 text-[10px] font-black tracking-widest text-white uppercase shadow-lg hover:bg-rose-700"
+                    >
+                        Sí, Devolver a Principal
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+
+        <!-- Confirmar Devolución (entrega directa) -->
+        <Dialog v-model:open="directReturnModal.open">
+            <DialogContent class="sm:max-w-[425px]">
+                <DialogHeader>
+                    <DialogTitle class="flex items-center gap-2">
+                        <RotateCcw class="h-5 w-5 text-rose-600" />
+                        Confirmar Retorno de Stock
+                    </DialogTitle>
+                    <DialogDescription>
+                        Selecciona a qué almacén regresa
+                        <span class="font-bold text-slate-900">{{
+                            directReturnModal.item?.epp?.name || directReturnModal.item?.cloth?.name || directReturnModal.item?.clothe_name
+                        }}</span>
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div class="space-y-4 py-4">
+                    <div class="space-y-2">
+                        <Label class="text-[10px] font-black text-slate-500 uppercase">Almacén de Destino (Sede)</Label>
+                        <Select v-model="directReturnModal.headquarter_id">
+                            <SelectTrigger class="h-11 w-full border-none bg-slate-50">
+                                <SelectValue placeholder="Seleccionar sede..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem v-for="hq in headquarters ?? []" :key="hq.id" :value="String(hq.id)">
+                                    {{ hq.name }} <span class="ml-1 text-[9px] opacity-50">({{ hq.business?.name }})</span>
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+
+                <DialogFooter>
+                    <Button variant="outline" @click="directReturnModal.open = false" class="text-[10px] font-bold uppercase">Cancelar</Button>
+                    <Button
+                        @click="confirmDirectReturn"
+                        :disabled="!directReturnModal.headquarter_id"
+                        class="bg-rose-600 text-[10px] font-black text-white uppercase hover:bg-rose-700"
+                    >
+                        Confirmar Retorno
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </AppLayout>
 </template>

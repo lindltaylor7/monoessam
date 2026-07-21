@@ -268,16 +268,22 @@ class EquipmentDispatchController extends Controller
         }
 
         if ($dispatch->equipable_type === Epp::class) {
-            // Epp no tiene columna `quantity` propia — repone el stock de InventoryStock en la
-            // Sede Origen de la guía, deshaciendo el descuento hecho en store().
-            DB::transaction(function () use ($dispatch) {
+            // Epp no tiene columna `quantity` propia — repone el stock de InventoryStock en el
+            // origen de la guía, deshaciendo el descuento hecho al generarla. El origen puede ser
+            // una Sede (EquipmentDispatchController::store) o un Café (StoreController::sendDispatch,
+            // reenvío entre cafés/a sede) — solo una de las dos columnas está seteada.
+            $originCol = $dispatch->origin_cafe_id ? 'cafe_id' : 'headquarter_id';
+            $originId  = $dispatch->origin_cafe_id ?? $dispatch->origin_headquarter_id;
+            $otherCols = array_diff(['headquarter_id', 'cafe_id', 'unit_id'], [$originCol]);
+
+            DB::transaction(function () use ($dispatch, $originCol, $originId, $otherCols) {
                 $stock = InventoryStock::where([
                     'stockable_type' => $dispatch->equipable_type,
                     'stockable_id'   => $dispatch->equipable_id,
                     'size'           => $dispatch->size,
                     'color_id'       => $dispatch->color_id,
-                    'headquarter_id' => $dispatch->origin_headquarter_id,
-                ])->whereNull(['cafe_id', 'unit_id'])->lockForUpdate()->first();
+                    $originCol       => $originId,
+                ])->whereNull(array_values($otherCols))->lockForUpdate()->first();
 
                 if ($stock) {
                     $stock->increment('quantity', $dispatch->quantity);
@@ -287,7 +293,7 @@ class EquipmentDispatchController extends Controller
                         'stockable_id'   => $dispatch->equipable_id,
                         'size'           => $dispatch->size,
                         'color_id'       => $dispatch->color_id,
-                        'headquarter_id' => $dispatch->origin_headquarter_id,
+                        $originCol       => $originId,
                         'quantity'       => $dispatch->quantity,
                     ]);
                 }

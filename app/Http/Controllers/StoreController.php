@@ -75,6 +75,25 @@ class StoreController extends Controller
         $cafeStocks = $stocksByLocation('cafe_id', $cafeIds);
         $unitStocks = $stocksByLocation('unit_id', $unitIds);
 
+        // Stock de EPP por café — vive en InventoryStock (dimensionado por talla/color), no en el
+        // ledger equipment_stocks (solo computer/kitchen). El modal "Nueva Guía de Remisión"
+        // (sendDispatch) lo usa para poder enviar EPP desde un café hacia otro café o una sede,
+        // igual que ya hace con equipos.
+        $cafeEppStocks = InventoryStock::with(['stockable:id,name', 'color:id,name'])
+            ->where('stockable_type', Epp::class)
+            ->whereIn('cafe_id', $cafeIds)
+            ->where('quantity', '>', 0)
+            ->get(['id', 'stockable_type', 'stockable_id', 'cafe_id', 'quantity', 'size', 'color_id'])
+            ->groupBy('cafe_id')
+            ->map(fn($group) => $group->map(fn($r) => [
+                'epp_id'     => $r->stockable_id,
+                'name'       => $r->stockable?->name ?? '—',
+                'quantity'   => $r->quantity,
+                'size'       => $r->size,
+                'color_id'   => $r->color_id,
+                'color_name' => $r->color?->name,
+            ])->values());
+
         // ── Ubicación y filtro seleccionados (llegan por query string) ──
         $locationType = $request->input('location_type', 'cafe') === 'unit' ? 'unit' : 'cafe';
         $locationId   = (int) $request->input('location_id', $cafes->first()?->id ?? 0);
@@ -251,6 +270,7 @@ class StoreController extends Controller
             'headquarters'  => $headquarters,
             'cafeStocks'    => $cafeStocks,
             'unitStocks'    => $unitStocks,
+            'cafeEppStocks' => $cafeEppStocks,
             'staffOptions'  => $staffOptions,
             'stats'         => $stats,
             'pendingByCafe' => $pendingByCafe,
@@ -271,36 +291,57 @@ class StoreController extends Controller
             'destination_id'   => 'required|integer|min:1',
             'description'      => 'nullable|string|max:1000',
             'items'            => 'required|array|min:1',
-            'items.*.equipable_type' => 'required|in:computer,kitchen',
+            'items.*.equipable_type' => 'required|in:computer,kitchen,epp',
             'items.*.equipable_id'   => 'required|integer|min:1',
             'items.*.quantity'       => 'required|integer|min:1',
+            'items.*.size'           => 'nullable|string|max:100',
+            'items.*.color_id'       => 'nullable|exists:colors,id',
         ]);
 
         $modelMap = [
             'computer' => ComputerEquipment::class,
             'kitchen'  => KitchenEquipment::class,
+            'epp'      => Epp::class,
         ];
+
+        // El stock de EPP vive en InventoryStock (dimensionado por talla/color), no en el ledger
+        // equipment_stocks (solo computer/kitchen) — se busca/descuenta la fila exacta del café
+        // de origen, igual que el resto de este flujo.
+        $eppStockQuery = fn (array $item) => InventoryStock::where([
+            'stockable_type' => Epp::class,
+            'stockable_id'   => $item['equipable_id'],
+            'cafe_id'        => $item['origin_cafe_id'] ?? null,
+            'headquarter_id' => null,
+            'unit_id'        => null,
+            'size'           => $item['size'] ?? null,
+            'color_id'       => $item['color_id'] ?? null,
+        ]);
 
         $guideSeq    = EquipmentDispatch::whereYear('created_at', now()->year)->whereNotNull('guide_number')->distinct('guide_number')->count() + 1;
         $guideNumber = 'GR-' . now()->year . '-' . str_pad($guideSeq, 4, '0', STR_PAD_LEFT);
 
-        $created = DB::transaction(function () use ($validated, $modelMap, $guideNumber) {
+        $created = DB::transaction(function () use ($validated, $modelMap, $eppStockQuery, $guideNumber) {
             $created = [];
             foreach ($validated['items'] as $item) {
+                $item['origin_cafe_id'] = $validated['origin_cafe_id'];
                 $modelClass = $modelMap[$item['equipable_type']];
 
-                // "Disponible" se lee directo del ledger de stock por café (equipment_stocks),
-                // no reconstruyéndolo desde el historial de guías. El lock + chequeo dentro de
-                // la transacción evita que dos envíos simultáneos sobrevendan el mismo stock.
-                $stock = EquipmentStock::where('stockable_type', $modelClass)
-                    ->where('stockable_id', $item['equipable_id'])
-                    ->where('cafe_id', $validated['origin_cafe_id'])
-                    ->lockForUpdate()
-                    ->first();
+                if ($item['equipable_type'] === 'epp') {
+                    $stock = $eppStockQuery($item)->lockForUpdate()->first();
+                } else {
+                    // "Disponible" se lee directo del ledger de stock por café (equipment_stocks),
+                    // no reconstruyéndolo desde el historial de guías. El lock + chequeo dentro de
+                    // la transacción evita que dos envíos simultáneos sobrevendan el mismo stock.
+                    $stock = EquipmentStock::where('stockable_type', $modelClass)
+                        ->where('stockable_id', $item['equipable_id'])
+                        ->where('cafe_id', $validated['origin_cafe_id'])
+                        ->lockForUpdate()
+                        ->first();
+                }
 
                 if (($stock->quantity ?? 0) < $item['quantity']) {
                     throw ValidationException::withMessages([
-                        'items' => 'No hay suficiente stock disponible para uno de los equipos seleccionados.',
+                        'items' => 'No hay suficiente stock disponible para uno de los ítems seleccionados.',
                     ]);
                 }
 
@@ -315,6 +356,8 @@ class StoreController extends Controller
                     'equipable_type'        => $modelClass,
                     'equipable_id'          => $item['equipable_id'],
                     'quantity'              => $item['quantity'],
+                    'size'                  => $item['size'] ?? null,
+                    'color_id'              => $item['color_id'] ?? null,
                     'origin_headquarter_id' => null,
                     'origin_cafe_id'        => $validated['origin_cafe_id'],
                     'destination_type'      => $validated['destination_type'],

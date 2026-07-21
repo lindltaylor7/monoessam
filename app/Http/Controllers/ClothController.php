@@ -14,6 +14,7 @@ use App\Models\Unit;
 use App\Models\Color;
 use App\Models\Headquarter;
 use App\Models\ClothInventory;
+use App\Models\InventoryTransfer;
 
 class ClothController extends Controller
 {
@@ -87,6 +88,12 @@ class ClothController extends Controller
             'units' => Unit::with(['cafes', 'mine'])->get(),
             'colors' => Color::all(),
             'headquarters' => Headquarter::with('business')->get(),
+            // Registro de envíos a Unidad (InventoryTransfer) — para poder ver qué se envió y
+            // devolverlo desde esta misma página, sin tener que ir a Inventario.
+            'transfers' => InventoryTransfer::with(['staff', 'unit.mine', 'items.stockable'])
+                ->orderByDesc('created_at')
+                ->limit(50)
+                ->get(),
         ]);
     }
 

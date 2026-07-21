@@ -128,6 +128,15 @@ interface StockLedgerEntry {
     model: string | null;
 }
 
+interface EppStockLedgerEntry {
+    epp_id: number;
+    name: string;
+    quantity: number;
+    size: string | null;
+    color_id: number | null;
+    color_name: string | null;
+}
+
 const props = defineProps<{
     dispatches: Paginated<Dispatch>;
     stock: Paginated<StockItem>;
@@ -137,6 +146,7 @@ const props = defineProps<{
     headquarters: HQ[];
     cafeStocks: Record<string, Record<string, StockLedgerEntry>>;
     unitStocks: Record<string, Record<string, StockLedgerEntry>>;
+    cafeEppStocks: Record<string, EppStockLedgerEntry[]>;
     staffOptions: StaffOption[];
     stats: Stats;
     pendingByCafe: Record<number, number>;
@@ -163,19 +173,30 @@ const processing = ref(false);
 
 // ── Send modal ─────────────────────────────────────────────────────────────
 const sendOpen = ref(false);
+type SendItem = {
+    equipable_type: 'computer' | 'kitchen' | 'epp';
+    equipable_id: number;
+    equipment_name: string;
+    quantity: number;
+    max: number;
+    size?: string | null;
+    color_id?: number | null;
+    color_name?: string | null;
+};
 const sendForm = ref({
     destination_type: 'cafe' as 'cafe' | 'headquarter',
     destination_id: '' as string,
     description: '',
-    items: [] as { equipable_type: 'computer' | 'kitchen'; equipable_id: number; equipment_name: string; quantity: number; max: number }[],
+    items: [] as SendItem[],
 });
 const sendProcessing = ref(false);
 
 function openSendModal() {
-    // "Disponible" y el nombre del equipo se leen directo del ledger de stock del café
-    // (equipment_stocks) — no dependen de qué página de guías/stock esté cargada.
+    // "Disponible" y el nombre del ítem se leen directo del ledger de stock del café
+    // (equipment_stocks / InventoryStock para EPP) — no dependen de qué página de guías/stock
+    // esté cargada.
     const stockForCafe = props.cafeStocks[String(selectedId.value)] ?? {};
-    const byEquip: Record<string, (typeof sendForm.value)['items'][0]> = {};
+    const byEquip: Record<string, SendItem> = {};
     for (const [key, entry] of Object.entries(stockForCafe)) {
         if (entry.quantity <= 0) continue;
         const [equipableType, equipableIdStr] = key.split('-') as ['computer' | 'kitchen', string];
@@ -188,6 +209,23 @@ function openSendModal() {
             max: entry.quantity,
         };
     }
+
+    const eppStockForCafe = props.cafeEppStocks[String(selectedId.value)] ?? [];
+    for (const entry of eppStockForCafe) {
+        if (entry.quantity <= 0) continue;
+        const key = `epp-${entry.epp_id}-${entry.size ?? ''}-${entry.color_id ?? ''}`;
+        byEquip[key] = {
+            equipable_type: 'epp',
+            equipable_id: entry.epp_id,
+            equipment_name: entry.name,
+            quantity: 0,
+            max: entry.quantity,
+            size: entry.size,
+            color_id: entry.color_id,
+            color_name: entry.color_name,
+        };
+    }
+
     sendForm.value = {
         destination_type: 'cafe',
         destination_id: '',
@@ -227,6 +265,8 @@ function submitSend() {
                 equipable_type: i.equipable_type,
                 equipable_id: i.equipable_id,
                 quantity: i.quantity,
+                size: i.size ?? null,
+                color_id: i.color_id ?? null,
             })),
         },
         {
@@ -1091,24 +1131,33 @@ function equipmentStatusInfo(val: number | null) {
                         <div>
                             <p class="mb-2 text-xs font-bold tracking-widest text-slate-400 uppercase">Equipos a enviar</p>
                             <div v-if="sendForm.items.length === 0" class="rounded-xl border border-dashed py-8 text-center text-sm text-slate-400">
-                                No hay equipos recepcionados en este café
+                                No hay ítems disponibles para enviar desde este café
                             </div>
                             <div v-else class="space-y-2">
                                 <div
                                     v-for="item in sendForm.items"
-                                    :key="`${item.equipable_type}-${item.equipable_id}`"
+                                    :key="`${item.equipable_type}-${item.equipable_id}-${item.size ?? ''}-${item.color_id ?? ''}`"
                                     class="flex items-center gap-3 rounded-xl border bg-slate-50 px-4 py-3 dark:bg-gray-700/40"
                                 >
                                     <div
                                         class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
-                                        :class="item.equipable_type === 'computer' ? 'bg-blue-100' : 'bg-orange-100'"
+                                        :class="{
+                                            'bg-blue-100': item.equipable_type === 'computer',
+                                            'bg-orange-100': item.equipable_type === 'kitchen',
+                                            'bg-indigo-100': item.equipable_type === 'epp',
+                                        }"
                                     >
                                         <Laptop v-if="item.equipable_type === 'computer'" class="h-4 w-4 text-blue-600" />
+                                        <ShieldCheck v-else-if="item.equipable_type === 'epp'" class="h-4 w-4 text-indigo-600" />
                                         <UtensilsCrossed v-else class="h-4 w-4 text-orange-600" />
                                     </div>
                                     <div class="min-w-0 flex-1">
                                         <p class="truncate text-sm font-semibold text-slate-800 dark:text-white">{{ item.equipment_name }}</p>
-                                        <p class="text-[11px] text-slate-400">Disponible: {{ item.max }}</p>
+                                        <p v-if="item.equipable_type === 'epp' && (item.size || item.color_name)" class="text-[11px] text-slate-400">
+                                            {{ [item.size ? `Talla ${item.size}` : null, item.color_name].filter(Boolean).join(' · ') }} · Disponible:
+                                            {{ item.max }}
+                                        </p>
+                                        <p v-else class="text-[11px] text-slate-400">Disponible: {{ item.max }}</p>
                                     </div>
                                     <div class="flex shrink-0 items-center gap-1.5">
                                         <button

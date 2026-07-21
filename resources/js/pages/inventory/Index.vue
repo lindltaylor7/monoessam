@@ -381,12 +381,14 @@ const filteredStockSizes = computed(() => {
 const isReturnModalOpen = ref(false);
 const returnForm = ref({
     unit_id: '',
+    transfer_id: null as number | null,
     items: [] as any[],
 });
 
 const openReturnModal = (transfer: any) => {
     returnForm.value = {
         unit_id: String(transfer.unit_id),
+        transfer_id: transfer.id,
         items: transfer.items.map((i: any) => ({
             stockable_id: i.stockable_id,
             stockable_type: i.stockable_type,
