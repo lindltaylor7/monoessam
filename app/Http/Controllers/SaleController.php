@@ -16,6 +16,8 @@ use App\Models\Ticket;
 use App\Models\Ticket_detail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Mike42\Escpos\PrintConnectors\WindowsPrintConnector;
 use Mike42\Escpos\Printer;
@@ -119,118 +121,133 @@ class SaleController extends Controller
             ], 404);
         }
 
-        // Duplicate service check — must run before Sale::create (bypass with force=true)
-        if (!$request->boolean('force')) {
-            $newCodes = collect($services)->pluck('code')->toArray();
+        $lockKey = 'sale_lock_' . $dinner->id . '_' . $request->date;
+        $lock = Cache::lock($lockKey, 10);
 
-            $conflicts = Sale::with('cafe')
-                ->where('dinner_id', $dinner->id)
-                ->where('date', $request->date)
-                ->whereHas('tickets.ticket_details', fn($q) => $q->whereIn('code', $newCodes))
-                ->with(['tickets' => fn($q) => $q->with(['ticket_details' => fn($q2) => $q2->whereIn('code', $newCodes)])])
-                ->get()
-                ->flatMap(fn($s) => $s->tickets->flatMap(
-                    fn($ticket) => $ticket->ticket_details->map(fn($td) => [
-                        'service_name' => $td->service_name,
-                        'service_code' => $td->code,
-                        'cafe_name'    => $s->cafe?->name ?? 'Cafetería desconocida',
-                    ])
-                ))
-                ->unique(fn($c) => $c['service_code'] . '|' . $c['cafe_name'])
-                ->values();
+        if (!$lock->get()) {
+            return response()->json([
+                'message' => 'Se está procesando una venta para este comensal. Por favor espere.',
+            ], 429);
+        }
 
-            if ($conflicts->isNotEmpty()) {
+        try {
+            return DB::transaction(function () use ($request, $services, $dinner, $cafe, $user) {
+                // Duplicate service check — must run before Sale::create (bypass with force=true)
+                if (!$request->boolean('force')) {
+                    $newCodes = collect($services)->pluck('code')->toArray();
+
+                    $conflicts = Sale::with('cafe')
+                        ->where('dinner_id', $dinner->id)
+                        ->where('date', $request->date)
+                        ->whereHas('tickets.ticket_details', fn($q) => $q->whereIn('code', $newCodes))
+                        ->with(['tickets' => fn($q) => $q->with(['ticket_details' => fn($q2) => $q2->whereIn('code', $newCodes)])])
+                        ->get()
+                        ->flatMap(fn($s) => $s->tickets->flatMap(
+                            fn($ticket) => $ticket->ticket_details->map(fn($td) => [
+                                'service_name' => $td->service_name,
+                                'service_code' => $td->code,
+                                'cafe_name'    => $s->cafe?->name ?? 'Cafetería desconocida',
+                            ])
+                        ))
+                        ->unique(fn($c) => $c['service_code'] . '|' . $c['cafe_name'])
+                        ->values();
+
+                    if ($conflicts->isNotEmpty()) {
+                        return response()->json([
+                            'duplicate' => true,
+                            'message'   => 'Este comensal ya consumió uno o más de estos servicios hoy.',
+                            'dinner'    => $dinner->only(['id', 'name', 'dni']),
+                            'conflicts' => $conflicts,
+                        ], 409);
+                    }
+                }
+
+                $total = array_reduce($services, function ($carry, $service) {
+                    return $carry + ($service['price'] ?? 0);
+                }, 0);
+
+                if ($request->double_price === 'true') {
+                    $total *= 2;
+                }
+
+                $sale = Sale::create([
+                    'dinner_id'                    => $dinner->id,
+                    'cafe_id'                      => $cafe->id,
+                    'date'                         => $request->date,
+                    'sale_type_id'                 => $request->sale_type_id,
+                    'payment_method_id'            => null,
+                    'business_id'                  => $user->business_id,
+                    'business_name'                => $user->business?->name,
+                    'cafe_name'                    => $cafe->name,
+                    'user_id'                      => $user->id,
+                    'total_discounts'              => 0.0,
+                    'total_non_taxable_operations' => 0.0,
+                    'total_taxable_operations'     => 0.0,
+                    'total_unaffected_operations'  => 0.0,
+                    'total_exonerated_operations'  => 0.0,
+                    'total_exported_operations'    => 0.0,
+                    'total_igv'                    => $total * 0.18,
+                    'total_icsc'                   => 0.0,
+                    'total_other_taxes'            => 0.0,
+                    'total_other_charges'          => 0.0,
+                    'total'                        => $total,
+                    'status'                       => 1,
+                ]);
+
+                $subdealership = $dinner->subdealership;
+
+                $ticket = Ticket::create([
+                    'sale_id'            => $sale->id,
+                    'dinner_id'          => $dinner->id,
+                    'dinner_name'        => $dinner->name,
+                    'dni'                => $dinner->dni,
+                    'subdealership_name' => $subdealership?->name ?? '',
+                    'serial_number'      => 'T00',
+                    'subdealership_ruc'  => $subdealership?->ruc ?? '',
+                    'price_value'        => $sale->total,
+                    'igv'                => $sale->total_igv,
+                    'status'             => 1,
+                ]);
+
+                $serviceTypeMap = Service::whereIn('id', collect($services)->pluck('serviceID')->filter()->unique()->toArray())
+                    ->pluck('type', 'id');
+
+                foreach ($services as $service) {
+                    Ticket_detail::create([
+                        'ticket_id'    => $ticket->id,
+                        'service_id'   => $service['serviceID'],
+                        'code'         => $service['code'],
+                        'service_name' => $service['name'],
+                        'amount'       => $service['quantity'] ?? 1,
+                        'um'           => 'UNI',
+                        'service_type' => $serviceTypeMap[$service['serviceID']] ?? $service['serviceID'],
+                        'description'  => '',
+                        'unit_value'   => $service['price'],
+                        'unit_price'   => $service['unit_price'] ?? $service['price'],
+                        'sale_value'   => $service['price'],
+                        'igv'          => $service['price'] * 0.18,
+                        'total'        => $service['price'],
+                    ]);
+                }
+
+                $ticket->load('ticket_details');
+
+                $recentSales = Sale::with(['tickets', 'tickets.ticket_details', 'tickets.dinner', 'sale_details'])
+                    ->where('cafe_id', $cafe->id)
+                    ->where('date', $sale->date)
+                    ->orderBy('id', 'desc')
+                    ->get();
+
                 return response()->json([
-                    'duplicate' => true,
-                    'message'   => 'Este comensal ya consumió uno o más de estos servicios hoy.',
-                    'dinner'    => $dinner->only(['id', 'name', 'dni']),
-                    'conflicts' => $conflicts,
-                ], 409);
-            }
+                    'dinner'  => $dinner,
+                    'ticket'  => $ticket,
+                    'message' => 'Venta registrada correctamente.',
+                    'sales'   => $recentSales,
+                ], 200);
+            });
+        } finally {
+            optional($lock)->release();
         }
-
-        $total = array_reduce($services, function ($carry, $service) {
-            return $carry + ($service['price'] ?? 0);
-        }, 0);
-
-        if ($request->double_price === 'true') {
-            $total *= 2;
-        }
-
-        $sale = Sale::create([
-            'dinner_id'                    => $dinner->id,
-            'cafe_id'                      => $cafe->id,
-            'date'                         => $request->date,
-            'sale_type_id'                 => $request->sale_type_id,
-            'payment_method_id'            => null,
-            'business_id'                  => $user->business_id,
-            'business_name'                => $user->business?->name,
-            'cafe_name'                    => $cafe->name,
-            'user_id'                      => $user->id,
-            'total_discounts'              => 0.0,
-            'total_non_taxable_operations' => 0.0,
-            'total_taxable_operations'     => 0.0,
-            'total_unaffected_operations'  => 0.0,
-            'total_exonerated_operations'  => 0.0,
-            'total_exported_operations'    => 0.0,
-            'total_igv'                    => $total * 0.18,
-            'total_icsc'                   => 0.0,
-            'total_other_taxes'            => 0.0,
-            'total_other_charges'          => 0.0,
-            'total'                        => $total,
-            'status'                       => 1,
-        ]);
-
-        $subdealership = $dinner->subdealership;
-
-        $ticket = Ticket::create([
-            'sale_id'            => $sale->id,
-            'dinner_id'          => $dinner->id,
-            'dinner_name'        => $dinner->name,
-            'dni'                => $dinner->dni,
-            'subdealership_name' => $subdealership?->name ?? '',
-            'serial_number'      => 'T00',
-            'subdealership_ruc'  => $subdealership?->ruc ?? '',
-            'price_value'        => $sale->total,
-            'igv'                => $sale->total_igv,
-            'status'             => 1,
-        ]);
-
-        $serviceTypeMap = Service::whereIn('id', collect($services)->pluck('serviceID')->filter()->unique()->toArray())
-            ->pluck('type', 'id');
-
-        foreach ($services as $service) {
-            Ticket_detail::create([
-                'ticket_id'    => $ticket->id,
-                'service_id'   => $service['serviceID'],
-                'code'         => $service['code'],
-                'service_name' => $service['name'],
-                'amount'       => $service['quantity'] ?? 1,
-                'um'           => 'UNI',
-                'service_type' => $serviceTypeMap[$service['serviceID']] ?? $service['serviceID'],
-                'description'  => '',
-                'unit_value'   => $service['price'],
-                'unit_price'   => $service['unit_price'] ?? $service['price'],
-                'sale_value'   => $service['price'],
-                'igv'          => $service['price'] * 0.18,
-                'total'        => $service['price'],
-            ]);
-        }
-
-        $ticket->load('ticket_details');
-
-        $recentSales = Sale::with(['tickets', 'tickets.ticket_details', 'tickets.dinner', 'sale_details'])
-            ->where('cafe_id', $cafe->id)
-            ->where('date', $sale->date)
-            ->orderBy('id', 'desc')
-            ->get();
-
-        return response()->json([
-            'dinner'  => $dinner,
-            'ticket'  => $ticket,
-            'message' => 'Venta registrada correctamente.',
-            'sales'   => $recentSales,
-        ], 200);
     }
 
     /**
@@ -297,61 +314,63 @@ class SaleController extends Controller
         $business       = Business::find($request->business_id);
         $subdealership  = $request->subdealership_id ? Subdealership::find($request->subdealership_id) : null;
 
-        $sale = Sale::create([
-            'dinner_id'    => null,
-            'cafe_id'      => $cafe->id,
-            'date'         => $request->date,
-            'sale_type_id' => $request->sale_type_id,
-            'business_id'  => $request->business_id,
-            'business_name' => $business?->name,
-            'cafe_name'    => $cafe->name,
-            'user_id'      => $user->id,
-            'mine_id'      => $request->mine_id ?: null,
-            'is_visitor'   => true,
-            'total_igv'    => $price * 0.18,
-            'total'        => $price,
-            'status'       => 1,
-        ]);
+        return DB::transaction(function () use ($request, $cafe, $service, $user, $price, $business, $subdealership) {
+            $sale = Sale::create([
+                'dinner_id'    => null,
+                'cafe_id'      => $cafe->id,
+                'date'         => $request->date,
+                'sale_type_id' => $request->sale_type_id,
+                'business_id'  => $request->business_id,
+                'business_name' => $business?->name,
+                'cafe_name'    => $cafe->name,
+                'user_id'      => $user->id,
+                'mine_id'      => $request->mine_id ?: null,
+                'is_visitor'   => true,
+                'total_igv'    => $price * 0.18,
+                'total'        => $price,
+                'status'       => 1,
+            ]);
 
-        $ticket = Ticket::create([
-            'sale_id'            => $sale->id,
-            'dinner_id'          => null,
-            'dinner_name'        => $request->name,
-            'dni'                => $request->dni,
-            'subdealership_name' => $subdealership?->name ?? '',
-            'serial_number'      => 'T00-VIS',
-            'subdealership_ruc'  => $subdealership?->ruc ?? '',
-            'price_value'        => $price,
-            'igv'                => $price * 0.18,
-            'status'             => 1,
-        ]);
+            $ticket = Ticket::create([
+                'sale_id'            => $sale->id,
+                'dinner_id'          => null,
+                'dinner_name'        => $request->name,
+                'dni'                => $request->dni,
+                'subdealership_name' => $subdealership?->name ?? '',
+                'serial_number'      => 'T00-VIS',
+                'subdealership_ruc'  => $subdealership?->ruc ?? '',
+                'price_value'        => $price,
+                'igv'                => $price * 0.18,
+                'status'             => 1,
+            ]);
 
-        Ticket_detail::create([
-            'ticket_id'    => $ticket->id,
-            'service_id'   => $service->id,
-            'code'         => $service->code,
-            'service_name' => $service->name,
-            'amount'       => 1,
-            'um'           => 'UNI',
-            'service_type' => $service->type,
-            'description'  => '',
-            'unit_value'   => $price,
-            'unit_price'   => $price,
-            'sale_value'   => $price,
-            'igv'          => $price * 0.18,
-            'total'        => $price,
-        ]);
+            Ticket_detail::create([
+                'ticket_id'    => $ticket->id,
+                'service_id'   => $service->id,
+                'code'         => $service->code,
+                'service_name' => $service->name,
+                'amount'       => 1,
+                'um'           => 'UNI',
+                'service_type' => $service->type,
+                'description'  => '',
+                'unit_value'   => $price,
+                'unit_price'   => $price,
+                'sale_value'   => $price,
+                'igv'          => $price * 0.18,
+                'total'        => $price,
+            ]);
 
-        $recentSales = Sale::with(['tickets', 'tickets.ticket_details', 'tickets.dinner'])
-            ->where('cafe_id', $cafe->id)
-            ->where('date', $sale->date)
-            ->orderBy('id', 'desc')
-            ->get();
+            $recentSales = Sale::with(['tickets', 'tickets.ticket_details', 'tickets.dinner'])
+                ->where('cafe_id', $cafe->id)
+                ->where('date', $sale->date)
+                ->orderBy('id', 'desc')
+                ->get();
 
-        return response()->json([
-            'message' => 'Venta de visitante registrada correctamente.',
-            'sales'   => $recentSales,
-        ], 200);
+            return response()->json([
+                'message' => 'Venta de visitante registrada correctamente.',
+                'sales'   => $recentSales,
+            ], 200);
+        });
     }
 
     public function byDate(Request $request)

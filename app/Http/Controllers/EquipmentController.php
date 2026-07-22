@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Business;
+use App\Models\Color;
 use App\Models\ComputerEquipment;
 use App\Models\EquipmentHistory;
 use App\Models\EquipmentInvoice;
@@ -42,6 +43,7 @@ class EquipmentController extends Controller
             'headquarters'   => Headquarter::with('business:id,name')->select('id', 'name', 'business_id')->get(),
             'businesses'         => Business::select('id', 'name')->orderBy('name')->get(),
             'equipmentProviders' => Provider::where('type', 'equipment')->select('id', 'name', 'ruc', 'email', 'phone')->orderBy('name')->get(),
+            'colors'             => Color::select('id', 'name', 'hex_code')->orderBy('name')->get(),
         ]);
     }
 
@@ -155,6 +157,7 @@ class EquipmentController extends Controller
                     'status'                 => $item['status'] ?? 0,
                     'unit_price'             => $item['unit_price'],
                     'quantity'               => $item['quantity'] ?? 1,
+                    'invoiced_quantity'      => $item['quantity'] ?? 1,
                     'equipment_invoice_id'   => $invoice->id,
                     'storage_headquarter_id' => $validated['headquarter_id'] ?? null,
                     // kitchen-specific (ignored by ComputerEquipment's $fillable)
@@ -176,6 +179,22 @@ class EquipmentController extends Controller
         });
 
         return back()->with('success', 'Equipos ingresados con factura correctamente.');
+    }
+
+    public function updateInvoiceImage(Request $request, $id)
+    {
+        $validated = $request->validate([
+            'invoice_image' => 'required|file|mimes:jpeg,png,jpg,pdf|max:10240',
+        ]);
+
+        $invoice = EquipmentInvoice::findOrFail($id);
+
+        if ($request->hasFile('invoice_image')) {
+            $path = $request->file('invoice_image')->store('equipment_invoices', 'public');
+            $invoice->update(['invoice_image' => '/storage/' . $path]);
+        }
+
+        return back()->with('success', 'Imagen de factura actualizada correctamente');
     }
 
     public function storeEquipmentProvider(Request $request)

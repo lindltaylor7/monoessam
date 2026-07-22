@@ -403,6 +403,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('/', [EquipmentController::class, 'index'])->name('index');
         Route::post('/', [EquipmentController::class, 'store'])->name('store');
         Route::post('/invoice', [EquipmentController::class, 'storeInvoice'])->name('invoice.store');
+        Route::post('/invoice/{id}/image', [EquipmentController::class, 'updateInvoiceImage'])->name('invoice.image.update');
         Route::post('/providers', [EquipmentController::class, 'storeEquipmentProvider'])->name('providers.store');
         Route::put('/providers/{id}', [EquipmentController::class, 'updateEquipmentProvider'])->name('providers.update');
         Route::delete('/providers/{id}', [EquipmentController::class, 'destroyEquipmentProvider'])->name('providers.destroy');
@@ -420,6 +421,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::put('{id}/receive', [EquipmentDispatchController::class, 'markReceived'])->name('receive');
         Route::get('{id}/pdf', [EquipmentDispatchController::class, 'pdf'])->name('pdf');
         Route::get('guide/{guideNumber}/pdf', [EquipmentDispatchController::class, 'guidePdf'])->name('guide-pdf');
+        Route::put('guide', [EquipmentDispatchController::class, 'updateGuideNumber'])->name('guide.update');
     });
 
     // ========================================================================
@@ -446,6 +448,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('export',    [ReportSalesController::class, 'export'])->name('export');
         Route::get('export-vlz',    [ReportSalesController::class, 'exportValorizacion'])->name('export-vlz');
         Route::get('export-detail', [ReportSalesController::class, 'exportDetail'])->name('export-detail');
+        Route::get('duplicates', [ReportSalesController::class, 'duplicates'])->name('duplicates');
     });
 
 
@@ -487,6 +490,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     Route::get('management', [ManagementController::class, 'index'])->name('management');
     Route::get('logistics', [LogisticController::class, 'index'])->name('logistics');
     Route::get('store', [StoreController::class, 'index'])->name('store');
+    Route::get('store/export', [StoreController::class, 'export'])->name('store.export');
     Route::post('store/dispatch', [StoreController::class, 'sendDispatch'])->name('store.dispatch');
 
 });

@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class ClothProvider extends Model
 {
-    protected $fillable = ['name', 'email', 'phone'];
+    protected $fillable = ['name', 'ruc', 'email', 'phone'];
 
     public function epps()
     {

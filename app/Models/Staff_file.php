@@ -11,7 +11,7 @@ class Staff_file extends Model
     /** @use HasFactory<\Database\Factories\StaffFileFactory> */
     use HasFactory;
 
-    protected $fillable = ['staff_id', 'file_type', 'file_path', 'expiration_date', 'status'];
+    protected $fillable = ['staff_id', 'file_type', 'file_path', 'expiration_date', 'start_date', 'status'];
 
     public function staff(): BelongsTo
     {

@@ -23,6 +23,7 @@ use App\Models\Epp;
 use App\Models\EppSize;
 use App\Models\EquipmentDispatch;
 use App\Models\EquipmentInvoice;
+use App\Models\EquipmentStock;
 use App\Models\Size;
 use App\Models\City;
 use App\Models\InventoryTransfer;
@@ -55,23 +56,24 @@ class InventoryController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
-        // Map equipment → current cafe via active dispatch (2 extra queries, no N+1)
-        $activeDispatches = EquipmentDispatch::where('destination_type', 'cafe')
-            ->where('status', 'active')
-            ->orderByDesc('id')
-            ->get(['equipable_type', 'equipable_id', 'destination_id'])
-            ->unique(fn($d) => $d->equipable_type . '-' . $d->equipable_id)
-            ->keyBy(fn($d) => $d->equipable_type . '-' . $d->equipable_id);
+        // Map equipment → current cafe leyendo directo el ledger de stock por café
+        // (equipment_stocks), no reconstruyéndolo desde el historial de guías.
+        $equipmentStocks = EquipmentStock::whereNotNull('cafe_id')
+            ->get(['stockable_type', 'stockable_id', 'cafe_id', 'quantity'])
+            ->groupBy(fn($s) => $s->stockable_type . '-' . $s->stockable_id);
 
-        $cafeMap = Cafe::whereIn('id', $activeDispatches->pluck('destination_id')->unique()->values())
+        $cafeMap = Cafe::whereIn('id', $equipmentStocks->flatten()->pluck('cafe_id')->unique())
             ->select('id', 'name')
             ->get()
             ->keyBy('id');
 
-        $attachCafe = function ($equipment, string $morphClass) use ($activeDispatches, $cafeMap) {
-            $key  = $morphClass . '-' . $equipment->id;
-            $disp = $activeDispatches->get($key);
-            $equipment->current_cafe = $disp ? $cafeMap->get($disp->destination_id) : null;
+        $attachCafe = function ($equipment, string $morphClass) use ($equipmentStocks, $cafeMap) {
+            // Si el mismo equipo está repartido en más de un café, se muestra el de mayor
+            // cantidad — informativo únicamente (badge "Café/Comedor" en Cocina), la columna
+            // "Cant." de la tabla siempre muestra `quantity` (el stock real del almacén).
+            $best = $equipmentStocks->get($morphClass . '-' . $equipment->id, collect())->sortByDesc('quantity')->first();
+            $equipment->current_cafe = $best ? $cafeMap->get($best->cafe_id) : null;
+            $equipment->current_cafe_quantity = $best?->quantity;
             return $equipment;
         };
 
@@ -81,6 +83,7 @@ class InventoryController extends Controller
                 'storageHeadquarter.business:id,name'
             )
             ->select('id', 'name', 'brand', 'model', 'presentation', 'color', 'series', 'code', 'status', 'quantity', 'responsible_id', 'storage_headquarter_id')
+            ->latest()
             ->get()
             ->map(fn($e) => $attachCafe($e, 'App\\Models\\ComputerEquipment'));
 
@@ -90,16 +93,43 @@ class InventoryController extends Controller
                 'storageHeadquarter.business:id,name'
             )
             ->select('id', 'name', 'brand', 'model', 'size', 'color', 'series', 'code', 'status', 'quantity', 'responsible_id', 'storage_headquarter_id')
+            ->latest()
             ->get()
             ->map(fn($e) => $attachCafe($e, 'App\\Models\\KitchenEquipment'));
 
         // Dispatches FROM a café (origin_cafe_id set) awaiting reception at HQ or another location
-        $cafeOutboundDispatches = EquipmentDispatch::with(['equipable', 'originCafe', 'dispatcher', 'receiver'])
+        $outboundRaw = EquipmentDispatch::with(['equipable', 'originCafe.unit', 'dispatcher', 'receiver'])
             ->whereNotNull('origin_cafe_id')
             ->where('status', 'active')
             ->orderByDesc('created_at')
-            ->get()
-            ->map(fn($d) => [
+            ->orderByDesc('id')
+            ->get();
+
+        // Resolve destination names in bulk (no N+1) — origin_cafe_id dispatches only ever target 'cafe' or 'headquarter'
+        $destCafes = Cafe::with('unit:id,name')
+            ->whereIn('id', $outboundRaw->where('destination_type', 'cafe')->pluck('destination_id')->unique())
+            ->select('id', 'name', 'unit_id')->get()->keyBy('id');
+        $destHeadquarters = Headquarter::with('business:id,name')
+            ->whereIn('id', $outboundRaw->where('destination_type', 'headquarter')->pluck('destination_id')->unique())
+            ->select('id', 'name', 'business_id')->get()->keyBy('id');
+
+        $cafeOutboundDispatches = $outboundRaw->map(function ($d) use ($destCafes, $destHeadquarters) {
+            $destCafe = $d->destination_type === 'cafe' ? $destCafes->get($d->destination_id) : null;
+            $destHq   = $d->destination_type === 'headquarter' ? $destHeadquarters->get($d->destination_id) : null;
+
+            $destinationName = match ($d->destination_type) {
+                'cafe'        => $destCafe?->name,
+                'headquarter' => $destHq?->name,
+                default       => null,
+            } ?? '—';
+
+            $destinationLabel = match ($d->destination_type) {
+                'cafe'        => 'Café / Comedor',
+                'headquarter' => 'Sede / Almacén',
+                default       => '—',
+            };
+
+            return [
                 'id'              => $d->id,
                 'dispatch_number' => $d->dispatch_number,
                 'guide_number'    => $d->guide_number,
@@ -110,14 +140,20 @@ class InventoryController extends Controller
                 'equipment_model' => $d->equipable?->model,
                 'equipment_code'  => $d->equipable?->code,
                 'origin_cafe'     => $d->originCafe?->name ?? '—',
+                'origin_unit'     => $d->originCafe?->unit?->name,
                 'destination_type' => $d->destination_type,
                 'destination_id'   => $d->destination_id,
+                'destination_name'  => $destinationName,
+                'destination_label' => $destinationLabel,
+                'destination_unit'     => $destCafe?->unit?->name,
+                'destination_business' => $destHq?->business?->name,
                 'dispatched_by'   => $d->dispatcher?->name ?? '—',
                 'dispatched_at'   => $d->dispatched_at?->format('d/m/Y H:i'),
                 'received_at'     => $d->received_at?->format('d/m/Y H:i'),
                 'received_by'     => $d->receiver?->name,
                 'reception_notes' => $d->reception_notes,
-            ]);
+            ];
+        });
 
         return Inertia::render('inventory/Index', [
             'colors' => $colors,
@@ -515,6 +551,7 @@ class InventoryController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'ruc' => 'nullable|string|size:11',
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:255',
         ]);
@@ -530,6 +567,7 @@ class InventoryController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'ruc' => 'nullable|string|size:11',
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:255',
         ]);
@@ -642,10 +680,22 @@ class InventoryController extends Controller
     {
         $stockItem = InventoryStock::findOrFail($id);
 
-        $stocks = InventoryStock::with(['color', 'headquarter', 'cafe'])
+        // Se agrupa por sede + talla + color, sumando la cantidad entre condiciones (Nuevo / En
+        // Almacén) — esta vista muestra cuánto hay disponible en total por talla/color, y esa
+        // distinción de condición (usada para preferir consumir lo "En Almacén" antes que lo
+        // "Nuevo" al asignar EPP) no se expone acá. Sin agrupar, la misma talla/color/sede
+        // aparecía como dos filas separadas (una por cada condición) en vez de un solo total.
+        // Solo se muestra stock con Sede asignada (headquarter_id) — el stock en Almacén
+        // Principal o en cafés/unidades específicas no es relevante para esta vista de "recepción
+        // por sede" y confundía al mezclarse con las sedes reales (Huancayo, Lima, etc.).
+        $stocks = InventoryStock::selectRaw('headquarter_id, size, color_id, SUM(quantity) as quantity, MIN(id) as id')
             ->where('stockable_id', $stockItem->stockable_id)
             ->where('stockable_type', $stockItem->stockable_type)
-            ->get();
+            ->where('quantity', '>', 0)
+            ->whereNotNull('headquarter_id')
+            ->groupBy('headquarter_id', 'size', 'color_id')
+            ->get()
+            ->load(['color', 'headquarter.business']);
 
         return response()->json($stocks);
     }
@@ -783,6 +833,7 @@ class InventoryController extends Controller
     {
         $validated = $request->validate([
             'unit_id' => 'required|exists:units,id',
+            'transfer_id' => 'nullable|exists:inventory_transfers,id',
             'items' => 'required|array|min:1',
             'items.*.stockable_id' => 'required|integer',
             'items.*.stockable_type' => 'required|string',
@@ -825,7 +876,18 @@ class InventoryController extends Controller
 
                 $principalStock->increment('quantity', $itemData['quantity']);
             }
+
+            // Marca el envío como devuelto — sin esto, la tabla de "Registro de Envíos" seguía
+            // mostrando "En Tránsito / Uso" para siempre aunque el stock ya hubiera vuelto.
+            if (!empty($validated['transfer_id'])) {
+                InventoryTransfer::where('id', $validated['transfer_id'])->update([
+                    'status' => 'returned',
+                    'returned_at' => now(),
+                ]);
+            }
         });
+
+        return back()->with('success', 'Devolución registrada correctamente');
     }
 
     public function assignStaffClothes(Request $request)
@@ -861,7 +923,7 @@ class InventoryController extends Controller
                             'condition' => 'En Almacén',
                         ])->where(function($q) use($itemData, $staff) {
                             if (!empty($itemData['headquarter_id'])) $q->where('headquarter_id', $itemData['headquarter_id']);
-                            else $q->where('cafe_id', $staff->cafe_id);
+                            else $q->where('cafe_id', $staff->effective_cafe_id);
                         })->first();
 
                         if (!$stock || $stock->quantity < $itemData['quantity']) {
@@ -874,7 +936,7 @@ class InventoryController extends Controller
                                 'condition' => 'Nuevo',
                             ])->where(function($q) use($itemData, $staff) {
                                 if (!empty($itemData['headquarter_id'])) $q->where('headquarter_id', $itemData['headquarter_id']);
-                                else $q->where('cafe_id', $staff->cafe_id);
+                                else $q->where('cafe_id', $staff->effective_cafe_id);
                             })->first();
                         }
 
@@ -883,7 +945,7 @@ class InventoryController extends Controller
                             $colorName = Color::find($itemData['color_id'])?->name ?: 'N/A';
                             $locationName = !empty($itemData['headquarter_id'])
                                 ? (Headquarter::find($itemData['headquarter_id'])?->name ?: 'la sede seleccionada')
-                                : ($staff->cafe?->name ?: 'el punto de venta');
+                                : (Cafe::find($staff->effective_cafe_id)?->name ?: 'el punto de venta');
                             throw new \Exception("Stock insuficiente de '{$epp->name}' (Talla: {$itemData['size']}, Color: {$colorName}) en {$locationName}.");
                         }
 
@@ -897,7 +959,7 @@ class InventoryController extends Controller
                             'color_id' => $itemData['color_id'],
                             'condition' => 'En Almacén', // They become "En Almacén" when returned
                             'headquarter_id' => $itemData['headquarter_id'] ?? null,
-                            'cafe_id' => empty($itemData['headquarter_id']) ? $staff->cafe_id : null,
+                            'cafe_id' => empty($itemData['headquarter_id']) ? $staff->effective_cafe_id : null,
                         ], [
                             'quantity' => 0
                         ]);
@@ -981,10 +1043,18 @@ class InventoryController extends Controller
         $type = $request->input('type', 'epp');
         $modelType = $type === 'cloth' ? \App\Models\Cloth::class : \App\Models\Epp::class;
 
-        $stocks = InventoryStock::where([
-            'stockable_id' => $id,
-            'stockable_type' => $modelType
-        ])->get(['headquarter_id', 'cafe_id', 'quantity', 'size', 'color_id']);
+        // Se agrupa por sede + talla + color, sumando la cantidad entre condiciones (Nuevo / En
+        // Almacén). El frontend hace un solo match por sede+talla+color (getStockForHq /
+        // getMultiStockForHq) — si había dos filas para la misma combinación (una por
+        // condición), tomaba solo la primera y mostraba menos stock del que realmente hay
+        // disponible para entregar. Solo sedes (headquarter_id): este selector es "Almacén de
+        // Origen (Sede)", no lista cafés/unidades.
+        $stocks = InventoryStock::selectRaw('headquarter_id, cafe_id, size, color_id, SUM(quantity) as quantity')
+            ->where('stockable_id', $id)
+            ->where('stockable_type', $modelType)
+            ->whereNotNull('headquarter_id')
+            ->groupBy('headquarter_id', 'cafe_id', 'size', 'color_id')
+            ->get();
 
         return response()->json($stocks);
     }
@@ -1018,8 +1088,8 @@ class InventoryController extends Controller
         
         // Find staff headquarters or cafe
         $location = null;
-        if ($history->staff->cafe_id) {
-            $location = Cafe::with('unit')->find($history->staff->cafe_id);
+        if ($history->staff->effective_cafe_id) {
+            $location = Cafe::with('unit')->find($history->staff->effective_cafe_id);
         }
 
         $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.epp_delivery', [
@@ -1046,8 +1116,8 @@ class InventoryController extends Controller
             ->get();
         
         $location = null;
-        if ($staff->cafe_id) {
-            $location = Cafe::with('unit')->find($staff->cafe_id);
+        if ($staff->effective_cafe_id) {
+            $location = Cafe::with('unit')->find($staff->effective_cafe_id);
         }
 
         $flatItems = [];

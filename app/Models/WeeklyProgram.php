@@ -6,11 +6,16 @@ use Illuminate\Database\Eloquent\Model;
 
 class WeeklyProgram extends Model
 {
-    protected $fillable = ['cafe_id', 'start_date', 'end_date', 'status', 'user_id'];
+    protected $fillable = ['cafe_id', 'structure_id', 'start_date', 'end_date', 'status', 'user_id'];
 
     public function cafe()
     {
         return $this->belongsTo(Cafe::class);
+    }
+
+    public function structure()
+    {
+        return $this->belongsTo(Structure::class);
     }
 
     public function user()

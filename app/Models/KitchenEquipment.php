@@ -13,7 +13,7 @@ class KitchenEquipment extends Model
     protected $fillable = [
         'name', 'brand', 'model', 'size', 'description', 'color',
         'current_type', 'series', 'manual', 'code', 'status', 'responsible_id',
-        'storage_headquarter_id', 'equipment_invoice_id', 'unit_price', 'quantity',
+        'storage_headquarter_id', 'equipment_invoice_id', 'unit_price', 'quantity', 'invoiced_quantity',
     ];
 
     public function responsible(): BelongsTo
@@ -34,6 +34,11 @@ class KitchenEquipment extends Model
     public function stocks(): MorphMany
     {
         return $this->morphMany(InventoryStock::class, 'stockable');
+    }
+
+    public function equipmentStocks(): MorphMany
+    {
+        return $this->morphMany(EquipmentStock::class, 'stockable');
     }
 
     public function dispatches(): MorphMany

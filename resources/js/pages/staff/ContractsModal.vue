@@ -13,6 +13,7 @@ interface StaffFile {
     file_type: string;
     file_path: string;
     expiration_date: string | null;
+    start_date: string | null;
     created_at: string;
     status: string;
 }
@@ -36,6 +37,7 @@ const alertMessage = ref('');
 const uploading = ref(false);
 const deletingFileId = ref<number | null>(null);
 const expirationDate = ref<string>('');
+const startDate = ref<string>('');
 
 const contractFileType = 'Contratos Laborales';
 
@@ -57,6 +59,12 @@ const handleFileUpload = (event: Event) => {
         return;
     }
 
+    if (!startDate.value) {
+        alert('Es necesario colocar la fecha de inicio para el contrato antes de subirlo.');
+        input.value = '';
+        return;
+    }
+
     if (!expirationDate.value) {
         alert('Es necesario colocar la fecha de expiración para el contrato antes de subirlo.');
         input.value = '';
@@ -69,6 +77,7 @@ const handleFileUpload = (event: Event) => {
         file: file,
         fileTypeKey: contractFileType,
         expirationDate: expirationDate.value,
+        startDate: startDate.value,
         fileId: 0, // 0 for always creating new
         staffId: props.staff.id,
     });
@@ -79,6 +88,7 @@ const handleFileUpload = (event: Event) => {
         onSuccess: () => {
             uploading.value = false;
             expirationDate.value = ''; // Reset date
+            startDate.value = ''; // Reset date
             showAlert.value = false;
         },
         onFinish: () => {
@@ -214,13 +224,23 @@ const isNearExpiry = (expirationDate: string | null) => {
                         </div>
 
                         <div class="space-y-4">
-                            <div class="space-y-1.5">
-                                <label class="text-[10px] font-bold tracking-wider text-zinc-400 uppercase">Fecha de expiración (Obligatorio)</label>
-                                <input
-                                    type="date"
-                                    v-model="expirationDate"
-                                    class="w-full rounded-lg border-2 border-zinc-100 bg-zinc-50 px-3 py-2 text-sm font-medium transition-all outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100"
-                                />
+                            <div class="grid grid-cols-2 gap-3">
+                                <div class="space-y-1.5">
+                                    <label class="text-[10px] font-bold tracking-wider text-zinc-400 uppercase">Fecha de inicio (Obligatorio)</label>
+                                    <input
+                                        type="date"
+                                        v-model="startDate"
+                                        class="w-full rounded-lg border-2 border-zinc-100 bg-zinc-50 px-3 py-2 text-sm font-medium transition-all outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                                    />
+                                </div>
+                                <div class="space-y-1.5">
+                                    <label class="text-[10px] font-bold tracking-wider text-zinc-400 uppercase">Fecha de expiración (Obligatorio)</label>
+                                    <input
+                                        type="date"
+                                        v-model="expirationDate"
+                                        class="w-full rounded-lg border-2 border-zinc-100 bg-zinc-50 px-3 py-2 text-sm font-medium transition-all outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-100"
+                                    />
+                                </div>
                             </div>
 
                             <label
@@ -294,6 +314,10 @@ const isNearExpiry = (expirationDate: string | null) => {
                                     </div>
                                     <div class="flex flex-wrap items-center gap-2 text-[10px] font-medium text-zinc-500 uppercase">
                                         <span>Subido: {{ formatDate(file.created_at) }}</span>
+                                        <span v-if="file.start_date" class="flex items-center gap-1 text-zinc-400">
+                                            <CalendarIcon class="h-3 w-3" />
+                                            Inicio: {{ formatExpirationDate(file.start_date) }}
+                                        </span>
                                         <span
                                             v-if="file.expiration_date"
                                             class="flex items-center gap-1"

@@ -100,7 +100,6 @@ class StaffController extends Controller
             );
         }
 
-        $staff->staff_clothes->each->delete();
         $this->syncStaffClothes($request, $staff);
 
         return redirect()->route('staff.index');
@@ -169,6 +168,7 @@ class StaffController extends Controller
                     'file_type'       => $request->fileTypeKey,
                     'file_path'       => $this->storeUploadedFile($request),
                     'expiration_date' => $request->expirationDate,
+                    'start_date'      => $request->startDate,
                 ]);
             }
         } else {
@@ -180,6 +180,7 @@ class StaffController extends Controller
                     'file_type'       => $request->fileTypeKey,
                     'file_path'       => $this->storeUploadedFile($request),
                     'expiration_date' => $request->expirationDate,
+                    'start_date'      => $request->startDate,
                 ]);
             }
         }
@@ -375,16 +376,40 @@ class StaffController extends Controller
 
     private function syncStaffClothes(Request $request, Staff $staff): void
     {
+        if (!$request->has('prendas')) {
+            return;
+        }
+
         foreach ($request->prendas as $clothe) {
             if (empty($clothe['talla'])) {
                 continue;
             }
-            Staff_clothes::create([
-                'staff_id'      => $staff->id,
-                'clothe_name'   => $clothe['label'],
-                'clothing_size' => $clothe['talla'],
-                'cloth_id'      => $clothe['id'] ?? null,
-            ]);
+
+            // Rechaza formatos que no coincidan con las opciones vigentes del <Select> (p. ej. "S"
+            // en vez de "S - 28" para Pantalón) para no volver a guardar valores que luego no
+            // coinciden con ninguna opción de ninguno de los dos forms.
+            $allowed = Staff_clothes::allowedSizesFor($clothe['label']);
+            if ($allowed && !in_array($clothe['talla'], $allowed, true)) {
+                continue;
+            }
+
+            // Actualiza/crea únicamente la fila de "talla de referencia" (cloth_id y epp_id
+            // nulos) para esta prenda. Nunca toca las entregas reales de EPP/Ropa (que sí
+            // tienen cloth_id/epp_id) registradas desde la página de Ropa/EPP — antes esta
+            // función se llamaba después de borrar TODO staff_clothes, lo que eliminaba esas
+            // entregas para siempre y revertía cambios hechos ahí con la foto vieja que tenía
+            // este formulario al abrirse.
+            Staff_clothes::updateOrCreate(
+                [
+                    'staff_id'    => $staff->id,
+                    'clothe_name' => $clothe['label'],
+                    'cloth_id'    => null,
+                    'epp_id'      => null,
+                ],
+                [
+                    'clothing_size' => $clothe['talla'],
+                ],
+            );
         }
     }
 

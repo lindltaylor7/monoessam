@@ -14,6 +14,7 @@ use App\Models\Unit;
 use App\Models\Color;
 use App\Models\Headquarter;
 use App\Models\ClothInventory;
+use App\Models\InventoryTransfer;
 
 class ClothController extends Controller
 {
@@ -23,7 +24,7 @@ class ClothController extends Controller
     public function index()
     {
         $staff = Staff::with(['role', 'staff_clothes.cloth', 'staff_clothes.epp.sizes', 'staff_clothes.color', 'photo', 'staffable.unit.mine', 'staff_financial', 'clothes_histories.user'])
-            ->where('status', 2)
+            ->whereIn('status', [2, 3])
             ->whereHasMorph('staffable', [Cafe::class])
             ->get();
 
@@ -50,10 +51,10 @@ class ClothController extends Controller
         }
 
         // GET EPP ASSIGNMENTS (roleEpps)
-        $epps = \App\Models\Epp::with(['roles' => function($q) {
+        $epps = \App\Models\Epp::with(['roles' => function ($q) {
             $q->withPivot(['cafe_id', 'quantity', 'color_id']);
         }, 'sizes'])->get();
-        
+
         $roleEpps = [];
         foreach ($epps as $epp) {
             foreach ($epp->roles as $role) {
@@ -68,7 +69,7 @@ class ClothController extends Controller
                 if (!isset($roleEpps[$roleId][$key])) {
                     $roleEpps[$roleId][$key] = [];
                 }
-                
+
                 // Prevent duplicates: skip if this epp_id already exists in this role/cafe bucket
                 $alreadyExists = collect($roleEpps[$roleId][$key])->contains('id', $epp->id);
                 if ($alreadyExists) continue;
@@ -87,6 +88,12 @@ class ClothController extends Controller
             'units' => Unit::with(['cafes', 'mine'])->get(),
             'colors' => Color::all(),
             'headquarters' => Headquarter::with('business')->get(),
+            // Registro de envíos a Unidad (InventoryTransfer) — para poder ver qué se envió y
+            // devolverlo desde esta misma página, sin tener que ir a Inventario.
+            'transfers' => InventoryTransfer::with(['staff', 'unit.mine', 'items.stockable'])
+                ->orderByDesc('created_at')
+                ->limit(50)
+                ->get(),
         ]);
     }
 
@@ -206,7 +213,7 @@ class ClothController extends Controller
         $validated = $request->validate([
             'staff_id'     => 'required|exists:staff,id',
             'clothe_name'  => 'required|string|max:100',
-            'clothing_size'=> 'nullable|string|max:50',
+            'clothing_size' => ['nullable', 'string', 'max:50', $this->allowedSizeRule($request->clothe_name)],
         ]);
 
         Staff_clothes::create([
@@ -224,17 +231,34 @@ class ClothController extends Controller
     /** Update clothe_name / clothing_size of a profile item. */
     public function updateProfileItem(Request $request, $id)
     {
-        $validated = $request->validate([
-            'clothe_name'   => 'nullable|string|max:100',
-            'clothing_size' => 'nullable|string|max:50',
-        ]);
-
         $entry = Staff_clothes::findOrFail($id);
         abort_if($entry->cloth_id || $entry->epp_id, 403, 'No es un ítem de perfil.');
+
+        $effectiveClotheName = $request->clothe_name ?? $entry->clothe_name;
+
+        $validated = $request->validate([
+            'clothe_name'   => 'nullable|string|max:100',
+            'clothing_size' => ['nullable', 'string', 'max:50', $this->allowedSizeRule($effectiveClotheName)],
+        ]);
 
         $entry->update(array_filter($validated, fn($v) => $v !== null));
 
         return back()->with('success', 'Actualizado correctamente.');
+    }
+
+    /**
+     * Rechaza tallas que no coincidan con las opciones vigentes del <Select> para esta prenda
+     * (mismo mapa que usa el form de Staff en Staff_clothes::allowedSizesFor), para que ambos
+     * forms sigan coincidiendo siempre. Sin restricción para prendas de texto libre.
+     */
+    private function allowedSizeRule(?string $clotheName)
+    {
+        return function (string $attribute, $value, $fail) use ($clotheName) {
+            $allowed = Staff_clothes::allowedSizesFor($clotheName);
+            if ($allowed && $value !== null && !in_array($value, $allowed, true)) {
+                $fail('La talla seleccionada no es válida para esta prenda.');
+            }
+        };
     }
 
     /** Delete a profile item. */
@@ -263,7 +287,7 @@ class ClothController extends Controller
         ]);
 
         $entry = Staff_clothes::findOrFail($request->id);
-        
+
         if ($request->has('epp_id')) $entry->epp_id = $request->epp_id;
         if ($request->has('clothing_size')) $entry->clothing_size = $request->clothing_size;
         $oldStatus = $entry->status;
@@ -272,7 +296,7 @@ class ClothController extends Controller
         $oldColorId = $entry->color_id;
 
         $staff = $entry->staff;
-        $cafeId = $staff->cafe_id;
+        $cafeId = $staff->effective_cafe_id;
 
         if ($entry->cloth_id || $entry->epp_id) {
             $itemId = $entry->cloth_id ?: $entry->epp_id;
@@ -320,7 +344,7 @@ class ClothController extends Controller
                     $stock = $stockQuery->first();
                     if (!$stock || $stock->quantity < $qtyToDecrement) {
                         $itemName = $entry->epp?->name ?: ($entry->cloth?->name ?: $entry->clothe_name);
-                        $locationName = $finalHqId ? \App\Models\Headquarter::find($finalHqId)?->name : ($staff->cafe?->name ?: 'el punto de venta');
+                        $locationName = $finalHqId ? \App\Models\Headquarter::find($finalHqId)?->name : (\App\Models\Cafe::find($cafeId)?->name ?: 'el punto de venta');
                         $colorName = \App\Models\Color::find($newColorId ?? $oldColorId)?->name ?: 'N/A';
                         return back()->with('error', "Stock insuficiente de '{$itemName}' (Talla: {$entry->clothing_size}, Color: {$colorName}) en {$locationName}. Disponible: " . ($stock?->quantity ?: 0));
                     }
@@ -346,7 +370,7 @@ class ClothController extends Controller
                             'color_id' => $oldColorId,
                             'cafe_id' => $cafeId
                         ]);
-                        $oldInventory->increment('quantity');
+                        $oldInventory->increment('quantity', $entry->quantity ?: 1);
                     }
                 }
             } elseif ($oldStatus === 'Entregado' && $newStatus !== 'Entregado') {
@@ -357,29 +381,34 @@ class ClothController extends Controller
                         'color_id' => $oldColorId,
                         'cafe_id' => $cafeId
                     ]);
-                    $inventory->increment('quantity');
+                    $inventory->increment('quantity', $entry->quantity ?: 1);
                 }
 
-                // Add back to global polymorphic stock
+                // Add back to global polymorphic stock. Usa la sede indicada en el request si se
+                // envió (p. ej. desde el modal "Confirmar Retorno de Stock"), igual que la rama de
+                // Entregado — si no, cae a la sede derivada del staffable (Area) y por último al
+                // café real del staff. Nunca ambas columnas de ubicación a la vez.
+                $finalHqId = $request->headquarter_id ?: $headquarterId;
+
                 $stock = \App\Models\InventoryStock::firstOrCreate([
                     'stockable_id' => $itemId,
                     'stockable_type' => $itemType,
                     'size' => $entry->clothing_size,
                     'color_id' => $oldColorId,
                     'condition' => 'En Almacén', // Returned items are always "En Almacén"
-                    'cafe_id' => $cafeId,
-                    'headquarter_id' => $headquarterId,
+                    'cafe_id' => $finalHqId ? null : $cafeId,
+                    'headquarter_id' => $finalHqId,
                 ], [
                     'quantity' => 0
                 ]);
-                $stock->increment('quantity');
+                $stock->increment('quantity', $entry->quantity ?: 1);
 
                 // ADD BACK TO CLOTH_INVOICE_ITEMS
                 $invoiceItem = \App\Models\ClothInvoiceItem::where($itemColumn, $itemId)
                     ->where('color_id', $oldColorId)
                     ->orderBy('created_at', 'desc')
                     ->first();
-                if ($invoiceItem) $invoiceItem->increment('quantity');
+                if ($invoiceItem) $invoiceItem->increment('quantity', $entry->quantity ?: 1);
             }
         }
 

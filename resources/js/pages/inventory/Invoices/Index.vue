@@ -382,6 +382,7 @@ const isProviderModalOpen = ref(false);
 const editingProvider = ref<any>(null);
 const providerForm = ref({
     name: '',
+    ruc: '',
     email: '',
     phone: '',
 });
@@ -391,24 +392,31 @@ const openProviderModal = (provider: any = null) => {
         editingProvider.value = provider;
         providerForm.value = {
             name: provider.name || '',
+            ruc: provider.ruc || '',
             email: provider.email || '',
             phone: provider.phone || '',
         };
     } else {
         editingProvider.value = null;
-        providerForm.value = { name: '', email: '', phone: '' };
+        providerForm.value = { name: '', ruc: '', email: '', phone: '' };
     }
     isProviderModalOpen.value = true;
+};
+
+const showValidationErrors = (errors: Record<string, string>) => {
+    alert(Object.values(errors).join('\n'));
 };
 
 const handleProviderSubmit = () => {
     if (editingProvider.value) {
         router.put(route('inventory.providers.update', editingProvider.value.id), providerForm.value, {
             onSuccess: () => (isProviderModalOpen.value = false),
+            onError: showValidationErrors,
         });
     } else {
         router.post(route('inventory.providers.store'), providerForm.value, {
             onSuccess: () => (isProviderModalOpen.value = false),
+            onError: showValidationErrors,
         });
     }
 };
@@ -437,11 +445,13 @@ const handleEqProviderSubmit = () => {
         router.put(route('equipments.providers.update', editingEqProvider.value.id), eqProviderForm.value, {
             preserveScroll: true,
             onSuccess: () => (isEqProviderModalOpen.value = false),
+            onError: showValidationErrors,
         });
     } else {
         router.post(route('equipments.providers.store'), eqProviderForm.value, {
             preserveScroll: true,
             onSuccess: () => (isEqProviderModalOpen.value = false),
+            onError: showValidationErrors,
         });
     }
 };
@@ -564,10 +574,40 @@ const handleAssignmentSubmit = () => {
 // --- View Equipment Invoice Details ---
 const isViewEquipInvoiceModalOpen = ref(false);
 const selectedEquipInvoice = ref<any>(null);
+const isUploadingEquipInvoiceImage = ref(false);
 
 const viewEquipInvoiceDetails = (invoice: any) => {
     selectedEquipInvoice.value = invoice;
     isViewEquipInvoiceModalOpen.value = true;
+};
+
+const handleEquipInvoiceImageUpdate = (e: Event) => {
+    const target = e.target as HTMLInputElement;
+    const file = target.files?.[0];
+    if (!file || !selectedEquipInvoice.value) return;
+
+    isUploadingEquipInvoiceImage.value = true;
+    router.post(
+        route('equipments.invoice.image.update', selectedEquipInvoice.value.id),
+        {
+            invoice_image: file,
+        },
+        {
+            forceFormData: true,
+            preserveScroll: true,
+            onSuccess: () => {
+                const updatedInvoice = allInvoices.value.find(
+                    (i: any) => i._source === 'equipment' && i.id === selectedEquipInvoice.value.id,
+                );
+                if (updatedInvoice) {
+                    selectedEquipInvoice.value = updatedInvoice;
+                }
+            },
+            onFinish: () => {
+                isUploadingEquipInvoiceImage.value = false;
+            },
+        },
+    );
 };
 
 // --- View Invoice Details ---
@@ -815,9 +855,9 @@ const saveInlinePrice = (cp: any) => {
                                                         <Select v-model="invoiceForm.cloth_provider_id">
                                                             <SelectTrigger class="bg-white"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
                                                             <SelectContent>
-                                                                <SelectItem v-for="p in clothProviders" :key="p.id" :value="String(p.id)">{{
-                                                                    p.name
-                                                                }}</SelectItem>
+                                                                <SelectItem v-for="p in clothProviders" :key="p.id" :value="String(p.id)">
+                                                                    {{ p.name }}<span v-if="p.ruc" class="text-slate-400"> — RUC: {{ p.ruc }}</span>
+                                                                </SelectItem>
                                                             </SelectContent>
                                                         </Select>
                                                     </div>
@@ -1610,6 +1650,7 @@ const saveInlinePrice = (cp: any) => {
                                 <TableHeader>
                                     <TableRow class="bg-slate-50/50 hover:bg-slate-50/50">
                                         <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Nombre</TableHead>
+                                        <TableHead class="text-[10px] font-bold text-slate-500 uppercase">RUC</TableHead>
                                         <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Email</TableHead>
                                         <TableHead class="text-[10px] font-bold text-slate-500 uppercase">Teléfono</TableHead>
                                         <TableHead class="w-[100px]"></TableHead>
@@ -1618,6 +1659,7 @@ const saveInlinePrice = (cp: any) => {
                                 <TableBody>
                                     <TableRow v-for="prov in clothProviders" :key="prov.id" class="group transition-colors">
                                         <TableCell class="font-bold text-slate-900">{{ prov.name }}</TableCell>
+                                        <TableCell class="font-mono text-slate-600">{{ prov.ruc || '-' }}</TableCell>
                                         <TableCell>{{ prov.email || '-' }}</TableCell>
                                         <TableCell>{{ prov.phone || '-' }}</TableCell>
                                         <TableCell class="flex justify-end gap-2">
@@ -1649,7 +1691,7 @@ const saveInlinePrice = (cp: any) => {
                                         </TableCell>
                                     </TableRow>
                                     <TableRow v-if="clothProviders.length === 0">
-                                        <TableCell colspan="4" class="h-32 text-center text-slate-400 italic">
+                                        <TableCell colspan="5" class="h-32 text-center text-slate-400 italic">
                                             No hay proveedores de ropa registrados.
                                         </TableCell>
                                     </TableRow>
@@ -1856,6 +1898,11 @@ const saveInlinePrice = (cp: any) => {
                             <Input v-model="providerForm.name" placeholder="Ej: Textiles S.A." />
                         </div>
                         <div class="grid gap-2">
+                            <Label>RUC</Label>
+                            <Input v-model="providerForm.ruc" placeholder="Ej: 20123456789" maxlength="11" class="font-mono" />
+                            <p class="text-xs text-slate-400">Opcional. Si se indica, debe tener exactamente 11 dígitos.</p>
+                        </div>
+                        <div class="grid gap-2">
                             <Label>Email</Label>
                             <Input v-model="providerForm.email" type="email" placeholder="ventas@empresa.com" />
                         </div>
@@ -1891,6 +1938,7 @@ const saveInlinePrice = (cp: any) => {
                         <div class="grid gap-2">
                             <Label>RUC</Label>
                             <Input v-model="eqProviderForm.ruc" placeholder="Ej: 20123456789" maxlength="11" class="font-mono" />
+                            <p class="text-xs text-slate-400">Opcional. Si se indica, debe tener exactamente 11 dígitos.</p>
                         </div>
                         <div class="grid gap-2">
                             <Label>Email</Label>
@@ -2382,14 +2430,16 @@ const saveInlinePrice = (cp: any) => {
                                                 <TableCell class="py-2 font-mono text-xs text-slate-500">{{ eq.series || '—' }}</TableCell>
                                                 <TableCell class="py-2 text-xs text-slate-500">{{ eq.color || '—' }}</TableCell>
                                                 <TableCell class="py-2 text-center text-xs font-black text-slate-700">{{
-                                                    eq.quantity ?? 1
+                                                    eq.invoiced_quantity ?? eq.quantity ?? 1
                                                 }}</TableCell>
                                                 <TableCell class="py-2 text-right text-[10px] font-medium text-slate-500">
                                                     S/.{{ Number(eq.unit_price ?? 0).toFixed(2) }}
                                                 </TableCell>
                                                 <TableCell class="py-2 text-right text-xs font-black text-blue-600">
                                                     S/.{{
-                                                        (Number(eq.unit_price ?? 0) * (eq.quantity ?? 1)).toLocaleString(undefined, {
+                                                        (
+                                                            Number(eq.unit_price ?? 0) * (eq.invoiced_quantity ?? eq.quantity ?? 1)
+                                                        ).toLocaleString(undefined, {
                                                             minimumFractionDigits: 2,
                                                         })
                                                     }}
@@ -2449,9 +2499,24 @@ const saveInlinePrice = (cp: any) => {
                                 <FileText class="h-4 w-4" /> Ver Documento / Imagen
                             </a>
                         </div>
-                        <div v-else class="rounded-2xl border border-slate-100 bg-slate-50/30 p-4">
-                            <p class="text-[10px] font-black tracking-widest text-slate-400 uppercase">Sin Evidencia</p>
-                            <p class="mt-1 text-xs text-slate-500">Esta factura no tiene documento o imagen adjunta.</p>
+                        <div v-else class="space-y-3 rounded-2xl border border-slate-100 bg-slate-50/30 p-4">
+                            <p class="text-[10px] font-black tracking-widest text-slate-400 uppercase">Adjuntar Evidencia</p>
+                            <p class="text-xs text-slate-500">Esta factura aún no cuenta con un documento o imagen de evidencia.</p>
+                            <div class="relative w-full">
+                                <Input
+                                    type="file"
+                                    @change="handleEquipInvoiceImageUpdate"
+                                    accept="image/*,.pdf"
+                                    :disabled="isUploadingEquipInvoiceImage"
+                                    class="h-12 w-full cursor-pointer bg-white text-xs file:mr-4 file:rounded-full file:border-0 file:bg-blue-50 file:px-4 file:py-2 file:text-xs file:font-bold file:text-blue-600 hover:file:bg-blue-100"
+                                />
+                                <div
+                                    v-if="isUploadingEquipInvoiceImage"
+                                    class="absolute inset-0 z-10 flex items-center justify-center gap-2 rounded-md bg-white/50 text-sm font-bold text-blue-600 backdrop-blur-sm"
+                                >
+                                    <Loader2 class="h-4 w-4 animate-spin" /> Subiendo archivo...
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -2480,7 +2545,9 @@ const saveInlinePrice = (cp: any) => {
                             <Select v-model="priceForm.cloth_provider_id">
                                 <SelectTrigger><SelectValue placeholder="Seleccionar proveedor" /></SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem v-for="prov in clothProviders" :key="prov.id" :value="String(prov.id)">{{ prov.name }}</SelectItem>
+                                    <SelectItem v-for="prov in clothProviders" :key="prov.id" :value="String(prov.id)">
+                                        {{ prov.name }}<span v-if="prov.ruc" class="text-slate-400"> — RUC: {{ prov.ruc }}</span>
+                                    </SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>
