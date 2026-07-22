@@ -133,11 +133,10 @@ class StoreController extends Controller
             'pending_epp'      => $statsRows->whereNull('received_at')->where('equipable_type', Epp::class)->count(),
         ];
 
-        if ($modelClassFilter) {
-            $guideBase->where('equipable_type', $modelClassFilter);
-        } elseif ($noResultsForType) {
-            $guideBase->whereRaw('1 = 0');
-        }
+        // Las Guías nunca se filtran por tipo: una misma guía puede traer equipos, menaje y EPP
+        // a la vez, y filtrar por tipo aquí ocultaría el resto de ítems de esa guía dejándola a
+        // medias. El filtro de tipo (Tecnológico/Menaje/EPP/Insumos) solo aplica al Stock, más
+        // abajo — ahí cada fila sí es un ítem independiente.
 
         // ── Guías: se pagina por GUÍA (guide_number), no por fila individual, para que cada
         // página muestre grupos completos y no corte una guía a la mitad. ──

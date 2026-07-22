@@ -448,6 +448,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('export',    [ReportSalesController::class, 'export'])->name('export');
         Route::get('export-vlz',    [ReportSalesController::class, 'exportValorizacion'])->name('export-vlz');
         Route::get('export-detail', [ReportSalesController::class, 'exportDetail'])->name('export-detail');
+        Route::get('duplicates', [ReportSalesController::class, 'duplicates'])->name('duplicates');
     });
 
 

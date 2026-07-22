@@ -105,6 +105,94 @@ class ReportSalesController extends Controller
     }
 
     /**
+     * Detecta ventas duplicadas dentro del rango/filtros actuales: mismo comensal (dinner_id, o
+     * DNI si es visitante sin dinner_id), misma fecha y mismo código de servicio (ticket_details.code)
+     * repetido en más de una venta distinta. Es el mismo criterio que ya usa SaleController::store
+     * para bloquear el registro en el POS (dinner+fecha+code), pero aplicado en bloque sobre el
+     * reporte en vez de comensal por comensal al momento de vender.
+     */
+    public function duplicates(Request $request)
+    {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+        $user->load(['units.cafes']);
+
+        $cafes   = $user->units->flatMap->cafes->unique('id')->values();
+        $cafeIds = $cafes->pluck('id');
+
+        $startDate           = $request->input('start_date', date('Y-m-d'));
+        $endDate             = $request->input('end_date', date('Y-m-d'));
+        $cafeFilter          = $request->input('cafe_id');
+        $subdealershipFilter = $request->input('subdealership_id');
+
+        $subdealershipName = $subdealershipFilter
+            ? Subdealership::find((int) $subdealershipFilter)?->name
+            : null;
+
+        $sales = Sale::query()
+            ->whereIn('cafe_id', $cafeIds)
+            ->whereBetween('date', [$startDate, $endDate])
+            ->when($cafeFilter, fn($q) => $q->where('cafe_id', $cafeFilter))
+            ->when($subdealershipFilter, function ($q) use ($subdealershipFilter, $subdealershipName) {
+                $q->whereHas('tickets', function ($tq) use ($subdealershipFilter, $subdealershipName) {
+                    $tq->where(function ($inner) use ($subdealershipFilter, $subdealershipName) {
+                        if ($subdealershipName) {
+                            $inner->where('subdealership_name', $subdealershipName);
+                        }
+                        $inner->orWhereHas('dinner', fn($dq) => $dq->where('subdealership_id', (int) $subdealershipFilter));
+                    });
+                });
+            })
+            ->with(['tickets.ticket_details', 'cafe'])
+            ->get();
+
+        // Aplana a una fila por (venta, servicio consumido) para poder agrupar por comensal+fecha+código.
+        $rows = collect();
+        foreach ($sales as $sale) {
+            foreach ($sale->tickets as $ticket) {
+                $dinnerKey = $ticket->dinner_id ? 'dinner-' . $ticket->dinner_id : 'dni-' . ($ticket->dni ?: 'sin-dni-' . $ticket->dinner_name);
+                foreach ($ticket->ticket_details as $detail) {
+                    $rows->push([
+                        'sale_id'      => $sale->id,
+                        'group_key'    => $dinnerKey . '|' . $sale->date . '|' . $detail->code,
+                        'dinner_name'  => $ticket->dinner_name,
+                        'dni'          => $ticket->dni,
+                        'date'         => $sale->date,
+                        'code'         => $detail->code,
+                        'service_name' => $detail->service_name,
+                        'cafe_name'    => $sale->cafe?->name ?? $sale->cafe_name,
+                        'total'        => $sale->total,
+                        'created_at'   => optional($sale->created_at)->format('d/m/Y H:i'),
+                    ]);
+                }
+            }
+        }
+
+        $groups = $rows->groupBy('group_key')
+            ->filter(fn($g) => $g->pluck('sale_id')->unique()->count() > 1)
+            ->map(function ($g) {
+                $first = $g->first();
+                return [
+                    'dinner_name'  => $first['dinner_name'],
+                    'dni'          => $first['dni'],
+                    'date'         => $first['date'],
+                    'service_name' => $first['service_name'],
+                    'code'         => $first['code'],
+                    'sales'        => $g->unique('sale_id')->map(fn($r) => [
+                        'sale_id'    => $r['sale_id'],
+                        'cafe_name'  => $r['cafe_name'],
+                        'total'      => $r['total'],
+                        'created_at' => $r['created_at'],
+                    ])->values(),
+                ];
+            })
+            ->sortByDesc(fn($g) => $g['date'])
+            ->values();
+
+        return response()->json(['duplicates' => $groups]);
+    }
+
+    /**
      * Export sales report to Excel — one sheet per subdealership
      */
     public function export(Request $request)

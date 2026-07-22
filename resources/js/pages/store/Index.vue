@@ -340,14 +340,6 @@ function pendingForUnit(unitId: number) {
     return props.pendingByUnit[unitId] ?? 0;
 }
 
-function tabPending(key: TabKey) {
-    if (key === 'all') return props.stats.pending;
-    if (key === 'computer') return props.stats.pending_computer;
-    if (key === 'kitchen') return props.stats.pending_kitchen;
-    if (key === 'epp') return props.stats.pending_epp;
-    return 0;
-}
-
 // ── Selección de café/unidad y filtro por tipo: paginación y filtrado ocurren en el backend,
 // así que cambiar cualquiera de estos dispara una nueva visita (reseteando ambas páginas a 1).
 function reload(overrides: Partial<{ location_type: TargetType; location_id: number; type: TabKey }> = {}) {
@@ -493,11 +485,12 @@ function equipmentStatusInfo(val: number | null) {
                                 </div>
                                 <span
                                     v-if="pendingForUnit(unit.id) > 0"
+                                    title="Guías entrantes pendientes de recepcionar en esta unidad"
                                     class="mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
                                     :class="
                                         selectedType === 'unit' && selectedId === unit.id
-                                            ? 'bg-white text-indigo-600'
-                                            : 'bg-indigo-100 text-indigo-700'
+                                            ? 'bg-white text-rose-600'
+                                            : 'bg-rose-100 text-rose-700'
                                     "
                                 >
                                     {{ pendingForUnit(unit.id) }}
@@ -534,9 +527,10 @@ function equipmentStatusInfo(val: number | null) {
                                 </div>
                                 <span
                                     v-if="pendingForCafe(cafe.id) > 0"
+                                    title="Guías entrantes pendientes de recepcionar en este café"
                                     class="mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
                                     :class="
-                                        selectedType === 'cafe' && selectedId === cafe.id ? 'bg-white text-amber-600' : 'bg-amber-100 text-amber-700'
+                                        selectedType === 'cafe' && selectedId === cafe.id ? 'bg-white text-rose-600' : 'bg-rose-100 text-rose-700'
                                     "
                                 >
                                     {{ pendingForCafe(cafe.id) }}
@@ -655,6 +649,7 @@ function equipmentStatusInfo(val: number | null) {
                                     Guías
                                     <span
                                         v-if="stats.pending > 0"
+                                        title="Total en tránsito: guías entrantes + salientes sin recepcionar"
                                         class="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-black text-white"
                                     >
                                         {{ stats.pending }}
@@ -663,8 +658,9 @@ function equipmentStatusInfo(val: number | null) {
                             </TabsList>
                         </Tabs>
 
-                        <!-- Filtro por tipo -->
-                        <Tabs :model-value="activeTab" @update:model-value="(v) => selectTypeTab(v as TabKey)" class="mb-4">
+                        <!-- Filtro por tipo: solo aplica a Stock — una Guía puede traer equipos, menaje
+                        y EPP a la vez, así que filtrarla por tipo dejaría cada guía mostrada a medias. -->
+                        <Tabs v-if="viewSection === 'stock'" :model-value="activeTab" @update:model-value="(v) => selectTypeTab(v as TabKey)" class="mb-4">
                             <TabsList class="w-full bg-slate-100 p-1 dark:bg-gray-800">
                                 <TabsTrigger
                                     v-for="tab in tabs"
@@ -674,21 +670,15 @@ function equipmentStatusInfo(val: number | null) {
                                 >
                                     <component :is="tab.icon" class="h-3.5 w-3.5 shrink-0" />
                                     <span class="hidden sm:inline">{{ tab.label }}</span>
-                                    <span
-                                        v-if="viewSection === 'guides' && tabPending(tab.key) > 0 && ['all', 'computer', 'kitchen', 'epp'].includes(tab.key)"
-                                        class="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-500 text-[9px] font-black text-white"
-                                    >
-                                        {{ tabPending(tab.key) }}
-                                    </span>
                                 </TabsTrigger>
                             </TabsList>
                         </Tabs>
 
                         <!-- ═══ Guías: una tarjeta por guía de remisión, igual al patrón de "Desde Café" ═══ -->
+                        <!-- No se filtra por tipo: una misma guía puede traer equipos, menaje y EPP juntos. -->
                         <template v-if="viewSection === 'guides'">
-                            <template v-if="activeTab !== 'supplies'">
-                                <div
-                                    v-if="groupedDispatches.length === 0"
+                            <div
+                                v-if="groupedDispatches.length === 0"
                                     class="flex flex-col items-center justify-center rounded-xl border border-dashed py-16 text-slate-400"
                                 >
                                     <PackageSearch class="mb-3 h-10 w-10 text-slate-300" />
@@ -910,17 +900,6 @@ function equipmentStatusInfo(val: number | null) {
                                         </template>
                                     </div>
                                 </div>
-                            </template>
-
-                            <!-- ── Insumos placeholder ── -->
-                            <div
-                                v-else-if="activeTab === 'supplies'"
-                                class="flex flex-col items-center justify-center rounded-xl border border-dashed py-20 text-slate-400"
-                            >
-                                <HardHat class="mb-3 h-10 w-10 text-slate-300" />
-                                <p class="font-medium">Insumos — Sin envíos registrados</p>
-                                <p class="mt-1 text-xs">Los despachos de insumos aparecerán aquí cuando estén disponibles</p>
-                            </div>
                         </template>
 
                         <!-- ═══ Stock: una fila por equipo, sin repetirse aunque el historial tenga varias guías ═══ -->

@@ -3,12 +3,14 @@ import Icon from '@/components/Icon.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { ChartBar } from 'lucide-vue-next';
+import axios from 'axios';
+import { AlertTriangle, ChartBar, Loader2, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import SalesReportTable from './SalesReportTable.vue';
 
@@ -143,6 +145,60 @@ const exportValorizacion = () => {
 const exportDetail = () => {
     window.location.href = route('reportsales.export-detail') + '?' + buildParams();
 };
+
+// ── Ventas duplicadas: mismo comensal + misma fecha + mismo servicio, en más de una venta ──
+interface DuplicateSaleEntry {
+    sale_id: number;
+    cafe_name: string;
+    total: number;
+    created_at: string;
+}
+interface DuplicateGroup {
+    dinner_name: string;
+    dni: string | null;
+    date: string;
+    service_name: string;
+    code: string;
+    sales: DuplicateSaleEntry[];
+}
+
+const duplicatesModalOpen = ref(false);
+const duplicatesLoading = ref(false);
+const duplicateGroups = ref<DuplicateGroup[]>([]);
+
+const fetchDuplicates = () => {
+    duplicatesLoading.value = true;
+    axios
+        .get(route('reportsales.duplicates'), {
+            params: {
+                start_date: startDate.value,
+                end_date: endDate.value,
+                cafe_id: selectedCafe.value !== 'all' ? selectedCafe.value : null,
+                subdealership_id: selectedSubdealership.value !== 'all' ? selectedSubdealership.value : null,
+            },
+        })
+        .then((res) => {
+            duplicateGroups.value = res.data.duplicates;
+        })
+        .catch((err) => console.error(err))
+        .finally(() => {
+            duplicatesLoading.value = false;
+        });
+};
+
+const openDuplicatesModal = () => {
+    duplicatesModalOpen.value = true;
+    fetchDuplicates();
+};
+
+// Elimina una de las ventas en conflicto directamente desde el modal y refresca el listado.
+const deleteDuplicateSale = (saleId: number) => {
+    if (!confirm('¿Eliminar esta venta duplicada? Esta acción no se puede deshacer.')) return;
+    router.delete(route('reportsales.destroy', saleId), {
+        preserveScroll: true,
+        onSuccess: () => fetchDuplicates(),
+    });
+};
 </script>
 
 <template>
@@ -180,6 +236,14 @@ const exportDetail = () => {
                     >
                         <Icon name="list-details" size="16" />
                         Detalle de consumo
+                    </Button>
+                    <Button
+                        @click="openDuplicatesModal"
+                        variant="outline"
+                        class="gap-2 border-amber-300 text-amber-700 hover:border-amber-400 hover:bg-amber-50"
+                    >
+                        <AlertTriangle class="h-4 w-4" />
+                        Ver Duplicados
                     </Button>
                 </div>
             </div>
@@ -304,5 +368,80 @@ const exportDetail = () => {
                 </CardContent>
             </Card>
         </div>
+
+        <!-- Modal: Ventas Duplicadas -->
+        <Dialog v-model:open="duplicatesModalOpen">
+            <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-[650px]">
+                <DialogHeader>
+                    <DialogTitle class="flex items-center gap-2 text-lg font-bold">
+                        <AlertTriangle class="h-5 w-5 text-amber-500" />
+                        Ventas Duplicadas
+                    </DialogTitle>
+                    <DialogDescription>
+                        Mismo comensal, misma fecha y mismo servicio registrado en más de una venta — dentro del rango y filtros actuales
+                        ({{ startDate }} a {{ endDate }}).
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div class="space-y-3 py-2">
+                    <div v-if="duplicatesLoading" class="flex flex-col items-center justify-center gap-2 py-10 text-slate-400">
+                        <Loader2 class="h-6 w-6 animate-spin text-amber-500" />
+                        <p class="text-sm">Buscando duplicados…</p>
+                    </div>
+
+                    <div
+                        v-else-if="duplicateGroups.length === 0"
+                        class="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 py-10 text-slate-400"
+                    >
+                        <ChartBar class="mb-2 h-8 w-8 opacity-30" />
+                        <p class="text-sm font-medium">No se encontraron ventas duplicadas</p>
+                        <p class="mt-1 text-xs">para el rango y filtros seleccionados</p>
+                    </div>
+
+                    <div
+                        v-for="(group, idx) in duplicateGroups"
+                        :key="idx"
+                        class="overflow-hidden rounded-xl border border-amber-200 bg-amber-50/40"
+                    >
+                        <div class="flex items-center justify-between border-b border-amber-100 bg-amber-50 px-4 py-2.5">
+                            <div>
+                                <p class="text-sm font-bold text-slate-800">{{ group.dinner_name }}</p>
+                                <p class="text-[11px] text-slate-500">DNI {{ group.dni || '—' }} · {{ group.date }}</p>
+                            </div>
+                            <span class="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">
+                                {{ group.service_name }} ({{ group.code }})
+                            </span>
+                        </div>
+                        <div class="divide-y divide-amber-100/70 bg-white">
+                            <div v-for="s in group.sales" :key="s.sale_id" class="flex items-center justify-between px-4 py-2.5">
+                                <div class="text-sm">
+                                    <span class="font-mono text-xs text-slate-400">#{{ s.sale_id }}</span>
+                                    <span class="ml-2 font-semibold text-slate-700">{{ s.cafe_name }}</span>
+                                    <span class="ml-2 text-xs text-slate-400">{{ s.created_at }}</span>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <span class="text-sm font-bold text-slate-700">S/{{ Number(s.total).toFixed(2) }}</span>
+                                    <Button
+                                        @click="deleteDuplicateSale(s.sale_id)"
+                                        variant="ghost"
+                                        size="icon"
+                                        class="h-7 w-7 text-slate-300 hover:text-rose-500"
+                                    >
+                                        <Trash2 class="h-3.5 w-3.5" />
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <DialogFooter>
+                    <Badge v-if="duplicateGroups.length > 0" variant="secondary" class="mr-auto font-bold">
+                        {{ duplicateGroups.length }} grupo{{ duplicateGroups.length === 1 ? '' : 's' }} en conflicto
+                    </Badge>
+                    <Button variant="outline" @click="duplicatesModalOpen = false">Cerrar</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </AppLayout>
 </template>
