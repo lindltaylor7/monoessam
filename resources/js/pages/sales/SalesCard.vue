@@ -42,6 +42,10 @@ const props = defineProps({
         type: Object,
         default: () => ({}),
     },
+    isSubmitting: {
+        type: Boolean,
+        default: false,
+    },
 });
 
 const emits = defineEmits(['handleShowAlert', 'showDialog', 'updateDni', 'saveSale']);
@@ -53,6 +57,7 @@ const cleanInput = () => {
 };
 
 const triggerSearch = () => {
+    if (props.isSubmitting) return;
     emits('updateDni', dni.value);
 };
 
@@ -82,17 +87,20 @@ defineExpose({
                         <input
                             v-model="dni"
                             type="text"
+                            :disabled="isSubmitting"
                             placeholder="Ingrese DNI (8 dígitos)..."
-                            class="h-14 w-full rounded-2xl border-none bg-white pr-4 pl-12 text-xl font-black text-slate-900 shadow-inner transition-all placeholder:text-sm placeholder:font-bold placeholder:text-slate-300 focus:ring-4 focus:ring-white/20"
+                            class="h-14 w-full rounded-2xl border-none bg-white pr-4 pl-12 text-xl font-black text-slate-900 shadow-inner transition-all placeholder:text-sm placeholder:font-bold placeholder:text-slate-300 focus:ring-4 focus:ring-white/20 disabled:opacity-60"
                             @keyup.enter="triggerSearch"
                             maxlength="8"
                         />
                     </div>
                     <Button
                         @click="triggerSearch"
-                        class="text-primary h-14 w-14 rounded-2xl bg-white shadow-lg transition-all hover:bg-slate-50 active:scale-95"
+                        :disabled="isSubmitting"
+                        class="text-primary h-14 w-14 rounded-2xl bg-white shadow-lg transition-all hover:bg-slate-50 active:scale-95 disabled:opacity-60"
                     >
-                        <Icon name="search" size="24" />
+                        <Icon v-if="isSubmitting" name="loader-2" size="24" class="animate-spin" />
+                        <Icon v-else name="search" size="24" />
                     </Button>
                 </div>
             </div>
