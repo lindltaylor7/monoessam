@@ -237,6 +237,7 @@ class StoreController extends Controller
                 'equipment_status'  => $s->stockable?->status,
                 'responsible_id'    => $s->stockable?->responsible_id,
                 'responsible_name'  => $s->stockable?->responsible?->name,
+                'cargo_path'        => $s->stockable?->cargo_path,
                 'quantity'          => $s->quantity,
             ]);
         }
