@@ -77,7 +77,7 @@ interface Dispatch {
 }
 
 interface StockItem {
-    id: number;
+    id: number | string;
     equipable_id: number;
     equipable_type: 'computer' | 'kitchen' | 'epp';
     equipment_name: string;
@@ -404,7 +404,7 @@ function startConfirm(id: number) {
 }
 
 // ── Asignación de responsable y Cargo (Stock) ─────────────────────────────────
-const assigningStock = ref<number | null>(null);
+const assigningStock = ref<number | string | null>(null);
 const assignModalOpen = ref(false);
 const targetAssignItem = ref<StockItem | null>(null);
 const targetStaffId = ref<string>('');

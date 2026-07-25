@@ -2,6 +2,8 @@
 
 namespace App\Exports\Sheets;
 
+use App\Models\Dinner;
+use App\Models\Subdealership;
 use Carbon\Carbon;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -46,6 +48,7 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
         private readonly string $startDate,
         private readonly string $endDate,
         private readonly string $cafeName,
+        private readonly ?int   $subdealershipId = null,
     ) {
         $this->buildMatrix();
     }
@@ -55,7 +58,6 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
     {
         $dateSet    = [];
         $svcTypeMap = [];
-        $sdOrder    = [];
 
         foreach ($this->rows as $row) {
             $sd    = $row['sd_name'];
@@ -77,7 +79,6 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
 
             if (!isset($this->matrix[$sd])) {
                 $this->matrix[$sd] = [];
-                $sdOrder[] = $sd;
             }
             if (!isset($this->matrix[$sd][$name])) {
                 $this->matrix[$sd][$name] = [];
@@ -86,6 +87,67 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
             $key = $date . '|' . $svc;
             $this->matrix[$sd][$name][$key] = ($this->matrix[$sd][$name][$key] ?? 0) + $qty;
         }
+
+        /* ── Add dinners without consumption belonging to the subdealerships ── */
+        if ($this->subdealershipId) {
+            $sdObj = Subdealership::with('dinners')->find($this->subdealershipId);
+            if ($sdObj) {
+                $sdNameUpper = strtoupper(trim($sdObj->name));
+                $targetKey   = $sdNameUpper;
+                foreach (array_keys($this->matrix) as $existingKey) {
+                    if (strtoupper(trim($existingKey)) === $sdNameUpper) {
+                        $targetKey = $existingKey;
+                        break;
+                    }
+                }
+                if (!isset($this->matrix[$targetKey])) {
+                    $this->matrix[$targetKey] = [];
+                }
+                foreach ($sdObj->dinners as $dinner) {
+                    $dName = strtoupper(trim($dinner->name));
+                    $dDni  = $dinner->dni ?: '—';
+                    if (!isset($this->matrix[$targetKey][$dName])) {
+                        $this->matrix[$targetKey][$dName] = [];
+                        $this->dniMap[$targetKey][$dName] = $dDni;
+                    } elseif (empty($this->dniMap[$targetKey][$dName]) || $this->dniMap[$targetKey][$dName] === '—') {
+                        if (!empty($dinner->dni)) {
+                            $this->dniMap[$targetKey][$dName] = $dinner->dni;
+                        }
+                    }
+                }
+            }
+        } else {
+            $existingSdKeys = array_keys($this->matrix);
+            if (!empty($existingSdKeys)) {
+                $subdealerships = Subdealership::with('dinners')->get();
+                foreach ($subdealerships as $sdObj) {
+                    $sdNameUpper = strtoupper(trim($sdObj->name));
+                    $targetKey   = null;
+                    foreach ($existingSdKeys as $existingKey) {
+                        if (strtoupper(trim($existingKey)) === $sdNameUpper) {
+                            $targetKey = $existingKey;
+                            break;
+                        }
+                    }
+                    if ($targetKey) {
+                        foreach ($sdObj->dinners as $dinner) {
+                            $dName = strtoupper(trim($dinner->name));
+                            $dDni  = $dinner->dni ?: '—';
+                            if (!isset($this->matrix[$targetKey][$dName])) {
+                                $this->matrix[$targetKey][$dName] = [];
+                                $this->dniMap[$targetKey][$dName] = $dDni;
+                            } elseif (empty($this->dniMap[$targetKey][$dName]) || $this->dniMap[$targetKey][$dName] === '—') {
+                                if (!empty($dinner->dni)) {
+                                    $this->dniMap[$targetKey][$dName] = $dinner->dni;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        $sdOrder = array_keys($this->matrix);
 
         /* Sort dates chronologically */
         $dates = array_keys($dateSet);
