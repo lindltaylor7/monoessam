@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class EquipmentHistory extends Model
 {
-    protected $fillable = ['equipable_id', 'equipable_type', 'action', 'notes', 'staff_id', 'user_id'];
+    protected $fillable = ['equipable_id', 'equipable_type', 'action', 'notes', 'staff_id', 'user_id', 'file_path'];
 
     public function equipable(): MorphTo
     {

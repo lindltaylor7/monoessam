@@ -12,7 +12,7 @@ class KitchenEquipment extends Model
 
     protected $fillable = [
         'name', 'brand', 'model', 'size', 'description', 'color',
-        'current_type', 'series', 'manual', 'code', 'status', 'responsible_id',
+        'current_type', 'series', 'manual', 'code', 'status', 'responsible_id', 'cargo_path',
         'storage_headquarter_id', 'equipment_invoice_id', 'unit_price', 'quantity', 'invoiced_quantity',
     ];
 

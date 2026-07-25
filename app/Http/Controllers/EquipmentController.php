@@ -315,11 +315,17 @@ class EquipmentController extends Controller
         $equipment = $model::findOrFail($id);
 
         $data = $request->validate([
-            'action'   => ['required', 'string', Rule::in(['Registro', 'Asignación', 'Mantenimiento', 'Reparación', 'Transferencia', 'Daño', 'Baja', 'Observación'])],
-            'notes'    => 'nullable|string|max:1000',
-            'staff_id' => 'nullable|exists:staff,id',
-            'status'   => 'nullable|integer|between:0,4',
+            'action'     => ['required', 'string', Rule::in(['Registro', 'Asignación', 'Mantenimiento', 'Reparación', 'Transferencia', 'Daño', 'Baja', 'Observación'])],
+            'notes'      => 'nullable|string|max:1000',
+            'staff_id'   => 'nullable|exists:staff,id',
+            'status'     => 'nullable|integer|between:0,4',
+            'cargo_file' => 'nullable|file|mimes:pdf,jpg,jpeg,png,doc,docx,xls,xlsx,zip|max:10240',
         ]);
+
+        $filePath = null;
+        if ($request->hasFile('cargo_file')) {
+            $filePath = $request->file('cargo_file')->store('equipment_cargos', 'public');
+        }
 
         EquipmentHistory::create([
             'equipable_id'   => $equipment->id,
@@ -328,14 +334,25 @@ class EquipmentController extends Controller
             'notes'          => $data['notes'] ?? null,
             'staff_id'       => $data['staff_id'] ?? null,
             'user_id'        => $request->user()->id,
+            'file_path'      => $filePath,
         ]);
 
         if (!empty($data['status'])) {
             $equipment->update(['status' => $data['status']]);
         }
 
-        if (!empty($data['staff_id'])) {
-            $equipment->update(['responsible_id' => $data['staff_id']]);
+        if (array_key_exists('staff_id', $data)) {
+            $updateData = ['responsible_id' => $data['staff_id'] ?: null];
+            if ($data['action'] === 'Asignación') {
+                if ($filePath !== null) {
+                    $updateData['cargo_path'] = $filePath;
+                } elseif (empty($data['staff_id'])) {
+                    $updateData['cargo_path'] = null;
+                } else {
+                    $updateData['cargo_path'] = null;
+                }
+            }
+            $equipment->update($updateData);
         }
 
         if ($request->wantsJson()) {

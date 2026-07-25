@@ -73,7 +73,7 @@ class SalesDetailExport implements WithMultipleSheets
     {
         return [
             new SalesDetailSheet($this->rows, $this->startDate, $this->endDate, $this->cafeName),
-            new SalesPivotSheet($this->rows, $this->startDate, $this->endDate, $this->cafeName),
+            new SalesPivotSheet($this->rows, $this->startDate, $this->endDate, $this->cafeName, $this->subdealershipId),
         ];
     }
 }

@@ -175,26 +175,54 @@ class StoreController extends Controller
         );
         $dispatchesPaginator->appends($request->query());
 
-        // ── Stock: paginación estándar de Laravel, 15 por página ──
-        // El stock de EPP vive en InventoryStock (dimensionado por talla/color), no en el ledger
-        // equipment_stocks (solo computer/kitchen) — se consulta aparte cuando el tab activo es
-        // "EPP". "Todos" sigue mostrando solo computer/kitchen (unificar ambas tablas en una sola
-        // paginación requeriría un UNION; queda fuera de este alcance).
-        if ($typeFilter === 'epp') {
-            $stockQuery = InventoryStock::with(['stockable:id,name', 'color:id,name,hex_code'])
+        // ── Stock: paginación de ítems (15 por página) ──
+        $stockPage = max(1, (int) $request->input('stock_page', 1));
+
+        $getEquipmentStockItems = function () use ($locationId, $locationType, $modelClassFilter, $noResultsForType) {
+            if ($noResultsForType) {
+                return collect();
+            }
+            $query = EquipmentStock::with('stockable.responsible:id,name')->where('quantity', '>', 0);
+            if ($locationId && $locationType === 'cafe') {
+                $query->where('cafe_id', $locationId);
+            } elseif ($locationId) {
+                $query->where('unit_id', $locationId);
+            } else {
+                return collect();
+            }
+            if ($modelClassFilter) {
+                $query->where('stockable_type', $modelClassFilter);
+            }
+            return $query->orderBy('id')->get()->map(fn($s) => [
+                'id'                => $s->id,
+                'equipable_id'      => $s->stockable_id,
+                'equipable_type'    => str_contains($s->stockable_type, 'Computer') ? 'computer' : 'kitchen',
+                'equipment_name'    => $s->stockable?->name ?? '—',
+                'equipment_brand'   => $s->stockable?->brand,
+                'equipment_model'   => $s->stockable?->model,
+                'equipment_code'    => $s->stockable?->code,
+                'equipment_series'  => $s->stockable?->series,
+                'equipment_status'  => $s->stockable?->status,
+                'responsible_id'    => $s->stockable?->responsible_id,
+                'responsible_name'  => $s->stockable?->responsible?->name,
+                'cargo_path'        => $s->stockable?->cargo_path,
+                'quantity'          => $s->quantity,
+            ]);
+        };
+
+        $getEppStockItems = function () use ($locationId, $locationType) {
+            $query = InventoryStock::with(['stockable:id,name', 'color:id,name,hex_code'])
                 ->where('stockable_type', Epp::class)
                 ->where('quantity', '>', 0);
             if ($locationId && $locationType === 'cafe') {
-                $stockQuery->where('cafe_id', $locationId);
+                $query->where('cafe_id', $locationId);
             } elseif ($locationId) {
-                $stockQuery->where('unit_id', $locationId);
+                $query->where('unit_id', $locationId);
             } else {
-                $stockQuery->whereRaw('1 = 0');
+                return collect();
             }
-
-            $stockPaginator = $stockQuery->orderBy('id')->paginate(self::STOCK_PER_PAGE, ['*'], 'stock_page')->withQueryString();
-            $stockPaginator->getCollection()->transform(fn($s) => [
-                'id'                => $s->id,
+            return $query->orderBy('id')->get()->map(fn($s) => [
+                'id'                => 'epp-' . $s->id,
                 'equipable_id'      => $s->stockable_id,
                 'equipable_type'    => 'epp',
                 'equipment_name'    => $s->stockable?->name ?? '—',
@@ -207,39 +235,30 @@ class StoreController extends Controller
                 'color_name'        => $s->color?->name,
                 'responsible_id'    => null,
                 'responsible_name'  => null,
+                'cargo_path'        => null,
                 'quantity'          => $s->quantity,
             ]);
-        } else {
-            $stockQuery = EquipmentStock::with('stockable.responsible:id,name')->where('quantity', '>', 0);
-            if ($locationId && $locationType === 'cafe') {
-                $stockQuery->where('cafe_id', $locationId);
-            } elseif ($locationId) {
-                $stockQuery->where('unit_id', $locationId);
-            } else {
-                $stockQuery->whereRaw('1 = 0');
-            }
-            if ($modelClassFilter) {
-                $stockQuery->where('stockable_type', $modelClassFilter);
-            } elseif ($noResultsForType) {
-                $stockQuery->whereRaw('1 = 0');
-            }
+        };
 
-            $stockPaginator = $stockQuery->orderBy('id')->paginate(self::STOCK_PER_PAGE, ['*'], 'stock_page')->withQueryString();
-            $stockPaginator->getCollection()->transform(fn($s) => [
-                'id'                => $s->id,
-                'equipable_id'      => $s->stockable_id,
-                'equipable_type'    => str_contains($s->stockable_type, 'Computer') ? 'computer' : 'kitchen',
-                'equipment_name'    => $s->stockable?->name ?? '—',
-                'equipment_brand'   => $s->stockable?->brand,
-                'equipment_model'   => $s->stockable?->model,
-                'equipment_code'    => $s->stockable?->code,
-                'equipment_series'  => $s->stockable?->series,
-                'equipment_status'  => $s->stockable?->status,
-                'responsible_id'    => $s->stockable?->responsible_id,
-                'responsible_name'  => $s->stockable?->responsible?->name,
-                'quantity'          => $s->quantity,
-            ]);
+        if ($typeFilter === 'all') {
+            $stockCollection = $getEquipmentStockItems()->concat($getEppStockItems());
+        } elseif ($typeFilter === 'epp') {
+            $stockCollection = $getEppStockItems();
+        } else {
+            $stockCollection = $getEquipmentStockItems();
         }
+
+        $totalStock      = $stockCollection->count();
+        $pagedStockItems = $stockCollection->forPage($stockPage, self::STOCK_PER_PAGE)->values();
+
+        $stockPaginator = new LengthAwarePaginator(
+            $pagedStockItems,
+            $totalStock,
+            self::STOCK_PER_PAGE,
+            $stockPage,
+            ['path' => $request->url(), 'pageName' => 'stock_page']
+        );
+        $stockPaginator->appends($request->query());
 
         // Personal (Staff) que pertenece a la Unidad del café/unidad seleccionado — para poder
         // asignar equipos del stock directamente desde acá.
