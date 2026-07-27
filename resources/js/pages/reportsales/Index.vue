@@ -6,13 +6,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
-import { AlertTriangle, ChartBar, Loader2, Trash2 } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
+import { AlertTriangle, ChartBar, Check, ChevronDown, Loader2, Trash2 } from 'lucide-vue-next';
+import { computed, ref, watch } from 'vue';
 import SalesReportTable from './SalesReportTable.vue';
+import Swal from 'sweetalert2';
 
 interface Cafe {
     id: number;
@@ -32,7 +34,8 @@ interface Subdealership {
 interface Filters {
     start_date: string;
     end_date: string;
-    cafe_id: number | null;
+    cafe_id: number | string | null;
+    cafe_ids?: number[];
     subdealership_id: number | null;
 }
 
@@ -74,22 +77,97 @@ const props = defineProps<{
 // Filtros locales
 const startDate = ref(props.filters.start_date);
 const endDate = ref(props.filters.end_date);
-const selectedCafe = ref<string>(props.filters.cafe_id?.toString() || 'all');
 const selectedSubdealership = ref<string>(props.filters.subdealership_id?.toString() || 'all');
+
+const cafePopoverOpen = ref(false);
+
+const parseInitialCafeIds = (filters: Filters): number[] => {
+    if (filters.cafe_ids && Array.isArray(filters.cafe_ids) && filters.cafe_ids.length > 0) {
+        return filters.cafe_ids.map(Number);
+    }
+    if (filters.cafe_id && filters.cafe_id !== 'all') {
+        return [Number(filters.cafe_id)];
+    }
+    return [];
+};
+
+const selectedCafeIds = ref<number[]>(parseInitialCafeIds(props.filters));
+
+watch(
+    () => props.filters,
+    (newFilters) => {
+        selectedCafeIds.value = parseInitialCafeIds(newFilters);
+    },
+    { deep: true, immediate: true },
+);
+
+const isCafeSelected = (id: number | string): boolean => {
+    const numId = Number(id);
+    return selectedCafeIds.value.some((cId) => Number(cId) === numId);
+};
+
+const cafeSelectLabel = computed(() => {
+    const count = selectedCafeIds.value.length;
+    if (count === 0 || count === props.cafes.length) {
+        return 'Todas las cafeterías';
+    }
+    if (count === 1) {
+        const firstId = Number(selectedCafeIds.value[0]);
+        const found = props.cafes.find((c) => Number(c.id) === firstId);
+        return found ? `${found.name}${found.unit ? ` - ${found.unit.name}` : ''}` : '1 cafetería';
+    }
+    return `${count} cafeterías seleccionadas`;
+});
+
+const toggleAllCafes = () => {
+    selectedCafeIds.value = [];
+};
+
+const toggleCafe = (id: number | string) => {
+    const numId = Number(id);
+    if (isCafeSelected(numId)) {
+        selectedCafeIds.value = selectedCafeIds.value.filter((cId) => Number(cId) !== numId);
+    } else {
+        if (selectedCafeIds.value.length === 0) {
+            selectedCafeIds.value = [numId];
+        } else {
+            const updated = [...selectedCafeIds.value.map(Number), numId];
+            if (updated.length === props.cafes.length) {
+                selectedCafeIds.value = [];
+            } else {
+                selectedCafeIds.value = updated;
+            }
+        }
+    }
+};
 
 // Aplicar filtros
 const applyFilters = () => {
+    Swal.fire({
+        title: 'Cargando reporte...',
+        text: 'El sistema está procesando la información, por favor espera un momento.',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: () => {
+            Swal.showLoading();
+        },
+    });
+
     router.get(
         route('reportsales.index'),
         {
             start_date: startDate.value,
             end_date: endDate.value,
-            cafe_id: selectedCafe.value !== 'all' ? selectedCafe.value : null,
+            cafe_ids: selectedCafeIds.value.length > 0 ? selectedCafeIds.value : null,
             subdealership_id: selectedSubdealership.value !== 'all' ? selectedSubdealership.value : null,
         },
         {
             preserveState: true,
             preserveScroll: true,
+            onFinish: () => {
+                Swal.close();
+            },
         },
     );
 };
@@ -99,7 +177,7 @@ const resetFilters = () => {
     const today = new Date().toISOString().split('T')[0];
     startDate.value = today;
     endDate.value = today;
-    selectedCafe.value = 'all';
+    selectedCafeIds.value = [];
     selectedSubdealership.value = 'all';
     applyFilters();
 };
@@ -126,23 +204,44 @@ const buildParams = () => {
     const params = new URLSearchParams();
     params.set('start_date', startDate.value);
     params.set('end_date', endDate.value);
-    if (selectedCafe.value !== 'all') params.set('cafe_id', selectedCafe.value);
+    if (selectedCafeIds.value.length > 0) {
+        selectedCafeIds.value.forEach((id) => {
+            params.append('cafe_ids[]', id.toString());
+        });
+    }
     if (selectedSubdealership.value !== 'all') params.set('subdealership_id', selectedSubdealership.value);
     return params.toString();
 };
 
+const showExportLoader = () => {
+    Swal.fire({
+        title: 'Generando reporte Excel...',
+        text: 'El archivo se descargará en unos momentos. Por favor espera.',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        timer: 4000,
+        didOpen: () => {
+            Swal.showLoading();
+        },
+    });
+};
+
 // Reporte resumen (por subdealership, columnas D/A/C agrupado)
 const exportToExcel = () => {
+    showExportLoader();
     window.location.href = route('reportsales.export') + '?' + buildParams();
 };
 
 // Reporte valorización (matriz diaria: VLZ / SISTEMA / VISITAS / REFRIGERIOS)
 const exportValorizacion = () => {
+    showExportLoader();
     window.location.href = route('reportsales.export-vlz') + '?' + buildParams();
 };
 
 // Detalle de consumo — una fila por servicio consumido
 const exportDetail = () => {
+    showExportLoader();
     window.location.href = route('reportsales.export-detail') + '?' + buildParams();
 };
 
@@ -173,7 +272,7 @@ const fetchDuplicates = () => {
             params: {
                 start_date: startDate.value,
                 end_date: endDate.value,
-                cafe_id: selectedCafe.value !== 'all' ? selectedCafe.value : null,
+                cafe_ids: selectedCafeIds.value.length > 0 ? selectedCafeIds.value : null,
                 subdealership_id: selectedSubdealership.value !== 'all' ? selectedSubdealership.value : null,
             },
         })
@@ -311,17 +410,56 @@ const deleteDuplicateSale = (saleId: number) => {
 
                         <div class="space-y-2">
                             <Label for="cafe" class="text-xs font-bold tracking-wider text-slate-600 uppercase">Cafetería</Label>
-                            <Select v-model="selectedCafe">
-                                <SelectTrigger id="cafe" class="border-slate-300">
-                                    <SelectValue placeholder="Todas las cafeterías" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">Todas las cafeterías</SelectItem>
-                                    <SelectItem v-for="cafe in cafes" :key="cafe.id" :value="cafe.id.toString()">
-                                        {{ cafe.name }} {{ cafe.unit ? `- ${cafe.unit.name}` : '' }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
+                            <Popover v-model:open="cafePopoverOpen">
+                                <PopoverTrigger as-child>
+                                    <Button
+                                        id="cafe"
+                                        variant="outline"
+                                        role="combobox"
+                                        class="w-full justify-between border-slate-300 font-normal hover:bg-white text-slate-700 bg-white"
+                                    >
+                                        <span class="truncate">{{ cafeSelectLabel }}</span>
+                                        <ChevronDown class="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent class="w-[280px] p-2" align="start">
+                                    <div class="max-h-60 overflow-y-auto space-y-1">
+                                        <div
+                                            @click="toggleAllCafes"
+                                            class="flex items-center space-x-2.5 rounded-lg px-2.5 py-2 cursor-pointer transition-colors select-none"
+                                            :class="selectedCafeIds.length === 0 ? 'bg-emerald-50 text-emerald-900 font-medium' : 'hover:bg-slate-100 text-slate-700'"
+                                        >
+                                            <div
+                                                class="h-4 w-4 shrink-0 rounded border flex items-center justify-center transition-colors"
+                                                :class="selectedCafeIds.length === 0 ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300 bg-white'"
+                                            >
+                                                <Check v-if="selectedCafeIds.length === 0" class="h-3 w-3 stroke-[3]" />
+                                            </div>
+                                            <span class="text-sm font-semibold flex-1">
+                                                Todas las cafeterías
+                                            </span>
+                                        </div>
+                                        <div class="my-1 border-t border-slate-100"></div>
+                                        <div
+                                            v-for="cafe in cafes"
+                                            :key="cafe.id"
+                                            @click="toggleCafe(cafe.id)"
+                                            class="flex items-center space-x-2.5 rounded-lg px-2.5 py-2 cursor-pointer transition-colors select-none"
+                                            :class="isCafeSelected(cafe.id) ? 'bg-emerald-50 text-emerald-900 font-medium' : 'hover:bg-slate-100 text-slate-700'"
+                                        >
+                                            <div
+                                                class="h-4 w-4 shrink-0 rounded border flex items-center justify-center transition-colors"
+                                                :class="isCafeSelected(cafe.id) ? 'bg-emerald-600 border-emerald-600 text-white' : 'border-slate-300 bg-white'"
+                                            >
+                                                <Check v-if="isCafeSelected(cafe.id)" class="h-3 w-3 stroke-[3]" />
+                                            </div>
+                                            <span class="text-sm flex-1 truncate">
+                                                {{ cafe.name }} {{ cafe.unit ? `- ${cafe.unit.name}` : '' }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </PopoverContent>
+                            </Popover>
                         </div>
 
                         <div class="space-y-2">

@@ -3,6 +3,7 @@ import Icon from '@/components/Icon.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
@@ -41,11 +42,29 @@ interface Subdealership {
     name: string;
 }
 
+interface Mine {
+    id: number;
+    name: string;
+}
+
+interface Cafe {
+    id: number;
+    name: string;
+    unit?: {
+        id: number;
+        name: string;
+    };
+}
+
 const props = defineProps<{
     dinners: PaginatedDinners;
     subdealerships: Subdealership[];
+    mines?: Mine[];
+    cafes?: Cafe[];
     filters: {
         search?: string;
+        subdealership_id?: string;
+        mine_id?: string;
     };
     mine: Subdealership | null;
 }>();
@@ -59,6 +78,8 @@ const isModalOpen = ref(false);
 const editingDinner = ref<Dinner | null>(null);
 
 const search = ref(props.filters.search || '');
+const selectedSubdealership = ref(props.filters.subdealership_id || 'all');
+const selectedMine = ref(props.filters.mine_id || 'all');
 
 const form = useForm({});
 
@@ -83,20 +104,34 @@ const deleteDinner = (id: number) => {
     }
 };
 
-let searchTimeout: any = null;
-const handleSearch = () => {
-    if (searchTimeout) clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-        router.get(route('dinners.index'), { search: search.value }, { preserveState: true, preserveScroll: true, replace: true });
-    }, 400);
+const applyFilters = () => {
+    const params: Record<string, string> = {};
+    if (search.value.trim()) params.search = search.value.trim();
+    if (selectedSubdealership.value && selectedSubdealership.value !== 'all') params.subdealership_id = selectedSubdealership.value;
+    if (selectedMine.value && selectedMine.value !== 'all') params.mine_id = selectedMine.value;
+
+    router.get(route('dinners.index'), params, {
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+    });
 };
 
+let searchTimeout: any = null;
 watch(search, () => {
-    handleSearch();
+    if (searchTimeout) clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(applyFilters, 400);
+});
+
+watch([selectedSubdealership, selectedMine], () => {
+    applyFilters();
 });
 
 const clearFilters = () => {
     search.value = '';
+    selectedSubdealership.value = 'all';
+    selectedMine.value = 'all';
+    applyFilters();
 };
 </script>
 
@@ -124,7 +159,7 @@ const clearFilters = () => {
 
                 <div class="flex w-full flex-col items-stretch gap-3 sm:flex-row sm:items-center lg:w-auto">
                     <div class="min-w-[200px]">
-                        <ExcelDialog />
+                        <ExcelDialog :subdealerships="subdealerships" :cafes="cafes" />
                     </div>
                     <Button
                         @click="openCreateModal"
@@ -148,6 +183,34 @@ const clearFilters = () => {
                             placeholder="Buscar por nombre, DNI..."
                             class="focus:ring-primary/20 focus:border-primary h-11 rounded-xl border-slate-200 pl-10 transition-all"
                         />
+                    </div>
+
+                    <div>
+                        <Select v-model="selectedSubdealership">
+                            <SelectTrigger class="h-11 rounded-xl border-slate-200 bg-white">
+                                <SelectValue placeholder="Todas las Subconcesionarias" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">Todas las Subconcesionarias</SelectItem>
+                                <SelectItem v-for="sd in subdealerships" :key="sd.id" :value="sd.id.toString()">
+                                    {{ sd.name }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div>
+                        <Select v-model="selectedMine">
+                            <SelectTrigger class="h-11 rounded-xl border-slate-200 bg-white">
+                                <SelectValue placeholder="Todas las Minas" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">Todas las Minas</SelectItem>
+                                <SelectItem v-for="m in mines" :key="m.id" :value="m.id.toString()">
+                                    {{ m.name }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
 
                     <Button variant="outline" @click="clearFilters" class="h-11 rounded-xl border-slate-200 text-slate-500 hover:text-slate-900">

@@ -7,14 +7,22 @@ use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 
 class SalesReportExport implements WithMultipleSheets
 {
+    protected array $selectedCafeIds = [];
+
     public function __construct(
         protected string $startDate,
         protected string $endDate,
-        protected ?string $cafeId,
+        array|int|string|null $cafeId,
         protected ?int   $subdealershipId,
         protected array  $cafeIds,
         protected ?int   $businessId,
-    ) {}
+    ) {
+        if (is_array($cafeId)) {
+            $this->selectedCafeIds = array_values(array_filter(array_map('intval', $cafeId), fn($id) => $id > 0));
+        } elseif ($cafeId && $cafeId !== 'all') {
+            $this->selectedCafeIds = [(int) $cafeId];
+        }
+    }
 
     public function sheets(): array
     {
@@ -22,7 +30,7 @@ class SalesReportExport implements WithMultipleSheets
         $sales = Sale::query()
             ->whereIn('cafe_id', $this->cafeIds)
             ->whereBetween('date', [$this->startDate, $this->endDate])
-            ->when($this->cafeId, fn($q) => $q->where('cafe_id', $this->cafeId))
+            ->when(!empty($this->selectedCafeIds), fn($q) => $q->whereIn('cafe_id', $this->selectedCafeIds))
             ->with(['tickets.ticket_details'])
             ->get();
 

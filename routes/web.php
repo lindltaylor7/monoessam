@@ -251,6 +251,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('/', [DinnerController::class, 'index'])->name('index');
         Route::get('/check-dni', [DinnerController::class, 'checkDni'])->name('check-dni');
         Route::post('/save', [DinnerController::class, 'save'])->name('save');
+        Route::post('/excel', [SaleController::class, 'excel'])->name('excel');
         Route::put('/{dinner}', [DinnerController::class, 'update'])->name('update');
         Route::delete('/{dinner}', [DinnerController::class, 'destroy'])->name('destroy');
         Route::post('/', [DinnerController::class, 'store'])->name('store');

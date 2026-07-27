@@ -13,15 +13,22 @@ class SalesDetailExport implements WithMultipleSheets
 {
     /** Shared flat row data consumed by both sheets */
     private array $rows = [];
+    private array $selectedCafeIds = [];
 
     public function __construct(
         private readonly string  $startDate,
         private readonly string  $endDate,
-        private readonly ?string $cafeId,
+        array|int|string|null    $cafeId,
         private readonly ?int    $subdealershipId,
         private readonly array   $cafeIds,
         private readonly string  $cafeName,
+        private readonly ?int    $mineId = null,
     ) {
+        if (is_array($cafeId)) {
+            $this->selectedCafeIds = array_values(array_filter(array_map('intval', $cafeId), fn($id) => $id > 0));
+        } elseif ($cafeId && $cafeId !== 'all') {
+            $this->selectedCafeIds = [(int) $cafeId];
+        }
         $this->loadData();
     }
 
@@ -31,7 +38,7 @@ class SalesDetailExport implements WithMultipleSheets
         $query = Sale::query()
             ->whereIn('cafe_id', $this->cafeIds)
             ->whereBetween('date', [$this->startDate, $this->endDate])
-            ->when($this->cafeId, fn($q) => $q->where('cafe_id', $this->cafeId))
+            ->when(!empty($this->selectedCafeIds), fn($q) => $q->whereIn('cafe_id', $this->selectedCafeIds))
             ->with(['tickets.ticket_details']);
 
         if ($this->subdealershipId) {
@@ -73,7 +80,7 @@ class SalesDetailExport implements WithMultipleSheets
     {
         return [
             new SalesDetailSheet($this->rows, $this->startDate, $this->endDate, $this->cafeName),
-            new SalesPivotSheet($this->rows, $this->startDate, $this->endDate, $this->cafeName, $this->subdealershipId),
+            new SalesPivotSheet($this->rows, $this->startDate, $this->endDate, $this->cafeName, $this->subdealershipId, $this->mineId),
         ];
     }
 }

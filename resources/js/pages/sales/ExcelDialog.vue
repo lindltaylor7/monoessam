@@ -3,39 +3,143 @@ import Icon from '@/components/Icon.vue';
 import Button from '@/components/ui/button/Button.vue';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import Input from '@/components/ui/input/Input.vue';
-import { useForm } from '@inertiajs/vue3';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useForm, usePage } from '@inertiajs/vue3';
 import { Sheet } from 'lucide-vue-next';
+import Swal from 'sweetalert2';
 import { ref } from 'vue';
+
+interface Subdealership {
+    id: number;
+    name: string;
+}
+
+interface Cafe {
+    id: number;
+    name: string;
+    unit?: {
+        id: number;
+        name: string;
+    };
+}
+
+const props = defineProps<{
+    subdealerships?: Subdealership[];
+    cafes?: Cafe[];
+}>();
 
 const open = ref(false);
 
 const form = useForm({
-    file: null,
+    file: null as File | null,
+    subdealership_id: 'none',
+    cafe_id: 'none',
 });
 
 const handleFileChange = (event: any) => {
-    form.file = event.target.files[0]; // Asigna el archivo seleccionado al form
+    form.file = event.target.files[0];
 };
 
 const submit = () => {
-    // Verifica que se haya seleccionado un archivo
     if (!form.file) {
-        alert('Por favor selecciona un archivo');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Archivo requerido',
+            text: 'Por favor selecciona un archivo Excel.',
+        });
         return;
     }
 
-    // Crea un FormData para enviar el archivo
-    const formData = new FormData();
-    formData.append('file', form.file);
+    // Alerta de carga
+    Swal.fire({
+        title: 'Cargando datos...',
+        text: 'Por favor espera mientras se procesa el archivo Excel.',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: () => {
+            Swal.showLoading();
+        },
+    });
 
-    // Envía el formulario
     form.post(route('dinners.excel'), {
-        onSuccess: () => {
+        onSuccess: (page: any) => {
             open.value = false;
             form.reset();
+
+            const flashResults = page?.props?.flash?.importResults || (usePage().props as any)?.flash?.importResults;
+            const importedCount = flashResults?.imported ?? 0;
+            const duplicates = flashResults?.duplicates ?? [];
+
+            let duplicateHtml = '';
+            if (duplicates.length > 0) {
+                const listItems = duplicates
+                    .map(
+                        (item: any) => `
+                        <tr class="border-b border-amber-100 hover:bg-amber-100/50 transition-colors">
+                            <td class="py-2 px-3 text-left font-medium text-slate-800">${item.name}</td>
+                            <td class="py-2 px-3 text-center font-mono font-bold text-amber-900">${item.dni}</td>
+                            <td class="py-2 px-3 text-right text-xs text-amber-700 italic">${item.reason || 'Ya registrado'}</td>
+                        </tr>`,
+                    )
+                    .join('');
+
+                duplicateHtml = `
+                    <div class="mt-4 text-left">
+                        <div class="mb-2 flex items-center justify-between">
+                            <span class="text-xs font-extrabold uppercase tracking-wider text-amber-900">
+                                ⚠️ Registros omitidos (Repetidos: ${duplicates.length})
+                            </span>
+                        </div>
+                        <div class="max-h-56 overflow-y-auto rounded-xl border border-amber-200 bg-amber-50/70 p-1 shadow-inner">
+                            <table class="w-full text-xs">
+                                <thead>
+                                    <tr class="border-b border-amber-200 bg-amber-100/70 font-bold text-amber-950">
+                                        <th class="py-2 px-3 text-left">Nombre</th>
+                                        <th class="py-2 px-3 text-center">DNI</th>
+                                        <th class="py-2 px-3 text-right">Motivo</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${listItems}</tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const iconType = duplicates.length > 0 && importedCount === 0 ? 'warning' : duplicates.length > 0 ? 'info' : 'success';
+            const titleText = duplicates.length > 0 ? 'Resultado de la Carga' : '¡Carga Completada!';
+
+            Swal.fire({
+                icon: iconType,
+                title: titleText,
+                html: `
+                    <div class="space-y-2 text-sm text-slate-600">
+                        <p class="text-emerald-700 font-semibold flex items-center justify-center gap-1.5">
+                            <span>✅ Nuevos comensales registrados:</span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800">${importedCount}</span>
+                        </p>
+                        ${
+                            duplicates.length > 0
+                                ? `<p class="text-amber-800 font-medium">Se encontraron registros duplicados que fueron ignorados para prevenir duplicidad.</p>`
+                                : '<p class="text-slate-500 text-xs">Todos los registros del archivo fueron procesados e importados exitosamente.</p>'
+                        }
+                        ${duplicateHtml}
+                    </div>
+                `,
+                confirmButtonText: 'Entendido',
+                customClass: {
+                    confirmButton: 'bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl shadow-md transition-all',
+                },
+            });
         },
         onError: (errors: any) => {
             console.error('Error al subir el archivo:', errors);
+            Swal.fire({
+                icon: 'error',
+                title: 'Error de importación',
+                text: 'Ocurrió un error al procesar el archivo Excel. Por favor verifica el formato e intenta nuevamente.',
+            });
         },
     });
 };
@@ -69,7 +173,7 @@ const submit = () => {
                         Instrucciones de Formato
                     </h3>
                     <p class="mb-3 text-xs text-blue-800">Tu archivo Excel debe contener las siguientes columnas en este orden:</p>
-                    <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
+                    <div class="grid grid-cols-1 gap-2 md:grid-cols-3">
                         <div class="rounded-lg border border-blue-100 bg-white p-2">
                             <span class="text-xs font-bold text-blue-900">Columna A:</span>
                             <span class="ml-1 text-xs text-slate-600">Nombre completo</span>
@@ -80,15 +184,32 @@ const submit = () => {
                         </div>
                         <div class="rounded-lg border border-blue-100 bg-white p-2">
                             <span class="text-xs font-bold text-blue-900">Columna C:</span>
-                            <span class="ml-1 text-xs text-slate-600">Teléfono</span>
+                            <span class="ml-1 text-xs text-slate-600">Teléfono (opcional)</span>
                         </div>
-                        <div class="rounded-lg border border-blue-100 bg-white p-2">
-                            <span class="text-xs font-bold text-blue-900">Columna D:</span>
-                            <span class="ml-1 text-xs text-slate-600">ID Subconcesionaria</span>
-                        </div>
-                        <div class="rounded-lg border border-blue-100 bg-white p-2 md:col-span-2">
-                            <span class="text-xs font-bold text-blue-900">Columna E:</span>
-                            <span class="ml-1 text-xs text-slate-600">ID Cafetería</span>
+                    </div>
+                </div>
+
+                <!-- Asignación General -->
+                <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+                    <h3 class="flex items-center gap-2 text-sm font-bold text-slate-900">
+                        <Icon name="building" size="16" class="text-emerald-600" />
+                        Asignación General de Importación
+                    </h3>
+                    <p class="text-xs text-slate-500">Selecciona la Subconcesionaria que se asignará a los comensales del archivo:</p>
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 pt-1">
+                        <div class="space-y-1.5">
+                            <label class="text-xs font-bold uppercase tracking-wider text-slate-600">Subconcesionaria</label>
+                            <Select v-model="form.subdealership_id">
+                                <SelectTrigger class="h-10 rounded-xl border-slate-300 bg-white">
+                                    <SelectValue placeholder="Seleccionar subconcesionaria..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">Sin subconcesionaria</SelectItem>
+                                    <SelectItem v-for="sd in subdealerships" :key="sd.id" :value="sd.id.toString()">
+                                        {{ sd.name }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                     </div>
                 </div>
@@ -105,7 +226,7 @@ const submit = () => {
                             alt="Formato de Excel para importación"
                             class="w-full rounded-lg border border-slate-300 shadow-md"
                         />
-                        <p class="mt-3 text-center text-xs text-slate-500 italic">Ejemplo de formato correcto para la importación de comensales</p>
+                        <p class="mt-3 text-center text-xs text-slate-500 italic">Ejemplo de formato correcto para la importación de comensales (Columnas A, B y C)</p>
                     </div>
                 </div>
 
@@ -122,7 +243,7 @@ const submit = () => {
                         </li>
                         <li class="flex items-start gap-2">
                             <span class="mt-0.5 text-amber-600">•</span>
-                            <span>Los IDs de subconcesionaria y cafetería deben ser numéricos y válidos</span>
+                            <span>La subconcesionaria y cafetería seleccionadas arriba se asignarán a todos los registros del archivo</span>
                         </li>
                         <li class="flex items-start gap-2">
                             <span class="mt-0.5 text-amber-600">•</span>

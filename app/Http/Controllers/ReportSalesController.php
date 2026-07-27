@@ -16,6 +16,35 @@ use Maatwebsite\Excel\Facades\Excel;
 class ReportSalesController extends Controller
 {
     /**
+     * Parse cafe filter parameters into an array of cafe IDs.
+     */
+    protected function parseCafeFilter(Request $request): array
+    {
+        $cafeIds = $request->input('cafe_ids');
+
+        if (is_null($cafeIds) || $cafeIds === '') {
+            $cafeId = $request->input('cafe_id');
+            if (!is_null($cafeId) && $cafeId !== '' && $cafeId !== 'all') {
+                $cafeIds = [$cafeId];
+            }
+        }
+
+        if (is_string($cafeIds)) {
+            if ($cafeIds === 'all' || trim($cafeIds) === '') {
+                return [];
+            }
+            $cafeIds = explode(',', $cafeIds);
+        }
+
+        if (is_array($cafeIds)) {
+            $cafeIds = array_filter(array_map('intval', $cafeIds), fn($id) => $id > 0);
+            return array_values(array_unique($cafeIds));
+        }
+
+        return [];
+    }
+
+    /**
      * Display a listing of the resource.
      */
     public function index(Request $request)
@@ -40,7 +69,7 @@ class ReportSalesController extends Controller
         // Obtener filtros de la petición
         $startDate            = $request->input('start_date', date('Y-m-d'));
         $endDate              = $request->input('end_date', date('Y-m-d'));
-        $cafeFilter           = $request->input('cafe_id');
+        $selectedCafeIds      = $this->parseCafeFilter($request);
         $subdealershipFilter  = $request->input('subdealership_id');
 
         // Resolve name directly from DB so the lookup never silently returns null
@@ -67,7 +96,7 @@ class ReportSalesController extends Controller
         $salesQuery = Sale::query()
             ->whereIn('cafe_id', $cafeIds)
             ->whereBetween('date', [$startDate, $endDate])
-            ->when($cafeFilter, fn($q) => $q->where('cafe_id', $cafeFilter))
+            ->when(!empty($selectedCafeIds), fn($q) => $q->whereIn('cafe_id', $selectedCafeIds))
             ->when($subdealershipFilter, $applySubdealershipFilter)
             ->with(['tickets.dinner', 'tickets.ticket_details', 'cafe', 'cafe.unit'])
             ->orderBy('date', 'desc')
@@ -80,7 +109,7 @@ class ReportSalesController extends Controller
         $statsBase = Sale::query()
             ->whereIn('cafe_id', $cafeIds)
             ->whereBetween('date', [$startDate, $endDate])
-            ->when($cafeFilter, fn($q) => $q->where('cafe_id', $cafeFilter))
+            ->when(!empty($selectedCafeIds), fn($q) => $q->whereIn('cafe_id', $selectedCafeIds))
             ->when($subdealershipFilter, $applySubdealershipFilter);
 
         $totalAmount = (clone $statsBase)->sum('total');
@@ -93,7 +122,8 @@ class ReportSalesController extends Controller
             'filters'         => [
                 'start_date'       => $startDate,
                 'end_date'         => $endDate,
-                'cafe_id'          => $cafeFilter,
+                'cafe_id'          => count($selectedCafeIds) === 1 ? $selectedCafeIds[0] : null,
+                'cafe_ids'         => $selectedCafeIds,
                 'subdealership_id' => $subdealershipFilter,
             ],
             'statistics' => [
@@ -122,7 +152,7 @@ class ReportSalesController extends Controller
 
         $startDate           = $request->input('start_date', date('Y-m-d'));
         $endDate             = $request->input('end_date', date('Y-m-d'));
-        $cafeFilter          = $request->input('cafe_id');
+        $selectedCafeIds     = $this->parseCafeFilter($request);
         $subdealershipFilter = $request->input('subdealership_id');
 
         $subdealershipName = $subdealershipFilter
@@ -132,7 +162,7 @@ class ReportSalesController extends Controller
         $sales = Sale::query()
             ->whereIn('cafe_id', $cafeIds)
             ->whereBetween('date', [$startDate, $endDate])
-            ->when($cafeFilter, fn($q) => $q->where('cafe_id', $cafeFilter))
+            ->when(!empty($selectedCafeIds), fn($q) => $q->whereIn('cafe_id', $selectedCafeIds))
             ->when($subdealershipFilter, function ($q) use ($subdealershipFilter, $subdealershipName) {
                 $q->whereHas('tickets', function ($tq) use ($subdealershipFilter, $subdealershipName) {
                     $tq->where(function ($inner) use ($subdealershipFilter, $subdealershipName) {
@@ -201,16 +231,16 @@ class ReportSalesController extends Controller
         $user = Auth::user();
         $user->load(['units.cafes']);
 
-        $cafeIds    = $user->units->flatMap->cafes->unique('id')->pluck('id')->all();
-        $startDate  = $request->input('start_date', date('Y-m-d'));
-        $endDate    = $request->input('end_date', date('Y-m-d'));
-        $cafeId     = $request->input('cafe_id');
-        $sdId       = $request->input('subdealership_id') ? (int) $request->input('subdealership_id') : null;
+        $cafeIds         = $user->units->flatMap->cafes->unique('id')->pluck('id')->all();
+        $startDate       = $request->input('start_date', date('Y-m-d'));
+        $endDate         = $request->input('end_date', date('Y-m-d'));
+        $selectedCafeIds = $this->parseCafeFilter($request);
+        $sdId            = $request->input('subdealership_id') ? (int) $request->input('subdealership_id') : null;
 
         $fileName = 'reporte-ventas-' . $startDate . '-a-' . $endDate . '.xlsx';
 
         return Excel::download(
-            new SalesReportExport($startDate, $endDate, $cafeId, $sdId, $cafeIds, $user->business_id),
+            new SalesReportExport($startDate, $endDate, $selectedCafeIds, $sdId, $cafeIds, $user->business_id),
             $fileName,
         );
     }
@@ -224,22 +254,23 @@ class ReportSalesController extends Controller
         $user = Auth::user();
         $user->load(['units.cafes', 'business', 'mine']);
 
-        $cafeIds   = $user->units->flatMap->cafes->unique('id')->pluck('id')->all();
-        $startDate = $request->input('start_date', date('Y-m-d'));
-        $endDate   = $request->input('end_date', date('Y-m-d'));
-        $cafeId    = $request->input('cafe_id');
-        $sdId      = $request->input('subdealership_id') ? (int) $request->input('subdealership_id') : null;
+        $cafeIds         = $user->units->flatMap->cafes->unique('id')->pluck('id')->all();
+        $startDate       = $request->input('start_date', date('Y-m-d'));
+        $endDate         = $request->input('end_date', date('Y-m-d'));
+        $selectedCafeIds = $this->parseCafeFilter($request);
+        $sdId            = $request->input('subdealership_id') ? (int) $request->input('subdealership_id') : null;
 
         // Resolve cafe/unit for header
         $cafeInfo = ['name' => ''];
         $unitInfo = ['name' => ''];
-        if ($cafeId) {
-            $cafe = \App\Models\Cafe::with('unit')->find($cafeId);
-            $cafeInfo = ['name' => $cafe?->name ?? ''];
-            $unitInfo = ['name' => $cafe?->unit?->name ?? $user->mine?->name ?? ''];
+        if (!empty($selectedCafeIds)) {
+            $selectedCafes = \App\Models\Cafe::with('unit')->whereIn('id', $selectedCafeIds)->get();
+            $cafeInfo  = ['name' => $selectedCafes->pluck('name')->implode(', ')];
+            $unitNames = $selectedCafes->pluck('unit.name')->filter()->unique()->implode(', ');
+            $unitInfo  = ['name' => $unitNames ?: ($user->mine?->name ?? '')];
         } else {
             $firstCafe = $user->units->flatMap->cafes->first();
-            $cafeInfo  = ['name' => $firstCafe?->name ?? ''];
+            $cafeInfo  = ['name' => 'TODAS LAS CAFETERÍAS'];
             $unitInfo  = ['name' => $user->units->first()?->name ?? $user->mine?->name ?? ''];
         }
 
@@ -258,7 +289,7 @@ class ReportSalesController extends Controller
 
         return Excel::download(
             new ValorizacionExport(
-                $startDate, $endDate, $cafeId, $sdId,
+                $startDate, $endDate, $selectedCafeIds, $sdId,
                 $cafeIds, $user->business_id,
                 $businessInfo, $unitInfo, $cafeInfo, $aFavorDe,
             ),
@@ -273,24 +304,26 @@ class ReportSalesController extends Controller
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
-        $user->load(['units.cafes']);
+        $user->load(['units.cafes', 'mine']);
 
-        $cafeIds   = $user->units->flatMap->cafes->unique('id')->pluck('id')->all();
-        $startDate = $request->input('start_date', date('Y-m-d'));
-        $endDate   = $request->input('end_date', date('Y-m-d'));
-        $cafeId    = $request->input('cafe_id');
-        $sdId      = $request->input('subdealership_id') ? (int) $request->input('subdealership_id') : null;
+        $cafeIds         = $user->units->flatMap->cafes->unique('id')->pluck('id')->all();
+        $startDate       = $request->input('start_date', date('Y-m-d'));
+        $endDate         = $request->input('end_date', date('Y-m-d'));
+        $selectedCafeIds = $this->parseCafeFilter($request);
+        $sdId            = $request->input('subdealership_id') ? (int) $request->input('subdealership_id') : null;
 
         $cafeName = 'TODAS LAS CAFETERÍAS';
-        if ($cafeId) {
-            $cafe = \App\Models\Cafe::find($cafeId);
-            $cafeName = $cafe?->name ?? 'TODAS LAS CAFETERÍAS';
+        if (!empty($selectedCafeIds)) {
+            $selectedCafes = \App\Models\Cafe::whereIn('id', $selectedCafeIds)->pluck('name')->all();
+            if (!empty($selectedCafes)) {
+                $cafeName = implode(', ', $selectedCafes);
+            }
         }
 
         $fileName = 'detalle-consumo-' . $startDate . '-a-' . $endDate . '.xlsx';
 
         return Excel::download(
-            new SalesDetailExport($startDate, $endDate, $cafeId, $sdId, $cafeIds, $cafeName),
+            new SalesDetailExport($startDate, $endDate, $selectedCafeIds, $sdId, $cafeIds, $cafeName, $user->mine_id),
             $fileName,
         );
     }
@@ -341,3 +374,4 @@ class ReportSalesController extends Controller
         return redirect()->back()->with('success', 'Venta eliminada correctamente');
     }
 }
+
