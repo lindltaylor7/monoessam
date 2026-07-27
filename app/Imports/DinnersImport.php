@@ -11,6 +11,10 @@ class DinnersImport implements ToModel
     protected ?int $subdealershipId;
     protected ?int $cafeId;
 
+    protected array $duplicates = [];
+    protected int $importedCount = 0;
+    protected array $seenDnis = [];
+
     public function __construct(?int $subdealershipId = null, ?int $cafeId = null)
     {
         $this->subdealershipId = $subdealershipId;
@@ -29,10 +33,27 @@ class DinnersImport implements ToModel
             return null;
         }
 
-        $dni = trim($row['dni'] ?? $row[1] ?? '');
+        $rawDni = trim($row['dni'] ?? $row[1] ?? '');
+        $dni = preg_replace('/[^0-9]/', '', $rawDni);
         if (!$dni) {
             return null;
         }
+
+        // Check if DNI is already registered in DB or seen in this batch
+        $existsInDb  = Dinner::where('dni', $dni)->exists();
+        $seenInBatch = in_array($dni, $this->seenDnis, true);
+
+        if ($existsInDb || $seenInBatch) {
+            $this->duplicates[] = [
+                'name'   => $name,
+                'dni'    => $dni,
+                'reason' => $existsInDb ? 'Ya registrado' : 'Duplicado en Excel',
+            ];
+            return null;
+        }
+
+        $this->seenDnis[] = $dni;
+        $this->importedCount++;
 
         $subId = $this->subdealershipId ?: (isset($row[3]) && is_numeric($row[3]) ? (int) $row[3] : null);
 
@@ -49,5 +70,15 @@ class DinnersImport implements ToModel
         }
 
         return new Dinner($data);
+    }
+
+    public function getDuplicates(): array
+    {
+        return $this->duplicates;
+    }
+
+    public function getImportedCount(): int
+    {
+        return $this->importedCount;
     }
 }

@@ -430,9 +430,16 @@ class SaleController extends Controller
                 ? (int) $request->input('cafe_id')
                 : null;
 
-            Excel::import(new DinnersImport($subdealershipId, $cafeId), $fileSaved);
+            $import = new DinnersImport($subdealershipId, $cafeId);
+            Excel::import($import, $fileSaved);
 
-            return redirect()->back()->with('success', 'Comensales importados correctamente.');
+            $importedCount = $import->getImportedCount();
+            $duplicates    = $import->getDuplicates();
+
+            return redirect()->back()->with('importResults', [
+                'imported'   => $importedCount,
+                'duplicates' => $duplicates,
+            ]);
         }
 
         return redirect()->back()->with('error', 'No se pudo subir el archivo');

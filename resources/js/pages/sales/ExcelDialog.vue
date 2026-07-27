@@ -4,7 +4,7 @@ import Button from '@/components/ui/button/Button.vue';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import Input from '@/components/ui/input/Input.vue';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useForm } from '@inertiajs/vue3';
+import { useForm, usePage } from '@inertiajs/vue3';
 import { Sheet } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
 import { ref } from 'vue';
@@ -63,15 +63,74 @@ const submit = () => {
     });
 
     form.post(route('dinners.excel'), {
-        onSuccess: () => {
+        onSuccess: (page: any) => {
             open.value = false;
             form.reset();
+
+            const flashResults = page?.props?.flash?.importResults || (usePage().props as any)?.flash?.importResults;
+            const importedCount = flashResults?.imported ?? 0;
+            const duplicates = flashResults?.duplicates ?? [];
+
+            let duplicateHtml = '';
+            if (duplicates.length > 0) {
+                const listItems = duplicates
+                    .map(
+                        (item: any) => `
+                        <tr class="border-b border-amber-100 hover:bg-amber-100/50 transition-colors">
+                            <td class="py-2 px-3 text-left font-medium text-slate-800">${item.name}</td>
+                            <td class="py-2 px-3 text-center font-mono font-bold text-amber-900">${item.dni}</td>
+                            <td class="py-2 px-3 text-right text-xs text-amber-700 italic">${item.reason || 'Ya registrado'}</td>
+                        </tr>`,
+                    )
+                    .join('');
+
+                duplicateHtml = `
+                    <div class="mt-4 text-left">
+                        <div class="mb-2 flex items-center justify-between">
+                            <span class="text-xs font-extrabold uppercase tracking-wider text-amber-900">
+                                ⚠️ Registros omitidos (Repetidos: ${duplicates.length})
+                            </span>
+                        </div>
+                        <div class="max-h-56 overflow-y-auto rounded-xl border border-amber-200 bg-amber-50/70 p-1 shadow-inner">
+                            <table class="w-full text-xs">
+                                <thead>
+                                    <tr class="border-b border-amber-200 bg-amber-100/70 font-bold text-amber-950">
+                                        <th class="py-2 px-3 text-left">Nombre</th>
+                                        <th class="py-2 px-3 text-center">DNI</th>
+                                        <th class="py-2 px-3 text-right">Motivo</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${listItems}</tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const iconType = duplicates.length > 0 && importedCount === 0 ? 'warning' : duplicates.length > 0 ? 'info' : 'success';
+            const titleText = duplicates.length > 0 ? 'Resultado de la Carga' : '¡Carga Completada!';
+
             Swal.fire({
-                icon: 'success',
-                title: '¡Carga completada!',
-                text: 'Los comensales se han importado correctamente.',
-                timer: 2000,
-                showConfirmButton: false,
+                icon: iconType,
+                title: titleText,
+                html: `
+                    <div class="space-y-2 text-sm text-slate-600">
+                        <p class="text-emerald-700 font-semibold flex items-center justify-center gap-1.5">
+                            <span>✅ Nuevos comensales registrados:</span>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800">${importedCount}</span>
+                        </p>
+                        ${
+                            duplicates.length > 0
+                                ? `<p class="text-amber-800 font-medium">Se encontraron registros duplicados que fueron ignorados para prevenir duplicidad.</p>`
+                                : '<p class="text-slate-500 text-xs">Todos los registros del archivo fueron procesados e importados exitosamente.</p>'
+                        }
+                        ${duplicateHtml}
+                    </div>
+                `,
+                confirmButtonText: 'Entendido',
+                customClass: {
+                    confirmButton: 'bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-6 py-2.5 rounded-xl shadow-md transition-all',
+                },
             });
         },
         onError: (errors: any) => {

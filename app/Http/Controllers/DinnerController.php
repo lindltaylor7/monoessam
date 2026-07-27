@@ -34,11 +34,17 @@ class DinnerController extends Controller
 
         $query = Dinner::with(['subdealership', 'mine']);
 
-        if ($mineId) {
+        if ($request->filled('mine_id') && $request->get('mine_id') !== 'all') {
+            $query->where('mine_id', (int) $request->get('mine_id'));
+        } elseif ($mineId) {
             $query->where('mine_id', $mineId);
         }
 
-        if ($request->has('search')) {
+        if ($request->filled('subdealership_id') && $request->get('subdealership_id') !== 'all') {
+            $query->where('subdealership_id', (int) $request->get('subdealership_id'));
+        }
+
+        if ($request->filled('search')) {
             $search = $request->get('search');
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
@@ -52,14 +58,20 @@ class DinnerController extends Controller
             $subdealershipsQuery->whereHas('mines', fn($q) => $q->where('mines.id', $mineId));
         }
 
+        $minesQuery = Mine::query();
+        if ($mineId) {
+            $minesQuery->where('id', $mineId);
+        }
+
         $user->load(['units.cafes']);
         $cafes = $user->units->flatMap->cafes->unique('id')->values();
 
         return Inertia::render('dinners/Index', [
-            'dinners'        => $query->paginate(20)->withQueryString(),
+            'dinners'        => $query->orderBy('name')->paginate(20)->withQueryString(),
             'subdealerships' => $subdealershipsQuery->orderBy('name')->get(['id', 'name']),
+            'mines'          => $minesQuery->orderBy('name')->get(['id', 'name']),
             'cafes'          => $cafes,
-            'filters'        => $request->only(['search']),
+            'filters'        => $request->only(['search', 'subdealership_id', 'mine_id']),
         ]);
     }
 
