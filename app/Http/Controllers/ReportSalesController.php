@@ -304,7 +304,7 @@ class ReportSalesController extends Controller
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
-        $user->load(['units.cafes']);
+        $user->load(['units.cafes', 'mine']);
 
         $cafeIds         = $user->units->flatMap->cafes->unique('id')->pluck('id')->all();
         $startDate       = $request->input('start_date', date('Y-m-d'));
@@ -323,7 +323,7 @@ class ReportSalesController extends Controller
         $fileName = 'detalle-consumo-' . $startDate . '-a-' . $endDate . '.xlsx';
 
         return Excel::download(
-            new SalesDetailExport($startDate, $endDate, $selectedCafeIds, $sdId, $cafeIds, $cafeName),
+            new SalesDetailExport($startDate, $endDate, $selectedCafeIds, $sdId, $cafeIds, $cafeName, $user->mine_id),
             $fileName,
         );
     }

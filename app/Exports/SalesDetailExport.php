@@ -22,6 +22,7 @@ class SalesDetailExport implements WithMultipleSheets
         private readonly ?int    $subdealershipId,
         private readonly array   $cafeIds,
         private readonly string  $cafeName,
+        private readonly ?int    $mineId = null,
     ) {
         if (is_array($cafeId)) {
             $this->selectedCafeIds = array_values(array_filter(array_map('intval', $cafeId), fn($id) => $id > 0));
@@ -79,7 +80,7 @@ class SalesDetailExport implements WithMultipleSheets
     {
         return [
             new SalesDetailSheet($this->rows, $this->startDate, $this->endDate, $this->cafeName),
-            new SalesPivotSheet($this->rows, $this->startDate, $this->endDate, $this->cafeName, $this->subdealershipId),
+            new SalesPivotSheet($this->rows, $this->startDate, $this->endDate, $this->cafeName, $this->subdealershipId, $this->mineId),
         ];
     }
 }

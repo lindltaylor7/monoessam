@@ -49,6 +49,7 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
         private readonly string $endDate,
         private readonly string $cafeName,
         private readonly ?int   $subdealershipId = null,
+        private readonly ?int   $mineId = null,
     ) {
         $this->buildMatrix();
     }
@@ -89,8 +90,10 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
         }
 
         /* ── Add dinners without consumption belonging to the subdealerships ── */
+        $dinnerFilter = fn($q) => $this->mineId ? $q->where('mine_id', $this->mineId) : $q;
+
         if ($this->subdealershipId) {
-            $sdObj = Subdealership::with('dinners')->find($this->subdealershipId);
+            $sdObj = Subdealership::with(['dinners' => $dinnerFilter])->find($this->subdealershipId);
             if ($sdObj) {
                 $sdNameUpper = strtoupper(trim($sdObj->name));
                 $targetKey   = $sdNameUpper;
@@ -119,7 +122,7 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
         } else {
             $existingSdKeys = array_keys($this->matrix);
             if (!empty($existingSdKeys)) {
-                $subdealerships = Subdealership::with('dinners')->get();
+                $subdealerships = Subdealership::with(['dinners' => $dinnerFilter])->get();
                 foreach ($subdealerships as $sdObj) {
                     $sdNameUpper = strtoupper(trim($sdObj->name));
                     $targetKey   = null;
