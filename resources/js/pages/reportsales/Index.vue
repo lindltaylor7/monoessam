@@ -14,6 +14,7 @@ import axios from 'axios';
 import { AlertTriangle, ChartBar, Check, ChevronDown, Loader2, Trash2 } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 import SalesReportTable from './SalesReportTable.vue';
+import Swal from 'sweetalert2';
 
 interface Cafe {
     id: number;
@@ -142,6 +143,17 @@ const toggleCafe = (id: number | string) => {
 
 // Aplicar filtros
 const applyFilters = () => {
+    Swal.fire({
+        title: 'Cargando reporte...',
+        text: 'El sistema está procesando la información, por favor espera un momento.',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: () => {
+            Swal.showLoading();
+        },
+    });
+
     router.get(
         route('reportsales.index'),
         {
@@ -153,6 +165,9 @@ const applyFilters = () => {
         {
             preserveState: true,
             preserveScroll: true,
+            onFinish: () => {
+                Swal.close();
+            },
         },
     );
 };
@@ -198,18 +213,35 @@ const buildParams = () => {
     return params.toString();
 };
 
+const showExportLoader = () => {
+    Swal.fire({
+        title: 'Generando reporte Excel...',
+        text: 'El archivo se descargará en unos momentos. Por favor espera.',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        timer: 4000,
+        didOpen: () => {
+            Swal.showLoading();
+        },
+    });
+};
+
 // Reporte resumen (por subdealership, columnas D/A/C agrupado)
 const exportToExcel = () => {
+    showExportLoader();
     window.location.href = route('reportsales.export') + '?' + buildParams();
 };
 
 // Reporte valorización (matriz diaria: VLZ / SISTEMA / VISITAS / REFRIGERIOS)
 const exportValorizacion = () => {
+    showExportLoader();
     window.location.href = route('reportsales.export-vlz') + '?' + buildParams();
 };
 
 // Detalle de consumo — una fila por servicio consumido
 const exportDetail = () => {
+    showExportLoader();
     window.location.href = route('reportsales.export-detail') + '?' + buildParams();
 };
 
