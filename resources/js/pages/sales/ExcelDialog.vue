@@ -136,7 +136,7 @@ const submit = () => {
                         <Icon name="building" size="16" class="text-emerald-600" />
                         Asignación General de Importación
                     </h3>
-                    <p class="text-xs text-slate-500">Selecciona la Subconcesionaria y Cafetería que se asignarán a los comensales del archivo:</p>
+                    <p class="text-xs text-slate-500">Selecciona la Subconcesionaria que se asignará a los comensales del archivo:</p>
                     <div class="grid grid-cols-1 gap-4 md:grid-cols-2 pt-1">
                         <div class="space-y-1.5">
                             <label class="text-xs font-bold uppercase tracking-wider text-slate-600">Subconcesionaria</label>
@@ -148,21 +148,6 @@ const submit = () => {
                                     <SelectItem value="none">Sin subconcesionaria</SelectItem>
                                     <SelectItem v-for="sd in subdealerships" :key="sd.id" :value="sd.id.toString()">
                                         {{ sd.name }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div class="space-y-1.5">
-                            <label class="text-xs font-bold uppercase tracking-wider text-slate-600">Cafetería</label>
-                            <Select v-model="form.cafe_id">
-                                <SelectTrigger class="h-10 rounded-xl border-slate-300 bg-white">
-                                    <SelectValue placeholder="Seleccionar cafetería..." />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="none">Sin cafetería asignada</SelectItem>
-                                    <SelectItem v-for="cafe in cafes" :key="cafe.id" :value="cafe.id.toString()">
-                                        {{ cafe.name }} {{ cafe.unit ? `- ${cafe.unit.name}` : '' }}
                                     </SelectItem>
                                 </SelectContent>
                             </Select>
