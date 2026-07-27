@@ -41,9 +41,19 @@ interface Subdealership {
     name: string;
 }
 
+interface Cafe {
+    id: number;
+    name: string;
+    unit?: {
+        id: number;
+        name: string;
+    };
+}
+
 const props = defineProps<{
     dinners: PaginatedDinners;
     subdealerships: Subdealership[];
+    cafes?: Cafe[];
     filters: {
         search?: string;
     };
@@ -124,7 +134,7 @@ const clearFilters = () => {
 
                 <div class="flex w-full flex-col items-stretch gap-3 sm:flex-row sm:items-center lg:w-auto">
                     <div class="min-w-[200px]">
-                        <ExcelDialog />
+                        <ExcelDialog :subdealerships="subdealerships" :cafes="cafes" />
                     </div>
                     <Button
                         @click="openCreateModal"

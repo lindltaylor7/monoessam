@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Imports\DinnersImport;
 use App\Models\Business;
 use App\Models\Cafe;
-use App\Models\Mine;
 use App\Models\Dealership;
 use App\Models\Dinner;
+use App\Models\Mine;
 use App\Models\Receipt_type;
 use App\Models\Sale;
 use App\Models\Sale_type;
@@ -19,6 +20,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
+use Maatwebsite\Excel\Facades\Excel;
 use Mike42\Escpos\PrintConnectors\WindowsPrintConnector;
 use Mike42\Escpos\Printer;
 
@@ -417,15 +419,20 @@ class SaleController extends Controller
 
     public function excel(Request $request)
     {
-
         if ($request->hasFile('file')) {
-
             $fileName = time() . '.' . $request->file->getClientOriginalExtension();
             $fileSaved = $request->file->move(public_path('files'), $fileName);
 
-            Excel::import(new DinnersImport, $fileSaved);
+            $subdealershipId = $request->input('subdealership_id') && $request->input('subdealership_id') !== 'none'
+                ? (int) $request->input('subdealership_id')
+                : null;
+            $cafeId = $request->input('cafe_id') && $request->input('cafe_id') !== 'none'
+                ? (int) $request->input('cafe_id')
+                : null;
 
-            return redirect()->back()->with('success', 'Archivo subido correctamente');
+            Excel::import(new DinnersImport($subdealershipId, $cafeId), $fileSaved);
+
+            return redirect()->back()->with('success', 'Comensales importados correctamente.');
         }
 
         return redirect()->back()->with('error', 'No se pudo subir el archivo');

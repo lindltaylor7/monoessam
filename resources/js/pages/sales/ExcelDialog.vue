@@ -3,39 +3,84 @@ import Icon from '@/components/Icon.vue';
 import Button from '@/components/ui/button/Button.vue';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import Input from '@/components/ui/input/Input.vue';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm } from '@inertiajs/vue3';
 import { Sheet } from 'lucide-vue-next';
+import Swal from 'sweetalert2';
 import { ref } from 'vue';
+
+interface Subdealership {
+    id: number;
+    name: string;
+}
+
+interface Cafe {
+    id: number;
+    name: string;
+    unit?: {
+        id: number;
+        name: string;
+    };
+}
+
+const props = defineProps<{
+    subdealerships?: Subdealership[];
+    cafes?: Cafe[];
+}>();
 
 const open = ref(false);
 
 const form = useForm({
-    file: null,
+    file: null as File | null,
+    subdealership_id: 'none',
+    cafe_id: 'none',
 });
 
 const handleFileChange = (event: any) => {
-    form.file = event.target.files[0]; // Asigna el archivo seleccionado al form
+    form.file = event.target.files[0];
 };
 
 const submit = () => {
-    // Verifica que se haya seleccionado un archivo
     if (!form.file) {
-        alert('Por favor selecciona un archivo');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Archivo requerido',
+            text: 'Por favor selecciona un archivo Excel.',
+        });
         return;
     }
 
-    // Crea un FormData para enviar el archivo
-    const formData = new FormData();
-    formData.append('file', form.file);
+    // Alerta de carga
+    Swal.fire({
+        title: 'Cargando datos...',
+        text: 'Por favor espera mientras se procesa el archivo Excel.',
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        showConfirmButton: false,
+        didOpen: () => {
+            Swal.showLoading();
+        },
+    });
 
-    // Envía el formulario
     form.post(route('dinners.excel'), {
         onSuccess: () => {
             open.value = false;
             form.reset();
+            Swal.fire({
+                icon: 'success',
+                title: '¡Carga completada!',
+                text: 'Los comensales se han importado correctamente.',
+                timer: 2000,
+                showConfirmButton: false,
+            });
         },
         onError: (errors: any) => {
             console.error('Error al subir el archivo:', errors);
+            Swal.fire({
+                icon: 'error',
+                title: 'Error de importación',
+                text: 'Ocurrió un error al procesar el archivo Excel. Por favor verifica el formato e intenta nuevamente.',
+            });
         },
     });
 };
@@ -69,7 +114,7 @@ const submit = () => {
                         Instrucciones de Formato
                     </h3>
                     <p class="mb-3 text-xs text-blue-800">Tu archivo Excel debe contener las siguientes columnas en este orden:</p>
-                    <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
+                    <div class="grid grid-cols-1 gap-2 md:grid-cols-3">
                         <div class="rounded-lg border border-blue-100 bg-white p-2">
                             <span class="text-xs font-bold text-blue-900">Columna A:</span>
                             <span class="ml-1 text-xs text-slate-600">Nombre completo</span>
@@ -80,15 +125,47 @@ const submit = () => {
                         </div>
                         <div class="rounded-lg border border-blue-100 bg-white p-2">
                             <span class="text-xs font-bold text-blue-900">Columna C:</span>
-                            <span class="ml-1 text-xs text-slate-600">Teléfono</span>
+                            <span class="ml-1 text-xs text-slate-600">Teléfono (opcional)</span>
                         </div>
-                        <div class="rounded-lg border border-blue-100 bg-white p-2">
-                            <span class="text-xs font-bold text-blue-900">Columna D:</span>
-                            <span class="ml-1 text-xs text-slate-600">ID Subconcesionaria</span>
+                    </div>
+                </div>
+
+                <!-- Asignación General -->
+                <div class="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+                    <h3 class="flex items-center gap-2 text-sm font-bold text-slate-900">
+                        <Icon name="building" size="16" class="text-emerald-600" />
+                        Asignación General de Importación
+                    </h3>
+                    <p class="text-xs text-slate-500">Selecciona la Subconcesionaria y Cafetería que se asignarán a los comensales del archivo:</p>
+                    <div class="grid grid-cols-1 gap-4 md:grid-cols-2 pt-1">
+                        <div class="space-y-1.5">
+                            <label class="text-xs font-bold uppercase tracking-wider text-slate-600">Subconcesionaria</label>
+                            <Select v-model="form.subdealership_id">
+                                <SelectTrigger class="h-10 rounded-xl border-slate-300 bg-white">
+                                    <SelectValue placeholder="Seleccionar subconcesionaria..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">Sin subconcesionaria</SelectItem>
+                                    <SelectItem v-for="sd in subdealerships" :key="sd.id" :value="sd.id.toString()">
+                                        {{ sd.name }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
-                        <div class="rounded-lg border border-blue-100 bg-white p-2 md:col-span-2">
-                            <span class="text-xs font-bold text-blue-900">Columna E:</span>
-                            <span class="ml-1 text-xs text-slate-600">ID Cafetería</span>
+
+                        <div class="space-y-1.5">
+                            <label class="text-xs font-bold uppercase tracking-wider text-slate-600">Cafetería</label>
+                            <Select v-model="form.cafe_id">
+                                <SelectTrigger class="h-10 rounded-xl border-slate-300 bg-white">
+                                    <SelectValue placeholder="Seleccionar cafetería..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="none">Sin cafetería asignada</SelectItem>
+                                    <SelectItem v-for="cafe in cafes" :key="cafe.id" :value="cafe.id.toString()">
+                                        {{ cafe.name }} {{ cafe.unit ? `- ${cafe.unit.name}` : '' }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
                     </div>
                 </div>
@@ -105,7 +182,7 @@ const submit = () => {
                             alt="Formato de Excel para importación"
                             class="w-full rounded-lg border border-slate-300 shadow-md"
                         />
-                        <p class="mt-3 text-center text-xs text-slate-500 italic">Ejemplo de formato correcto para la importación de comensales</p>
+                        <p class="mt-3 text-center text-xs text-slate-500 italic">Ejemplo de formato correcto para la importación de comensales (Columnas A, B y C)</p>
                     </div>
                 </div>
 
@@ -122,7 +199,7 @@ const submit = () => {
                         </li>
                         <li class="flex items-start gap-2">
                             <span class="mt-0.5 text-amber-600">•</span>
-                            <span>Los IDs de subconcesionaria y cafetería deben ser numéricos y válidos</span>
+                            <span>La subconcesionaria y cafetería seleccionadas arriba se asignarán a todos los registros del archivo</span>
                         </li>
                         <li class="flex items-start gap-2">
                             <span class="mt-0.5 text-amber-600">•</span>

@@ -52,9 +52,13 @@ class DinnerController extends Controller
             $subdealershipsQuery->whereHas('mines', fn($q) => $q->where('mines.id', $mineId));
         }
 
+        $user->load(['units.cafes']);
+        $cafes = $user->units->flatMap->cafes->unique('id')->values();
+
         return Inertia::render('dinners/Index', [
             'dinners'        => $query->paginate(20)->withQueryString(),
             'subdealerships' => $subdealershipsQuery->orderBy('name')->get(['id', 'name']),
+            'cafes'          => $cafes,
             'filters'        => $request->only(['search']),
         ]);
     }
