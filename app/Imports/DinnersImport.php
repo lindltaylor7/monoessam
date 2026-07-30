@@ -40,14 +40,21 @@ class DinnersImport implements ToModel
         }
 
         // Check if DNI is already registered in DB or seen in this batch
-        $existsInDb  = Dinner::where('dni', $dni)->exists();
-        $seenInBatch = in_array($dni, $this->seenDnis, true);
+        $existingDinner = Dinner::with('mine')->where('dni', $dni)->first();
+        $seenInBatch    = in_array($dni, $this->seenDnis, true);
 
-        if ($existsInDb || $seenInBatch) {
+        if ($existingDinner || $seenInBatch) {
+            $mineName = $existingDinner?->mine?->name;
+            if (!$mineName && Auth::user()?->mine_id) {
+                $userMine = Auth::user()->loadMissing('mine')->mine;
+                $mineName = $userMine?->name;
+            }
+
             $this->duplicates[] = [
-                'name'   => $name,
-                'dni'    => $dni,
-                'reason' => $existsInDb ? 'Ya registrado' : 'Duplicado en Excel',
+                'name'      => $name,
+                'dni'       => $dni,
+                'mine_name' => $mineName ?: 'Sin Mina',
+                'reason'    => $existingDinner ? 'Ya registrado' : 'Duplicado en Excel',
             ];
             return null;
         }

@@ -79,6 +79,7 @@ const submit = () => {
                         <tr class="border-b border-amber-100 hover:bg-amber-100/50 transition-colors">
                             <td class="py-2 px-3 text-left font-medium text-slate-800">${item.name}</td>
                             <td class="py-2 px-3 text-center font-mono font-bold text-amber-900">${item.dni}</td>
+                            <td class="py-2 px-3 text-left text-xs font-semibold text-slate-700">${item.mine_name || item.mine || 'Sin Mina'}</td>
                             <td class="py-2 px-3 text-right text-xs text-amber-700 italic">${item.reason || 'Ya registrado'}</td>
                         </tr>`,
                     )
@@ -97,6 +98,7 @@ const submit = () => {
                                     <tr class="border-b border-amber-200 bg-amber-100/70 font-bold text-amber-950">
                                         <th class="py-2 px-3 text-left">Nombre</th>
                                         <th class="py-2 px-3 text-center">DNI</th>
+                                        <th class="py-2 px-3 text-left">Mina</th>
                                         <th class="py-2 px-3 text-right">Motivo</th>
                                     </tr>
                                 </thead>
