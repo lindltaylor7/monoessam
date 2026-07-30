@@ -1,1 +1,0 @@
-import{g as r}from"./useForwardExpose-BDri9wO7.js";import{p as i,c as l}from"./app--USGdp1C.js";function c(){const e=i(),m=l(()=>{var t,n;return["#text","#comment"].includes((t=e.value)==null?void 0:t.$el.nodeName)?(n=e.value)==null?void 0:n.$el.nextElementSibling:r(e)});return{primitiveElement:e,currentElement:m}}export{c as u};
