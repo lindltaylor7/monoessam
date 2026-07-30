@@ -37,14 +37,110 @@ watch(
     },
 );
 
-// Real-time duplicate detection as the user types
-const duplicateMatch = computed(() => {
+// ── Levenshtein Distance & Fuzzy Similarity Search ──────────────────────
+function levenshteinDistance(a: string, b: string): number {
+    const lenA = a.length;
+    const lenB = b.length;
+    if (lenA === 0) return lenB;
+    if (lenB === 0) return lenA;
+
+    const row = new Array(lenB + 1);
+    for (let j = 0; j <= lenB; j++) row[j] = j;
+
+    for (let i = 1; i <= lenA; i++) {
+        let prev = i;
+        for (let j = 1; j <= lenB; j++) {
+            const val = a[i - 1] === b[j - 1] ? row[j - 1] : Math.min(row[j - 1] + 1, prev + 1, row[j] + 1);
+            row[j - 1] = prev;
+            prev = val;
+        }
+        row[lenB] = prev;
+    }
+
+    return row[lenB];
+}
+
+function normalizeName(str: string): string {
+    return (str || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\b(s\.?a\.?c?|e\.?i\.?r\.?l\.?|s\.?r\.?l\.?|s\.?a\.?)\b/g, '')
+        .replace(/[^a-z0-9]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function calculateSimilarity(rawA: string, rawB: string): number {
+    const normA = normalizeName(rawA);
+    const normB = normalizeName(rawB);
+
+    if (!normA || !normB) return 0;
+    if (normA === normB) return 1.0;
+
+    // Substring inclusion check
+    if (normA.length >= 4 && normB.length >= 4) {
+        if (normA.includes(normB) || normB.includes(normA)) {
+            const ratio = Math.min(normA.length, normB.length) / Math.max(normA.length, normB.length);
+            if (ratio >= 0.5) return Math.max(0.85, ratio);
+        }
+    }
+
+    // Word token overlap check
+    const wordsA = normA.split(' ').filter((w) => w.length > 1);
+    const wordsB = normB.split(' ').filter((w) => w.length > 1);
+    if (wordsA.length > 0 && wordsB.length > 0) {
+        const intersection = wordsA.filter((w) =>
+            wordsB.some((wb) => wb === w || (w.length > 3 && wb.includes(w)) || (wb.length > 3 && w.includes(wb))),
+        );
+        const union = new Set([...wordsA, ...wordsB]);
+        const jaccard = intersection.length / union.size;
+        if (jaccard >= 0.6) return Math.max(0.8, jaccard);
+    }
+
+    const distance = levenshteinDistance(normA, normB);
+    const maxLen = Math.max(normA.length, normB.length);
+    return 1 - distance / maxLen;
+}
+
+interface SimilarMatch {
+    subdealership: Subdealership;
+    similarity: number;
+    isExact: boolean;
+}
+
+const similarMatches = computed<SimilarMatch[]>(() => {
     const trimmed = (form.name ?? '').trim();
-    if (!trimmed) return null;
-    const lower = trimmed.toLowerCase();
-    return props.existingSubdealerships.find(
-        (s) => (s.name ?? '').trim().toLowerCase() === lower,
-    ) ?? null;
+    if (trimmed.length < 3) return [];
+
+    const matches: SimilarMatch[] = [];
+
+    for (const s of props.existingSubdealerships || []) {
+        if (s.id === props.editingSubdealership?.id) continue;
+        const name = (s.name ?? '').trim();
+        if (!name) continue;
+
+        const sim = calculateSimilarity(trimmed, name);
+        const isExact = normalizeName(trimmed) === normalizeName(name);
+
+        if (isExact || sim >= 0.6) {
+            matches.push({
+                subdealership: s,
+                similarity: Math.round(sim * 100),
+                isExact,
+            });
+        }
+    }
+
+    return matches.sort((a, b) => b.similarity - a.similarity);
+});
+
+const duplicateMatch = computed(() => {
+    return similarMatches.value.length > 0 ? similarMatches.value[0].subdealership : null;
+});
+
+const hasExactMatch = computed(() => {
+    return similarMatches.value.some((m) => m.isExact || m.similarity >= 95);
 });
 
 const closeModal = () => {
@@ -53,17 +149,19 @@ const closeModal = () => {
     form.clearErrors();
 };
 
+const useExistingMatch = (id: number) => {
+    closeModal();
+    emit('attachExisting', id);
+};
+
 const useExisting = () => {
     const match = duplicateMatch.value;
     if (!match) return;
-    closeModal();
-    emit('attachExisting', match.id);
+    useExistingMatch(match.id);
 };
 
 const submitCreate = () => {
-    // Block creation if a duplicate is detected in real time
-    if (duplicateMatch.value) return;
-
+    if (hasExactMatch.value) return;
     emit('submitCreate', form);
 };
 
@@ -106,8 +204,12 @@ watch(
                     <!-- Header -->
                     <div class="relative bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-6 text-white">
                         <div class="pr-8">
-                            <h3 class="text-xl font-bold tracking-tight">Crear Subconcesionaria</h3>
-                            <p class="mt-0.5 text-sm text-blue-100/80">Completa los datos del nuevo registro</p>
+                            <h3 class="text-xl font-bold tracking-tight">
+                                {{ editingSubdealership ? 'Editar Subconcesionaria' : 'Crear Subconcesionaria' }}
+                            </h3>
+                            <p class="mt-0.5 text-sm text-blue-100/80">
+                                {{ editingSubdealership ? 'Actualiza la información de la subconcesionaria' : 'Completa los datos del nuevo registro' }}
+                            </p>
                         </div>
                         <button
                             @click="closeModal"
@@ -137,14 +239,14 @@ watch(
                                     type="text"
                                     placeholder="Ej. Transportes del Norte S.A."
                                     class="w-full rounded-lg border px-3.5 py-2.5 text-sm transition placeholder:text-slate-300 focus:ring-2 focus:outline-none"
-                                    :class="duplicateMatch
+                                    :class="similarMatches.length > 0
                                         ? 'border-amber-400 bg-amber-50 focus:border-amber-400 focus:ring-amber-100'
                                         : form.errors.name
                                             ? 'border-red-400 bg-red-50 focus:border-red-400 focus:ring-red-100'
                                             : 'border-slate-200 bg-white focus:border-blue-400 focus:ring-blue-100'"
                                 />
 
-                                <!-- Duplicate warning (real-time) -->
+                                <!-- Similar / Duplicate warning (Levenshtein search) -->
                                 <Transition
                                     enter-active-class="transition ease-out duration-200"
                                     enter-from-class="opacity-0 -translate-y-1"
@@ -153,7 +255,7 @@ watch(
                                     leave-from-class="opacity-100 translate-y-0"
                                     leave-to-class="opacity-0 -translate-y-1"
                                 >
-                                    <div v-if="duplicateMatch" class="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                                    <div v-if="similarMatches.length > 0" class="mt-2.5 rounded-xl border border-amber-200 bg-amber-50/90 p-3.5 shadow-xs">
                                         <div class="flex items-start gap-3">
                                             <div class="mt-0.5 flex-shrink-0 text-amber-500">
                                                 <svg class="h-4 w-4" fill="currentColor" viewBox="0 0 20 20">
@@ -161,24 +263,44 @@ watch(
                                                 </svg>
                                             </div>
                                             <div class="min-w-0 flex-1">
-                                                <p class="text-xs font-semibold text-amber-800">Ya existe una subconcesionaria con este nombre</p>
-                                                <div class="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-amber-700">
-                                                    <span class="font-medium">{{ duplicateMatch.name }}</span>
-                                                    <span v-if="duplicateMatch.ruc" class="text-amber-600">RUC: {{ duplicateMatch.ruc }}</span>
+                                                <p class="text-xs font-bold text-amber-900">
+                                                    {{ hasExactMatch ? 'Ya existe una subconcesionaria con nombre similar o idéntico:' : 'Se encontraron registros parecidos (Búsqueda por similitud Levenshtein):' }}
+                                                </p>
+                                                <div class="mt-2 space-y-2">
+                                                    <div
+                                                        v-for="match in similarMatches.slice(0, 3)"
+                                                        :key="match.subdealership.id"
+                                                        class="flex items-center justify-between gap-3 rounded-lg bg-white/90 border border-amber-200/80 px-3 py-2 text-xs shadow-2xs"
+                                                    >
+                                                        <div class="min-w-0 flex-1">
+                                                            <div class="flex items-center gap-2">
+                                                                <span class="font-semibold text-slate-900 truncate">{{ match.subdealership.name }}</span>
+                                                                <span
+                                                                    class="flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold"
+                                                                    :class="match.similarity >= 85 ? 'bg-amber-100 text-amber-800 border border-amber-200' : 'bg-slate-100 text-slate-700 border border-slate-200'"
+                                                                >
+                                                                    {{ match.similarity }}% similitud
+                                                                </span>
+                                                            </div>
+                                                            <p v-if="match.subdealership.ruc" class="text-[11px] text-slate-500 mt-0.5 font-mono">
+                                                                RUC: {{ match.subdealership.ruc }}
+                                                            </p>
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            @click="useExistingMatch(match.subdealership.id)"
+                                                            class="flex-shrink-0 rounded-md bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-600 active:scale-95 shadow-xs"
+                                                        >
+                                                            Usar esta
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <button
-                                                type="button"
-                                                @click="useExisting"
-                                                class="flex-shrink-0 rounded-md bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-amber-600 active:scale-95"
-                                            >
-                                                Usar esta
-                                            </button>
                                         </div>
                                     </div>
                                 </Transition>
 
-                                <p v-if="form.errors.name && !duplicateMatch" class="mt-1.5 flex items-center gap-1 text-xs font-semibold text-red-500">
+                                <p v-if="form.errors.name && similarMatches.length === 0" class="mt-1.5 flex items-center gap-1 text-xs font-semibold text-red-500">
                                     <svg class="h-3.5 w-3.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                                         <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
                                     </svg>
@@ -254,7 +376,7 @@ watch(
                                 Cancelar
                             </button>
                             <button
-                                v-if="duplicateMatch"
+                                v-if="duplicateMatch && hasExactMatch"
                                 type="button"
                                 @click="useExisting"
                                 class="flex items-center gap-2 rounded-lg bg-amber-500 px-6 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600 active:scale-95"
@@ -278,7 +400,7 @@ watch(
                                 <svg v-else class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                                 </svg>
-                                Crear Subconcesionaria
+                                {{ editingSubdealership ? 'Guardar Cambios' : 'Crear Subconcesionaria' }}
                             </button>
                         </div>
                     </div>
