@@ -305,6 +305,8 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     // VENTAS
     // ========================================================================
     Route::get('pos', [PosController::class, 'index'])->name('pos.index');
+    Route::get('pos/report', [PosController::class, 'report'])->name('pos.report');
+    Route::get('pos/export-report', [PosController::class, 'exportReport'])->name('pos.export-report');
     Route::post('pos/store', [PosController::class, 'store'])->name('pos.store');
 
     Route::prefix('products')->name('products.')->group(function () {

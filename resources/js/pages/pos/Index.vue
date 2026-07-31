@@ -1,9 +1,10 @@
 <script setup lang="ts">
+import { Dialog, DialogHeader, DialogScrollContent, DialogTitle } from '@/components/ui/dialog';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
 import {
-    CalendarDays, Clock, Loader2,
+    BarChart3, CalendarDays, ChevronDown, ChevronUp, Clock, FileSpreadsheet, Loader2,
     Package, RotateCcw, Search, ShoppingBag, Store, X,
 } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
@@ -17,6 +18,7 @@ interface Product {
     sku?: string;
     category?: string;
     price: number;
+    stock?: number;
     is_active: boolean;
 }
 
@@ -59,7 +61,36 @@ const saletypeSelected  = ref<number>(props.sale_types[0]?.id ?? 0);
 const activeCategory    = ref<string>('all');
 const searchQuery       = ref('');
 
+const PAYMENT_METHODS = [
+    { id: 'efectivo',      label: 'Efectivo',      icon: '💵', bgActive: 'bg-emerald-600' },
+    { id: 'yape',          label: 'Yape',          icon: '📱', bgActive: 'bg-purple-600' },
+    { id: 'plin',          label: 'Plin',          icon: '🟣', bgActive: 'bg-cyan-600' },
+    { id: 'tarjeta',       label: 'Tarjeta',       icon: '💳', bgActive: 'bg-indigo-600' },
+    { id: 'transferencia', label: 'Transferencia', icon: '🏛️', bgActive: 'bg-slate-700' },
+];
+
+const paymentConditionSelected = ref<'contado' | 'credito'>('contado');
+const paymentMethodSelected    = ref<string>('efectivo');
+
 const submitting = ref(false);
+
+// ── Report Modal State ──────────────────────────────────────────────────────
+const showReportModal   = ref(false);
+const reportFromDate    = ref('');
+const reportToDate      = ref('');
+const reportMercantilId = ref<number | string>('all');
+const loadingReport     = ref(false);
+const expandedSaleId    = ref<number | null>(null);
+
+interface ReportData {
+    sales: any[];
+    total_money: number;
+    total_subtotal: number;
+    total_igv: number;
+    total_sales_count: number;
+    total_items_count: number;
+}
+const reportData = ref<ReportData | null>(null);
 
 interface CartItem {
     productId:  number;
@@ -98,18 +129,46 @@ const cartItem     = (id: number) => cart.value.find(i => i.productId === id);
 
 // ── Cart ───────────────────────────────────────────────────────────────────
 const addToCart = (product: Product) => {
-    const existing = cartItem(product.id);
+    const fullProduct = mercantilProducts.value.find(p => p.id === product.id) ?? product;
+    const existing = cartItem(fullProduct.id);
+    const currentQty = existing ? existing.quantity : 0;
+    const stockAvailable = fullProduct.stock ?? 0;
+
+    if (stockAvailable <= 0) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Sin stock',
+            text: `El producto "${fullProduct.name}" no cuenta con stock disponible.`,
+            confirmButtonColor: '#dc2626',
+            timer: 2000,
+            timerProgressBar: true,
+        });
+        return;
+    }
+
+    if (currentQty >= stockAvailable) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Límite de stock',
+            text: `Solo hay ${stockAvailable} unidades disponibles de "${fullProduct.name}".`,
+            confirmButtonColor: '#dc2626',
+            timer: 2000,
+            timerProgressBar: true,
+        });
+        return;
+    }
+
     if (existing) {
         existing.quantity++;
         existing.total = +(existing.quantity * existing.unit_price).toFixed(2);
     } else {
         cart.value.push({
-            productId:  product.id,
-            name:       product.name,
-            category:   product.category ?? 'Sin categoría',
-            unit_price: product.price,
+            productId:  fullProduct.id,
+            name:       fullProduct.name,
+            category:   fullProduct.category ?? 'Sin categoría',
+            unit_price: fullProduct.price,
             quantity:   1,
-            total:      product.price,
+            total:      fullProduct.price,
         });
     }
 };
@@ -125,7 +184,92 @@ const decreaseQty = (id: number) => {
 const removeItem = (id: number) => { cart.value = cart.value.filter(i => i.productId !== id); };
 const clearCart  = () => { cart.value = []; };
 
-// ── Submit ─────────────────────────────────────────────────────────────────
+// ── Report Modal Functions ──────────────────────────────────────────────────
+function getWeekRange() {
+    const now = new Date();
+    const day = now.getDay();
+    const diffToMonday = (day === 0 ? -6 : 1 - day);
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diffToMonday);
+
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+
+    const fmt = (d: Date) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const date = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${date}`;
+    };
+
+    return { start: fmt(monday), end: fmt(sunday) };
+}
+
+function openReportModal() {
+    const { start, end } = getWeekRange();
+    reportFromDate.value = start;
+    reportToDate.value   = end;
+    reportMercantilId.value = mercantilSelected.value || 'all';
+    showReportModal.value = true;
+    fetchReportData();
+}
+
+function setPresetRange(type: 'today' | 'week' | 'month') {
+    const now = new Date();
+    const fmt = (d: Date) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const date = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${date}`;
+    };
+
+    if (type === 'today') {
+        const todayStr = fmt(now);
+        reportFromDate.value = todayStr;
+        reportToDate.value   = todayStr;
+    } else if (type === 'week') {
+        const { start, end } = getWeekRange();
+        reportFromDate.value = start;
+        reportToDate.value   = end;
+    } else if (type === 'month') {
+        const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+        const lastDay  = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        reportFromDate.value = fmt(firstDay);
+        reportToDate.value   = fmt(lastDay);
+    }
+    fetchReportData();
+}
+
+async function fetchReportData() {
+    if (!reportFromDate.value || !reportToDate.value) return;
+    loadingReport.value = true;
+    try {
+        const res = await axios.get('/pos/report', {
+            params: {
+                from: reportFromDate.value,
+                to: reportToDate.value,
+                mercantil_id: reportMercantilId.value === 'all' ? null : reportMercantilId.value,
+            },
+        });
+        reportData.value = res.data;
+    } catch (err) {
+        console.error(err);
+        Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudo obtener el reporte de ventas.' });
+    } finally {
+        loadingReport.value = false;
+    }
+}
+
+function toggleExpandSale(id: number) {
+    expandedSaleId.value = expandedSaleId.value === id ? null : id;
+}
+
+function exportReportToExcel() {
+    if (!reportFromDate.value || !reportToDate.value) return;
+    const mercantil = reportMercantilId.value === 'all' ? '' : reportMercantilId.value;
+    const url = `/pos/export-report?from=${reportFromDate.value}&to=${reportToDate.value}&mercantil_id=${mercantil}`;
+    window.location.href = url;
+}
 const submit = async () => {
     if (!mercantilSelected.value) { Swal.fire({ icon: 'warning', title: 'Sin mercantil', text: 'Selecciona un mercantil.', confirmButtonColor: '#dc2626' }); return; }
     if (!cart.value.length)       { Swal.fire({ icon: 'warning', title: 'Carrito vacío', text: 'Agrega al menos un producto.', confirmButtonColor: '#dc2626' }); return; }
@@ -133,12 +277,16 @@ const submit = async () => {
     submitting.value = true;
     try {
         const fd = new FormData();
-        fd.append('mercantil_id',  mercantilSelected.value.toString());
-        fd.append('sale_type_id',  saletypeSelected.value.toString());
-        fd.append('products',      JSON.stringify(cart.value));
-        fd.append('date',          dateSelected.value);
+        fd.append('mercantil_id',      mercantilSelected.value.toString());
+        fd.append('sale_type_id',      saletypeSelected.value.toString());
+        fd.append('payment_condition', paymentConditionSelected.value);
+        fd.append('payment_method',    paymentMethodSelected.value);
+        fd.append('products',          JSON.stringify(cart.value));
+        fd.append('date',              dateSelected.value);
 
         await axios.post('/pos/store', fd);
+
+        router.reload({ only: ['mercantiles'] });
 
         await Swal.fire({
             icon: 'success', title: '¡Venta registrada!',
@@ -195,6 +343,16 @@ const submit = async () => {
                     />
                 </div>
 
+                <!-- Report button -->
+                <button
+                    @click="openReportModal"
+                    type="button"
+                    class="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors shadow-2xs"
+                >
+                    <BarChart3 class="h-4 w-4 text-indigo-600" />
+                    <span class="hidden sm:inline">Reporte de Ventas</span>
+                </button>
+
                 <div class="ml-auto flex items-center gap-4">
                     <div class="text-right">
                         <p class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">En carrito</p>
@@ -246,10 +404,13 @@ const submit = async () => {
                             <button
                                 v-for="product in filtered" :key="product.id"
                                 @click="addToCart(product)"
-                                :class="['group relative flex flex-col items-center gap-2.5 rounded-2xl border-2 p-4 text-center transition-all duration-200 active:scale-95',
-                                    inCart(product.id)
-                                        ? `${categoryMeta(product.category ?? 'Sin categoría').accent} border-transparent text-white shadow-lg ring-4 ${categoryMeta(product.category ?? 'Sin categoría').ring}`
-                                        : `border-white bg-white hover:shadow-md ${categoryMeta(product.category ?? 'Sin categoría').bg}`]"
+                                :disabled="(product.stock ?? 0) <= 0"
+                                :class="['group relative flex flex-col items-center gap-2 rounded-2xl border-2 p-4 text-center transition-all duration-200 active:scale-95',
+                                    (product.stock ?? 0) <= 0
+                                        ? 'opacity-60 cursor-not-allowed border-zinc-200 bg-zinc-100'
+                                        : inCart(product.id)
+                                            ? `${categoryMeta(product.category ?? 'Sin categoría').accent} border-transparent text-white shadow-lg ring-4 ${categoryMeta(product.category ?? 'Sin categoría').ring}`
+                                            : `border-white bg-white hover:shadow-md ${categoryMeta(product.category ?? 'Sin categoría').bg}`]"
                             >
                                 <!-- Qty badge when in cart -->
                                 <div
@@ -259,8 +420,36 @@ const submit = async () => {
                                     {{ cartItem(product.id)?.quantity }}
                                 </div>
 
+                                <!-- Stock badge top-left -->
+                                <div
+                                    :class="[
+                                        'absolute top-2 left-2 flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold tracking-tight',
+                                        inCart(product.id)
+                                            ? 'bg-white/20 text-white'
+                                            : (product.stock ?? 0) <= 0
+                                                ? 'bg-red-100 text-red-700 border border-red-200'
+                                                : (product.stock ?? 0) <= 5
+                                                    ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    ]"
+                                >
+                                    <span
+                                        :class="[
+                                            'h-1.5 w-1.5 rounded-full',
+                                            inCart(product.id)
+                                                ? 'bg-white'
+                                                : (product.stock ?? 0) <= 0
+                                                    ? 'bg-red-500'
+                                                    : (product.stock ?? 0) <= 5
+                                                        ? 'bg-amber-500'
+                                                        : 'bg-emerald-500'
+                                        ]"
+                                    ></span>
+                                    {{ (product.stock ?? 0) <= 0 ? 'Sin stock' : `Stock: ${product.stock ?? 0}` }}
+                                </div>
+
                                 <!-- Icon -->
-                                <div :class="['flex h-14 w-14 items-center justify-center rounded-xl text-2xl transition-colors',
+                                <div :class="['mt-2 flex h-14 w-14 items-center justify-center rounded-xl text-2xl transition-colors',
                                     inCart(product.id) ? 'bg-white/20' : `${categoryMeta(product.category ?? 'Sin categoría').bg} shadow-sm`]">
                                     {{ categoryMeta(product.category ?? 'Sin categoría').emoji }}
                                 </div>
@@ -339,6 +528,56 @@ const submit = async () => {
 
                     <!-- Totals & submit -->
                     <div class="space-y-3 border-t bg-white px-5 py-4">
+                        <!-- Payment Condition & Method Options -->
+                        <div class="space-y-2.5 rounded-xl border border-zinc-200 bg-zinc-50/80 p-3 text-xs">
+                            <!-- Condición: Contado vs Crédito -->
+                            <div>
+                                <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-500 block mb-1">Condición de Pago</span>
+                                <div class="grid grid-cols-2 gap-1.5">
+                                    <button
+                                        type="button"
+                                        @click="paymentConditionSelected = 'contado'"
+                                        :class="['flex items-center justify-center gap-1 rounded-lg py-1.5 font-bold transition-all text-xs',
+                                            paymentConditionSelected === 'contado'
+                                                ? 'bg-emerald-600 text-white shadow-xs'
+                                                : 'bg-white text-zinc-600 border border-zinc-200 hover:bg-zinc-100']"
+                                    >
+                                        <span>💵 Contado</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        @click="paymentConditionSelected = 'credito'"
+                                        :class="['flex items-center justify-center gap-1 rounded-lg py-1.5 font-bold transition-all text-xs',
+                                            paymentConditionSelected === 'credito'
+                                                ? 'bg-amber-600 text-white shadow-xs'
+                                                : 'bg-white text-zinc-600 border border-zinc-200 hover:bg-zinc-100']"
+                                    >
+                                        <span>⏳ Crédito</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Método de Pago -->
+                            <div>
+                                <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-500 block mb-1">Tipo de Pago</span>
+                                <div class="grid grid-cols-3 gap-1">
+                                    <button
+                                        v-for="method in PAYMENT_METHODS"
+                                        :key="method.id"
+                                        type="button"
+                                        @click="paymentMethodSelected = method.id"
+                                        :class="['flex items-center justify-center gap-1 rounded-lg py-1.5 px-1 font-bold text-[11px] transition-all',
+                                            paymentMethodSelected === method.id
+                                                ? `${method.bgActive} text-white shadow-xs`
+                                                : 'bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-100']"
+                                    >
+                                        <span>{{ method.icon }}</span>
+                                        <span>{{ method.label }}</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="space-y-1.5 rounded-xl bg-zinc-50 p-3 text-sm">
                             <div class="flex justify-between text-zinc-500">
                                 <span>Subtotal</span>
@@ -374,6 +613,209 @@ const submit = async () => {
             </div>
         </div>
     </AppLayout>
+
+    <!-- ── REPORT MODAL ─────────────────────────────────────────────────────── -->
+    <Dialog v-model:open="showReportModal">
+        <DialogScrollContent class="max-w-5xl">
+            <DialogHeader>
+                <DialogTitle class="flex items-center gap-2 text-xl font-bold text-indigo-900">
+                    <BarChart3 class="h-6 w-6 text-indigo-600" />
+                    <span>Reporte de Ventas por Período</span>
+                </DialogTitle>
+            </DialogHeader>
+
+            <div class="grid grid-cols-1 gap-6 lg:grid-cols-12 py-2">
+                <!-- Left Side: Date controls & Filters (lg:col-span-4) -->
+                <div class="space-y-4 lg:col-span-4">
+                    <div class="rounded-xl border border-zinc-200 bg-zinc-50/70 p-4 space-y-3">
+                        <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
+                            <CalendarDays class="h-4 w-4 text-zinc-400" />
+                            Rango de Fechas
+                        </h3>
+
+                        <!-- Shortcuts -->
+                        <div class="grid grid-cols-3 gap-1.5">
+                            <button
+                                type="button"
+                                @click="setPresetRange('today')"
+                                class="rounded-md border border-zinc-200 bg-white py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 hover:text-indigo-600 transition-colors"
+                            >
+                                Hoy
+                            </button>
+                            <button
+                                type="button"
+                                @click="setPresetRange('week')"
+                                class="rounded-md border border-indigo-200 bg-indigo-50 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
+                            >
+                                Esta Semana
+                            </button>
+                            <button
+                                type="button"
+                                @click="setPresetRange('month')"
+                                class="rounded-md border border-zinc-200 bg-white py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 hover:text-indigo-600 transition-colors"
+                            >
+                                Este Mes
+                            </button>
+                        </div>
+
+                        <div class="space-y-2 pt-1">
+                            <div>
+                                <label class="text-[11px] font-bold text-zinc-600">Fecha Inicio</label>
+                                <input
+                                    type="date"
+                                    v-model="reportFromDate"
+                                    @change="fetchReportData"
+                                    class="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                                />
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-bold text-zinc-600">Fecha Fin</label>
+                                <input
+                                    type="date"
+                                    v-model="reportToDate"
+                                    @change="fetchReportData"
+                                    class="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                                />
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-bold text-zinc-600">Mercantil / Local</label>
+                                <select
+                                    v-model="reportMercantilId"
+                                    @change="fetchReportData"
+                                    class="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                                >
+                                    <option value="all">Todos los mercantiles</option>
+                                    <option v-for="m in mercantiles" :key="m.id" :value="m.id">
+                                        {{ m.name }}
+                                    </option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- KPI Summary Cards -->
+                    <div v-if="reportData" class="grid grid-cols-2 gap-2">
+                        <div class="col-span-2 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 text-center">
+                            <p class="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Total Recaudado</p>
+                            <p class="text-2xl font-black text-indigo-700">S/ {{ reportData.total_money.toFixed(2) }}</p>
+                        </div>
+                        <div class="rounded-xl border border-zinc-200 bg-white p-3 text-center shadow-2xs">
+                            <p class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Ventas</p>
+                            <p class="text-lg font-black text-zinc-800">{{ reportData.total_sales_count }}</p>
+                        </div>
+                        <div class="rounded-xl border border-zinc-200 bg-white p-3 text-center shadow-2xs">
+                            <p class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Ítems Vendidos</p>
+                            <p class="text-lg font-black text-zinc-800">{{ reportData.total_items_count }}</p>
+                        </div>
+                    </div>
+
+                    <!-- Export Excel Button -->
+                    <button
+                        type="button"
+                        @click="exportReportToExcel"
+                        :disabled="loadingReport || !reportData?.sales?.length"
+                        class="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-200 transition-all hover:bg-emerald-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <FileSpreadsheet class="h-4 w-4" />
+                        <span>Exportar Ventas a Excel</span>
+                    </button>
+                </div>
+
+                <!-- Right Side: Sales list & Details (lg:col-span-8) -->
+                <div class="lg:col-span-8 flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white">
+                    <div class="flex items-center justify-between border-b bg-zinc-50 px-4 py-2.5">
+                        <span class="text-xs font-bold uppercase tracking-wider text-zinc-700 flex items-center gap-1.5">
+                            <ShoppingBag class="h-4 w-4 text-indigo-600" />
+                            Historial de Ventas ({{ reportData?.sales?.length ?? 0 }})
+                        </span>
+                        <span v-if="loadingReport" class="flex items-center gap-1.5 text-xs text-indigo-600 font-semibold">
+                            <Loader2 class="h-3.5 w-3.5 animate-spin" /> Cargando...
+                        </span>
+                    </div>
+
+                    <div class="max-h-[420px] overflow-y-auto p-3">
+                        <div v-if="loadingReport && !reportData" class="flex h-48 flex-col items-center justify-center gap-2 text-zinc-400">
+                            <Loader2 class="h-8 w-8 animate-spin text-indigo-500" />
+                            <p class="text-xs">Cargando reporte de ventas...</p>
+                        </div>
+
+                        <div v-else-if="!reportData?.sales?.length" class="flex h-48 flex-col items-center justify-center gap-2 text-zinc-400">
+                            <Package class="h-10 w-10 opacity-30" />
+                            <p class="text-sm font-medium">No se registraron ventas en este período</p>
+                        </div>
+
+                        <div v-else class="space-y-2">
+                            <div
+                                v-for="sale in reportData.sales"
+                                :key="sale.id"
+                                class="rounded-xl border border-zinc-200 bg-white overflow-hidden transition-all hover:border-zinc-300"
+                            >
+                                <!-- Sale Header row -->
+                                <div
+                                    @click="toggleExpandSale(sale.id)"
+                                    class="flex items-center justify-between gap-2 p-3 cursor-pointer hover:bg-zinc-50/80 transition-colors"
+                                >
+                                    <div class="space-y-1">
+                                        <div class="flex items-center gap-1.5 flex-wrap">
+                                            <span class="text-sm font-bold text-zinc-900">Venta #{{ sale.id }}</span>
+                                            <span class="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-600">
+                                                {{ sale.mercantil?.name || 'Mercantil' }}
+                                            </span>
+                                            <span
+                                                :class="['rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-tight',
+                                                    sale.payment_condition === 'credito' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800']"
+                                            >
+                                                {{ sale.payment_condition === 'credito' ? 'Crédito' : 'Contado' }}
+                                            </span>
+                                            <span class="rounded-full bg-purple-50 text-purple-700 px-2 py-0.5 text-[10px] font-bold capitalize flex items-center gap-1">
+                                                <span>{{ PAYMENT_METHODS.find(m => m.id === sale.payment_method)?.icon || '💵' }}</span>
+                                                <span>{{ sale.payment_method || 'efectivo' }}</span>
+                                            </span>
+                                            <span v-if="sale.sale_type" class="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                                                {{ sale.sale_type.name }}
+                                            </span>
+                                        </div>
+                                        <p class="text-[11px] text-zinc-400">
+                                            {{ sale.date }} · {{ sale.user?.name || 'Usuario' }}
+                                        </p>
+                                    </div>
+
+                                    <div class="flex items-center gap-3">
+                                        <div class="text-right">
+                                            <p class="text-sm font-black text-indigo-600">S/ {{ Number(sale.total).toFixed(2) }}</p>
+                                            <p class="text-[10px] text-zinc-400">{{ sale.details?.length || 0 }} productos</p>
+                                        </div>
+                                        <component :is="expandedSaleId === sale.id ? ChevronUp : ChevronDown" class="h-4 w-4 text-zinc-400" />
+                                    </div>
+                                </div>
+
+                                <!-- Expanded Details -->
+                                <div v-if="expandedSaleId === sale.id" class="border-t bg-zinc-50/60 p-3 text-xs space-y-1.5">
+                                    <p class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Detalle de Productos</p>
+                                    <div class="space-y-1">
+                                        <div
+                                            v-for="detail in sale.details"
+                                            :key="detail.id"
+                                            class="flex items-center justify-between text-zinc-700 bg-white rounded-lg px-2.5 py-1.5 border border-zinc-100"
+                                        >
+                                            <div>
+                                                <span class="font-bold text-zinc-800">{{ detail.product_name }}</span>
+                                                <span v-if="detail.category" class="ml-1 text-[10px] text-zinc-400">({{ detail.category }})</span>
+                                            </div>
+                                            <div class="flex items-center gap-3">
+                                                <span class="font-medium text-zinc-500">{{ detail.quantity }} x S/ {{ Number(detail.unit_price).toFixed(2) }}</span>
+                                                <span class="font-bold text-zinc-900">S/ {{ Number(detail.subtotal).toFixed(2) }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </DialogScrollContent>
+    </Dialog>
 </template>
 
 <style scoped>

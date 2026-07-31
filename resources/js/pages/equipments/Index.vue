@@ -6,6 +6,8 @@ import axios from 'axios';
 import {
     AlertTriangle,
     CheckCircle2,
+    ChevronLeft,
+    ChevronRight,
     ClipboardList,
     Clock,
     FileText,
@@ -150,6 +152,10 @@ const activeTab = ref<'computer' | 'kitchen'>('computer');
 const searchComputer = ref('');
 const searchKitchen = ref('');
 
+const itemsPerPage = 20;
+const currentPageComputer = ref(1);
+const currentPageKitchen = ref(1);
+
 // Form modal
 const showForm = ref(false);
 const editTarget = ref<(ComputerEquipment | KitchenEquipment) | null>(null);
@@ -185,7 +191,7 @@ const historyProcessing = ref(false);
 // Delete confirm
 const deleteTarget = ref<{ id: number; type: string; name: string } | null>(null);
 
-// ── Filtered lists ─────────────────────────────────────────────────────────
+// ── Filtered lists & Pagination ─────────────────────────────────────────────
 const filteredComputer = computed(() => {
     const q = searchComputer.value.toLowerCase();
     return q
@@ -198,6 +204,27 @@ const filteredKitchen = computed(() => {
     return q
         ? props.kitchenEquipments.filter((e) => [e.name, e.brand, e.model, e.code, e.series].some((f) => f?.toLowerCase().includes(q)))
         : props.kitchenEquipments;
+});
+
+const totalPagesComputer = computed(() => Math.ceil(filteredComputer.value.length / itemsPerPage) || 1);
+const totalPagesKitchen = computed(() => Math.ceil(filteredKitchen.value.length / itemsPerPage) || 1);
+
+const paginatedComputer = computed(() => {
+    const start = (currentPageComputer.value - 1) * itemsPerPage;
+    return filteredComputer.value.slice(start, start + itemsPerPage);
+});
+
+const paginatedKitchen = computed(() => {
+    const start = (currentPageKitchen.value - 1) * itemsPerPage;
+    return filteredKitchen.value.slice(start, start + itemsPerPage);
+});
+
+watch(searchComputer, () => {
+    currentPageComputer.value = 1;
+});
+
+watch(searchKitchen, () => {
+    currentPageKitchen.value = 1;
 });
 
 // ── Equipment form ─────────────────────────────────────────────────────────
@@ -565,7 +592,7 @@ function fmtDate(d: string) {
                                             <p class="text-sm">No hay equipos tecnológicos registrados</p>
                                         </td>
                                     </tr>
-                                    <tr v-for="item in filteredComputer" :key="item.id" class="hover:bg-muted/30 border-t transition">
+                                    <tr v-for="item in paginatedComputer" :key="item.id" class="hover:bg-muted/30 border-t transition">
                                         <td class="px-4 py-3">
                                             <span class="bg-muted rounded px-2 py-0.5 font-mono text-xs">{{ item.code || '—' }}</span>
                                         </td>
@@ -650,6 +677,35 @@ function fmtDate(d: string) {
                                 </tbody>
                             </table>
                         </div>
+                        <!-- Pagination -->
+                        <div v-if="totalPagesComputer > 1" class="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3 bg-muted/20">
+                            <div class="text-xs text-muted-foreground">
+                                Mostrando <span class="font-bold text-foreground">{{ (currentPageComputer - 1) * itemsPerPage + 1 }}</span> a
+                                <span class="font-bold text-foreground">{{ Math.min(currentPageComputer * itemsPerPage, filteredComputer.length) }}</span> de
+                                <span class="font-bold text-foreground">{{ filteredComputer.length }}</span> equipos
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <Button variant="outline" size="sm" :disabled="currentPageComputer === 1" @click="currentPageComputer--" class="h-8 gap-1 rounded-md px-2.5 text-xs">
+                                    <ChevronLeft class="h-3.5 w-3.5" /> Anterior
+                                </Button>
+                                <div class="mx-1 flex items-center gap-1">
+                                    <Button
+                                        v-for="page in totalPagesComputer"
+                                        :key="page"
+                                        v-show="page === 1 || page === totalPagesComputer || (page >= currentPageComputer - 1 && page <= currentPageComputer + 1)"
+                                        size="sm"
+                                        :variant="currentPageComputer === page ? 'default' : 'ghost'"
+                                        @click="currentPageComputer = page"
+                                        class="h-8 w-8 rounded-md p-0 text-xs"
+                                    >
+                                        {{ page }}
+                                    </Button>
+                                </div>
+                                <Button variant="outline" size="sm" :disabled="currentPageComputer === totalPagesComputer" @click="currentPageComputer++" class="h-8 gap-1 rounded-md px-2.5 text-xs">
+                                    Siguiente <ChevronRight class="h-3.5 w-3.5" />
+                                </Button>
+                            </div>
+                        </div>
                     </div>
                 </TabsContent>
 
@@ -686,7 +742,7 @@ function fmtDate(d: string) {
                                             <p class="text-sm">No hay equipos de menaje registrados</p>
                                         </td>
                                     </tr>
-                                    <tr v-for="item in filteredKitchen" :key="item.id" class="hover:bg-muted/30 border-t transition">
+                                    <tr v-for="item in paginatedKitchen" :key="item.id" class="hover:bg-muted/30 border-t transition">
                                         <td class="px-4 py-3">
                                             <span class="bg-muted rounded px-2 py-0.5 font-mono text-xs">{{ item.code || '—' }}</span>
                                         </td>
@@ -770,6 +826,35 @@ function fmtDate(d: string) {
                                     </tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <!-- Pagination -->
+                        <div v-if="totalPagesKitchen > 1" class="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-3 bg-muted/20">
+                            <div class="text-xs text-muted-foreground">
+                                Mostrando <span class="font-bold text-foreground">{{ (currentPageKitchen - 1) * itemsPerPage + 1 }}</span> a
+                                <span class="font-bold text-foreground">{{ Math.min(currentPageKitchen * itemsPerPage, filteredKitchen.length) }}</span> de
+                                <span class="font-bold text-foreground">{{ filteredKitchen.length }}</span> equipos
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <Button variant="outline" size="sm" :disabled="currentPageKitchen === 1" @click="currentPageKitchen--" class="h-8 gap-1 rounded-md px-2.5 text-xs">
+                                    <ChevronLeft class="h-3.5 w-3.5" /> Anterior
+                                </Button>
+                                <div class="mx-1 flex items-center gap-1">
+                                    <Button
+                                        v-for="page in totalPagesKitchen"
+                                        :key="page"
+                                        v-show="page === 1 || page === totalPagesKitchen || (page >= currentPageKitchen - 1 && page <= currentPageKitchen + 1)"
+                                        size="sm"
+                                        :variant="currentPageKitchen === page ? 'default' : 'ghost'"
+                                        @click="currentPageKitchen = page"
+                                        class="h-8 w-8 rounded-md p-0 text-xs"
+                                    >
+                                        {{ page }}
+                                    </Button>
+                                </div>
+                                <Button variant="outline" size="sm" :disabled="currentPageKitchen === totalPagesKitchen" @click="currentPageKitchen++" class="h-8 gap-1 rounded-md px-2.5 text-xs">
+                                    Siguiente <ChevronRight class="h-3.5 w-3.5" />
+                                </Button>
+                            </div>
                         </div>
                     </div>
                 </TabsContent>

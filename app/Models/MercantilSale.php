@@ -16,6 +16,8 @@ class MercantilSale extends Model
         'unit_id',
         'user_id',
         'sale_type_id',
+        'payment_method',
+        'payment_condition',
         'date',
         'subtotal',
         'igv',
