@@ -17,11 +17,15 @@ return new class extends Migration
                 $table->foreign('level_id')->references('id')->on('levels')->onDelete('cascade');
             });
 
-            DB::statement('
-                UPDATE dish_recipes dr
-                JOIN dish_recipe_levels drl ON dr.id = drl.dish_recipe_id
-                SET dr.level_id = drl.level_id
-            ');
+            // Backfill sin JOIN en el UPDATE (sintaxis MySQL-only) para que la migración
+            // también corra en sqlite (usado por la suite de tests con RefreshDatabase).
+            DB::table('dish_recipe_levels')
+                ->orderBy('id')
+                ->chunk(200, function ($rows) {
+                    foreach ($rows as $row) {
+                        DB::table('dish_recipes')->where('id', $row->dish_recipe_id)->update(['level_id' => $row->level_id]);
+                    }
+                });
         }
     }
 

@@ -1,12 +1,27 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { Minus, Package, Pencil, Plus, Search, Store, Tag, ToggleLeft, ToggleRight, Trash2 } from 'lucide-vue-next';
+import {
+    AlertTriangle,
+    CalendarClock,
+    Layers,
+    Minus,
+    Package,
+    Pencil,
+    Plus,
+    Search,
+    Store,
+    Tag,
+    ToggleLeft,
+    ToggleRight,
+    Trash2,
+    X,
+} from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -15,17 +30,29 @@ interface Mercantil {
     name: string;
     unit?: { id: number; name: string };
 }
+interface Batch {
+    id: number;
+    batch_code: string | null;
+    quantity: number;
+    expiration_date: string | null;
+    received_at: string | null;
+    notes: string | null;
+    expiration_status: 'expired' | 'expiring_soon' | 'ok' | null;
+}
 interface Product {
     id: number;
     mercantil_id: number;
     mercantil?: { id: number; name: string };
     name: string;
+    marca?: string | null;
     description?: string;
     sku?: string;
     category?: string;
     price: number;
     stock: number;
     is_active: boolean;
+    batches: Batch[];
+    worst_batch_status?: 'expired' | 'expiring_soon' | null;
 }
 
 const props = defineProps<{ products: Product[]; mercantiles: Mercantil[] }>();
@@ -33,16 +60,21 @@ const props = defineProps<{ products: Product[]; mercantiles: Mercantil[] }>();
 // ── Filters ────────────────────────────────────────────────────────────────
 const search = ref('');
 const mercantilFilter = ref('__all__');
+const onlyAlerts = ref(false);
+
+const expiringCount = computed(() => props.products.filter((p) => p.worst_batch_status).length);
 
 const filtered = computed(() => {
     let list = props.products;
     if (mercantilFilter.value !== '__all__') list = list.filter((p) => p.mercantil_id === Number(mercantilFilter.value));
+    if (onlyAlerts.value) list = list.filter((p) => p.worst_batch_status);
     if (search.value.trim())
         list = list.filter(
             (p) =>
                 p.name.toLowerCase().includes(search.value.toLowerCase()) ||
                 (p.sku ?? '').toLowerCase().includes(search.value.toLowerCase()) ||
-                (p.category ?? '').toLowerCase().includes(search.value.toLowerCase()),
+                (p.category ?? '').toLowerCase().includes(search.value.toLowerCase()) ||
+                (p.marca ?? '').toLowerCase().includes(search.value.toLowerCase()),
         );
     return list;
 });
@@ -58,7 +90,7 @@ const paginated = computed(() => {
     return filtered.value.slice(start, start + pageSize);
 });
 
-watch([search, mercantilFilter], () => {
+watch([search, mercantilFilter, onlyAlerts], () => {
     currentPage.value = 1;
 });
 
@@ -73,13 +105,14 @@ const goToPage = (page: number) => {
 // ── Categories from all products ───────────────────────────────────────────
 const existingCategories = computed<string[]>(() => [...new Set(props.products.map((p) => p.category ?? '').filter(Boolean))].sort());
 
-// ── Modal ──────────────────────────────────────────────────────────────────
+// ── Modal: Crear / Editar producto ──────────────────────────────────────────
 const showModal = ref(false);
 const editingId = ref<number | null>(null);
 
 const form = useForm({
     mercantil_id: '' as string | number,
     name: '',
+    marca: '',
     description: '',
     sku: '',
     category: '',
@@ -91,7 +124,7 @@ const form = useForm({
 const openCreate = () => {
     editingId.value = null;
     form.reset();
-    form.mercantil_id = props.mercantiles[0]?.id ?? '';
+    form.mercantil_id = props.mercantiles[0] ? String(props.mercantiles[0].id) : '';
     form.stock = 0;
     form.is_active = true;
     showModal.value = true;
@@ -99,8 +132,11 @@ const openCreate = () => {
 
 const openEdit = (p: Product) => {
     editingId.value = p.id;
-    form.mercantil_id = p.mercantil_id;
+    // El Select compara valores como string (SelectItem usa :value="String(m.id)") — asignar el
+    // id como number aquí hacía que ninguna opción quedara marcada como seleccionada al editar.
+    form.mercantil_id = String(p.mercantil_id);
     form.name = p.name;
+    form.marca = p.marca ?? '';
     form.description = p.description ?? '';
     form.sku = p.sku ?? '';
     form.category = p.category ?? '';
@@ -142,7 +178,21 @@ const destroy = (id: number, name: string) => {
 };
 
 const toggleActive = (p: Product) => {
-    router.put(route('products.update', p.id), { ...p, is_active: !p.is_active }, { preserveScroll: true });
+    router.put(
+        route('products.update', p.id),
+        {
+            mercantil_id: p.mercantil_id,
+            name: p.name,
+            marca: p.marca ?? '',
+            description: p.description ?? '',
+            sku: p.sku ?? '',
+            category: p.category ?? '',
+            price: p.price,
+            stock: p.stock,
+            is_active: !p.is_active,
+        },
+        { preserveScroll: true },
+    );
 };
 
 const adjustStock = (p: Product, delta: number) => {
@@ -150,8 +200,66 @@ const adjustStock = (p: Product, delta: number) => {
     router.patch(route('products.stock', p.id), { delta }, { preserveScroll: true });
 };
 
+// ── Modal: Lotes (agregar por lote + fecha de vencimiento) ─────────────────
+const showBatchesModal = ref(false);
+const batchesProductId = ref<number | null>(null);
+
+// Se resuelve contra `props.products` (no una copia) para que quede reactivo tras cada
+// recarga parcial de Inertia al agregar/eliminar un lote.
+const batchesProduct = computed(() => props.products.find((p) => p.id === batchesProductId.value) ?? null);
+
+const batchForm = useForm({
+    quantity: 1 as number | string,
+    expiration_date: '',
+    batch_code: '',
+    notes: '',
+});
+
+const openBatchesModal = (p: Product) => {
+    batchesProductId.value = p.id;
+    batchForm.reset();
+    batchForm.quantity = 1;
+    showBatchesModal.value = true;
+};
+
+const closeBatchesModal = () => {
+    showBatchesModal.value = false;
+    batchesProductId.value = null;
+    batchForm.reset();
+};
+
+const submitBatch = () => {
+    if (!batchesProductId.value) return;
+    batchForm
+        .transform((data) => ({ ...data, quantity: Number(data.quantity) }))
+        .post(route('products.batches.store', batchesProductId.value), {
+            preserveScroll: true,
+            onSuccess: () => {
+                batchForm.reset();
+                batchForm.quantity = 1;
+            },
+        });
+};
+
+const deleteBatch = (batchId: number) => {
+    if (!confirm('¿Eliminar este lote? Su cantidad se descontará del stock total del producto.')) return;
+    router.delete(route('products.batches.destroy', batchId), { preserveScroll: true });
+};
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 const fmt = (n: number) => `S/ ${Number(n).toFixed(2)}`;
+
+const formatDate = (d: string | null) => {
+    if (!d) return '—';
+    const [y, m, day] = d.split('-');
+    return `${day}/${m}/${y}`;
+};
+
+const BATCH_STATUS_INFO: Record<string, { label: string; cls: string; icon: typeof AlertTriangle }> = {
+    expired: { label: 'Vencido', cls: 'bg-red-100 text-red-700 border-red-200', icon: AlertTriangle },
+    expiring_soon: { label: 'Por vencer', cls: 'bg-amber-100 text-amber-700 border-amber-200', icon: CalendarClock },
+    ok: { label: 'Vigente', cls: 'bg-emerald-100 text-emerald-700 border-emerald-200', icon: CalendarClock },
+};
 </script>
 
 <template>
@@ -169,11 +277,25 @@ const fmt = (n: number) => `S/ ${Number(n).toFixed(2)}`;
                 </Button>
             </div>
 
+            <!-- Alerta de vencimientos -->
+            <button
+                v-if="expiringCount > 0"
+                @click="onlyAlerts = !onlyAlerts"
+                class="flex items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left shadow-sm transition-colors hover:bg-amber-100"
+                :class="onlyAlerts ? 'ring-2 ring-amber-400' : ''"
+            >
+                <AlertTriangle class="h-5 w-5 shrink-0 text-amber-500" />
+                <span class="text-sm font-semibold text-amber-800">
+                    {{ expiringCount }} producto{{ expiringCount !== 1 ? 's' : '' }} con lotes vencidos o por vencer
+                </span>
+                <span class="text-xs text-amber-600 underline">{{ onlyAlerts ? 'Ver todos' : 'Ver solo estos' }}</span>
+            </button>
+
             <!-- Filters -->
             <div class="bg-card flex flex-wrap items-center gap-3 rounded-xl border p-4 shadow-sm">
                 <div class="relative max-w-sm min-w-[200px] flex-1">
                     <Search class="text-muted-foreground absolute top-2.5 left-3 h-4 w-4" />
-                    <Input v-model="search" placeholder="Buscar por nombre, SKU o categoría…" class="pl-9" />
+                    <Input v-model="search" placeholder="Buscar por nombre, marca, SKU o categoría…" class="pl-9" />
                 </div>
 
                 <Select v-model="mercantilFilter">
@@ -213,14 +335,30 @@ const fmt = (n: number) => `S/ ${Number(n).toFixed(2)}`;
                         </thead>
                         <tbody>
                             <tr v-for="p in paginated" :key="p.id" class="group hover:bg-muted/30 border-t transition-colors">
-                                <!-- Nombre + descripción -->
+                                <!-- Nombre + marca + descripción -->
                                 <td class="p-4">
                                     <div class="flex items-center gap-3">
                                         <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
                                             <Package class="h-4 w-4" />
                                         </div>
                                         <div>
-                                            <p class="text-sm font-semibold text-zinc-900">{{ p.name }}</p>
+                                            <div class="flex flex-wrap items-center gap-1.5">
+                                                <p class="text-sm font-semibold text-zinc-900">{{ p.name }}</p>
+                                                <span v-if="p.marca" class="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-bold text-zinc-500">
+                                                    {{ p.marca }}
+                                                </span>
+                                                <span
+                                                    v-if="p.worst_batch_status"
+                                                    :title="p.worst_batch_status === 'expired' ? 'Tiene lotes vencidos' : 'Tiene lotes por vencer'"
+                                                    :class="[
+                                                        'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold',
+                                                        BATCH_STATUS_INFO[p.worst_batch_status].cls,
+                                                    ]"
+                                                >
+                                                    <component :is="BATCH_STATUS_INFO[p.worst_batch_status].icon" class="h-3 w-3" />
+                                                    {{ BATCH_STATUS_INFO[p.worst_batch_status].label }}
+                                                </span>
+                                            </div>
                                             <p v-if="p.description" class="max-w-[260px] truncate text-xs text-zinc-400">
                                                 {{ p.description }}
                                             </p>
@@ -297,6 +435,15 @@ const fmt = (n: number) => `S/ ${Number(n).toFixed(2)}`;
                                         <Button
                                             variant="ghost"
                                             size="icon"
+                                            class="h-8 w-8 rounded-lg text-zinc-500 hover:bg-amber-50 hover:text-amber-600"
+                                            @click="openBatchesModal(p)"
+                                            title="Lotes / Vencimientos"
+                                        >
+                                            <Layers class="h-4 w-4" />
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
                                             class="h-8 w-8 rounded-lg text-zinc-500 hover:bg-indigo-50 hover:text-indigo-600"
                                             @click="openEdit(p)"
                                             title="Editar"
@@ -363,7 +510,16 @@ const fmt = (n: number) => `S/ ${Number(n).toFixed(2)}`;
                     <!-- Mercantil -->
                     <div class="space-y-1.5">
                         <Label>Mercantil <span class="text-red-500">*</span></Label>
-                        <Select v-model="form.mercantil_id">
+                        <template v-if="editingId">
+                            <!-- Solo lectura al editar: el mercantil de un producto no se reasigna desde acá. -->
+                            <div class="border-input bg-muted/40 flex h-9 w-full items-center rounded-md border px-3 text-sm text-zinc-600">
+                                {{ mercantiles.find((m) => String(m.id) === String(form.mercantil_id))?.name ?? '—' }}
+                                <span v-if="mercantiles.find((m) => String(m.id) === String(form.mercantil_id))?.unit" class="text-muted-foreground">
+                                    &nbsp;· {{ mercantiles.find((m) => String(m.id) === String(form.mercantil_id))?.unit?.name }}
+                                </span>
+                            </div>
+                        </template>
+                        <Select v-else v-model="form.mercantil_id">
                             <SelectTrigger>
                                 <SelectValue placeholder="Seleccionar mercantil" />
                             </SelectTrigger>
@@ -376,11 +532,18 @@ const fmt = (n: number) => `S/ ${Number(n).toFixed(2)}`;
                         <p v-if="form.errors.mercantil_id" class="text-xs text-red-500">{{ form.errors.mercantil_id }}</p>
                     </div>
 
-                    <!-- Nombre -->
-                    <div class="space-y-1.5">
-                        <Label>Nombre <span class="text-red-500">*</span></Label>
-                        <Input v-model="form.name" placeholder="Ej. Agua mineral 500ml" />
-                        <p v-if="form.errors.name" class="text-xs text-red-500">{{ form.errors.name }}</p>
+                    <!-- Nombre + Marca -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="space-y-1.5">
+                            <Label>Nombre <span class="text-red-500">*</span></Label>
+                            <Input v-model="form.name" placeholder="Ej. Agua mineral 500ml" />
+                            <p v-if="form.errors.name" class="text-xs text-red-500">{{ form.errors.name }}</p>
+                        </div>
+                        <div class="space-y-1.5">
+                            <Label>Marca</Label>
+                            <Input v-model="form.marca" placeholder="Ej. San Luis" />
+                            <p v-if="form.errors.marca" class="text-xs text-red-500">{{ form.errors.marca }}</p>
+                        </div>
                     </div>
 
                     <!-- Categoría + SKU -->
@@ -409,6 +572,7 @@ const fmt = (n: number) => `S/ ${Number(n).toFixed(2)}`;
                             <Label>Stock</Label>
                             <Input v-model="form.stock" type="number" step="1" min="0" placeholder="0" />
                             <p v-if="form.errors.stock" class="text-xs text-red-500">{{ form.errors.stock }}</p>
+                            <p class="text-[11px] text-zinc-400">Para stock con vencimiento, usa "Lotes" desde la tabla.</p>
                         </div>
                     </div>
 
@@ -442,6 +606,101 @@ const fmt = (n: number) => `S/ ${Number(n).toFixed(2)}`;
                         </Button>
                     </div>
                 </form>
+            </DialogContent>
+        </Dialog>
+
+        <!-- ── MODAL LOTES / VENCIMIENTOS ───────────────────────────────── -->
+        <Dialog :open="showBatchesModal" @update:open="(v) => (v ? null : closeBatchesModal())">
+            <DialogContent class="max-h-[85vh] overflow-y-auto sm:max-w-[560px]">
+                <DialogHeader>
+                    <DialogTitle class="flex items-center gap-2">
+                        <Layers class="h-5 w-5 text-amber-500" />
+                        Lotes de {{ batchesProduct?.name }}
+                    </DialogTitle>
+                    <DialogDescription>
+                        Registra ingresos por lote con su fecha de vencimiento. Cada lote agregado suma al stock total del producto
+                        (actualmente <strong>{{ batchesProduct?.stock }}</strong
+                        >).
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div class="space-y-4">
+                    <!-- Form: agregar lote -->
+                    <form @submit.prevent="submitBatch" class="space-y-3 rounded-xl border border-amber-100 bg-amber-50/50 p-4">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="space-y-1.5">
+                                <Label class="text-xs">Cantidad <span class="text-red-500">*</span></Label>
+                                <Input v-model="batchForm.quantity" type="number" min="1" step="1" placeholder="0" />
+                                <p v-if="batchForm.errors.quantity" class="text-xs text-red-500">{{ batchForm.errors.quantity }}</p>
+                            </div>
+                            <div class="space-y-1.5">
+                                <Label class="text-xs">Fecha de vencimiento</Label>
+                                <Input v-model="batchForm.expiration_date" type="date" />
+                                <p v-if="batchForm.errors.expiration_date" class="text-xs text-red-500">{{ batchForm.errors.expiration_date }}</p>
+                            </div>
+                        </div>
+                        <div class="space-y-1.5">
+                            <Label class="text-xs">Código de lote (opcional)</Label>
+                            <Input v-model="batchForm.batch_code" placeholder="Ej. L-2026-08-001" />
+                        </div>
+                        <Button type="submit" :disabled="batchForm.processing" class="w-full gap-2 bg-amber-500 text-white hover:bg-amber-600">
+                            <Plus class="h-4 w-4" /> {{ batchForm.processing ? 'Agregando…' : 'Agregar Lote' }}
+                        </Button>
+                    </form>
+
+                    <!-- Lista de lotes existentes -->
+                    <div class="space-y-2">
+                        <p class="text-xs font-bold tracking-wider text-zinc-400 uppercase">
+                            Lotes registrados ({{ batchesProduct?.batches.length ?? 0 }})
+                        </p>
+
+                        <div v-if="!batchesProduct?.batches.length" class="rounded-xl border border-dashed py-8 text-center text-sm text-zinc-400">
+                            Sin lotes registrados todavía.
+                        </div>
+
+                        <div
+                            v-for="b in batchesProduct?.batches"
+                            :key="b.id"
+                            class="flex items-center justify-between gap-3 rounded-xl border bg-white p-3 shadow-sm"
+                        >
+                            <div class="min-w-0">
+                                <div class="flex flex-wrap items-center gap-1.5">
+                                    <span class="font-mono text-xs text-zinc-500">{{ b.batch_code || `Lote #${b.id}` }}</span>
+                                    <span
+                                        v-if="b.expiration_status"
+                                        :class="[
+                                            'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold',
+                                            BATCH_STATUS_INFO[b.expiration_status].cls,
+                                        ]"
+                                    >
+                                        <component :is="BATCH_STATUS_INFO[b.expiration_status].icon" class="h-3 w-3" />
+                                        {{ BATCH_STATUS_INFO[b.expiration_status].label }}
+                                    </span>
+                                </div>
+                                <p class="mt-1 text-sm text-zinc-700">
+                                    Cant. <strong>{{ b.quantity }}</strong>
+                                    <span v-if="b.expiration_date"> · Vence {{ formatDate(b.expiration_date) }}</span>
+                                    <span v-else class="text-zinc-400"> · Sin fecha de vencimiento</span>
+                                </p>
+                            </div>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                class="h-8 w-8 shrink-0 rounded-lg text-zinc-400 hover:bg-red-50 hover:text-red-600"
+                                @click="deleteBatch(b.id)"
+                                title="Eliminar lote"
+                            >
+                                <Trash2 class="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end pt-2">
+                    <Button variant="outline" @click="closeBatchesModal" class="gap-2">
+                        <X class="h-4 w-4" /> Cerrar
+                    </Button>
+                </div>
             </DialogContent>
         </Dialog>
     </AppLayout>

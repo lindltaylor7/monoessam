@@ -14,6 +14,7 @@ class Product extends Model
     protected $fillable = [
         'mercantil_id',
         'name',
+        'marca',
         'description',
         'sku',
         'category',
@@ -36,5 +37,10 @@ class Product extends Model
     public function saleDetails(): HasMany
     {
         return $this->hasMany(MercantilSaleDetail::class);
+    }
+
+    public function batches(): HasMany
+    {
+        return $this->hasMany(ProductBatch::class)->orderBy('expiration_date');
     }
 }

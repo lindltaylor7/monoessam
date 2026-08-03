@@ -312,6 +312,10 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     Route::prefix('products')->name('products.')->group(function () {
         Route::get('/',      [ProductController::class, 'index'])->name('index');
         Route::post('/',     [ProductController::class, 'store'])->name('store');
+        // Rutas de lotes con segmento fijo "batches" primero — deben registrarse antes que
+        // {id} genérico, o Laravel intentaría matchear "batches" como si fuera un {id}.
+        Route::delete('batches/{batchId}', [ProductController::class, 'destroyBatch'])->name('batches.destroy');
+        Route::post('{id}/batches', [ProductController::class, 'storeBatch'])->name('batches.store');
         Route::put('{id}',   [ProductController::class, 'update'])->name('update');
         Route::patch('{id}/stock', [ProductController::class, 'updateStock'])->name('stock');
         Route::delete('{id}',[ProductController::class, 'destroy'])->name('destroy');
