@@ -18,6 +18,9 @@ class MercantilSale extends Model
         'sale_type_id',
         'payment_method',
         'payment_condition',
+        'buyer_dni',
+        'subdealership_id',
+        'dinner_id',
         'date',
         'subtotal',
         'igv',
@@ -49,6 +52,16 @@ class MercantilSale extends Model
     public function saleType(): BelongsTo
     {
         return $this->belongsTo(Sale_type::class, 'sale_type_id');
+    }
+
+    public function subdealership(): BelongsTo
+    {
+        return $this->belongsTo(Subdealership::class);
+    }
+
+    public function dinner(): BelongsTo
+    {
+        return $this->belongsTo(Dinner::class);
     }
 
     public function details(): HasMany

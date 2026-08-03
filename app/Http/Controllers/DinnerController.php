@@ -88,6 +88,52 @@ class DinnerController extends Controller
         return response()->json(['exists' => $query->exists()]);
     }
 
+    /**
+     * Búsqueda puntual por DNI (a diferencia de checkDni, que solo confirma existencia) — usada
+     * por el flujo de venta al crédito del POS para saber si el comprador ya está registrado
+     * como comensal y, de ser así, prellenar su nombre/subdealership.
+     */
+    public function findByDni(Request $request)
+    {
+        $dni = trim((string) $request->get('dni', ''));
+
+        if (strlen($dni) !== 8) {
+            return response()->json(['found' => false]);
+        }
+
+        $dinner = Dinner::where('dni', $dni)->with('subdealership:id,name')->first();
+
+        if (!$dinner) {
+            return response()->json(['found' => false]);
+        }
+
+        return response()->json(['found' => true, 'dinner' => $dinner]);
+    }
+
+    /**
+     * Registro rápido de un comensal nuevo (respuesta JSON, no redirect) — para flujos fuera de
+     * Inertia como el modal de venta al crédito del POS, que consume la API vía axios.
+     */
+    public function quickRegister(Request $request)
+    {
+        $data = $request->validate([
+            'name'             => 'required|string|max:255',
+            'dni'              => 'required|string|max:8|unique:dinners,dni',
+            'phone'            => 'nullable|string|max:20',
+            'subdealership_id' => 'nullable|exists:subdealerships,id',
+        ]);
+
+        $dinner = Dinner::create([
+            'name'             => $data['name'],
+            'dni'              => $data['dni'],
+            'phone'            => $data['phone'] ?? null,
+            'subdealership_id' => $data['subdealership_id'] ?? null,
+            'mine_id'          => Auth::user()->mine_id,
+        ]);
+
+        return response()->json(['dinner' => $dinner->load('subdealership:id,name')], 201);
+    }
+
     public function save(Request $request)
     {
         $request->validate([

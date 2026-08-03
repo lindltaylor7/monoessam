@@ -7,6 +7,7 @@ use App\Models\Mercantil;
 use App\Models\MercantilSale;
 use App\Models\Product;
 use App\Models\Sale_type;
+use App\Models\Subdealership;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -28,9 +29,16 @@ class PosController extends Controller
             ])
             ->get(['id', 'name', 'unit_id']);
 
+        // Subdealerships de la mina del usuario — se elige antes de registrar el DNI en una
+        // venta al crédito, mismo criterio de scoping que ya usa DinnerController::index().
+        $subdealerships = Subdealership::whereHas('mines', fn($q) => $q->where('mines.id', $user->mine_id))
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
         return Inertia::render('pos/Index', [
-            'mercantiles' => $mercantiles,
-            'sale_types'  => Sale_type::all(),
+            'mercantiles'    => $mercantiles,
+            'sale_types'     => Sale_type::all(),
+            'subdealerships' => $subdealerships,
         ]);
     }
 
@@ -40,9 +48,18 @@ class PosController extends Controller
             'mercantil_id'      => 'required|exists:mercantiles,id',
             'sale_type_id'      => 'nullable|exists:sale_types,id',
             'payment_method'    => 'nullable|string',
-            'payment_condition' => 'nullable|string',
+            'payment_condition' => 'nullable|string|in:contado,credito',
+            // Solo obligatorio cuando la venta es al crédito — queda registrado a quién se le fía.
+            'buyer_dni'         => 'required_if:payment_condition,credito|nullable|digits:8',
+            'subdealership_id'  => 'nullable|exists:subdealerships,id',
+            // Comensal vinculado si el DNI coincidió con uno existente o se registró uno nuevo;
+            // se admite null (venta al crédito sin comensal vinculado en la tabla dinners).
+            'dinner_id'         => 'nullable|exists:dinners,id',
             'date'              => 'required|date',
             'products'          => 'required|string',
+        ], [
+            'buyer_dni.required_if' => 'El DNI del comprador es obligatorio para ventas al crédito.',
+            'buyer_dni.digits'      => 'El DNI debe tener 8 dígitos.',
         ]);
 
         $items = json_decode($data['products'], true);
@@ -68,6 +85,9 @@ class PosController extends Controller
                 'sale_type_id'      => $data['sale_type_id'] ?? null,
                 'payment_method'    => $data['payment_method'] ?? 'efectivo',
                 'payment_condition' => $data['payment_condition'] ?? 'contado',
+                'buyer_dni'         => $data['buyer_dni'] ?? null,
+                'subdealership_id'  => $data['subdealership_id'] ?? null,
+                'dinner_id'         => $data['dinner_id'] ?? null,
                 'date'              => $data['date'],
                 'subtotal'          => $subtotal,
                 'igv'               => $igv,
@@ -115,6 +135,8 @@ class PosController extends Controller
             'mercantil:id,name',
             'saleType:id,name',
             'user:id,name',
+            'subdealership:id,name',
+            'dinner:id,name,dni',
             'details',
         ])
         ->whereBetween('date', [$from, $to]);

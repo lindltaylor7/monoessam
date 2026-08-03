@@ -4,11 +4,11 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
 import {
-    BarChart3, CalendarDays, ChevronDown, ChevronUp, Clock, FileSpreadsheet, Loader2,
-    Package, RotateCcw, Search, ShoppingBag, Store, X,
+    BarChart3, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, FileSpreadsheet, Loader2,
+    Package, RotateCcw, Search, ShoppingBag, Store, UserPlus, X,
 } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface Product {
@@ -28,9 +28,24 @@ interface Mercantil {
     unit?: { id: number; name: string };
 }
 
+interface Subdealership {
+    id: number;
+    name: string;
+}
+
+interface Dinner {
+    id: number;
+    name: string;
+    dni: string;
+    phone?: string | null;
+    subdealership_id?: number | null;
+    subdealership?: Subdealership | null;
+}
+
 interface Props {
     mercantiles: (Mercantil & { products: Product[] })[];
     sale_types: any[];
+    subdealerships: Subdealership[];
 }
 
 const props = defineProps<Props>();
@@ -68,9 +83,104 @@ const PAYMENT_METHODS = [
     { id: 'tarjeta',       label: 'Tarjeta',       icon: '💳', bgActive: 'bg-indigo-600' },
     { id: 'transferencia', label: 'Transferencia', icon: '🏛️', bgActive: 'bg-slate-700' },
 ];
+// "Valorizado" solo aplica a ventas al crédito (se factura contra la subdealership, no se cobra
+// directo) — no tiene sentido como método de pago para una venta al contado.
+const CREDIT_ONLY_METHOD = { id: 'valorizado', label: 'Valorizado', icon: '📊', bgActive: 'bg-teal-600' };
 
 const paymentConditionSelected = ref<'contado' | 'credito'>('contado');
 const paymentMethodSelected    = ref<string>('efectivo');
+const buyerDni                 = ref('');
+const subdealershipSelected    = ref<number | ''>('');
+
+const availablePaymentMethods = computed(() =>
+    paymentConditionSelected.value === 'credito' ? [...PAYMENT_METHODS, CREDIT_ONLY_METHOD] : PAYMENT_METHODS,
+);
+
+// ── Búsqueda de comensal por DNI (solo crédito) ─────────────────────────────
+type DinnerLookupStatus = 'idle' | 'checking' | 'found' | 'not_found';
+const dinnerLookupStatus = ref<DinnerLookupStatus>('idle');
+const dinnerFound        = ref<Dinner | null>(null);
+const dinnerId           = ref<number | null>(null);
+const showManualRegister = ref(false);
+const registeringDinner  = ref(false);
+const manualDinnerForm   = ref({ name: '', phone: '' });
+
+async function lookupDinnerByDni() {
+    dinnerId.value = null;
+    dinnerFound.value = null;
+    showManualRegister.value = false;
+
+    if (buyerDni.value.length !== 8) {
+        dinnerLookupStatus.value = 'idle';
+        return;
+    }
+
+    dinnerLookupStatus.value = 'checking';
+    try {
+        const res = await axios.get('/pos/find-dinner-by-dni', { params: { dni: buyerDni.value } });
+        if (res.data.found) {
+            dinnerLookupStatus.value = 'found';
+            dinnerFound.value = res.data.dinner;
+            dinnerId.value = res.data.dinner.id;
+            // Si el comensal ya tiene subdealership y todavía no se eligió una, se sugiere la suya.
+            if (!subdealershipSelected.value && res.data.dinner.subdealership_id) {
+                subdealershipSelected.value = res.data.dinner.subdealership_id;
+            }
+        } else {
+            dinnerLookupStatus.value = 'not_found';
+        }
+    } catch (err) {
+        console.error(err);
+        dinnerLookupStatus.value = 'idle';
+    }
+}
+
+watch(buyerDni, () => lookupDinnerByDni());
+
+function openManualRegister() {
+    manualDinnerForm.value = { name: '', phone: '' };
+    showManualRegister.value = true;
+}
+
+async function registerDinnerManually() {
+    if (!manualDinnerForm.value.name.trim()) {
+        Swal.fire({ icon: 'warning', title: 'Falta el nombre', text: 'Ingresa el nombre del comensal.', confirmButtonColor: '#dc2626' });
+        return;
+    }
+
+    registeringDinner.value = true;
+    try {
+        const res = await axios.post('/dinners/quick-register', {
+            name: manualDinnerForm.value.name.trim(),
+            dni: buyerDni.value,
+            phone: manualDinnerForm.value.phone.trim() || null,
+            subdealership_id: subdealershipSelected.value || null,
+        });
+        dinnerFound.value = res.data.dinner;
+        dinnerId.value = res.data.dinner.id;
+        dinnerLookupStatus.value = 'found';
+        showManualRegister.value = false;
+    } catch (err: any) {
+        const errors = err.response?.data?.errors ?? {};
+        const msg = errors.dni?.[0] ?? errors.name?.[0] ?? 'No se pudo registrar el comensal.';
+        Swal.fire({ icon: 'error', title: 'Error', text: msg, confirmButtonColor: '#dc2626' });
+    } finally {
+        registeringDinner.value = false;
+    }
+}
+
+// Al volver a "Contado" se limpia todo el sub-flujo de crédito para no arrastrar datos a medias.
+watch(paymentConditionSelected, (val) => {
+    if (val === 'contado') {
+        if (paymentMethodSelected.value === 'valorizado') paymentMethodSelected.value = 'efectivo';
+        buyerDni.value = '';
+        subdealershipSelected.value = '';
+        dinnerLookupStatus.value = 'idle';
+        dinnerFound.value = null;
+        dinnerId.value = null;
+        showManualRegister.value = false;
+    }
+});
 
 const submitting = ref(false);
 
@@ -126,6 +236,9 @@ const cartTotal    = computed(() => cartSubtotal.value);
 
 const inCart       = (id: number) => cart.value.some(i => i.productId === id);
 const cartItem     = (id: number) => cart.value.find(i => i.productId === id);
+
+const dniValid = computed(() => paymentConditionSelected.value !== 'credito' || /^\d{8}$/.test(buyerDni.value.trim()));
+const canSubmit = computed(() => !submitting.value && cart.value.length > 0 && dniValid.value);
 
 // ── Cart ───────────────────────────────────────────────────────────────────
 const addToCart = (product: Product) => {
@@ -274,6 +387,16 @@ const submit = async () => {
     if (!mercantilSelected.value) { Swal.fire({ icon: 'warning', title: 'Sin mercantil', text: 'Selecciona un mercantil.', confirmButtonColor: '#dc2626' }); return; }
     if (!cart.value.length)       { Swal.fire({ icon: 'warning', title: 'Carrito vacío', text: 'Agrega al menos un producto.', confirmButtonColor: '#dc2626' }); return; }
 
+    if (paymentConditionSelected.value === 'credito' && !/^\d{8}$/.test(buyerDni.value.trim())) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'DNI requerido',
+            text: 'Para ventas al crédito, ingresa el DNI del comprador (8 dígitos).',
+            confirmButtonColor: '#dc2626',
+        });
+        return;
+    }
+
     submitting.value = true;
     try {
         const fd = new FormData();
@@ -283,6 +406,11 @@ const submit = async () => {
         fd.append('payment_method',    paymentMethodSelected.value);
         fd.append('products',          JSON.stringify(cart.value));
         fd.append('date',              dateSelected.value);
+        if (paymentConditionSelected.value === 'credito') {
+            fd.append('buyer_dni', buyerDni.value.trim());
+            if (subdealershipSelected.value) fd.append('subdealership_id', String(subdealershipSelected.value));
+            if (dinnerId.value) fd.append('dinner_id', String(dinnerId.value));
+        }
 
         await axios.post('/pos/store', fd);
 
@@ -294,8 +422,20 @@ const submit = async () => {
         });
 
         clearCart();
+        buyerDni.value = '';
+        subdealershipSelected.value = '';
+        dinnerLookupStatus.value = 'idle';
+        dinnerFound.value = null;
+        dinnerId.value = null;
+        showManualRegister.value = false;
     } catch (err: any) {
-        Swal.fire({ icon: 'error', title: 'Error', text: err.response?.data?.message ?? 'No se pudo registrar la venta.', confirmButtonColor: '#dc2626' });
+        const fieldError = err.response?.data?.errors?.buyer_dni?.[0];
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: fieldError ?? err.response?.data?.message ?? 'No se pudo registrar la venta.',
+            confirmButtonColor: '#dc2626',
+        });
     } finally {
         submitting.value = false;
     }
@@ -557,12 +697,104 @@ const submit = async () => {
                                 </div>
                             </div>
 
+                            <!-- Bloque exclusivo de Crédito: Subdealership -> DNI -> resultado búsqueda -->
+                            <template v-if="paymentConditionSelected === 'credito'">
+                                <div>
+                                    <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-500 block mb-1">Subdealership</span>
+                                    <select
+                                        v-model="subdealershipSelected"
+                                        class="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-semibold text-zinc-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                                    >
+                                        <option value="">Sin subdealership</option>
+                                        <option v-for="sd in subdealerships" :key="sd.id" :value="sd.id">{{ sd.name }}</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-500 block mb-1">
+                                        DNI del Comprador <span class="text-red-500">*</span>
+                                    </span>
+                                    <div class="relative">
+                                        <input
+                                            v-model="buyerDni"
+                                            type="text"
+                                            inputmode="numeric"
+                                            maxlength="8"
+                                            placeholder="Ej. 45678912"
+                                            @input="buyerDni = buyerDni.replace(/\D/g, '').slice(0, 8)"
+                                            :class="['w-full rounded-lg border bg-white px-3 py-1.5 pr-8 text-sm font-semibold text-zinc-800 outline-none focus:ring-2',
+                                                buyerDni.length > 0 && buyerDni.length !== 8
+                                                    ? 'border-red-300 focus:border-red-400 focus:ring-red-100'
+                                                    : 'border-zinc-200 focus:border-amber-400 focus:ring-amber-100']"
+                                        />
+                                        <Loader2 v-if="dinnerLookupStatus === 'checking'" class="absolute right-2.5 top-2.5 h-4 w-4 animate-spin text-zinc-400" />
+                                        <CheckCircle2 v-else-if="dinnerLookupStatus === 'found'" class="absolute right-2.5 top-2.5 h-4 w-4 text-emerald-500" />
+                                    </div>
+                                    <p v-if="buyerDni.length > 0 && buyerDni.length !== 8" class="mt-1 text-[10px] font-semibold text-red-500">
+                                        El DNI debe tener 8 dígitos.
+                                    </p>
+
+                                    <!-- Comensal encontrado -->
+                                    <div v-if="dinnerLookupStatus === 'found' && dinnerFound" class="mt-1.5 flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700">
+                                        <Check class="h-3.5 w-3.5 shrink-0" />
+                                        <span class="truncate">{{ dinnerFound.name }}<span v-if="dinnerFound.subdealership"> · {{ dinnerFound.subdealership.name }}</span></span>
+                                    </div>
+
+                                    <!-- No encontrado: registrar manualmente o continuar sin vincular -->
+                                    <div v-else-if="dinnerLookupStatus === 'not_found'" class="mt-1.5 space-y-1.5">
+                                        <p class="text-[10px] font-semibold text-amber-600">
+                                            No se encontró un comensal con este DNI. Puedes registrarlo o continuar sin vincularlo.
+                                        </p>
+                                        <button
+                                            v-if="!showManualRegister"
+                                            type="button"
+                                            @click="openManualRegister"
+                                            class="flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-white py-1.5 text-[11px] font-bold text-amber-700 hover:bg-amber-50 transition-colors"
+                                        >
+                                            <UserPlus class="h-3.5 w-3.5" /> Registrar comensal
+                                        </button>
+
+                                        <div v-else class="space-y-1.5 rounded-lg border border-amber-200 bg-amber-50/60 p-2.5">
+                                            <input
+                                                v-model="manualDinnerForm.name"
+                                                type="text"
+                                                placeholder="Nombre completo *"
+                                                class="w-full rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                                            />
+                                            <input
+                                                v-model="manualDinnerForm.phone"
+                                                type="text"
+                                                placeholder="Teléfono (opcional)"
+                                                class="w-full rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
+                                            />
+                                            <div class="flex gap-1.5">
+                                                <button
+                                                    type="button"
+                                                    @click="showManualRegister = false"
+                                                    class="flex-1 rounded-md border border-zinc-200 bg-white py-1.5 text-[11px] font-bold text-zinc-500 hover:bg-zinc-100 transition-colors"
+                                                >
+                                                    Cancelar
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    @click="registerDinnerManually"
+                                                    :disabled="registeringDinner"
+                                                    class="flex-1 rounded-md bg-amber-600 py-1.5 text-[11px] font-bold text-white hover:bg-amber-700 transition-colors disabled:opacity-50"
+                                                >
+                                                    {{ registeringDinner ? 'Guardando…' : 'Guardar' }}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+
                             <!-- Método de Pago -->
                             <div>
                                 <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-500 block mb-1">Tipo de Pago</span>
                                 <div class="grid grid-cols-3 gap-1">
                                     <button
-                                        v-for="method in PAYMENT_METHODS"
+                                        v-for="method in availablePaymentMethods"
                                         :key="method.id"
                                         type="button"
                                         @click="paymentMethodSelected = method.id"
@@ -598,7 +830,7 @@ const submit = async () => {
                                 class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-200 text-zinc-400 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-500 disabled:opacity-40">
                                 <RotateCcw class="h-4 w-4" />
                             </button>
-                            <button @click="submit" :disabled="submitting || !cart.length"
+                            <button @click="submit" :disabled="!canSubmit"
                                 class="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 text-sm font-black text-white shadow-md shadow-indigo-200 transition-all hover:bg-indigo-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50">
                                 <Loader2 v-if="submitting" class="h-4 w-4 animate-spin" />
                                 <span v-else>Confirmar Venta</span>
@@ -767,8 +999,20 @@ const submit = async () => {
                                             >
                                                 {{ sale.payment_condition === 'credito' ? 'Crédito' : 'Contado' }}
                                             </span>
+                                            <span
+                                                v-if="sale.payment_condition === 'credito' && sale.buyer_dni"
+                                                class="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-bold text-zinc-600"
+                                            >
+                                                {{ sale.dinner?.name ? `${sale.dinner.name} · ` : '' }}DNI {{ sale.buyer_dni }}
+                                            </span>
+                                            <span
+                                                v-if="sale.subdealership"
+                                                class="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700"
+                                            >
+                                                {{ sale.subdealership.name }}
+                                            </span>
                                             <span class="rounded-full bg-purple-50 text-purple-700 px-2 py-0.5 text-[10px] font-bold capitalize flex items-center gap-1">
-                                                <span>{{ PAYMENT_METHODS.find(m => m.id === sale.payment_method)?.icon || '💵' }}</span>
+                                                <span>{{ [...PAYMENT_METHODS, CREDIT_ONLY_METHOD].find(m => m.id === sale.payment_method)?.icon || '💵' }}</span>
                                                 <span>{{ sale.payment_method || 'efectivo' }}</span>
                                             </span>
                                             <span v-if="sale.sale_type" class="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
