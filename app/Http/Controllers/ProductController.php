@@ -33,18 +33,32 @@ class ProductController extends Controller
         ]);
     }
 
+    /**
+     * IDs de mercantiles que pertenecen a la mina del usuario autenticado — mismo criterio que
+     * index() usa para listar. Se reutiliza para verificar que store/update/destroy/updateStock
+     * nunca toquen un mercantil (o un producto de otro mercantil) fuera de esa mina.
+     */
+    private function scopedMercantilIds()
+    {
+        $user = Auth::user();
+
+        return Mercantil::whereHas('unit', fn($q) => $q->where('mine_id', $user->mine_id))->pluck('id');
+    }
+
     public function store(Request $request)
     {
         $data = $request->validate([
             'mercantil_id' => 'required|exists:mercantiles,id',
             'name'         => 'required|string|max:255',
             'description'  => 'nullable|string',
-            'products_sku_unique' => 'nullable|string|max:100',
+            'sku'          => 'nullable|string|max:100',
             'category'     => 'nullable|string|max:100',
             'price'        => 'required|numeric|min:0',
             'stock'        => 'nullable|integer|min:0',
             'is_active'    => 'boolean',
         ]);
+
+        abort_unless($this->scopedMercantilIds()->contains((int) $data['mercantil_id']), 403);
 
         Product::create($data);
 
@@ -55,16 +69,21 @@ class ProductController extends Controller
     {
         $product = Product::findOrFail($id);
 
+        $scopedIds = $this->scopedMercantilIds();
+        abort_unless($scopedIds->contains($product->mercantil_id), 403);
+
         $data = $request->validate([
             'mercantil_id' => 'required|exists:mercantiles,id',
             'name'         => 'required|string|max:255',
             'description'  => 'nullable|string',
-            'products_sku_unique' => 'nullable|string|max:100',
+            'sku'          => 'nullable|string|max:100',
             'category'     => 'nullable|string|max:100',
             'price'        => 'required|numeric|min:0',
             'stock'        => 'nullable|integer|min:0',
             'is_active'    => 'boolean',
         ]);
+
+        abort_unless($scopedIds->contains((int) $data['mercantil_id']), 403);
 
         $product->update($data);
 
@@ -74,6 +93,8 @@ class ProductController extends Controller
     public function updateStock(Request $request, int $id)
     {
         $product = Product::findOrFail($id);
+
+        abort_unless($this->scopedMercantilIds()->contains($product->mercantil_id), 403);
 
         $data = $request->validate([
             'delta' => 'required|integer',
@@ -87,7 +108,11 @@ class ProductController extends Controller
 
     public function destroy(int $id)
     {
-        Product::findOrFail($id)->delete();
+        $product = Product::findOrFail($id);
+
+        abort_unless($this->scopedMercantilIds()->contains($product->mercantil_id), 403);
+
+        $product->delete();
 
         return redirect()->back();
     }
