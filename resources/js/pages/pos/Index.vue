@@ -186,9 +186,11 @@ const submitting = ref(false);
 
 // ── Report Modal State ──────────────────────────────────────────────────────
 const showReportModal   = ref(false);
-const reportFromDate    = ref('');
-const reportToDate      = ref('');
-const reportMercantilId = ref<number | string>('all');
+const reportFromDate       = ref('');
+const reportToDate         = ref('');
+const reportMercantilId    = ref<number | string>('all');
+const reportPaymentMethod  = ref<string>('all');
+const reportSubdealershipId = ref<number | string>('all');
 const loadingReport     = ref(false);
 const expandedSaleId    = ref<number | null>(null);
 
@@ -323,6 +325,8 @@ function openReportModal() {
     reportFromDate.value = start;
     reportToDate.value   = end;
     reportMercantilId.value = mercantilSelected.value || 'all';
+    reportPaymentMethod.value = 'all';
+    reportSubdealershipId.value = 'all';
     showReportModal.value = true;
     fetchReportData();
 }
@@ -362,6 +366,8 @@ async function fetchReportData() {
                 from: reportFromDate.value,
                 to: reportToDate.value,
                 mercantil_id: reportMercantilId.value === 'all' ? null : reportMercantilId.value,
+                payment_method: reportPaymentMethod.value === 'all' ? null : reportPaymentMethod.value,
+                subdealership_id: reportSubdealershipId.value === 'all' ? null : reportSubdealershipId.value,
             },
         });
         reportData.value = res.data;
@@ -379,8 +385,10 @@ function toggleExpandSale(id: number) {
 
 function exportReportToExcel() {
     if (!reportFromDate.value || !reportToDate.value) return;
-    const mercantil = reportMercantilId.value === 'all' ? '' : reportMercantilId.value;
-    const url = `/pos/export-report?from=${reportFromDate.value}&to=${reportToDate.value}&mercantil_id=${mercantil}`;
+    const mercantil       = reportMercantilId.value === 'all' ? '' : reportMercantilId.value;
+    const paymentMethod   = reportPaymentMethod.value === 'all' ? '' : reportPaymentMethod.value;
+    const subdealershipId = reportSubdealershipId.value === 'all' ? '' : reportSubdealershipId.value;
+    const url = `/pos/export-report?from=${reportFromDate.value}&to=${reportToDate.value}&mercantil_id=${mercantil}&payment_method=${paymentMethod}&subdealership_id=${subdealershipId}`;
     window.location.href = url;
 }
 const submit = async () => {
@@ -919,6 +927,32 @@ const submit = async () => {
                                     <option value="all">Todos los mercantiles</option>
                                     <option v-for="m in mercantiles" :key="m.id" :value="m.id">
                                         {{ m.name }}
+                                    </option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-bold text-zinc-600">Tipo de Pago</label>
+                                <select
+                                    v-model="reportPaymentMethod"
+                                    @change="fetchReportData"
+                                    class="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                                >
+                                    <option value="all">Todos los tipos de pago</option>
+                                    <option v-for="method in [...PAYMENT_METHODS, CREDIT_ONLY_METHOD]" :key="method.id" :value="method.id">
+                                        {{ method.icon }} {{ method.label }}
+                                    </option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[11px] font-bold text-zinc-600">Subdealership</label>
+                                <select
+                                    v-model="reportSubdealershipId"
+                                    @change="fetchReportData"
+                                    class="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                                >
+                                    <option value="all">Todas las subdealerships</option>
+                                    <option v-for="sd in subdealerships" :key="sd.id" :value="sd.id">
+                                        {{ sd.name }}
                                     </option>
                                 </select>
                             </div>

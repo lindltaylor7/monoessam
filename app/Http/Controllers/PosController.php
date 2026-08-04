@@ -122,14 +122,18 @@ class PosController extends Controller
     public function report(Request $request)
     {
         $data = $request->validate([
-            'from'         => 'required|date',
-            'to'           => 'required|date',
-            'mercantil_id' => 'nullable',
+            'from'              => 'required|date',
+            'to'                => 'required|date',
+            'mercantil_id'      => 'nullable',
+            'payment_method'    => 'nullable|string',
+            'subdealership_id'  => 'nullable',
         ]);
 
         $from = $data['from'];
         $to   = $data['to'];
-        $mercantilId = $data['mercantil_id'] ?? null;
+        $mercantilId     = $data['mercantil_id'] ?? null;
+        $paymentMethod   = $data['payment_method'] ?? null;
+        $subdealershipId = $data['subdealership_id'] ?? null;
 
         $query = MercantilSale::with([
             'mercantil:id,name',
@@ -143,6 +147,14 @@ class PosController extends Controller
 
         if (!empty($mercantilId) && $mercantilId !== 'all') {
             $query->where('mercantil_id', $mercantilId);
+        }
+
+        if (!empty($paymentMethod) && $paymentMethod !== 'all') {
+            $query->where('payment_method', $paymentMethod);
+        }
+
+        if (!empty($subdealershipId) && $subdealershipId !== 'all') {
+            $query->where('subdealership_id', $subdealershipId);
         }
 
         $sales = $query->orderBy('date', 'desc')->orderBy('created_at', 'desc')->get();
@@ -166,18 +178,22 @@ class PosController extends Controller
     public function exportReport(Request $request)
     {
         $data = $request->validate([
-            'from'         => 'required|date',
-            'to'           => 'required|date',
-            'mercantil_id' => 'nullable',
+            'from'             => 'required|date',
+            'to'               => 'required|date',
+            'mercantil_id'     => 'nullable',
+            'payment_method'   => 'nullable|string',
+            'subdealership_id' => 'nullable',
         ]);
 
         $from        = $data['from'];
         $to          = $data['to'];
-        $mercantilId = $data['mercantil_id'] ?? null;
+        $mercantilId     = $data['mercantil_id'] ?? null;
+        $paymentMethod   = $data['payment_method'] ?? null;
+        $subdealershipId = $data['subdealership_id'] ?? null;
 
         $fileName = "reporte_ventas_pos_{$from}_a_{$to}.xlsx";
 
-        return Excel::download(new PosSalesReportExport($from, $to, $mercantilId), $fileName);
+        return Excel::download(new PosSalesReportExport($from, $to, $mercantilId, $paymentMethod, $subdealershipId), $fileName);
     }
 }
 

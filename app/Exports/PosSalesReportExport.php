@@ -16,7 +16,9 @@ class PosSalesReportExport implements FromCollection, WithHeadings, WithMapping,
     public function __construct(
         protected string $startDate,
         protected string $endDate,
-        protected ?string $mercantilId = null
+        protected ?string $mercantilId = null,
+        protected ?string $paymentMethod = null,
+        protected ?string $subdealershipId = null,
     ) {}
 
     public function collection()
@@ -26,12 +28,21 @@ class PosSalesReportExport implements FromCollection, WithHeadings, WithMapping,
             'unit:id,name',
             'saleType:id,name',
             'user:id,name',
+            'subdealership:id,name',
             'details',
         ])
         ->whereBetween('date', [$this->startDate, $this->endDate]);
 
         if (!empty($this->mercantilId) && $this->mercantilId !== 'all') {
             $query->where('mercantil_id', $this->mercantilId);
+        }
+
+        if (!empty($this->paymentMethod) && $this->paymentMethod !== 'all') {
+            $query->where('payment_method', $this->paymentMethod);
+        }
+
+        if (!empty($this->subdealershipId) && $this->subdealershipId !== 'all') {
+            $query->where('subdealership_id', $this->subdealershipId);
         }
 
         return $query->orderBy('date', 'desc')->orderBy('created_at', 'desc')->get();
@@ -49,6 +60,7 @@ class PosSalesReportExport implements FromCollection, WithHeadings, WithMapping,
             'Tipo Venta',
             'Condición de Pago',
             'Método de Pago',
+            'Subdealership',
             'Cant. Ítems',
             'Detalle de Productos',
             'Subtotal (S/)',
@@ -75,6 +87,7 @@ class PosSalesReportExport implements FromCollection, WithHeadings, WithMapping,
             $sale->saleType?->name ?? '—',
             strtoupper($sale->payment_condition ?? 'CONTADO'),
             strtoupper($sale->payment_method ?? 'EFECTIVO'),
+            $sale->subdealership?->name ?? '—',
             $totalItems,
             $productsDetail ?: 'Sin productos',
             number_format($sale->subtotal, 2, '.', ''),
