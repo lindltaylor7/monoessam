@@ -14,6 +14,7 @@ import { computed, ref, watch } from 'vue';
 interface Product {
     id: number;
     name: string;
+    marca?: string | null;
     description?: string;
     sku?: string;
     category?: string;
@@ -224,12 +225,23 @@ const categories = computed<string[]>(() =>
 );
 
 const filtered = computed<Product[]>(() => {
-    let list: Product[] = mercantilProducts.value;
+    const query = searchQuery.value.trim().toLowerCase();
+
+    if (query) {
+        // Mientras se busca, se ignora la categoría activa — el cajero puede estar parado en
+        // "Bebidas" y buscar algo de "Abarrotes" sin tener que cambiar de pestaña primero.
+        return mercantilProducts.value.filter(
+            (p: Product) =>
+                p.name.toLowerCase().includes(query) ||
+                (p.sku ?? '').toLowerCase().includes(query) ||
+                (p.marca ?? '').toLowerCase().includes(query),
+        );
+    }
+
     if (activeCategory.value !== 'all')
-        list = list.filter((p: Product) => (p.category ?? 'Sin categoría') === activeCategory.value);
-    if (searchQuery.value.trim())
-        list = list.filter((p: Product) => p.name.toLowerCase().includes(searchQuery.value.toLowerCase()));
-    return list;
+        return mercantilProducts.value.filter((p: Product) => (p.category ?? 'Sin categoría') === activeCategory.value);
+
+    return mercantilProducts.value;
 });
 
 const cartSubtotal = computed(() => cart.value.reduce((s, i) => s + i.total, 0));
@@ -486,9 +498,17 @@ const submit = async () => {
                     <input
                         v-model="searchQuery"
                         type="text"
-                        placeholder="Buscar producto..."
-                        class="w-full rounded-lg border border-zinc-200 bg-zinc-50 py-2 pr-3 pl-9 text-sm text-zinc-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                        placeholder="Buscar por nombre, marca o SKU..."
+                        class="w-full rounded-lg border border-zinc-200 bg-zinc-50 py-2 pr-8 pl-9 text-sm text-zinc-700 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                     />
+                    <button
+                        v-if="searchQuery"
+                        @click="searchQuery = ''"
+                        type="button"
+                        class="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 transition-colors"
+                    >
+                        <X class="h-3.5 w-3.5" />
+                    </button>
                 </div>
 
                 <!-- Report button -->
@@ -544,8 +564,18 @@ const submit = async () => {
                     <!-- Product cards -->
                     <div class="flex-1 overflow-y-auto p-4">
                         <div v-if="filtered.length === 0" class="flex h-full flex-col items-center justify-center gap-3 text-zinc-400">
-                            <Package class="h-12 w-12 opacity-30" />
-                            <p class="font-medium">No hay productos disponibles</p>
+                            <Search v-if="searchQuery.trim()" class="h-12 w-12 opacity-30" />
+                            <Package v-else class="h-12 w-12 opacity-30" />
+                            <p class="font-medium">
+                                {{ searchQuery.trim() ? `Sin resultados para "${searchQuery.trim()}"` : 'No hay productos disponibles' }}
+                            </p>
+                            <button
+                                v-if="searchQuery.trim()"
+                                @click="searchQuery = ''"
+                                class="text-xs font-semibold text-indigo-600 hover:underline"
+                            >
+                                Limpiar búsqueda
+                            </button>
                         </div>
 
                         <div v-else class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
@@ -606,6 +636,12 @@ const submit = async () => {
                                 <div class="w-full">
                                     <p :class="['text-sm font-bold leading-tight', inCart(product.id) ? 'text-white' : 'text-zinc-800']">
                                         {{ product.name }}
+                                    </p>
+                                    <p
+                                        v-if="product.marca"
+                                        :class="['mt-0.5 truncate text-[10px] font-semibold', inCart(product.id) ? 'text-white/80' : 'text-indigo-500']"
+                                    >
+                                        {{ product.marca }}
                                     </p>
                                     <p v-if="product.sku" :class="['mt-0.5 text-[10px]', inCart(product.id) ? 'text-white/70' : 'text-zinc-400']">
                                         {{ product.sku }}
