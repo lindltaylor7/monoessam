@@ -11,6 +11,7 @@ use App\Models\Subdealership;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -44,10 +45,15 @@ class PosController extends Controller
 
     public function store(Request $request)
     {
+        // "Valorizado" es el único método de pago válido al crédito, y viceversa — se factura a
+        // la subdealership en vez de cobrarse en el momento, así que no puede mezclarse con
+        // Efectivo/Yape/Plin/Tarjeta/Transferencia (esos son cobro inmediato, propios de contado).
+        $isCredito = $request->input('payment_condition') === 'credito';
+
         $data = $request->validate([
             'mercantil_id'      => 'required|exists:mercantiles,id',
             'sale_type_id'      => 'nullable|exists:sale_types,id',
-            'payment_method'    => 'nullable|string',
+            'payment_method'    => ['nullable', 'string', $isCredito ? Rule::in(['valorizado']) : Rule::notIn(['valorizado'])],
             'payment_condition' => 'nullable|string|in:contado,credito',
             // Solo obligatorio cuando la venta es al crédito — queda registrado a quién se le fía.
             'buyer_dni'         => 'required_if:payment_condition,credito|nullable|digits:8',
@@ -60,6 +66,8 @@ class PosController extends Controller
         ], [
             'buyer_dni.required_if' => 'El DNI del comprador es obligatorio para ventas al crédito.',
             'buyer_dni.digits'      => 'El DNI debe tener 8 dígitos.',
+            'payment_method.in'     => 'Al crédito, el único método de pago permitido es "Valorizado".',
+            'payment_method.not_in' => 'El método de pago "Valorizado" solo aplica a ventas al crédito.',
         ]);
 
         $items = json_decode($data['products'], true);

@@ -93,9 +93,9 @@ const paymentMethodSelected    = ref<string>('efectivo');
 const buyerDni                 = ref('');
 const subdealershipSelected    = ref<number | ''>('');
 
-const availablePaymentMethods = computed(() =>
-    paymentConditionSelected.value === 'credito' ? [...PAYMENT_METHODS, CREDIT_ONLY_METHOD] : PAYMENT_METHODS,
-);
+// Al crédito, "Valorizado" es la única forma de pago posible (se factura a la subdealership, no
+// se cobra en el momento) — no tiene sentido ofrecer Efectivo/Yape/etc. junto a esa condición.
+const availablePaymentMethods = computed(() => (paymentConditionSelected.value === 'credito' ? [CREDIT_ONLY_METHOD] : PAYMENT_METHODS));
 
 // ── Búsqueda de comensal por DNI (solo crédito) ─────────────────────────────
 type DinnerLookupStatus = 'idle' | 'checking' | 'found' | 'not_found';
@@ -172,7 +172,10 @@ async function registerDinnerManually() {
 
 // Al volver a "Contado" se limpia todo el sub-flujo de crédito para no arrastrar datos a medias.
 watch(paymentConditionSelected, (val) => {
-    if (val === 'contado') {
+    if (val === 'credito') {
+        // Único método de pago posible al crédito — se fuerza sin dejar elegir otro.
+        paymentMethodSelected.value = 'valorizado';
+    } else {
         if (paymentMethodSelected.value === 'valorizado') paymentMethodSelected.value = 'efectivo';
         buyerDni.value = '';
         subdealershipSelected.value = '';
@@ -836,7 +839,7 @@ const submit = async () => {
                             <!-- Método de Pago -->
                             <div>
                                 <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-500 block mb-1">Tipo de Pago</span>
-                                <div class="grid grid-cols-3 gap-1">
+                                <div :class="['grid gap-1', paymentConditionSelected === 'credito' ? 'grid-cols-1' : 'grid-cols-3']">
                                     <button
                                         v-for="method in availablePaymentMethods"
                                         :key="method.id"
