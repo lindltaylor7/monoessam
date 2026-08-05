@@ -6,22 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
-import {
-    AlertTriangle,
-    CalendarClock,
-    Layers,
-    Minus,
-    Package,
-    Pencil,
-    Plus,
-    Search,
-    Store,
-    Tag,
-    ToggleLeft,
-    ToggleRight,
-    Trash2,
-    X,
-} from 'lucide-vue-next';
+import { AlertTriangle, CalendarClock, Layers, Package, Pencil, Plus, Search, Store, Tag, ToggleLeft, ToggleRight, Trash2, X } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -395,13 +380,13 @@ const BATCH_STATUS_INFO: Record<string, { label: string; cls: string; icon: type
                                 <!-- Stock -->
                                 <td class="p-4">
                                     <div class="flex items-center justify-center gap-2">
-                                        <button
+                                        <!-- <button
                                             @click="adjustStock(p, -1)"
                                             :disabled="p.stock <= 0"
                                             class="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition-colors hover:bg-red-100 hover:text-red-600 disabled:opacity-30"
                                         >
                                             <Minus class="h-3.5 w-3.5" />
-                                        </button>
+                                        </button> -->
                                         <span
                                             :class="[
                                                 'w-8 text-center text-sm font-bold',
@@ -410,12 +395,12 @@ const BATCH_STATUS_INFO: Record<string, { label: string; cls: string; icon: type
                                         >
                                             {{ p.stock }}
                                         </span>
-                                        <button
+                                        <!--  <button
                                             @click="adjustStock(p, 1)"
                                             class="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-100 text-zinc-600 transition-colors hover:bg-emerald-100 hover:text-emerald-600"
                                         >
                                             <Plus class="h-3.5 w-3.5" />
-                                        </button>
+                                        </button> -->
                                     </div>
                                 </td>
                                 <!-- Estado -->
@@ -570,7 +555,7 @@ const BATCH_STATUS_INFO: Record<string, { label: string; cls: string; icon: type
                         </div>
                         <div class="space-y-1.5">
                             <Label>Stock</Label>
-                            <Input v-model="form.stock" type="number" step="1" min="0" placeholder="0" />
+                            <Input v-model="form.stock" type="number" step="1" min="0" placeholder="0" disabled />
                             <p v-if="form.errors.stock" class="text-xs text-red-500">{{ form.errors.stock }}</p>
                             <p class="text-[11px] text-zinc-400">Para stock con vencimiento, usa "Lotes" desde la tabla.</p>
                         </div>
@@ -618,8 +603,8 @@ const BATCH_STATUS_INFO: Record<string, { label: string; cls: string; icon: type
                         Lotes de {{ batchesProduct?.name }}
                     </DialogTitle>
                     <DialogDescription>
-                        Registra ingresos por lote con su fecha de vencimiento. Cada lote agregado suma al stock total del producto
-                        (actualmente <strong>{{ batchesProduct?.stock }}</strong
+                        Registra ingresos por lote con su fecha de vencimiento. Cada lote agregado suma al stock total del producto (actualmente
+                        <strong>{{ batchesProduct?.stock }}</strong
                         >).
                     </DialogDescription>
                 </DialogHeader>
@@ -697,9 +682,7 @@ const BATCH_STATUS_INFO: Record<string, { label: string; cls: string; icon: type
                 </div>
 
                 <div class="flex justify-end pt-2">
-                    <Button variant="outline" @click="closeBatchesModal" class="gap-2">
-                        <X class="h-4 w-4" /> Cerrar
-                    </Button>
+                    <Button variant="outline" @click="closeBatchesModal" class="gap-2"> <X class="h-4 w-4" /> Cerrar </Button>
                 </div>
             </DialogContent>
         </Dialog>
