@@ -4,8 +4,21 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
 import {
-    BarChart3, CalendarDays, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, FileSpreadsheet, Loader2,
-    Package, RotateCcw, Search, ShoppingBag, Store, UserPlus, X,
+    BarChart3,
+    CalendarDays,
+    Check,
+    CheckCircle2,
+    ChevronDown,
+    ChevronUp,
+    FileSpreadsheet,
+    Loader2,
+    Package,
+    RotateCcw,
+    Search,
+    ShoppingBag,
+    Store,
+    UserPlus,
+    X,
 } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
 import { computed, ref, watch } from 'vue';
@@ -53,35 +66,37 @@ const props = defineProps<Props>();
 
 // ── Category colours ───────────────────────────────────────────────────────
 const PALETTE = [
-    { accent: 'bg-violet-500',  ring: 'ring-violet-400',  bg: 'bg-violet-50',  emoji: '🛒' },
-    { accent: 'bg-blue-500',    ring: 'ring-blue-400',    bg: 'bg-blue-50',    emoji: '📦' },
+    { accent: 'bg-violet-500', ring: 'ring-violet-400', bg: 'bg-violet-50', emoji: '🛒' },
+    { accent: 'bg-blue-500', ring: 'ring-blue-400', bg: 'bg-blue-50', emoji: '📦' },
     { accent: 'bg-emerald-500', ring: 'ring-emerald-400', bg: 'bg-emerald-50', emoji: '🏷️' },
-    { accent: 'bg-amber-500',   ring: 'ring-amber-400',   bg: 'bg-amber-50',   emoji: '⭐' },
-    { accent: 'bg-rose-500',    ring: 'ring-rose-400',    bg: 'bg-rose-50',    emoji: '🎁' },
-    { accent: 'bg-cyan-500',    ring: 'ring-cyan-400',    bg: 'bg-cyan-50',    emoji: '💎' },
+    { accent: 'bg-amber-500', ring: 'ring-amber-400', bg: 'bg-amber-50', emoji: '⭐' },
+    { accent: 'bg-rose-500', ring: 'ring-rose-400', bg: 'bg-rose-50', emoji: '🎁' },
+    { accent: 'bg-cyan-500', ring: 'ring-cyan-400', bg: 'bg-cyan-50', emoji: '💎' },
 ];
 
 const categoryMeta = (() => {
     const map = new Map<string, (typeof PALETTE)[0]>();
     let i = 0;
     return (cat: string) => {
-        if (!map.has(cat)) { map.set(cat, PALETTE[i++ % PALETTE.length]); }
+        if (!map.has(cat)) {
+            map.set(cat, PALETTE[i++ % PALETTE.length]);
+        }
         return map.get(cat)!;
     };
 })();
 
 // ── State ──────────────────────────────────────────────────────────────────
 const mercantilSelected = ref<number>(props.mercantiles[0]?.id ?? 0);
-const dateSelected      = ref<string>(new Date().toISOString().split('T')[0]);
-const saletypeSelected  = ref<number>(props.sale_types[0]?.id ?? 0);
-const activeCategory    = ref<string>('all');
-const searchQuery       = ref('');
+const dateSelected = ref<string>(new Date().toISOString().split('T')[0]);
+const saletypeSelected = ref<number>(props.sale_types[0]?.id ?? 0);
+const activeCategory = ref<string>('all');
+const searchQuery = ref('');
 
 const PAYMENT_METHODS = [
-    { id: 'efectivo',      label: 'Efectivo',      icon: '💵', bgActive: 'bg-emerald-600' },
-    { id: 'yape',          label: 'Yape',          icon: '📱', bgActive: 'bg-purple-600' },
-    { id: 'plin',          label: 'Plin',          icon: '🟣', bgActive: 'bg-cyan-600' },
-    { id: 'tarjeta',       label: 'Tarjeta',       icon: '💳', bgActive: 'bg-indigo-600' },
+    { id: 'efectivo', label: 'Efectivo', icon: '💵', bgActive: 'bg-emerald-600' },
+    { id: 'yape', label: 'Yape', icon: '📱', bgActive: 'bg-purple-600' },
+    { id: 'plin', label: 'Plin', icon: '🟣', bgActive: 'bg-cyan-600' },
+    { id: 'tarjeta', label: 'Tarjeta', icon: '💳', bgActive: 'bg-indigo-600' },
     { id: 'transferencia', label: 'Transferencia', icon: '🏛️', bgActive: 'bg-slate-700' },
 ];
 // "Valorizado" solo aplica a ventas al crédito (se factura contra la subdealership, no se cobra
@@ -89,13 +104,13 @@ const PAYMENT_METHODS = [
 const CREDIT_ONLY_METHOD = { id: 'valorizado', label: 'Valorizado', icon: '📊', bgActive: 'bg-teal-600' };
 
 const paymentConditionSelected = ref<'contado' | 'credito'>('contado');
-const paymentMethodSelected    = ref<string>('efectivo');
-const buyerDni                 = ref('');
-const subdealershipSelected    = ref<number | ''>('');
+const paymentMethodSelected = ref<string>('efectivo');
+const buyerDni = ref('');
+const subdealershipSelected = ref<number | ''>('');
 // true mientras el valor de subdealershipSelected vino de una sugerencia automática (por el DNI
 // buscado) y no de una elección manual del cajero — así una segunda búsqueda puede reemplazarla,
 // pero nunca pisa lo que el cajero eligió a propósito.
-const subdealershipAutoFilled  = ref(false);
+const subdealershipAutoFilled = ref(false);
 
 function onSubdealershipManualChange() {
     subdealershipAutoFilled.value = false;
@@ -108,11 +123,11 @@ const availablePaymentMethods = computed(() => (paymentConditionSelected.value =
 // ── Búsqueda de comensal por DNI (solo crédito) ─────────────────────────────
 type DinnerLookupStatus = 'idle' | 'checking' | 'found' | 'not_found';
 const dinnerLookupStatus = ref<DinnerLookupStatus>('idle');
-const dinnerFound        = ref<Dinner | null>(null);
-const dinnerId           = ref<number | null>(null);
+const dinnerFound = ref<Dinner | null>(null);
+const dinnerId = ref<number | null>(null);
 const showManualRegister = ref(false);
-const registeringDinner  = ref(false);
-const manualDinnerForm   = ref({ name: '', phone: '' });
+const registeringDinner = ref(false);
+const manualDinnerForm = ref({ name: '', phone: '' });
 
 async function lookupDinnerByDni() {
     dinnerId.value = null;
@@ -211,14 +226,14 @@ watch(paymentConditionSelected, (val) => {
 const submitting = ref(false);
 
 // ── Report Modal State ──────────────────────────────────────────────────────
-const showReportModal   = ref(false);
-const reportFromDate       = ref('');
-const reportToDate         = ref('');
-const reportMercantilId    = ref<number | string>('all');
-const reportPaymentMethod  = ref<string>('all');
+const showReportModal = ref(false);
+const reportFromDate = ref('');
+const reportToDate = ref('');
+const reportMercantilId = ref<number | string>('all');
+const reportPaymentMethod = ref<string>('all');
 const reportSubdealershipId = ref<number | string>('all');
-const loadingReport     = ref(false);
-const expandedSaleId    = ref<number | null>(null);
+const loadingReport = ref(false);
+const expandedSaleId = ref<number | null>(null);
 
 interface ReportData {
     sales: any[];
@@ -231,23 +246,19 @@ interface ReportData {
 const reportData = ref<ReportData | null>(null);
 
 interface CartItem {
-    productId:  number;
-    name:       string;
-    category:   string;
+    productId: number;
+    name: string;
+    category: string;
     unit_price: number;
-    quantity:   number;
-    total:      number;
+    quantity: number;
+    total: number;
 }
 const cart = ref<CartItem[]>([]);
 
 // ── Derived ────────────────────────────────────────────────────────────────
-const mercantilProducts = computed<Product[]>(() =>
-    props.mercantiles.find(m => m.id === mercantilSelected.value)?.products ?? [],
-);
+const mercantilProducts = computed<Product[]>(() => props.mercantiles.find((m) => m.id === mercantilSelected.value)?.products ?? []);
 
-const categories = computed<string[]>(() =>
-    [...new Set(mercantilProducts.value.map((p: Product) => p.category ?? 'Sin categoría'))].sort(),
-);
+const categories = computed<string[]>(() => [...new Set(mercantilProducts.value.map((p: Product) => p.category ?? 'Sin categoría'))].sort());
 
 const filtered = computed<Product[]>(() => {
     const query = searchQuery.value.trim().toLowerCase();
@@ -257,9 +268,7 @@ const filtered = computed<Product[]>(() => {
         // "Bebidas" y buscar algo de "Abarrotes" sin tener que cambiar de pestaña primero.
         return mercantilProducts.value.filter(
             (p: Product) =>
-                p.name.toLowerCase().includes(query) ||
-                (p.sku ?? '').toLowerCase().includes(query) ||
-                (p.marca ?? '').toLowerCase().includes(query),
+                p.name.toLowerCase().includes(query) || (p.sku ?? '').toLowerCase().includes(query) || (p.marca ?? '').toLowerCase().includes(query),
         );
     }
 
@@ -270,18 +279,18 @@ const filtered = computed<Product[]>(() => {
 });
 
 const cartSubtotal = computed(() => cart.value.reduce((s, i) => s + i.total, 0));
-const igv          = computed(() => +(cartSubtotal.value * 0.18).toFixed(2));
-const cartTotal    = computed(() => cartSubtotal.value);
+const igv = computed(() => +(cartSubtotal.value * 0.18).toFixed(2));
+const cartTotal = computed(() => cartSubtotal.value);
 
-const inCart       = (id: number) => cart.value.some(i => i.productId === id);
-const cartItem     = (id: number) => cart.value.find(i => i.productId === id);
+const inCart = (id: number) => cart.value.some((i) => i.productId === id);
+const cartItem = (id: number) => cart.value.find((i) => i.productId === id);
 
 const dniValid = computed(() => paymentConditionSelected.value !== 'credito' || /^\d{8}$/.test(buyerDni.value.trim()));
 const canSubmit = computed(() => !submitting.value && cart.value.length > 0 && dniValid.value);
 
 // ── Cart ───────────────────────────────────────────────────────────────────
 const addToCart = (product: Product) => {
-    const fullProduct = mercantilProducts.value.find(p => p.id === product.id) ?? product;
+    const fullProduct = mercantilProducts.value.find((p) => p.id === product.id) ?? product;
     const existing = cartItem(fullProduct.id);
     const currentQty = existing ? existing.quantity : 0;
     const stockAvailable = fullProduct.stock ?? 0;
@@ -315,12 +324,12 @@ const addToCart = (product: Product) => {
         existing.total = +(existing.quantity * existing.unit_price).toFixed(2);
     } else {
         cart.value.push({
-            productId:  fullProduct.id,
-            name:       fullProduct.name,
-            category:   fullProduct.category ?? 'Sin categoría',
+            productId: fullProduct.id,
+            name: fullProduct.name,
+            category: fullProduct.category ?? 'Sin categoría',
             unit_price: fullProduct.price,
-            quantity:   1,
-            total:      fullProduct.price,
+            quantity: 1,
+            total: fullProduct.price,
         });
     }
 };
@@ -328,19 +337,26 @@ const addToCart = (product: Product) => {
 const decreaseQty = (id: number) => {
     const item = cartItem(id);
     if (!item) return;
-    if (item.quantity <= 1) { removeItem(id); return; }
+    if (item.quantity <= 1) {
+        removeItem(id);
+        return;
+    }
     item.quantity--;
     item.total = +(item.quantity * item.unit_price).toFixed(2);
 };
 
-const removeItem = (id: number) => { cart.value = cart.value.filter(i => i.productId !== id); };
-const clearCart  = () => { cart.value = []; };
+const removeItem = (id: number) => {
+    cart.value = cart.value.filter((i) => i.productId !== id);
+};
+const clearCart = () => {
+    cart.value = [];
+};
 
 // ── Report Modal Functions ──────────────────────────────────────────────────
 function getWeekRange() {
     const now = new Date();
     const day = now.getDay();
-    const diffToMonday = (day === 0 ? -6 : 1 - day);
+    const diffToMonday = day === 0 ? -6 : 1 - day;
     const monday = new Date(now);
     monday.setDate(now.getDate() + diffToMonday);
 
@@ -360,7 +376,7 @@ function getWeekRange() {
 function openReportModal() {
     const { start, end } = getWeekRange();
     reportFromDate.value = start;
-    reportToDate.value   = end;
+    reportToDate.value = end;
     reportMercantilId.value = mercantilSelected.value || 'all';
     reportPaymentMethod.value = 'all';
     reportSubdealershipId.value = 'all';
@@ -380,16 +396,16 @@ function setPresetRange(type: 'today' | 'week' | 'month') {
     if (type === 'today') {
         const todayStr = fmt(now);
         reportFromDate.value = todayStr;
-        reportToDate.value   = todayStr;
+        reportToDate.value = todayStr;
     } else if (type === 'week') {
         const { start, end } = getWeekRange();
         reportFromDate.value = start;
-        reportToDate.value   = end;
+        reportToDate.value = end;
     } else if (type === 'month') {
         const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-        const lastDay  = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
         reportFromDate.value = fmt(firstDay);
-        reportToDate.value   = fmt(lastDay);
+        reportToDate.value = fmt(lastDay);
     }
     fetchReportData();
 }
@@ -422,15 +438,21 @@ function toggleExpandSale(id: number) {
 
 function exportReportToExcel() {
     if (!reportFromDate.value || !reportToDate.value) return;
-    const mercantil       = reportMercantilId.value === 'all' ? '' : reportMercantilId.value;
-    const paymentMethod   = reportPaymentMethod.value === 'all' ? '' : reportPaymentMethod.value;
+    const mercantil = reportMercantilId.value === 'all' ? '' : reportMercantilId.value;
+    const paymentMethod = reportPaymentMethod.value === 'all' ? '' : reportPaymentMethod.value;
     const subdealershipId = reportSubdealershipId.value === 'all' ? '' : reportSubdealershipId.value;
     const url = `/pos/export-report?from=${reportFromDate.value}&to=${reportToDate.value}&mercantil_id=${mercantil}&payment_method=${paymentMethod}&subdealership_id=${subdealershipId}`;
     window.location.href = url;
 }
 const submit = async () => {
-    if (!mercantilSelected.value) { Swal.fire({ icon: 'warning', title: 'Sin mercantil', text: 'Selecciona un mercantil.', confirmButtonColor: '#dc2626' }); return; }
-    if (!cart.value.length)       { Swal.fire({ icon: 'warning', title: 'Carrito vacío', text: 'Agrega al menos un producto.', confirmButtonColor: '#dc2626' }); return; }
+    if (!mercantilSelected.value) {
+        Swal.fire({ icon: 'warning', title: 'Sin mercantil', text: 'Selecciona un mercantil.', confirmButtonColor: '#dc2626' });
+        return;
+    }
+    if (!cart.value.length) {
+        Swal.fire({ icon: 'warning', title: 'Carrito vacío', text: 'Agrega al menos un producto.', confirmButtonColor: '#dc2626' });
+        return;
+    }
 
     if (paymentConditionSelected.value === 'credito' && !/^\d{8}$/.test(buyerDni.value.trim())) {
         Swal.fire({
@@ -445,12 +467,12 @@ const submit = async () => {
     submitting.value = true;
     try {
         const fd = new FormData();
-        fd.append('mercantil_id',      mercantilSelected.value.toString());
-        fd.append('sale_type_id',      saletypeSelected.value.toString());
+        fd.append('mercantil_id', mercantilSelected.value.toString());
+        fd.append('sale_type_id', saletypeSelected.value.toString());
         fd.append('payment_condition', paymentConditionSelected.value);
-        fd.append('payment_method',    paymentMethodSelected.value);
-        fd.append('products',          JSON.stringify(cart.value));
-        fd.append('date',              dateSelected.value);
+        fd.append('payment_method', paymentMethodSelected.value);
+        fd.append('products', JSON.stringify(cart.value));
+        fd.append('date', dateSelected.value);
         if (paymentConditionSelected.value === 'credito') {
             fd.append('buyer_dni', buyerDni.value.trim());
             if (subdealershipSelected.value) fd.append('subdealership_id', String(subdealershipSelected.value));
@@ -462,8 +484,12 @@ const submit = async () => {
         router.reload({ only: ['mercantiles'] });
 
         await Swal.fire({
-            icon: 'success', title: '¡Venta registrada!',
-            confirmButtonColor: '#6366f1', timer: 1800, timerProgressBar: true, showConfirmButton: false,
+            icon: 'success',
+            title: '¡Venta registrada!',
+            confirmButtonColor: '#6366f1',
+            timer: 1800,
+            timerProgressBar: true,
+            showConfirmButton: false,
         });
 
         clearCart();
@@ -491,7 +517,6 @@ const submit = async () => {
     <Head title="Punto de Venta" />
     <AppLayout>
         <div class="flex h-[calc(100vh-4rem)] flex-col overflow-hidden bg-gray-100">
-
             <!-- ── CONFIG BAR ──────────────────────────────────────────────── -->
             <div class="flex flex-wrap items-center gap-2 border-b bg-white px-4 py-2.5 shadow-sm">
                 <div class="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5">
@@ -509,16 +534,16 @@ const submit = async () => {
                     <input type="date" v-model="dateSelected" class="border-none bg-transparent text-sm font-semibold text-zinc-700 outline-none" />
                 </div>
 
-                <div class="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5">
+                <!-- <div class="flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5">
                     <Clock class="h-3.5 w-3.5 text-zinc-500" />
                     <select v-model="saletypeSelected" class="border-none bg-transparent text-sm font-semibold text-zinc-700 outline-none">
                         <option :value="0" disabled>Tipo de venta</option>
                         <option v-for="st in sale_types" :key="st.id" :value="st.id">{{ st.name }}</option>
                     </select>
-                </div>
+                </div> -->
 
                 <!-- Search bar -->
-                <div class="relative flex-1 max-w-xs">
+                <div class="relative max-w-xs flex-1">
                     <Search class="absolute top-2.5 left-3 h-4 w-4 text-zinc-400" />
                     <input
                         v-model="searchQuery"
@@ -530,7 +555,7 @@ const submit = async () => {
                         v-if="searchQuery"
                         @click="searchQuery = ''"
                         type="button"
-                        class="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-200 hover:text-zinc-600 transition-colors"
+                        class="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-zinc-200 hover:text-zinc-600"
                     >
                         <X class="h-3.5 w-3.5" />
                     </button>
@@ -540,7 +565,7 @@ const submit = async () => {
                 <button
                     @click="openReportModal"
                     type="button"
-                    class="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors shadow-2xs"
+                    class="flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-semibold text-indigo-700 shadow-2xs transition-colors hover:bg-indigo-100"
                 >
                     <BarChart3 class="h-4 w-4 text-indigo-600" />
                     <span class="hidden sm:inline">Reporte de Ventas</span>
@@ -548,12 +573,12 @@ const submit = async () => {
 
                 <div class="ml-auto flex items-center gap-4">
                     <div class="text-right">
-                        <p class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">En carrito</p>
+                        <p class="text-[10px] font-bold tracking-wider text-zinc-400 uppercase">En carrito</p>
                         <p class="text-lg font-black text-zinc-800">{{ cart.length }} ítem{{ cart.length !== 1 ? 's' : '' }}</p>
                     </div>
                     <div class="h-8 w-px bg-zinc-100" />
                     <div class="text-right">
-                        <p class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Total</p>
+                        <p class="text-[10px] font-bold tracking-wider text-zinc-400 uppercase">Total</p>
                         <p class="text-lg font-black text-indigo-600">S/ {{ cartTotal.toFixed(2) }}</p>
                     </div>
                 </div>
@@ -561,26 +586,29 @@ const submit = async () => {
 
             <!-- ── MAIN ────────────────────────────────────────────────────── -->
             <div class="flex flex-1 overflow-hidden">
-
                 <!-- LEFT: product grid -->
                 <div class="flex flex-1 flex-col overflow-hidden">
-
                     <!-- Category tabs -->
                     <div class="flex gap-2 overflow-x-auto border-b bg-white px-4 py-3">
                         <button
                             @click="activeCategory = 'all'"
-                            :class="['flex shrink-0 items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold transition-all',
-                                activeCategory === 'all' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200']"
+                            :class="[
+                                'flex shrink-0 items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold transition-all',
+                                activeCategory === 'all' ? 'bg-slate-800 text-white shadow-md' : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+                            ]"
                         >
                             📋 Todos
                         </button>
                         <button
-                            v-for="cat in categories" :key="cat"
+                            v-for="cat in categories"
+                            :key="cat"
                             @click="activeCategory = cat"
-                            :class="['flex shrink-0 items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold transition-all',
+                            :class="[
+                                'flex shrink-0 items-center gap-1.5 rounded-full px-4 py-1.5 text-sm font-bold transition-all',
                                 activeCategory === cat
                                     ? `${categoryMeta(cat).accent} text-white shadow-md`
-                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200']"
+                                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200',
+                            ]"
                         >
                             {{ categoryMeta(cat).emoji }} {{ cat }}
                         </button>
@@ -594,26 +622,25 @@ const submit = async () => {
                             <p class="font-medium">
                                 {{ searchQuery.trim() ? `Sin resultados para "${searchQuery.trim()}"` : 'No hay productos disponibles' }}
                             </p>
-                            <button
-                                v-if="searchQuery.trim()"
-                                @click="searchQuery = ''"
-                                class="text-xs font-semibold text-indigo-600 hover:underline"
-                            >
+                            <button v-if="searchQuery.trim()" @click="searchQuery = ''" class="text-xs font-semibold text-indigo-600 hover:underline">
                                 Limpiar búsqueda
                             </button>
                         </div>
 
                         <div v-else class="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
                             <button
-                                v-for="product in filtered" :key="product.id"
+                                v-for="product in filtered"
+                                :key="product.id"
                                 @click="addToCart(product)"
                                 :disabled="(product.stock ?? 0) <= 0"
-                                :class="['group relative flex flex-col items-center gap-2 rounded-2xl border-2 p-4 text-center transition-all duration-200 active:scale-95',
+                                :class="[
+                                    'group relative flex flex-col items-center gap-2 rounded-2xl border-2 p-4 text-center transition-all duration-200 active:scale-95',
                                     (product.stock ?? 0) <= 0
-                                        ? 'opacity-60 cursor-not-allowed border-zinc-200 bg-zinc-100'
+                                        ? 'cursor-not-allowed border-zinc-200 bg-zinc-100 opacity-60'
                                         : inCart(product.id)
-                                            ? `${categoryMeta(product.category ?? 'Sin categoría').accent} border-transparent text-white shadow-lg ring-4 ${categoryMeta(product.category ?? 'Sin categoría').ring}`
-                                            : `border-white bg-white hover:shadow-md ${categoryMeta(product.category ?? 'Sin categoría').bg}`]"
+                                          ? `${categoryMeta(product.category ?? 'Sin categoría').accent} border-transparent text-white shadow-lg ring-4 ${categoryMeta(product.category ?? 'Sin categoría').ring}`
+                                          : `border-white bg-white hover:shadow-md ${categoryMeta(product.category ?? 'Sin categoría').bg}`,
+                                ]"
                             >
                                 <!-- Qty badge when in cart -->
                                 <div
@@ -630,10 +657,10 @@ const submit = async () => {
                                         inCart(product.id)
                                             ? 'bg-white/20 text-white'
                                             : (product.stock ?? 0) <= 0
-                                                ? 'bg-red-100 text-red-700 border border-red-200'
-                                                : (product.stock ?? 0) <= 5
-                                                    ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                              ? 'border border-red-200 bg-red-100 text-red-700'
+                                              : (product.stock ?? 0) <= 5
+                                                ? 'border border-amber-200 bg-amber-100 text-amber-800'
+                                                : 'border border-emerald-200 bg-emerald-50 text-emerald-700',
                                     ]"
                                 >
                                     <span
@@ -642,29 +669,36 @@ const submit = async () => {
                                             inCart(product.id)
                                                 ? 'bg-white'
                                                 : (product.stock ?? 0) <= 0
-                                                    ? 'bg-red-500'
-                                                    : (product.stock ?? 0) <= 5
-                                                        ? 'bg-amber-500'
-                                                        : 'bg-emerald-500'
+                                                  ? 'bg-red-500'
+                                                  : (product.stock ?? 0) <= 5
+                                                    ? 'bg-amber-500'
+                                                    : 'bg-emerald-500',
                                         ]"
                                     ></span>
                                     {{ (product.stock ?? 0) <= 0 ? 'Sin stock' : `Stock: ${product.stock ?? 0}` }}
                                 </div>
 
                                 <!-- Icon -->
-                                <div :class="['mt-2 flex h-14 w-14 items-center justify-center rounded-xl text-2xl transition-colors',
-                                    inCart(product.id) ? 'bg-white/20' : `${categoryMeta(product.category ?? 'Sin categoría').bg} shadow-sm`]">
+                                <div
+                                    :class="[
+                                        'mt-2 flex h-14 w-14 items-center justify-center rounded-xl text-2xl transition-colors',
+                                        inCart(product.id) ? 'bg-white/20' : `${categoryMeta(product.category ?? 'Sin categoría').bg} shadow-sm`,
+                                    ]"
+                                >
                                     {{ categoryMeta(product.category ?? 'Sin categoría').emoji }}
                                 </div>
 
                                 <!-- Info -->
                                 <div class="w-full">
-                                    <p :class="['text-sm font-bold leading-tight', inCart(product.id) ? 'text-white' : 'text-zinc-800']">
+                                    <p :class="['text-sm leading-tight font-bold', inCart(product.id) ? 'text-white' : 'text-zinc-800']">
                                         {{ product.name }}
                                     </p>
                                     <p
                                         v-if="product.marca"
-                                        :class="['mt-0.5 truncate text-[10px] font-semibold', inCart(product.id) ? 'text-white/80' : 'text-indigo-500']"
+                                        :class="[
+                                            'mt-0.5 truncate text-[10px] font-semibold',
+                                            inCart(product.id) ? 'text-white/80' : 'text-indigo-500',
+                                        ]"
                                     >
                                         {{ product.marca }}
                                     </p>
@@ -674,8 +708,12 @@ const submit = async () => {
                                 </div>
 
                                 <!-- Price -->
-                                <div :class="['w-full rounded-xl py-1.5 text-sm font-black',
-                                    inCart(product.id) ? 'bg-white/20 text-white' : 'bg-white text-zinc-800 shadow-sm']">
+                                <div
+                                    :class="[
+                                        'w-full rounded-xl py-1.5 text-sm font-black',
+                                        inCart(product.id) ? 'bg-white/20 text-white' : 'bg-white text-zinc-800 shadow-sm',
+                                    ]"
+                                >
                                     S/ {{ product.price.toFixed(2) }}
                                 </div>
                             </button>
@@ -685,14 +723,19 @@ const submit = async () => {
 
                 <!-- RIGHT: order panel -->
                 <div class="flex w-[370px] shrink-0 flex-col overflow-hidden border-l bg-white shadow-xl">
-
                     <!-- Header -->
                     <div class="border-b bg-slate-800 px-5 py-4">
                         <h2 class="text-lg font-black text-white">Orden Actual</h2>
                         <p class="mt-0.5 text-xs text-slate-400">
-                            {{ dateSelected
-                                ? new Date(dateSelected + 'T00:00:00').toLocaleDateString('es-PE', { weekday: 'long', day: 'numeric', month: 'long' })
-                                : 'Sin fecha' }}
+                            {{
+                                dateSelected
+                                    ? new Date(dateSelected + 'T00:00:00').toLocaleDateString('es-PE', {
+                                          weekday: 'long',
+                                          day: 'numeric',
+                                          month: 'long',
+                                      })
+                                    : 'Sin fecha'
+                            }}
                         </p>
                     </div>
 
@@ -704,9 +747,17 @@ const submit = async () => {
                         </div>
 
                         <TransitionGroup v-else name="cart" tag="div" class="space-y-2">
-                            <div v-for="item in cart" :key="item.productId"
-                                class="flex items-center gap-3 rounded-xl border border-zinc-100 bg-zinc-50 p-3">
-                                <div :class="['flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base', categoryMeta(item.category).bg]">
+                            <div
+                                v-for="item in cart"
+                                :key="item.productId"
+                                class="flex items-center gap-3 rounded-xl border border-zinc-100 bg-zinc-50 p-3"
+                            >
+                                <div
+                                    :class="[
+                                        'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-base',
+                                        categoryMeta(item.category).bg,
+                                    ]"
+                                >
                                     {{ categoryMeta(item.category).emoji }}
                                 </div>
                                 <div class="min-w-0 flex-1">
@@ -715,13 +766,25 @@ const submit = async () => {
                                 </div>
                                 <!-- Qty controls -->
                                 <div class="flex items-center gap-1.5">
-                                    <button @click="decreaseQty(item.productId)"
-                                        class="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-200 text-zinc-600 hover:bg-red-100 hover:text-red-600 transition-colors text-xs font-black">
+                                    <button
+                                        @click="decreaseQty(item.productId)"
+                                        class="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-200 text-xs font-black text-zinc-600 transition-colors hover:bg-red-100 hover:text-red-600"
+                                    >
                                         −
                                     </button>
                                     <span class="w-5 text-center text-sm font-black text-zinc-800">{{ item.quantity }}</span>
-                                    <button @click="addToCart({ id: item.productId, name: item.name, category: item.category, price: item.unit_price, is_active: true })"
-                                        class="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-200 text-zinc-600 hover:bg-indigo-100 hover:text-indigo-600 transition-colors text-xs font-black">
+                                    <button
+                                        @click="
+                                            addToCart({
+                                                id: item.productId,
+                                                name: item.name,
+                                                category: item.category,
+                                                price: item.unit_price,
+                                                is_active: true,
+                                            })
+                                        "
+                                        class="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-200 text-xs font-black text-zinc-600 transition-colors hover:bg-indigo-100 hover:text-indigo-600"
+                                    >
                                         +
                                     </button>
                                 </div>
@@ -741,25 +804,29 @@ const submit = async () => {
                         <div class="space-y-2.5 rounded-xl border border-zinc-200 bg-zinc-50/80 p-3 text-xs">
                             <!-- Condición: Contado vs Crédito -->
                             <div>
-                                <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-500 block mb-1">Condición de Pago</span>
+                                <span class="mb-1 block text-[10px] font-bold tracking-wider text-zinc-500 uppercase">Condición de Pago</span>
                                 <div class="grid grid-cols-2 gap-1.5">
                                     <button
                                         type="button"
                                         @click="paymentConditionSelected = 'contado'"
-                                        :class="['flex items-center justify-center gap-1 rounded-lg py-1.5 font-bold transition-all text-xs',
+                                        :class="[
+                                            'flex items-center justify-center gap-1 rounded-lg py-1.5 text-xs font-bold transition-all',
                                             paymentConditionSelected === 'contado'
                                                 ? 'bg-emerald-600 text-white shadow-xs'
-                                                : 'bg-white text-zinc-600 border border-zinc-200 hover:bg-zinc-100']"
+                                                : 'border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-100',
+                                        ]"
                                     >
                                         <span>💵 Contado</span>
                                     </button>
                                     <button
                                         type="button"
                                         @click="paymentConditionSelected = 'credito'"
-                                        :class="['flex items-center justify-center gap-1 rounded-lg py-1.5 font-bold transition-all text-xs',
+                                        :class="[
+                                            'flex items-center justify-center gap-1 rounded-lg py-1.5 text-xs font-bold transition-all',
                                             paymentConditionSelected === 'credito'
                                                 ? 'bg-amber-600 text-white shadow-xs'
-                                                : 'bg-white text-zinc-600 border border-zinc-200 hover:bg-zinc-100']"
+                                                : 'border border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-100',
+                                        ]"
                                     >
                                         <span>⏳ Crédito</span>
                                     </button>
@@ -769,7 +836,7 @@ const submit = async () => {
                             <!-- Bloque exclusivo de Crédito: Subdealership -> DNI -> resultado búsqueda -->
                             <template v-if="paymentConditionSelected === 'credito'">
                                 <div>
-                                    <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-500 block mb-1">Subdealership</span>
+                                    <span class="mb-1 block text-[10px] font-bold tracking-wider text-zinc-500 uppercase">Subdealership</span>
                                     <select
                                         v-model="subdealershipSelected"
                                         @change="onSubdealershipManualChange"
@@ -781,7 +848,7 @@ const submit = async () => {
                                 </div>
 
                                 <div>
-                                    <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-500 block mb-1">
+                                    <span class="mb-1 block text-[10px] font-bold tracking-wider text-zinc-500 uppercase">
                                         DNI del Comprador <span class="text-red-500">*</span>
                                     </span>
                                     <div class="relative">
@@ -792,22 +859,36 @@ const submit = async () => {
                                             maxlength="8"
                                             placeholder="Ej. 45678912"
                                             @input="buyerDni = buyerDni.replace(/\D/g, '').slice(0, 8)"
-                                            :class="['w-full rounded-lg border bg-white px-3 py-1.5 pr-8 text-sm font-semibold text-zinc-800 outline-none focus:ring-2',
+                                            :class="[
+                                                'w-full rounded-lg border bg-white px-3 py-1.5 pr-8 text-sm font-semibold text-zinc-800 outline-none focus:ring-2',
                                                 buyerDni.length > 0 && buyerDni.length !== 8
                                                     ? 'border-red-300 focus:border-red-400 focus:ring-red-100'
-                                                    : 'border-zinc-200 focus:border-amber-400 focus:ring-amber-100']"
+                                                    : 'border-zinc-200 focus:border-amber-400 focus:ring-amber-100',
+                                            ]"
                                         />
-                                        <Loader2 v-if="dinnerLookupStatus === 'checking'" class="absolute right-2.5 top-2.5 h-4 w-4 animate-spin text-zinc-400" />
-                                        <CheckCircle2 v-else-if="dinnerLookupStatus === 'found'" class="absolute right-2.5 top-2.5 h-4 w-4 text-emerald-500" />
+                                        <Loader2
+                                            v-if="dinnerLookupStatus === 'checking'"
+                                            class="absolute top-2.5 right-2.5 h-4 w-4 animate-spin text-zinc-400"
+                                        />
+                                        <CheckCircle2
+                                            v-else-if="dinnerLookupStatus === 'found'"
+                                            class="absolute top-2.5 right-2.5 h-4 w-4 text-emerald-500"
+                                        />
                                     </div>
                                     <p v-if="buyerDni.length > 0 && buyerDni.length !== 8" class="mt-1 text-[10px] font-semibold text-red-500">
                                         El DNI debe tener 8 dígitos.
                                     </p>
 
                                     <!-- Comensal encontrado -->
-                                    <div v-if="dinnerLookupStatus === 'found' && dinnerFound" class="mt-1.5 flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700">
+                                    <div
+                                        v-if="dinnerLookupStatus === 'found' && dinnerFound"
+                                        class="mt-1.5 flex items-center gap-1.5 rounded-lg bg-emerald-50 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700"
+                                    >
                                         <Check class="h-3.5 w-3.5 shrink-0" />
-                                        <span class="truncate">{{ dinnerFound.name }}<span v-if="dinnerFound.subdealership"> · {{ dinnerFound.subdealership.name }}</span></span>
+                                        <span class="truncate"
+                                            >{{ dinnerFound.name
+                                            }}<span v-if="dinnerFound.subdealership"> · {{ dinnerFound.subdealership.name }}</span></span
+                                        >
                                     </div>
 
                                     <!-- No encontrado: registrar manualmente o continuar sin vincular -->
@@ -819,7 +900,7 @@ const submit = async () => {
                                             v-if="!showManualRegister"
                                             type="button"
                                             @click="openManualRegister"
-                                            class="flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-white py-1.5 text-[11px] font-bold text-amber-700 hover:bg-amber-50 transition-colors"
+                                            class="flex w-full items-center justify-center gap-1.5 rounded-lg border border-amber-300 bg-white py-1.5 text-[11px] font-bold text-amber-700 transition-colors hover:bg-amber-50"
                                         >
                                             <UserPlus class="h-3.5 w-3.5" /> Registrar comensal
                                         </button>
@@ -841,7 +922,7 @@ const submit = async () => {
                                                 <button
                                                     type="button"
                                                     @click="showManualRegister = false"
-                                                    class="flex-1 rounded-md border border-zinc-200 bg-white py-1.5 text-[11px] font-bold text-zinc-500 hover:bg-zinc-100 transition-colors"
+                                                    class="flex-1 rounded-md border border-zinc-200 bg-white py-1.5 text-[11px] font-bold text-zinc-500 transition-colors hover:bg-zinc-100"
                                                 >
                                                     Cancelar
                                                 </button>
@@ -849,7 +930,7 @@ const submit = async () => {
                                                     type="button"
                                                     @click="registerDinnerManually"
                                                     :disabled="registeringDinner"
-                                                    class="flex-1 rounded-md bg-amber-600 py-1.5 text-[11px] font-bold text-white hover:bg-amber-700 transition-colors disabled:opacity-50"
+                                                    class="flex-1 rounded-md bg-amber-600 py-1.5 text-[11px] font-bold text-white transition-colors hover:bg-amber-700 disabled:opacity-50"
                                                 >
                                                     {{ registeringDinner ? 'Guardando…' : 'Guardar' }}
                                                 </button>
@@ -861,17 +942,19 @@ const submit = async () => {
 
                             <!-- Método de Pago -->
                             <div>
-                                <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-500 block mb-1">Tipo de Pago</span>
+                                <span class="mb-1 block text-[10px] font-bold tracking-wider text-zinc-500 uppercase">Tipo de Pago</span>
                                 <div :class="['grid gap-1', paymentConditionSelected === 'credito' ? 'grid-cols-1' : 'grid-cols-3']">
                                     <button
                                         v-for="method in availablePaymentMethods"
                                         :key="method.id"
                                         type="button"
                                         @click="paymentMethodSelected = method.id"
-                                        :class="['flex items-center justify-center gap-1 rounded-lg py-1.5 px-1 font-bold text-[11px] transition-all',
+                                        :class="[
+                                            'flex items-center justify-center gap-1 rounded-lg px-1 py-1.5 text-[11px] font-bold transition-all',
                                             paymentMethodSelected === method.id
                                                 ? `${method.bgActive} text-white shadow-xs`
-                                                : 'bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-100']"
+                                                : 'border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100',
+                                        ]"
                                     >
                                         <span>{{ method.icon }}</span>
                                         <span>{{ method.label }}</span>
@@ -896,20 +979,24 @@ const submit = async () => {
                         </div>
 
                         <div class="flex gap-2">
-                            <button @click="clearCart" :disabled="!cart.length"
-                                class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-200 text-zinc-400 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-500 disabled:opacity-40">
+                            <button
+                                @click="clearCart"
+                                :disabled="!cart.length"
+                                class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-zinc-200 text-zinc-400 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-500 disabled:opacity-40"
+                            >
                                 <RotateCcw class="h-4 w-4" />
                             </button>
-                            <button @click="submit" :disabled="!canSubmit"
-                                class="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 text-sm font-black text-white shadow-md shadow-indigo-200 transition-all hover:bg-indigo-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50">
+                            <button
+                                @click="submit"
+                                :disabled="!canSubmit"
+                                class="flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-600 text-sm font-black text-white shadow-md shadow-indigo-200 transition-all hover:bg-indigo-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
                                 <Loader2 v-if="submitting" class="h-4 w-4 animate-spin" />
                                 <span v-else>Confirmar Venta</span>
                             </button>
                         </div>
 
-                        <p v-if="!cart.length" class="text-center text-[11px] text-zinc-400">
-                            Selecciona productos del catálogo
-                        </p>
+                        <p v-if="!cart.length" class="text-center text-[11px] text-zinc-400">Selecciona productos del catálogo</p>
                     </div>
                 </div>
             </div>
@@ -926,11 +1013,11 @@ const submit = async () => {
                 </DialogTitle>
             </DialogHeader>
 
-            <div class="grid grid-cols-1 gap-6 lg:grid-cols-12 py-2">
+            <div class="grid grid-cols-1 gap-6 py-2 lg:grid-cols-12">
                 <!-- Left Side: Date controls & Filters (lg:col-span-4) -->
                 <div class="space-y-4 lg:col-span-4">
-                    <div class="rounded-xl border border-zinc-200 bg-zinc-50/70 p-4 space-y-3">
-                        <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-500 flex items-center gap-1.5">
+                    <div class="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50/70 p-4">
+                        <h3 class="flex items-center gap-1.5 text-xs font-bold tracking-wider text-zinc-500 uppercase">
                             <CalendarDays class="h-4 w-4 text-zinc-400" />
                             Rango de Fechas
                         </h3>
@@ -940,21 +1027,21 @@ const submit = async () => {
                             <button
                                 type="button"
                                 @click="setPresetRange('today')"
-                                class="rounded-md border border-zinc-200 bg-white py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 hover:text-indigo-600 transition-colors"
+                                class="rounded-md border border-zinc-200 bg-white py-1 text-xs font-semibold text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-indigo-600"
                             >
                                 Hoy
                             </button>
                             <button
                                 type="button"
                                 @click="setPresetRange('week')"
-                                class="rounded-md border border-indigo-200 bg-indigo-50 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors"
+                                class="rounded-md border border-indigo-200 bg-indigo-50 py-1 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100"
                             >
                                 Esta Semana
                             </button>
                             <button
                                 type="button"
                                 @click="setPresetRange('month')"
-                                class="rounded-md border border-zinc-200 bg-white py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 hover:text-indigo-600 transition-colors"
+                                class="rounded-md border border-zinc-200 bg-white py-1 text-xs font-semibold text-zinc-700 transition-colors hover:bg-zinc-100 hover:text-indigo-600"
                             >
                                 Este Mes
                             </button>
@@ -1024,15 +1111,15 @@ const submit = async () => {
                     <!-- KPI Summary Cards -->
                     <div v-if="reportData" class="grid grid-cols-2 gap-2">
                         <div class="col-span-2 rounded-xl border border-indigo-100 bg-indigo-50/60 p-3 text-center">
-                            <p class="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Total Recaudado</p>
+                            <p class="text-[10px] font-bold tracking-wider text-indigo-600 uppercase">Total Recaudado</p>
                             <p class="text-2xl font-black text-indigo-700">S/ {{ reportData.total_money.toFixed(2) }}</p>
                         </div>
                         <div class="rounded-xl border border-zinc-200 bg-white p-3 text-center shadow-2xs">
-                            <p class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Ventas</p>
+                            <p class="text-[10px] font-bold tracking-wider text-zinc-400 uppercase">Ventas</p>
                             <p class="text-lg font-black text-zinc-800">{{ reportData.total_sales_count }}</p>
                         </div>
                         <div class="rounded-xl border border-zinc-200 bg-white p-3 text-center shadow-2xs">
-                            <p class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Ítems Vendidos</p>
+                            <p class="text-[10px] font-bold tracking-wider text-zinc-400 uppercase">Ítems Vendidos</p>
                             <p class="text-lg font-black text-zinc-800">{{ reportData.total_items_count }}</p>
                         </div>
                     </div>
@@ -1042,7 +1129,7 @@ const submit = async () => {
                         type="button"
                         @click="exportReportToExcel"
                         :disabled="loadingReport || !reportData?.sales?.length"
-                        class="w-full flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-200 transition-all hover:bg-emerald-700 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                        class="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-200 transition-all hover:bg-emerald-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                         <FileSpreadsheet class="h-4 w-4" />
                         <span>Exportar Ventas a Excel</span>
@@ -1050,13 +1137,13 @@ const submit = async () => {
                 </div>
 
                 <!-- Right Side: Sales list & Details (lg:col-span-8) -->
-                <div class="lg:col-span-8 flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white">
+                <div class="flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white lg:col-span-8">
                     <div class="flex items-center justify-between border-b bg-zinc-50 px-4 py-2.5">
-                        <span class="text-xs font-bold uppercase tracking-wider text-zinc-700 flex items-center gap-1.5">
+                        <span class="flex items-center gap-1.5 text-xs font-bold tracking-wider text-zinc-700 uppercase">
                             <ShoppingBag class="h-4 w-4 text-indigo-600" />
                             Historial de Ventas ({{ reportData?.sales?.length ?? 0 }})
                         </span>
-                        <span v-if="loadingReport" class="flex items-center gap-1.5 text-xs text-indigo-600 font-semibold">
+                        <span v-if="loadingReport" class="flex items-center gap-1.5 text-xs font-semibold text-indigo-600">
                             <Loader2 class="h-3.5 w-3.5 animate-spin" /> Cargando...
                         </span>
                     </div>
@@ -1076,22 +1163,26 @@ const submit = async () => {
                             <div
                                 v-for="sale in reportData.sales"
                                 :key="sale.id"
-                                class="rounded-xl border border-zinc-200 bg-white overflow-hidden transition-all hover:border-zinc-300"
+                                class="overflow-hidden rounded-xl border border-zinc-200 bg-white transition-all hover:border-zinc-300"
                             >
                                 <!-- Sale Header row -->
                                 <div
                                     @click="toggleExpandSale(sale.id)"
-                                    class="flex items-center justify-between gap-2 p-3 cursor-pointer hover:bg-zinc-50/80 transition-colors"
+                                    class="flex cursor-pointer items-center justify-between gap-2 p-3 transition-colors hover:bg-zinc-50/80"
                                 >
                                     <div class="space-y-1">
-                                        <div class="flex items-center gap-1.5 flex-wrap">
+                                        <div class="flex flex-wrap items-center gap-1.5">
                                             <span class="text-sm font-bold text-zinc-900">Venta #{{ sale.id }}</span>
                                             <span class="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-semibold text-zinc-600">
                                                 {{ sale.mercantil?.name || 'Mercantil' }}
                                             </span>
                                             <span
-                                                :class="['rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-tight',
-                                                    sale.payment_condition === 'credito' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800']"
+                                                :class="[
+                                                    'rounded-full px-2 py-0.5 text-[10px] font-bold tracking-tight uppercase',
+                                                    sale.payment_condition === 'credito'
+                                                        ? 'bg-amber-100 text-amber-800'
+                                                        : 'bg-emerald-100 text-emerald-800',
+                                                ]"
                                             >
                                                 {{ sale.payment_condition === 'credito' ? 'Crédito' : 'Contado' }}
                                             </span>
@@ -1107,17 +1198,22 @@ const submit = async () => {
                                             >
                                                 {{ sale.subdealership.name }}
                                             </span>
-                                            <span class="rounded-full bg-purple-50 text-purple-700 px-2 py-0.5 text-[10px] font-bold capitalize flex items-center gap-1">
-                                                <span>{{ [...PAYMENT_METHODS, CREDIT_ONLY_METHOD].find(m => m.id === sale.payment_method)?.icon || '💵' }}</span>
+                                            <span
+                                                class="flex items-center gap-1 rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-bold text-purple-700 capitalize"
+                                            >
+                                                <span>{{
+                                                    [...PAYMENT_METHODS, CREDIT_ONLY_METHOD].find((m) => m.id === sale.payment_method)?.icon || '💵'
+                                                }}</span>
                                                 <span>{{ sale.payment_method || 'efectivo' }}</span>
                                             </span>
-                                            <span v-if="sale.sale_type" class="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                                            <span
+                                                v-if="sale.sale_type"
+                                                class="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700"
+                                            >
                                                 {{ sale.sale_type.name }}
                                             </span>
                                         </div>
-                                        <p class="text-[11px] text-zinc-400">
-                                            {{ sale.date }} · {{ sale.user?.name || 'Usuario' }}
-                                        </p>
+                                        <p class="text-[11px] text-zinc-400">{{ sale.date }} · {{ sale.user?.name || 'Usuario' }}</p>
                                     </div>
 
                                     <div class="flex items-center gap-3">
@@ -1130,20 +1226,22 @@ const submit = async () => {
                                 </div>
 
                                 <!-- Expanded Details -->
-                                <div v-if="expandedSaleId === sale.id" class="border-t bg-zinc-50/60 p-3 text-xs space-y-1.5">
-                                    <p class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Detalle de Productos</p>
+                                <div v-if="expandedSaleId === sale.id" class="space-y-1.5 border-t bg-zinc-50/60 p-3 text-xs">
+                                    <p class="text-[10px] font-bold tracking-wider text-zinc-400 uppercase">Detalle de Productos</p>
                                     <div class="space-y-1">
                                         <div
                                             v-for="detail in sale.details"
                                             :key="detail.id"
-                                            class="flex items-center justify-between text-zinc-700 bg-white rounded-lg px-2.5 py-1.5 border border-zinc-100"
+                                            class="flex items-center justify-between rounded-lg border border-zinc-100 bg-white px-2.5 py-1.5 text-zinc-700"
                                         >
                                             <div>
                                                 <span class="font-bold text-zinc-800">{{ detail.product_name }}</span>
                                                 <span v-if="detail.category" class="ml-1 text-[10px] text-zinc-400">({{ detail.category }})</span>
                                             </div>
                                             <div class="flex items-center gap-3">
-                                                <span class="font-medium text-zinc-500">{{ detail.quantity }} x S/ {{ Number(detail.unit_price).toFixed(2) }}</span>
+                                                <span class="font-medium text-zinc-500"
+                                                    >{{ detail.quantity }} x S/ {{ Number(detail.unit_price).toFixed(2) }}</span
+                                                >
                                                 <span class="font-bold text-zinc-900">S/ {{ Number(detail.subtotal).toFixed(2) }}</span>
                                             </div>
                                         </div>
@@ -1159,10 +1257,25 @@ const submit = async () => {
 </template>
 
 <style scoped>
-.cart-enter-active, .cart-leave-active { transition: all 0.25s ease; }
-.cart-enter-from,   .cart-leave-to     { opacity: 0; transform: translateX(16px); }
+.cart-enter-active,
+.cart-leave-active {
+    transition: all 0.25s ease;
+}
+.cart-enter-from,
+.cart-leave-to {
+    opacity: 0;
+    transform: translateX(16px);
+}
 
-::-webkit-scrollbar       { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #e4e4e7; border-radius: 10px; }
+::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: #e4e4e7;
+    border-radius: 10px;
+}
 </style>
