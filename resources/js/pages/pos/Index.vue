@@ -92,6 +92,14 @@ const paymentConditionSelected = ref<'contado' | 'credito'>('contado');
 const paymentMethodSelected    = ref<string>('efectivo');
 const buyerDni                 = ref('');
 const subdealershipSelected    = ref<number | ''>('');
+// true mientras el valor de subdealershipSelected vino de una sugerencia automática (por el DNI
+// buscado) y no de una elección manual del cajero — así una segunda búsqueda puede reemplazarla,
+// pero nunca pisa lo que el cajero eligió a propósito.
+const subdealershipAutoFilled  = ref(false);
+
+function onSubdealershipManualChange() {
+    subdealershipAutoFilled.value = false;
+}
 
 // Al crédito, "Valorizado" es la única forma de pago posible (se factura a la subdealership, no
 // se cobra en el momento) — no tiene sentido ofrecer Efectivo/Yape/etc. junto a esa condición.
@@ -123,12 +131,25 @@ async function lookupDinnerByDni() {
             dinnerLookupStatus.value = 'found';
             dinnerFound.value = res.data.dinner;
             dinnerId.value = res.data.dinner.id;
-            // Si el comensal ya tiene subdealership y todavía no se eligió una, se sugiere la suya.
-            if (!subdealershipSelected.value && res.data.dinner.subdealership_id) {
-                subdealershipSelected.value = res.data.dinner.subdealership_id;
+
+            // Solo se sugiere/reemplaza la subdealership si el valor actual también vino de una
+            // sugerencia automática (o el campo está vacío) — nunca se pisa una elección manual.
+            if (subdealershipAutoFilled.value || !subdealershipSelected.value) {
+                if (res.data.dinner.subdealership_id) {
+                    subdealershipSelected.value = res.data.dinner.subdealership_id;
+                    subdealershipAutoFilled.value = true;
+                } else if (subdealershipAutoFilled.value) {
+                    // El comensal nuevo no tiene subdealership: la sugerencia anterior ya no aplica.
+                    subdealershipSelected.value = '';
+                    subdealershipAutoFilled.value = false;
+                }
             }
         } else {
             dinnerLookupStatus.value = 'not_found';
+            if (subdealershipAutoFilled.value) {
+                subdealershipSelected.value = '';
+                subdealershipAutoFilled.value = false;
+            }
         }
     } catch (err) {
         console.error(err);
@@ -179,6 +200,7 @@ watch(paymentConditionSelected, (val) => {
         if (paymentMethodSelected.value === 'valorizado') paymentMethodSelected.value = 'efectivo';
         buyerDni.value = '';
         subdealershipSelected.value = '';
+        subdealershipAutoFilled.value = false;
         dinnerLookupStatus.value = 'idle';
         dinnerFound.value = null;
         dinnerId.value = null;
@@ -750,6 +772,7 @@ const submit = async () => {
                                     <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-500 block mb-1">Subdealership</span>
                                     <select
                                         v-model="subdealershipSelected"
+                                        @change="onSubdealershipManualChange"
                                         class="w-full rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm font-semibold text-zinc-800 outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-100"
                                     >
                                         <option value="">Sin subdealership</option>
