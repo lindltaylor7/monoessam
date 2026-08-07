@@ -308,6 +308,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     Route::get('pos', [PosController::class, 'index'])->name('pos.index');
     Route::get('pos/report', [PosController::class, 'report'])->name('pos.report');
     Route::get('pos/export-report', [PosController::class, 'exportReport'])->name('pos.export-report');
+    Route::get('pos/export-inventory', [PosController::class, 'exportInventory'])->name('pos.export-inventory');
     Route::post('pos/store', [PosController::class, 'store'])->name('pos.store');
     // Bajo el segmento "pos" (no "dinners") a propósito: CheckRoutePermission autoriza GET por el
     // primer segmento de la URL, y un cajero con permiso de "POS" no necesariamente tiene el

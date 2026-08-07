@@ -18,6 +18,7 @@ import {
     ShoppingBag,
     Store,
     UserPlus,
+    Warehouse,
     X,
 } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
@@ -254,6 +255,55 @@ interface CartItem {
     total: number;
 }
 const cart = ref<CartItem[]>([]);
+
+// ── Inventory Report Modal State ────────────────────────────────────────────
+const showInventoryModal = ref(false);
+const inventoryMercantilId = ref<number | 'all'>('all');
+
+function openInventoryModal() {
+    inventoryMercantilId.value = mercantilSelected.value || 'all';
+    showInventoryModal.value = true;
+}
+
+// Fecha/hora en que se está viendo el reporte — se recalcula cada vez que se abre el modal.
+const inventoryReportDate = computed(() => {
+    if (!showInventoryModal.value) return '';
+    return new Date().toLocaleString('es-PE', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+});
+
+interface InventoryRow extends Product {
+    mercantilName: string;
+}
+
+// Se arma desde los productos ya cargados en `props.mercantiles` — sin ida y vuelta al backend
+// para verlo en pantalla (el Excel sí pasa por el servidor, para no exponer todo el catálogo
+// del navegador si se comparte el archivo).
+const inventoryRows = computed<InventoryRow[]>(() => {
+    const source =
+        inventoryMercantilId.value === 'all' ? props.mercantiles : props.mercantiles.filter((m) => m.id === inventoryMercantilId.value);
+
+    return source
+        .flatMap((m) => m.products.map((p) => ({ ...p, mercantilName: m.name })))
+        .sort((a, b) => (a.category ?? '').localeCompare(b.category ?? '') || a.name.localeCompare(b.name));
+});
+
+const inventoryTotals = computed(() => {
+    const totalStock = inventoryRows.value.reduce((sum, p) => sum + (p.stock ?? 0), 0);
+    const totalValue = inventoryRows.value.reduce((sum, p) => sum + (p.stock ?? 0) * p.price, 0);
+    return { totalStock, totalValue };
+});
+
+function exportInventoryToExcel() {
+    const mercantil = inventoryMercantilId.value === 'all' ? '' : inventoryMercantilId.value;
+    window.location.href = `/pos/export-inventory?mercantil_id=${mercantil}`;
+}
 
 // ── Derived ────────────────────────────────────────────────────────────────
 const mercantilProducts = computed<Product[]>(() => props.mercantiles.find((m) => m.id === mercantilSelected.value)?.products ?? []);
@@ -569,6 +619,16 @@ const submit = async () => {
                 >
                     <BarChart3 class="h-4 w-4 text-indigo-600" />
                     <span class="hidden sm:inline">Reporte de Ventas</span>
+                </button>
+
+                <!-- Inventory report button -->
+                <button
+                    @click="openInventoryModal"
+                    type="button"
+                    class="flex items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 shadow-2xs transition-colors hover:bg-emerald-100"
+                >
+                    <Warehouse class="h-4 w-4 text-emerald-600" />
+                    <span class="hidden sm:inline">Reporte de Inventario</span>
                 </button>
 
                 <div class="ml-auto flex items-center gap-4">
@@ -1249,6 +1309,122 @@ const submit = async () => {
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </DialogScrollContent>
+    </Dialog>
+
+    <!-- ── INVENTORY REPORT MODAL ───────────────────────────────────────────── -->
+    <Dialog v-model:open="showInventoryModal">
+        <DialogScrollContent class="max-w-5xl">
+            <DialogHeader>
+                <DialogTitle class="flex items-center gap-2 text-xl font-bold text-emerald-900">
+                    <Warehouse class="h-6 w-6 text-emerald-600" />
+                    <span>Reporte de Inventario</span>
+                </DialogTitle>
+                <p class="flex items-center gap-1.5 text-xs font-medium text-zinc-400">
+                    <CalendarDays class="h-3.5 w-3.5" />
+                    {{ inventoryReportDate }}
+                </p>
+            </DialogHeader>
+
+            <div class="grid grid-cols-1 gap-6 py-2 lg:grid-cols-12">
+                <!-- Left Side: filters, totals, export -->
+                <div class="space-y-4 lg:col-span-4">
+                    <div class="space-y-3 rounded-xl border border-zinc-200 bg-zinc-50/70 p-4">
+                        <h3 class="flex items-center gap-1.5 text-xs font-bold tracking-wider text-zinc-500 uppercase">
+                            <Store class="h-4 w-4 text-zinc-400" />
+                            Almacén
+                        </h3>
+                        <select
+                            v-model="inventoryMercantilId"
+                            class="w-full rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm font-medium text-zinc-800 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+                        >
+                            <option value="all">Todos los almacenes</option>
+                            <option v-for="m in mercantiles" :key="m.id" :value="m.id">{{ m.name }}</option>
+                        </select>
+                    </div>
+
+                    <!-- KPI Summary Cards -->
+                    <div class="grid grid-cols-2 gap-2">
+                        <div class="col-span-2 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3 text-center">
+                            <p class="text-[10px] font-bold tracking-wider text-emerald-600 uppercase">Valor Total de Inventario</p>
+                            <p class="text-2xl font-black text-emerald-700">S/ {{ inventoryTotals.totalValue.toFixed(2) }}</p>
+                        </div>
+                        <div class="rounded-xl border border-zinc-200 bg-white p-3 text-center shadow-2xs">
+                            <p class="text-[10px] font-bold tracking-wider text-zinc-400 uppercase">Productos</p>
+                            <p class="text-lg font-black text-zinc-800">{{ inventoryRows.length }}</p>
+                        </div>
+                        <div class="rounded-xl border border-zinc-200 bg-white p-3 text-center shadow-2xs">
+                            <p class="text-[10px] font-bold tracking-wider text-zinc-400 uppercase">Unidades en Stock</p>
+                            <p class="text-lg font-black text-zinc-800">{{ inventoryTotals.totalStock }}</p>
+                        </div>
+                    </div>
+
+                    <!-- Export Excel Button -->
+                    <button
+                        type="button"
+                        @click="exportInventoryToExcel"
+                        :disabled="!inventoryRows.length"
+                        class="flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-200 transition-all hover:bg-emerald-700 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                        <FileSpreadsheet class="h-4 w-4" />
+                        <span>Exportar Inventario a Excel</span>
+                    </button>
+                </div>
+
+                <!-- Right Side: product table -->
+                <div class="flex flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white lg:col-span-8">
+                    <div class="flex items-center justify-between border-b bg-zinc-50 px-4 py-2.5">
+                        <span class="flex items-center gap-1.5 text-xs font-bold tracking-wider text-zinc-700 uppercase">
+                            <Package class="h-4 w-4 text-emerald-600" />
+                            Productos en Almacén ({{ inventoryRows.length }})
+                        </span>
+                    </div>
+
+                    <div class="max-h-[460px] overflow-y-auto">
+                        <table class="w-full text-xs">
+                            <thead class="sticky top-0 bg-zinc-50">
+                                <tr class="text-left text-[10px] font-bold tracking-wider text-zinc-500 uppercase">
+                                    <th class="px-3 py-2">Producto</th>
+                                    <th class="px-3 py-2">Clase</th>
+                                    <th v-if="inventoryMercantilId === 'all'" class="px-3 py-2">Almacén</th>
+                                    <th class="px-3 py-2 text-center">Stock</th>
+                                    <th class="px-3 py-2 text-right">Valor Unit.</th>
+                                    <th class="px-3 py-2 text-right">Valor Total</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-zinc-100">
+                                <tr v-for="p in inventoryRows" :key="p.id" class="hover:bg-zinc-50/80">
+                                    <td class="px-3 py-2">
+                                        <p class="font-semibold text-zinc-800">{{ p.name }}</p>
+                                        <p class="text-[10px] text-zinc-400">
+                                            {{ p.sku || '—' }}<span v-if="p.marca"> · {{ p.marca }}</span>
+                                        </p>
+                                    </td>
+                                    <td class="px-3 py-2 text-zinc-600">{{ p.category || '—' }}</td>
+                                    <td v-if="inventoryMercantilId === 'all'" class="px-3 py-2 text-zinc-600">{{ p.mercantilName }}</td>
+                                    <td
+                                        :class="[
+                                            'px-3 py-2 text-center font-bold',
+                                            (p.stock ?? 0) === 0 ? 'text-red-500' : (p.stock ?? 0) <= 5 ? 'text-amber-500' : 'text-zinc-700',
+                                        ]"
+                                    >
+                                        {{ p.stock ?? 0 }}
+                                    </td>
+                                    <td class="px-3 py-2 text-right text-zinc-600">S/ {{ p.price.toFixed(2) }}</td>
+                                    <td class="px-3 py-2 text-right font-bold text-zinc-800">S/ {{ ((p.stock ?? 0) * p.price).toFixed(2) }}</td>
+                                </tr>
+
+                                <tr v-if="inventoryRows.length === 0">
+                                    <td :colspan="inventoryMercantilId === 'all' ? 6 : 5" class="py-12 text-center text-zinc-400">
+                                        <Package class="mx-auto mb-2 h-8 w-8 opacity-30" />
+                                        Sin productos registrados.
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\PosInventoryReportExport;
 use App\Exports\PosSalesReportExport;
 use App\Models\Mercantil;
 use App\Models\MercantilSale;
@@ -202,6 +203,20 @@ class PosController extends Controller
         $fileName = "reporte_ventas_pos_{$from}_a_{$to}.xlsx";
 
         return Excel::download(new PosSalesReportExport($from, $to, $mercantilId, $paymentMethod, $subdealershipId), $fileName);
+    }
+
+    public function exportInventory(Request $request)
+    {
+        $user = Auth::user();
+        $mercantilIds = Mercantil::whereHas('unit', fn($q) => $q->where('mine_id', $user->mine_id))->pluck('id')->all();
+
+        $data = $request->validate([
+            'mercantil_id' => 'nullable',
+        ]);
+
+        $fileName = 'reporte_inventario_' . now()->format('Y-m-d') . '.xlsx';
+
+        return Excel::download(new PosInventoryReportExport($mercantilIds, $data['mercantil_id'] ?? null), $fileName);
     }
 }
 
