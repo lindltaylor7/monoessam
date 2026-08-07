@@ -28,6 +28,7 @@ import {
     Tags,
     Trash2,
     Truck,
+    X,
 } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
@@ -1765,9 +1766,17 @@ const saveInlinePrice = (cp: any) => {
                                                 <Badge
                                                     v-for="sz in epp.sizes"
                                                     :key="sz.id"
-                                                    class="bg-indigo-600 text-[9px] font-black tracking-tighter uppercase"
+                                                    class="flex items-center gap-1 bg-indigo-600 text-[9px] font-black tracking-tighter uppercase"
                                                 >
                                                     {{ sz.size }}
+                                                    <button
+                                                        type="button"
+                                                        @click.stop="deleteSize(sz.id)"
+                                                        title="Eliminar talla"
+                                                        class="rounded-full p-0.5 text-indigo-200 transition-colors hover:bg-indigo-700 hover:text-white"
+                                                    >
+                                                        <X class="h-2.5 w-2.5" />
+                                                    </button>
                                                 </Badge>
                                                 <span v-if="!epp.sizes?.length" class="text-xs text-slate-400 italic">Sin tallas base</span>
                                             </div>
