@@ -11,7 +11,6 @@ class DealershipFactory extends Factory
 
     public function definition(): array
     {
-        die("I AM HERE IN FACTORY");
         return [
             'name' => 'Fixed Dealership',
             'ruc' => '12345678901',

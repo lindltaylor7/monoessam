@@ -33,7 +33,12 @@ return new class extends Migration
             DB::table('products')->where('cafe_id', $cafeId)->update(['mercantil_id' => $mercantilId]);
         }
 
-        DB::statement('ALTER TABLE products MODIFY mercantil_id BIGINT UNSIGNED NOT NULL');
+        // MODIFY es sintaxis MySQL-only; en otros drivers (sqlite en tests con RefreshDatabase)
+        // se omite el NOT NULL a nivel de columna — la validación de la app ya exige
+        // mercantil_id como campo requerido, así que no afecta el comportamiento real.
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement('ALTER TABLE products MODIFY mercantil_id BIGINT UNSIGNED NOT NULL');
+        }
 
         Schema::table('products', function (Blueprint $table) {
             $table->dropForeign(['cafe_id']);

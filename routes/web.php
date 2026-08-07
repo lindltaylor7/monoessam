@@ -250,6 +250,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     Route::prefix('dinners')->name('dinners.')->group(function () {
         Route::get('/', [DinnerController::class, 'index'])->name('index');
         Route::get('/check-dni', [DinnerController::class, 'checkDni'])->name('check-dni');
+        Route::post('/quick-register', [DinnerController::class, 'quickRegister'])->name('quick-register');
         Route::post('/save', [DinnerController::class, 'save'])->name('save');
         Route::post('/excel', [SaleController::class, 'excel'])->name('excel');
         Route::put('/{dinner}', [DinnerController::class, 'update'])->name('update');
@@ -305,11 +306,22 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     // VENTAS
     // ========================================================================
     Route::get('pos', [PosController::class, 'index'])->name('pos.index');
+    Route::get('pos/report', [PosController::class, 'report'])->name('pos.report');
+    Route::get('pos/export-report', [PosController::class, 'exportReport'])->name('pos.export-report');
+    Route::get('pos/export-inventory', [PosController::class, 'exportInventory'])->name('pos.export-inventory');
     Route::post('pos/store', [PosController::class, 'store'])->name('pos.store');
+    // Bajo el segmento "pos" (no "dinners") a propósito: CheckRoutePermission autoriza GET por el
+    // primer segmento de la URL, y un cajero con permiso de "POS" no necesariamente tiene el
+    // permiso "Comensales" — bajo /dinners/... esta búsqueda quedaba bloqueada en silencio.
+    Route::get('pos/find-dinner-by-dni', [DinnerController::class, 'findByDni'])->name('pos.find-dinner-by-dni');
 
     Route::prefix('products')->name('products.')->group(function () {
         Route::get('/',      [ProductController::class, 'index'])->name('index');
         Route::post('/',     [ProductController::class, 'store'])->name('store');
+        // Rutas de lotes con segmento fijo "batches" primero — deben registrarse antes que
+        // {id} genérico, o Laravel intentaría matchear "batches" como si fuera un {id}.
+        Route::delete('batches/{batchId}', [ProductController::class, 'destroyBatch'])->name('batches.destroy');
+        Route::post('{id}/batches', [ProductController::class, 'storeBatch'])->name('batches.store');
         Route::put('{id}',   [ProductController::class, 'update'])->name('update');
         Route::patch('{id}/stock', [ProductController::class, 'updateStock'])->name('stock');
         Route::delete('{id}',[ProductController::class, 'destroy'])->name('destroy');
