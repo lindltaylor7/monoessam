@@ -127,6 +127,17 @@ const form = useForm({
 
 const localLevels = ref([...props.levels]);
 
+// `localLevels` era una copia tomada una sola vez al montar el componente: cualquier recarga de
+// Inertia que trajera un `levels` fresco desde el servidor (por ejemplo, tras guardar el plato)
+// nunca la actualizaba, así que un nivel recién creado por otra vía (u otra pestaña) no se veía
+// reflejado hasta refrescar la página a mano.
+watch(
+    () => props.levels,
+    (newLevels) => {
+        localLevels.value = [...(newLevels || [])];
+    },
+);
+
 const addNewLevel = async () => {
     const { value: name } = await Swal.fire({
         title: 'Nuevo Nivel de Aplicación',
@@ -141,6 +152,10 @@ const addNewLevel = async () => {
         try {
             const response = await axios.post(route('levels.store'), { name });
             localLevels.value.push(response.data);
+            // Refresca `levels` en las props de Inertia — la creación fue por axios directo, así
+            // que sin esto el resto del sistema (y esta misma vista tras cualquier otra recarga)
+            // seguía viendo la lista vieja hasta un refresh manual del navegador.
+            router.reload({ only: ['levels'] });
             Swal.fire({
                 title: '¡Añadido!',
                 text: `Nivel "${name}" añadido correctamente.`,
@@ -187,6 +202,7 @@ const deleteLevelFromList = (levelId: number) => {
                 .delete(route('levels.destroy', levelId))
                 .then(() => {
                     localLevels.value = localLevels.value.filter((l) => l.id !== levelId);
+                    router.reload({ only: ['levels'] });
                     const index = form.mesearument_unit.indexOf(levelId);
                     if (index !== -1) {
                         form.mesearument_unit.splice(index, 1);
@@ -231,11 +247,10 @@ const toggleLevel = (id: number) => {
 
 // List Logic
 let dishSearchTimer: ReturnType<typeof setTimeout> | null = null;
-const searchDish = (e: Event) => {
-    const value = (e.target as HTMLInputElement).value;
-    searchQuery.value = value;
-    if (dishSearchTimer) clearTimeout(dishSearchTimer);
 
+// Extraída de searchDish para poder re-ejecutar la búsqueda actual sin depender de un Event del
+// input (la usa runDishSearchNow tras guardar un plato, ver más abajo).
+const performDishSearch = (value: string) => {
     if (!value) {
         isSearchingDishes.value = false;
         dishesSearched.value = props.dishes || [];
@@ -243,19 +258,30 @@ const searchDish = (e: Event) => {
     }
 
     isSearchingDishes.value = true;
-    dishSearchTimer = setTimeout(() => {
-        axios
-            .get(route('dishes.search', value))
-            .then((result) => {
-                dishesSearched.value = result.data;
-            })
-            .catch((err) => {
-                console.error(err);
-            })
-            .finally(() => {
-                isSearchingDishes.value = false;
-            });
-    }, 300);
+    axios
+        .get(route('dishes.search', value))
+        .then((result) => {
+            dishesSearched.value = result.data;
+        })
+        .catch((err) => {
+            console.error(err);
+        })
+        .finally(() => {
+            isSearchingDishes.value = false;
+        });
+};
+
+const searchDish = (e: Event) => {
+    const value = (e.target as HTMLInputElement).value;
+    searchQuery.value = value;
+    if (dishSearchTimer) clearTimeout(dishSearchTimer);
+
+    if (!value) {
+        performDishSearch(value);
+        return;
+    }
+
+    dishSearchTimer = setTimeout(() => performDishSearch(value), 300);
 };
 
 const calculateIngredientCalories = (ingredient: any) => {
@@ -587,6 +613,12 @@ const submit = () => {
     const options = {
         onSuccess: () => {
             resetView(true);
+            // Con ~17 mil platos, `dishes` en las props de Inertia solo trae los primeros 50 (sin
+            // relación con cuál se está editando) — el plato guardado casi siempre se había
+            // encontrado por búsqueda, y esa lista de resultados quedaba con los datos de ANTES
+            // de guardar. Sin esto, un nivel/receta recién guardado no aparecía al reabrir el
+            // plato desde los resultados de búsqueda hasta buscar de nuevo a mano.
+            if (searchQuery.value) performDishSearch(searchQuery.value);
             Swal.fire({
                 title: form.id ? '¡Actualizado!' : '¡Creado!',
                 text: `El quebrado se ha ${form.id ? 'guardado' : 'creado'} exitosamente.`,

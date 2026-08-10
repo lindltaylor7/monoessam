@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import Button from '@/components/ui/button/Button.vue';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import Input from '@/components/ui/input/Input.vue';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { router } from '@inertiajs/vue3';
-import { ChevronDown, ChevronUp, FolderOpen, Save, Search, Trash } from 'lucide-vue-next';
+import { ChevronDown, ChevronUp, Eraser, FolderOpen, Save, Search, Trash } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
 import { computed, ref, watch } from 'vue';
 
@@ -20,6 +21,15 @@ const open = ref(false);
 const structureName = ref('');
 const sellingPrice = ref<number | null>(null);
 const loadedStructureId = ref<number | null>(null);
+const showStructuresModal = ref(false);
+const structureSearchQuery = ref('');
+
+const filteredStructures = computed(() => {
+    const list = props.structures || [];
+    if (!structureSearchQuery.value.trim()) return list;
+    const q = structureSearchQuery.value.toLowerCase();
+    return list.filter((struct: any) => struct.name?.toLowerCase().includes(q));
+});
 
 watch(
     () => props.serviceableId,
@@ -211,6 +221,22 @@ const clearStructure = () => {
     categoriesSelected.value = [];
 };
 
+const confirmClearStructure = () => {
+    Swal.fire({
+        title: '¿Limpiar tabla?',
+        text: 'Se eliminarán todas las categorías agregadas y los datos de la estructura actual. Esta acción no se puede deshacer.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, limpiar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#dc2626',
+    }).then((result) => {
+        if (result.isConfirmed) {
+            clearStructure();
+        }
+    });
+};
+
 const saveStructure = () => {
     if (!props.serviceableId) {
         Swal.fire({
@@ -360,39 +386,92 @@ const saveStructure = () => {
             </div>
         </div>
 
-        <!-- Saved structures -->
-        <div
-            v-if="(structures?.length || 0) > 0"
-            class="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950"
-        >
-            <span class="flex items-center gap-1.5 text-[10px] font-bold text-slate-500 uppercase">
-                <FolderOpen class="h-3.5 w-3.5" /> Estructuras guardadas
-            </span>
-            <div
-                v-for="struct in structures"
-                :key="struct.id"
-                class="group flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold transition-all"
-                :class="
-                    loadedStructureId === struct.id
-                        ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm'
-                        : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300'
-                "
+        <!-- Saved structures trigger -->
+        <div v-if="(structures?.length || 0) > 0" class="flex items-center">
+            <Button
+                type="button"
+                variant="outline"
+                @click="showStructuresModal = true"
+                class="flex h-9 items-center gap-2 border-slate-200 text-xs font-semibold text-slate-600 dark:border-slate-800 dark:text-slate-300"
             >
-                <button type="button" @click="loadStructure(struct)" :title="`Cargar estructura (${struct.costs?.length || 0} categorías)`">
-                    {{ struct.name }}
-                    <span v-if="struct.selling_price" class="ml-1 opacity-70">S/. {{ Number(struct.selling_price).toFixed(2) }}</span>
-                </button>
-                <button
-                    type="button"
-                    @click.stop="deleteStructure(struct.id)"
-                    class="ml-1 opacity-0 transition-opacity group-hover:opacity-100"
-                    :class="loadedStructureId === struct.id ? 'text-white/80 hover:text-white' : 'text-slate-400 hover:text-red-500'"
-                    title="Eliminar estructura"
-                >
-                    <Trash class="h-3 w-3" />
-                </button>
-            </div>
+                <FolderOpen class="h-3.5 w-3.5" />
+                Estructuras guardadas
+                <span class="rounded-full bg-indigo-100 px-1.5 py-0.5 text-[10px] font-bold text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300">
+                    {{ structures?.length || 0 }}
+                </span>
+            </Button>
         </div>
+
+        <Dialog v-model:open="showStructuresModal">
+            <DialogContent class="max-w-md">
+                <DialogHeader>
+                    <DialogTitle class="flex items-center gap-1.5">
+                        <FolderOpen class="h-4 w-4" /> Estructuras guardadas
+                    </DialogTitle>
+                    <DialogDescription>Selecciona una estructura para cargarla, o elimínala con el ícono de papelera.</DialogDescription>
+                </DialogHeader>
+
+                <div class="flex items-center rounded-md border border-slate-200 bg-slate-50/50 px-3 dark:border-slate-800">
+                    <Search class="mr-2 h-4 w-4 shrink-0 text-indigo-600 opacity-50" />
+                    <Input
+                        v-model="structureSearchQuery"
+                        placeholder="Buscar estructura..."
+                        class="placeholder:text-muted-foreground flex h-10 w-full rounded-md border-0 bg-transparent py-2 text-sm outline-none focus-visible:ring-0"
+                    />
+                </div>
+
+                <div class="max-h-[400px] space-y-1.5 overflow-y-auto pr-1">
+                    <div
+                        v-for="struct in filteredStructures"
+                        :key="struct.id"
+                        class="group flex items-center justify-between gap-2 rounded-lg border px-3 py-2 transition-all"
+                        :class="
+                            loadedStructureId === struct.id
+                                ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm'
+                                : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300'
+                        "
+                    >
+                        <button
+                            type="button"
+                            class="flex flex-1 items-center justify-between gap-2 text-left text-sm font-semibold"
+                            @click="
+                                loadStructure(struct);
+                                showStructuresModal = false;
+                            "
+                            :title="`Cargar estructura (${struct.costs?.length || 0} categorías)`"
+                        >
+                            <span>{{ struct.name }}</span>
+                            <span v-if="struct.selling_price" class="opacity-70">S/. {{ Number(struct.selling_price).toFixed(2) }}</span>
+                        </button>
+                        <button
+                            type="button"
+                            @click.stop="deleteStructure(struct.id)"
+                            class="shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+                            :class="loadedStructureId === struct.id ? 'text-white/80 hover:text-white' : 'text-slate-400 hover:text-red-500'"
+                            title="Eliminar estructura"
+                        >
+                            <Trash class="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                    <div v-if="filteredStructures.length === 0" class="text-muted-foreground py-10 text-center text-sm italic">
+                        No se encontraron estructuras.
+                    </div>
+                </div>
+            </DialogContent>
+        </Dialog>
+
+        <div v-if="(categoriesSelected?.length || 0) > 0" class="flex justify-end">
+            <Button
+                type="button"
+                variant="outline"
+                @click="confirmClearStructure"
+                class="flex h-8 items-center gap-1.5 border-slate-200 text-xs font-semibold text-slate-500 hover:border-red-300 hover:text-red-600 dark:border-slate-800"
+            >
+                <Eraser class="h-3.5 w-3.5" />
+                Limpiar tabla
+            </Button>
+        </div>
+
         <Table>
             <TableHeader>
                 <TableRow class="hover:bg-transparent">
