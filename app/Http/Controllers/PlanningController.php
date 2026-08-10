@@ -6,9 +6,10 @@ use App\Models\WeeklyProgram;
 use App\Models\WeeklyProgramItem;
 use App\Models\DailyPortion;
 use App\Models\Cafe;
-use App\Models\Dish;
 use App\Models\Dish_category;
 use App\Models\MenuStructure;
+use App\Models\Serviceable;
+use App\Models\Service;
 use App\Services\QuebradosService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -25,16 +26,24 @@ class PlanningController extends Controller
 
     public function index()
     {
-        $menuCycles = \App\Models\MenuCycle::orderBy('id', 'desc')->get()->map(function ($cycle) {
-            $serviceable = \DB::table('serviceables')->find($cycle->serviceable_id);
+        $menuCycles = \App\Models\MenuCycle::orderBy('id', 'desc')->get();
+
+        // Batch-fetch serviceables/services instead of querying inside the map() loop.
+        $serviceableIds = $menuCycles->pluck('serviceable_id')->filter()->unique();
+        $serviceables = Serviceable::whereIn('id', $serviceableIds)->get()->keyBy('id');
+        $serviceIds = $serviceables->pluck('service_id')->filter()->unique();
+        $services = Service::whereIn('id', $serviceIds)->get()->keyBy('id');
+
+        $menuCycles = $menuCycles->map(function ($cycle) use ($serviceables, $services) {
+            $serviceable = $serviceables->get($cycle->serviceable_id);
             $mealType = 'N/A';
             $cafeId = null;
             if ($serviceable) {
-                $service = \App\Models\Service::find($serviceable->service_id);
+                $service = $services->get($serviceable->service_id);
                 if ($service) {
                     $mealType = $service->name;
                 }
-                if ($serviceable->serviceable_type === 'App\Models\Cafe') {
+                if ($serviceable->serviceable_type === \App\Models\Cafe::class) {
                     $cafeId = $serviceable->serviceable_id;
                 }
             }
@@ -49,7 +58,6 @@ class PlanningController extends Controller
             'dish_categories' => Dish_category::all(),
             'menu_structure' => MenuStructure::with('dish_category')->get(),
             'structures' => \App\Models\Structure::with('costs')->get(),
-            'dishes' => Dish::with('dish_categories')->get(),
             'menu_cycles' => $menuCycles,
             'mines' => \App\Models\Mine::with(['units', 'units.cafes', 'units.cafes.services'])->get(),
         ]);

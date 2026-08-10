@@ -28,7 +28,11 @@ const filteredStructures = computed(() => {
     const list = props.structures || [];
     if (!structureSearchQuery.value.trim()) return list;
     const q = structureSearchQuery.value.toLowerCase();
-    return list.filter((struct: any) => struct.name?.toLowerCase().includes(q));
+    return list.filter((struct: any) =>
+        [struct.name, struct.unit_name, struct.cafe_name, struct.mine_name, struct.service_name].some((field) =>
+            field?.toLowerCase().includes(q),
+        ),
+    );
 });
 
 watch(
@@ -433,15 +437,26 @@ const saveStructure = () => {
                     >
                         <button
                             type="button"
-                            class="flex flex-1 items-center justify-between gap-2 text-left text-sm font-semibold"
+                            class="flex flex-1 items-center justify-between gap-2 text-left"
                             @click="
                                 loadStructure(struct);
                                 showStructuresModal = false;
                             "
                             :title="`Cargar estructura (${struct.costs?.length || 0} categorías)`"
                         >
-                            <span>{{ struct.name }}</span>
-                            <span v-if="struct.selling_price" class="opacity-70">S/. {{ Number(struct.selling_price).toFixed(2) }}</span>
+                            <span class="min-w-0">
+                                <span class="block truncate text-sm font-semibold">{{ struct.name }}</span>
+                                <span
+                                    v-if="struct.unit_name || struct.cafe_name"
+                                    class="block truncate text-[11px] font-normal opacity-70"
+                                >
+                                    {{ [struct.unit_name, struct.cafe_name].filter(Boolean).join(' · ') }}
+                                    <template v-if="struct.service_name"> ({{ struct.service_name }})</template>
+                                </span>
+                            </span>
+                            <span v-if="struct.selling_price" class="shrink-0 text-sm font-semibold opacity-70"
+                                >S/. {{ Number(struct.selling_price).toFixed(2) }}</span
+                            >
                         </button>
                         <button
                             type="button"

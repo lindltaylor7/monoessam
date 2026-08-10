@@ -5,8 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Cafe, Dish, DishCategory, MealType, MenuStructure, Structure, WeeklyProgram } from '@/types';
+import { Cafe, DishCategory, MealType, MenuStructure, Structure, WeeklyProgram } from '@/types';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import axios from 'axios';
 import dayjs from 'dayjs';
 import 'dayjs/locale/es';
 import Swal from 'sweetalert2';
@@ -20,7 +21,6 @@ interface Props {
     dish_categories: DishCategory[];
     menu_structure: MenuStructure[];
     structures?: Structure[];
-    dishes: Dish[];
     menu_cycles?: any[];
     mines?: any[];
 }
@@ -361,17 +361,49 @@ const generatePO = (program: WeeklyProgram) => {
     });
 };
 
+// Dishes are fetched on demand per category (instead of shipping the entire catalog on page
+// load) and cached here, keyed by dish_category_id.
+const dishesByCategory = ref<Record<number, { id: number; name: string }[]>>({});
+const knownDishNames = ref<Record<number, string>>({});
+const loadingDishCategories = new Set<number>();
+
+const fetchDishesForCategory = async (categoryId: number | null | undefined) => {
+    if (!categoryId || dishesByCategory.value[categoryId] || loadingDishCategories.has(categoryId)) return;
+    loadingDishCategories.add(categoryId);
+    try {
+        const response = await axios.get('/dishes/search', { params: { category_id: categoryId } });
+        const list = (response.data || []).map((d: any) => ({ id: d.id, name: d.name }));
+        dishesByCategory.value[categoryId] = list;
+        list.forEach((d: { id: number; name: string }) => {
+            knownDishNames.value[d.id] = d.name;
+        });
+    } catch (err) {
+        console.error('Error fetching dishes for category', categoryId, err);
+    } finally {
+        loadingDishCategories.delete(categoryId);
+    }
+};
+
+watch(
+    localMenuStructure,
+    (structs) => {
+        const categoryIds = new Set(structs.map((s) => s.dish_category_id).filter((id): id is number => !!id));
+        categoryIds.forEach((id) => fetchDishesForCategory(id));
+    },
+    { immediate: true, deep: true },
+);
+
 const getDishesForCell = (date: string, meal: string, struct: any) => {
     const categoryId = struct.dish_category_id;
-    const filtered = props.dishes.filter((d) => d.dish_categories?.some((c: any) => c.id === categoryId));
+    const filtered = dishesByCategory.value[categoryId] || [];
 
     const assignedIdStr = itemsGrid.value[`${date}_${meal}_${struct.id}`];
     if (assignedIdStr) {
         const assignedId = parseInt(assignedIdStr);
         if (!filtered.some((d) => d.id === assignedId)) {
-            const assignedDish = props.dishes.find((d) => d.id === assignedId);
-            if (assignedDish) {
-                return [...filtered, assignedDish];
+            const name = knownDishNames.value[assignedId];
+            if (name) {
+                return [...filtered, { id: assignedId, name }];
             }
         }
     }
@@ -473,6 +505,9 @@ const loadMenuCycle = (cycleIdStr: string) => {
                         if (dayData && dayData.dish_id) {
                             const itemKey = `${date}_${mealType}_${tempId}`;
                             itemsGrid.value[itemKey] = String(dayData.dish_id);
+                            if (dayData.dish_name) {
+                                knownDishNames.value[dayData.dish_id] = dayData.dish_name;
+                            }
                             assignedCount++;
                         }
                     }

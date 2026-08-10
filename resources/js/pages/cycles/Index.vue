@@ -9,7 +9,7 @@ import MenuDisplay from '@/pages/structure-menu/MenuDisplay.vue';
 import { Mine } from '@/types';
 import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
-import { CalendarDays, Download, Plus, Save, Search, Settings2 } from 'lucide-vue-next';
+import { CalendarDays, Download, FolderOpen, Plus, Save, Search, Settings2 } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
 import { computed, ref, watch } from 'vue';
 
@@ -28,6 +28,8 @@ const activeCycleId = ref<number | null>(null);
 const activeCycleName = ref<string>('');
 const isServiceCyclesModalOpen = ref(false);
 const serviceCyclesToSelect = ref<any[]>([]);
+const isStructureSelectModalOpen = ref(false);
+const structuresToSelect = ref<any[]>([]);
 
 // Table configuration state
 const inputDays = ref<number>(7);
@@ -115,16 +117,79 @@ const compareCycle = (cycle: any) => {
 // Dynamic menu structure data
 const menuStructureData = ref<any[]>([]);
 
+// Once a single structure is settled on for this service, load its matching cycle (if there's exactly
+// one) or fall back to blank defaults from the structure's costs.
+const applyStructure = (structure: any, newId: string) => {
+    const serviceCycles = props.savedCycles?.filter((c) => String(c.serviceable_id) === String(newId)) || [];
+
+    if (serviceCycles.length === 1) {
+        const savedCycle = serviceCycles[0];
+        activeCycleId.value = savedCycle.id;
+        activeCycleName.value = savedCycle.name || '';
+        inputDays.value = savedCycle.days;
+        generatedDays.value = savedCycle.days;
+
+        // Rebuild rows from the CURRENT structure's categories (source of truth), carrying over day
+        // assignments from the saved cycle only for categories that still exist in the structure.
+        // A cycle's cycle_data is a frozen snapshot from whenever it was saved, so if the structure
+        // was edited since (categories added/removed), it must not dictate which rows are shown.
+        menuStructureData.value = (structure.costs || []).map((cost: any) => {
+            const savedRow = savedCycle.cycle_data.find((row: any) => row.dishCategoryId === cost.dish_category_id);
+            return {
+                id: cost.id,
+                category: cost.name || 'Categoría',
+                dishCategoryId: cost.dish_category_id,
+                costValue: parseFloat(cost.total_cost || 0),
+                costValueMax: parseFloat(cost.total_cost_superior || 0),
+                days: savedRow?.days || {},
+            };
+        });
+        return;
+    }
+
+    activeCycleId.value = null;
+    activeCycleName.value = '';
+
+    if (serviceCycles.length > 1) {
+        serviceCyclesToSelect.value = serviceCycles;
+        isServiceCyclesModalOpen.value = true;
+    }
+
+    // Populate the table with the structure costs defaults
+    menuStructureData.value = (structure.costs || []).map((cost: any) => {
+        return {
+            id: cost.id,
+            category: cost.name || 'Categoría',
+            dishCategoryId: cost.dish_category_id,
+            costValue: parseFloat(cost.total_cost || 0),
+            costValueMax: parseFloat(cost.total_cost_superior || 0),
+            days: {}, // Will hold { dayIndex: { dish: 'Name', calories: 100, price: 5.5 } }
+        };
+    });
+};
+
+const selectStructure = (structure: any) => {
+    isStructureSelectModalOpen.value = false;
+    structuresToSelect.value = [];
+    if (selectedServiceableId.value) {
+        applyStructure(structure, selectedServiceableId.value);
+    }
+};
+
 watch(selectedServiceableId, (newId) => {
     repeatedDishes.value = [];
+    isStructureSelectModalOpen.value = false;
+    structuresToSelect.value = [];
+
     if (!newId) {
         menuStructureData.value = [];
         return;
     }
 
-    const structure = props.structures?.find((s) => String(s.serviceable_id) === String(newId));
+    // Never auto-pick a structure when several are saved for the same service: let the user choose.
+    const matchingStructures = props.structures?.filter((s) => String(s.serviceable_id) === String(newId)) || [];
 
-    if (!structure) {
+    if (matchingStructures.length === 0) {
         menuStructureData.value = [];
         Swal.fire({
             icon: 'warning',
@@ -135,46 +200,14 @@ watch(selectedServiceableId, (newId) => {
         return;
     }
 
-    // Check if we have saved cycles for this service
-    const serviceCycles = props.savedCycles?.filter((c) => String(c.serviceable_id) === String(newId)) || [];
-
-    if (serviceCycles.length === 1) {
-        const savedCycle = serviceCycles[0];
-        activeCycleId.value = savedCycle.id;
-        activeCycleName.value = savedCycle.name || '';
-        inputDays.value = savedCycle.days;
-        generatedDays.value = savedCycle.days;
-
-        // Re-inject cost limits from structure in case they changed
-        menuStructureData.value = savedCycle.cycle_data.map((row: any) => {
-            const currentCostInfo = structure.costs?.find((c: any) => c.id === row.id) || {};
-            return {
-                ...row,
-                costValue: parseFloat(currentCostInfo.total_cost || row.costValue || 0),
-                costValueMax: parseFloat(currentCostInfo.total_cost_superior || row.costValueMax || 0),
-            };
-        });
-    } else {
-        activeCycleId.value = null;
-        activeCycleName.value = '';
-
-        if (serviceCycles.length > 1) {
-            serviceCyclesToSelect.value = serviceCycles;
-            isServiceCyclesModalOpen.value = true;
-        }
-
-        // Populate the table with the structure costs defaults
-        menuStructureData.value = (structure.costs || []).map((cost: any) => {
-            return {
-                id: cost.id,
-                category: cost.name || 'Categoría',
-                dishCategoryId: cost.dish_category_id,
-                costValue: parseFloat(cost.total_cost || 0),
-                costValueMax: parseFloat(cost.total_cost_superior || 0),
-                days: {}, // Will hold { dayIndex: { dish: 'Name', calories: 100, price: 5.5 } }
-            };
-        });
+    if (matchingStructures.length > 1) {
+        menuStructureData.value = [];
+        structuresToSelect.value = matchingStructures;
+        isStructureSelectModalOpen.value = true;
+        return;
     }
+
+    applyStructure(matchingStructures[0], newId);
 });
 
 // Search Dialog State
@@ -192,6 +225,7 @@ const openSearchModal = (rowIndex: number, dayIndex: number, categoryId: any) =>
     searchLevel.value = '';
     searchResults.value = [];
     isSearchModalOpen.value = true;
+    searchDish();
 };
 
 const searchDish = async () => {
@@ -595,19 +629,19 @@ const resetToNew = () => {
                 </DialogHeader>
                 <div class="p-6 pt-2">
                     <div class="mt-4 mb-6 flex flex-col gap-3 sm:flex-row">
-                        <div class="relative min-w-0 flex-[2]">
+                        <div class="relative min-w-0 flex-[1.6]">
                             <input
                                 ref="searchInputRef"
                                 v-model="searchQuery"
                                 type="text"
                                 placeholder="Ej. Lomo saltado, arroz..."
-                                class="w-full rounded-lg border border-slate-300 py-3 pr-4 pl-4 font-medium text-slate-800 shadow-sm transition-all placeholder:text-slate-400 focus:border-[#FF5A1F] focus:ring-2 focus:ring-[#FF5A1F]"
+                                class="w-full rounded-lg border border-slate-300 py-2 pr-3 pl-3 text-sm font-medium text-slate-800 shadow-sm transition-all placeholder:text-slate-400 focus:border-[#FF5A1F] focus:ring-2 focus:ring-[#FF5A1F]"
                                 @keyup.enter="searchDish"
                             />
                         </div>
                         <select
                             v-model="searchCategory"
-                            class="min-w-0 flex-1 truncate rounded-lg border border-slate-300 bg-white px-3 py-3 font-medium text-slate-800 shadow-sm focus:ring-2 focus:ring-[#FF5A1F]"
+                            class="min-w-0 flex-[1.4] truncate rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm font-medium text-slate-800 shadow-sm focus:ring-2 focus:ring-[#FF5A1F]"
                             @change="searchDish"
                         >
                             <option value="">Todas las Categorías</option>
@@ -615,14 +649,14 @@ const resetToNew = () => {
                         </select>
                         <select
                             v-model="searchLevel"
-                            class="min-w-0 flex-1 truncate rounded-lg border border-slate-300 bg-white px-3 py-3 font-medium text-slate-800 shadow-sm focus:ring-2 focus:ring-[#FF5A1F]"
+                            class="min-w-0 flex-1 truncate rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm font-medium text-slate-800 shadow-sm focus:ring-2 focus:ring-[#FF5A1F]"
                             @change="searchDish"
                         >
                             <option value="">Todos los Niveles</option>
                             <option v-for="level in props.levels" :key="level.id" :value="level.id">{{ level.name }}</option>
                         </select>
                         <button
-                            class="flex shrink-0 items-center justify-center rounded-lg bg-[#FF5A1F] p-3 text-white shadow-sm transition-colors hover:bg-[#e04a17]"
+                            class="flex shrink-0 items-center justify-center rounded-lg bg-[#FF5A1F] p-2.5 text-white shadow-sm transition-colors hover:bg-[#e04a17]"
                             @click="searchDish"
                         >
                             <Search class="h-5 w-5" />
@@ -707,10 +741,15 @@ const resetToNew = () => {
                                 </template>
                             </template>
                         </ul>
-                        <div v-else-if="searchQuery && searchResults.length === 0" class="p-8 text-center text-slate-500">
-                            No se encontraron resultados para "{{ searchQuery }}".
+                        <div
+                            v-else-if="!searchQuery && !searchCategory && !searchLevel"
+                            class="p-8 text-center text-sm font-medium text-slate-600"
+                        >
+                            Ingrese el nombre de un plato para buscar...
                         </div>
-                        <div v-else class="p-8 text-center text-slate-400">Ingrese el nombre de un plato para buscar...</div>
+                        <div v-else class="p-8 text-center text-sm font-medium text-slate-600">
+                            No se encontraron resultados{{ searchQuery ? ` para "${searchQuery}"` : '' }}.
+                        </div>
                     </div>
                 </div>
             </DialogContent>
@@ -797,6 +836,53 @@ const resetToNew = () => {
                                 size="sm"
                                 variant="ghost"
                                 class="text-[10px] font-bold tracking-wider text-blue-600 uppercase hover:bg-blue-50 hover:text-blue-700"
+                            >
+                                Cargar
+                            </Button>
+                        </li>
+                    </ul>
+                </div>
+            </DialogContent>
+        </Dialog>
+
+        <!-- Structure Selection Modal (opens when several structures are saved for the same service, so none is loaded automatically) -->
+        <Dialog :open="isStructureSelectModalOpen" @update:open="isStructureSelectModalOpen = $event">
+            <DialogContent class="overflow-hidden rounded-xl border-0 bg-white p-0 shadow-2xl sm:max-w-[600px]">
+                <DialogHeader class="border-b border-slate-100 bg-white p-6 pb-4">
+                    <DialogTitle class="flex items-center gap-2 text-xl font-bold text-slate-800">
+                        <FolderOpen class="h-5 w-5 text-[#FF5A1F]" />
+                        Seleccionar Estructura
+                    </DialogTitle>
+                    <p class="mt-1 text-sm text-slate-500">
+                        Este servicio tiene {{ structuresToSelect.length }} estructuras guardadas. Seleccione cuál desea usar para el ciclo.
+                    </p>
+                </DialogHeader>
+                <div class="max-h-[400px] overflow-y-auto bg-slate-50/30 p-6">
+                    <ul class="divide-y divide-slate-200/60">
+                        <li
+                            v-for="structure in structuresToSelect"
+                            :key="structure.id"
+                            class="mb-2 flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-transparent bg-white/50 px-4 py-4 transition-all hover:border-orange-100 hover:bg-white hover:shadow-sm"
+                            @click="selectStructure(structure)"
+                        >
+                            <div class="flex items-center gap-4">
+                                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-orange-50 text-[#FF5A1F]">
+                                    <FolderOpen class="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <p class="text-sm font-bold text-slate-800">{{ structure.name || 'Estructura sin nombre' }}</p>
+                                    <p class="mt-0.5 text-[11px] text-slate-500">
+                                        {{ structure.costs?.length || 0 }} categorías
+                                        <template v-if="structure.selling_price">
+                                            &bull; Precio: S/ {{ Number(structure.selling_price).toFixed(2) }}
+                                        </template>
+                                    </p>
+                                </div>
+                            </div>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                class="text-[10px] font-bold tracking-wider text-[#FF5A1F] uppercase hover:bg-orange-50 hover:text-[#e04a17]"
                             >
                                 Cargar
                             </Button>

@@ -116,16 +116,16 @@ const loadSubstitutes = async (isOpen: boolean) => {
                 <Calculator class="hover:text-primary h-4 w-4 text-zinc-500 transition-colors" />
             </Button>
         </PopoverTrigger>
-        <PopoverContent class="w-[420px] overflow-hidden rounded-xl border-none bg-white p-0 shadow-2xl" side="right" :side-offset="12">
+        <PopoverContent class="w-[420px] overflow-hidden rounded-2xl border border-zinc-200/80 bg-white p-0 shadow-2xl dark:border-zinc-800 dark:bg-zinc-900" side="right" :side-offset="12">
             <!-- Header Section -->
-            <div class="border-b border-zinc-100 bg-gradient-to-r from-zinc-50 to-white p-5">
+            <div class="border-b border-zinc-100 bg-gradient-to-r from-zinc-50 to-white p-5 dark:border-zinc-800 dark:from-zinc-900 dark:to-zinc-900/60">
                 <div class="flex items-center gap-3">
-                    <div class="rounded-lg bg-blue-50 p-2">
-                        <Calculator class="h-5 w-5 text-blue-600" />
+                    <div class="rounded-xl bg-indigo-50 p-2.5 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
+                        <Calculator class="h-5 w-5" />
                     </div>
                     <div>
-                        <h4 class="font-bold text-zinc-900">Ajustes de Ingrediente</h4>
-                        <p class="line-clamp-1 text-[12px] font-medium text-zinc-500">{{ ingredientSelected.name }}</p>
+                        <h4 class="font-bold text-zinc-900 dark:text-zinc-100">Ajustes de Ingrediente</h4>
+                        <p class="line-clamp-1 text-xs font-medium text-zinc-500 dark:text-zinc-400">{{ ingredientSelected.name }}</p>
                     </div>
                 </div>
             </div>
@@ -345,16 +345,7 @@ const loadSubstitutes = async (isOpen: boolean) => {
 </template>
 
 <style scoped>
-/* Transición suave para el popover focus */
 :deep(input:focus) {
-    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
-}
-
-.text-zinc-900 {
-    color: #18181b;
-}
-
-.tracking-wider {
-    letter-spacing: 0.05em;
+    box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
 }
 </style>

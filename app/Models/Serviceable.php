@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Serviceable extends Model
@@ -17,5 +19,13 @@ class Serviceable extends Model
             ->withTimestamps();
     }
 
+    public function serviceable(): MorphTo
+    {
+        return $this->morphTo();
+    }
 
+    public function service(): BelongsTo
+    {
+        return $this->belongsTo(Service::class);
+    }
 }

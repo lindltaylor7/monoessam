@@ -112,7 +112,24 @@ class FoodController extends Controller
         return Inertia::render('structure-menu/Index', [
             'categories' => Dish_category::all(),
             'mines' => \App\Models\Mine::with(['units', 'units.cafes', 'units.cafes.services'])->get(),
-            'structures' => \App\Models\Structure::with('costs')->get()
+            'structures' => \App\Models\Structure::with([
+                'costs',
+                'serviceableRecord.service',
+                'serviceableRecord.serviceable.unit.mine',
+            ])->get()->map(function ($structure) {
+                $cafe = $structure->serviceableRecord?->serviceable;
+                $unit = $cafe?->unit;
+                $mine = $unit?->mine;
+
+                $structure->mine_name = $mine?->name;
+                $structure->unit_name = $unit?->name;
+                $structure->cafe_name = $cafe?->name;
+                $structure->service_name = $structure->serviceableRecord?->service?->name;
+
+                unset($structure->serviceableRecord);
+
+                return $structure;
+            })
         ]);
     }
 
