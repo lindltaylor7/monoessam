@@ -40,22 +40,29 @@ watch(
     async (newId) => {
         if (!newId) return;
         const structure = props.structures?.find((s) => String(s.serviceable_id) === String(newId));
-        if (!structure) return;
 
-        // Don't silently wipe work in progress when switching service
-        if (categoriesSelected.value.length > 0 && loadedStructureId.value !== structure.id) {
+        // Don't silently wipe work in progress when switching service, whether the new service has
+        // a saved structure to load or not.
+        if (categoriesSelected.value.length > 0 && loadedStructureId.value !== (structure?.id ?? null)) {
             const result = await Swal.fire({
-                title: 'Estructura guardada encontrada',
-                text: `Este servicio ya tiene la estructura "${structure.name}". ¿Desea cargarla? Se reemplazará la configuración actual.`,
+                title: structure ? 'Estructura guardada encontrada' : 'Servicio sin estructura guardada',
+                text: structure
+                    ? `Este servicio ya tiene la estructura "${structure.name}". ¿Desea cargarla? Se reemplazará la configuración actual.`
+                    : 'Este servicio no tiene una estructura guardada. ¿Desea limpiar la tabla actual para comenzar una nueva?',
                 icon: 'question',
                 showCancelButton: true,
-                confirmButtonText: 'Sí, cargar',
+                confirmButtonText: structure ? 'Sí, cargar' : 'Sí, limpiar',
                 cancelButtonText: 'Mantener actual',
                 confirmButtonColor: '#4f46e5',
             });
             if (!result.isConfirmed) return;
         }
-        loadStructure(structure);
+
+        if (structure) {
+            loadStructure(structure);
+        } else {
+            clearStructure();
+        }
     },
     { immediate: true },
 );
