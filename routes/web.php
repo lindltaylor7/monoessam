@@ -194,6 +194,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('/', [FoodController::class, 'index'])->name('index');
         Route::get('structure-menu', [FoodController::class, 'structure'])->name('structure');
         Route::post('structure-menu', [FoodController::class, 'storeStructure'])->name('structure.store');
+        Route::put('structure-menu/{id}', [FoodController::class, 'updateStructure'])->name('structure.update');
         Route::delete('structure-menu/{id}', [FoodController::class, 'destroyStructure'])->name('structure.destroy');
     });
 

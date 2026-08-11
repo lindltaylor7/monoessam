@@ -170,6 +170,44 @@ class FoodController extends Controller
         return back()->with('success', 'Estructura guardada exitosamente.');
     }
 
+    public function updateStructure(Request $request, $id)
+    {
+        $structure = \App\Models\Structure::findOrFail($id);
+
+        $request->validate([
+            'name' => 'required|string|max:255|unique:structures,name,' . $structure->id,
+            'categories' => 'required|array',
+            'selling_price' => 'nullable|numeric'
+        ], [
+            'name.unique' => 'Ya existe una estructura guardada con ese nombre. Por favor, elige otro.',
+        ]);
+
+        $structure->update([
+            'name' => $request->name,
+            'selling_price' => $request->selling_price,
+        ]);
+
+        $structure->costs()->delete();
+
+        foreach ($request->categories as $category) {
+            \App\Models\StructureCost::create([
+                'structure_id' => $structure->id,
+                'dish_category_id' => $category['id'] ?? null,
+                'name' => $category['name'] ?? null,
+                'order' => $category['order'] ?? 0,
+                'reference_volume' => $category['reference_volume'] ?? null,
+                'measurement_unit' => $category['measurement_unit'] ?? $category['mesearument_unit'] ?? null,
+                'ration' => $category['ration'] ?? null,
+                'unit_cost' => $category['unit_cost'] ?? null,
+                'total_cost' => $category['total_cost'] ?? null,
+                'unit_cost_superior' => $category['unit_cost_superior'] ?? null,
+                'total_cost_superior' => $category['total_cost_superior'] ?? null,
+            ]);
+        }
+
+        return back()->with('success', 'Estructura actualizada exitosamente.');
+    }
+
     public function destroyStructure($id)
     {
         $structure = \App\Models\Structure::findOrFail($id);

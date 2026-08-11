@@ -40,10 +40,9 @@ const props = defineProps<{
     levels: any[];
 }>();
 
-// Helper to clean legacy prefix from category names if present (e.g. 'zBase(Master) | JUGO' -> 'JUGO')
+// Helper to format category names (preserving full name including prefixes like 'zBase(Master) | JUGO')
 const formatCategoryName = (name: string) => {
-    if (!name) return '';
-    return name.replace(/^zBase\([^)]*\)\s*\|\s*/i, '');
+    return name || '';
 };
 
 // State
@@ -686,11 +685,11 @@ onUnmounted(() => {
     <div class="flex h-full w-full overflow-hidden bg-zinc-50/50 dark:bg-zinc-950">
         <!-- LEFT PANEL: Dish List (Sidebar) -->
         <div
-            class="z-10 flex h-full w-full min-w-0 flex-col border-r border-zinc-200/80 bg-white md:w-80 lg:w-[340px] shrink-0 dark:border-zinc-800 dark:bg-zinc-900/90"
+            class="z-10 flex h-full min-h-0 w-full min-w-0 flex-col border-r border-zinc-200/80 bg-white md:w-80 lg:w-[340px] shrink-0 dark:border-zinc-800 dark:bg-zinc-900/90"
             :class="{ 'hidden md:flex': form.id !== null || isCreating }"
         >
             <!-- Header Section -->
-            <div class="space-y-2.5 p-3.5 border-b border-zinc-100 dark:border-zinc-800/80">
+            <div class="space-y-2.5 p-3.5 border-b border-zinc-100 shrink-0 dark:border-zinc-800/80">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-2.5">
                         <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-xs">
@@ -769,7 +768,7 @@ onUnmounted(() => {
             </div>
 
             <!-- Dish List Content -->
-            <div class="flex-1 overflow-y-auto p-2.5 space-y-1.5 scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800">
+            <div class="min-h-0 flex-1 overflow-y-auto p-2.5 space-y-1.5 scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800">
                 <div
                     v-if="filteredDishes.length === 0"
                     class="flex h-48 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-200 text-center p-4 text-xs text-zinc-400 dark:border-zinc-800"
@@ -817,7 +816,7 @@ onUnmounted(() => {
                         <span
                             v-for="cat in dish.dish_categories"
                             :key="cat.id"
-                            class="rounded-md border border-indigo-100 bg-indigo-50/80 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600 dark:border-indigo-900/40 dark:bg-indigo-950/60 dark:text-indigo-400 max-w-[150px] truncate"
+                            class="rounded-md border border-indigo-100 bg-indigo-50/80 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600 dark:border-indigo-900/40 dark:bg-indigo-950/60 dark:text-indigo-400 max-w-full truncate"
                         >
                             {{ formatCategoryName(cat.name) }}
                         </span>
@@ -858,7 +857,7 @@ onUnmounted(() => {
 
         <!-- RIGHT PANEL: Dish Details & Recipe Studio -->
         <div
-            class="flex h-full flex-1 flex-col overflow-hidden bg-white dark:bg-zinc-950"
+            class="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-white dark:bg-zinc-950"
             :class="{
                 'fixed inset-0 z-50 bg-white md:static dark:bg-zinc-950': form.id !== null || isCreating,
                 'hidden md:flex': !form.id && !isCreating,
@@ -916,7 +915,7 @@ onUnmounted(() => {
                 </div>
 
                 <!-- Main Form Body -->
-                <div class="flex-1 space-y-4 overflow-y-auto p-3.5 md:p-5 bg-zinc-50/40 dark:bg-zinc-950/40">
+                <div class="min-h-0 flex-1 space-y-4 overflow-y-auto p-3.5 md:p-5 bg-zinc-50/40 dark:bg-zinc-950/40">
                     <!-- Basic Info Card -->
                     <div class="rounded-xl border border-zinc-200/80 bg-white p-3.5 md:p-4 shadow-xs space-y-3.5 dark:border-zinc-800 dark:bg-zinc-900/60">
                         <div class="grid grid-cols-1 gap-3.5 md:grid-cols-3">
@@ -980,7 +979,7 @@ onUnmounted(() => {
                                         v-for="cat in form.dish_categories"
                                         :key="cat.id"
                                         variant="secondary"
-                                        class="rounded-md border border-indigo-100 bg-indigo-50/80 px-2 py-0.5 text-[10px] font-bold text-indigo-600 gap-1 max-w-[180px] truncate dark:border-indigo-900/50 dark:bg-indigo-950/60 dark:text-indigo-400"
+                                        class="rounded-md border border-indigo-100 bg-indigo-50/80 px-2 py-0.5 text-[10px] font-bold text-indigo-600 gap-1 max-w-full truncate dark:border-indigo-900/50 dark:bg-indigo-950/60 dark:text-indigo-400"
                                     >
                                         <span class="truncate">{{ formatCategoryName(cat.name) }}</span>
                                         <button @click.stop="toggleCategory(cat)" class="hover:text-indigo-900 shrink-0 dark:hover:text-white">

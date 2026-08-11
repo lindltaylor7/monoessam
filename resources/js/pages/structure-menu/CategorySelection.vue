@@ -5,7 +5,7 @@ import Input from '@/components/ui/input/Input.vue';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Table, TableBody, TableCaption, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { router } from '@inertiajs/vue3';
-import { ChevronDown, ChevronUp, Eraser, FolderOpen, Save, Search, Trash } from 'lucide-vue-next';
+import { ChevronDown, ChevronUp, Eraser, FolderOpen, RefreshCw, Save, Search, Trash } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
 import { computed, ref, watch } from 'vue';
 
@@ -308,6 +308,73 @@ const saveStructure = () => {
         },
     );
 };
+
+const updateStructure = () => {
+    if (!loadedStructureId.value) {
+        Swal.fire({
+            title: 'Ninguna estructura seleccionada',
+            text: 'Cargue una estructura guardada antes de actualizarla.',
+            icon: 'warning',
+            confirmButtonText: 'Entendido',
+        });
+        return;
+    }
+
+    if (!structureName.value.trim()) {
+        Swal.fire({
+            title: 'Falta el nombre',
+            text: 'Por favor, ingrese un nombre para la estructura.',
+            icon: 'warning',
+            confirmButtonText: 'Entendido',
+        });
+        return;
+    }
+
+    if (categoriesSelected.value.length === 0) {
+        Swal.fire({
+            title: 'Estructura vacía',
+            text: 'Añada al menos una categoría a la estructura antes de actualizar.',
+            icon: 'warning',
+            confirmButtonText: 'Entendido',
+        });
+        return;
+    }
+
+    const categoriesToSave = categoriesSelected.value.map((cat, index) => ({
+        ...cat,
+        order: index + 1,
+    }));
+
+    router.put(
+        route('food.structure.update', loadedStructureId.value),
+        {
+            name: structureName.value,
+            selling_price: sellingPrice.value,
+            categories: categoriesToSave,
+        },
+        {
+            preserveScroll: true,
+            onError: (errors) => {
+                if (errors.name) {
+                    Swal.fire({
+                        title: 'Error de validación',
+                        text: errors.name,
+                        icon: 'error',
+                        confirmButtonText: 'Entendido',
+                    });
+                }
+            },
+            onSuccess: () => {
+                Swal.fire({
+                    title: '¡Éxito!',
+                    text: 'Estructura actualizada correctamente',
+                    icon: 'success',
+                    confirmButtonText: 'Aceptar',
+                });
+            },
+        },
+    );
+};
 </script>
 
 <template>
@@ -385,7 +452,16 @@ const saveStructure = () => {
                     @click="saveStructure"
                     class="flex h-10 items-center gap-2 bg-indigo-600 px-4 font-semibold text-white shadow-md shadow-indigo-200 transition-all hover:bg-indigo-700 dark:shadow-none"
                 >
-                    Guardar Estructura
+                    Guardar Nueva
+                </Button>
+                <Button
+                    v-if="loadedStructureId !== null"
+                    @click="updateStructure"
+                    variant="outline"
+                    class="flex h-10 items-center gap-2 border-indigo-200 px-4 font-semibold text-indigo-600 shadow-sm transition-all hover:bg-indigo-50 dark:border-indigo-900 dark:text-indigo-400 dark:hover:bg-indigo-950"
+                >
+                    <RefreshCw class="h-4 w-4" />
+                    Actualizar
                 </Button>
             </div>
         </div>
