@@ -260,6 +260,8 @@ class DishController extends Controller
                 'recipes.ingredients.assignments.city',
                 'recipes.ingredients.nutritionalFactors',
                 'recipes.ingredients.dosification',
+                'recipes.ingredients.atwaterFactor',
+                'recipes.ingredients.atwaterSubfactor',
                 'recipes.level'
             ])
             ->take(8)

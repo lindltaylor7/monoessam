@@ -331,7 +331,13 @@ const calculateIngredientCalories = (ingredient: any) => {
     if (dosification && atwaterFactor) {
         const protein = toGramsPer100g(dosification.protein);
         const lipid = toGramsPer100g(dosification.lipid);
-        const carbohydrate = toGramsPer100g(dosification.carbohydrate);
+        // El término de carbohidratos usa los disponibles (total menos fibra), que es la base
+        // correcta para el cálculo Atwater; si el ingrediente aún no la tiene cargada, se usa el
+        // total como respaldo.
+        const carbohydrate =
+            dosification.carbohydrate_available !== null && dosification.carbohydrate_available !== undefined
+                ? toGramsPer100g(dosification.carbohydrate_available)
+                : toGramsPer100g(dosification.carbohydrate);
 
         const proteinFactor = parseFloat(atwaterFactor.protein_kcal) || 0;
         const fatFactor = parseFloat(atwaterFactor.fat_kcal) || 0;

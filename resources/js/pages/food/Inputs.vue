@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import Input from '@/components/ui/input/Input.vue';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/AppLayout.vue';
@@ -53,6 +53,8 @@ interface Ingredient {
         id: number;
         name: string;
     };
+    atwater_factor_id: number | null;
+    atwater_subfactor_id: number | null;
     dosification?: Dosification | null;
     nutritional_factors?: any[];
 }
@@ -95,14 +97,37 @@ interface Category {
     name: string;
 }
 
+interface AtwaterFactor {
+    id: number;
+    group: string;
+    name: string;
+}
+
+interface AtwaterSubfactor {
+    id: number;
+    name: string;
+    carb_kcal: string | null;
+}
+
 const props = defineProps<{
     ingredients: Ingredient[];
     categories: Category[];
+    atwaterFactors: AtwaterFactor[];
+    atwaterSubfactors: AtwaterSubfactor[];
 }>();
 
 const isDosificationModalOpen = ref(false);
 const isNutritionalModalOpen = ref(false);
 const activeIngredientForNutritional = ref<any>(null);
+
+const groupedAtwaterFactors = computed(() => {
+    const groups = new Map<string, AtwaterFactor[]>();
+    props.atwaterFactors.forEach((factor) => {
+        if (!groups.has(factor.group)) groups.set(factor.group, []);
+        groups.get(factor.group)!.push(factor);
+    });
+    return Array.from(groups.entries()).map(([title, items]) => ({ title, items }));
+});
 
 const nutritionalForm = useForm({
     ingredient_id: '',
@@ -152,6 +177,8 @@ const form = useForm({
     waste: null as number | null,
     energy: null as number | null,
     ingredient_category_id: null as number | null,
+    atwater_factor_id: null as number | null,
+    atwater_subfactor_id: null as number | null,
 });
 
 const selectedIngredientForDosification = ref<Ingredient | null>(null);
@@ -262,6 +289,8 @@ const openEditDialog = (ingredient: Ingredient) => {
     form.waste = ingredient.waste;
     form.energy = ingredient.energy;
     form.ingredient_category_id = ingredient.ingredient_category_id;
+    form.atwater_factor_id = ingredient.atwater_factor_id;
+    form.atwater_subfactor_id = ingredient.atwater_subfactor_id;
     isDialogOpen.value = true;
 };
 
@@ -269,6 +298,20 @@ const selectedCategoryId = computed({
     get: () => (form.ingredient_category_id ? String(form.ingredient_category_id) : undefined),
     set: (val) => {
         form.ingredient_category_id = val ? Number(val) : null;
+    },
+});
+
+const selectedAtwaterFactorId = computed({
+    get: () => (form.atwater_factor_id ? String(form.atwater_factor_id) : 'none'),
+    set: (val) => {
+        form.atwater_factor_id = val && val !== 'none' ? Number(val) : null;
+    },
+});
+
+const selectedAtwaterSubfactorId = computed({
+    get: () => (form.atwater_subfactor_id ? String(form.atwater_subfactor_id) : 'none'),
+    set: (val) => {
+        form.atwater_subfactor_id = val && val !== 'none' ? Number(val) : null;
     },
 });
 
@@ -822,6 +865,61 @@ const uploadDosificationFile = () => {
                                     placeholder="0.00"
                                     class="h-11 border-zinc-200 bg-orange-50/20"
                                 />
+                            </div>
+                        </div>
+                    </div>
+
+                    <Separator class="bg-zinc-100" />
+
+                    <!-- Sección: Factor Atwater -->
+                    <div class="space-y-4">
+                        <div class="mb-2 flex items-center gap-2">
+                            <div class="bg-primary h-4 w-1 rounded-full"></div>
+                            <span class="text-[11px] font-bold tracking-wider text-zinc-400 uppercase">Factor Atwater</span>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="space-y-2">
+                                <Label for="atwater_factor" class="flex items-center gap-1.5 text-sm font-bold text-zinc-700 uppercase">
+                                    <Calculator class="h-4 w-4 text-zinc-400" /> Factor general
+                                </Label>
+                                <Select v-model="selectedAtwaterFactorId">
+                                    <SelectTrigger id="atwater_factor" class="h-11 border-zinc-200 bg-zinc-50/30 transition-colors">
+                                        <SelectValue placeholder="Sin factor Atwater" />
+                                    </SelectTrigger>
+                                    <SelectContent class="border-zinc-200 bg-white">
+                                        <SelectItem value="none">Sin factor Atwater</SelectItem>
+                                        <SelectGroup v-for="group in groupedAtwaterFactors" :key="group.title">
+                                            <SelectLabel>{{ group.title }}</SelectLabel>
+                                            <SelectItem v-for="f in group.items" :key="f.id" :value="String(f.id)" class="py-2.5">
+                                                {{ f.name }}
+                                            </SelectItem>
+                                        </SelectGroup>
+                                    </SelectContent>
+                                </Select>
+                                <div v-if="form.errors.atwater_factor_id" class="text-sm font-medium text-red-500">
+                                    {{ form.errors.atwater_factor_id }}
+                                </div>
+                            </div>
+
+                            <div class="space-y-2">
+                                <Label for="atwater_subfactor" class="flex items-center gap-1.5 text-sm font-bold text-zinc-700 uppercase">
+                                    <Calculator class="h-4 w-4 text-zinc-400" /> Excepción de carbohidrato
+                                </Label>
+                                <Select v-model="selectedAtwaterSubfactorId">
+                                    <SelectTrigger id="atwater_subfactor" class="h-11 border-zinc-200 bg-zinc-50/30 transition-colors">
+                                        <SelectValue placeholder="Sin excepción" />
+                                    </SelectTrigger>
+                                    <SelectContent class="border-zinc-200 bg-white">
+                                        <SelectItem value="none">Sin excepción</SelectItem>
+                                        <SelectItem v-for="sf in atwaterSubfactors" :key="sf.id" :value="String(sf.id)" class="py-2.5">
+                                            {{ sf.name }} ({{ sf.carb_kcal }} kcal/g)
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <div v-if="form.errors.atwater_subfactor_id" class="text-sm font-medium text-red-500">
+                                    {{ form.errors.atwater_subfactor_id }}
+                                </div>
                             </div>
                         </div>
                     </div>
