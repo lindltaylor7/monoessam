@@ -257,7 +257,7 @@ const deleteLevelFromList = (levelId: number) => {
     });
 };
 
-const toggleLevel = (id: number) => {
+const toggleLevel = async (id: number) => {
     const index = form.mesearument_unit.indexOf(id);
     if (index === -1) {
         form.mesearument_unit.push(id);
@@ -270,12 +270,30 @@ const toggleLevel = (id: number) => {
             total_net_weight: 0,
         };
         activeLevelTab.value = id;
-    } else {
-        form.mesearument_unit.splice(index, 1);
-        delete form.recipes[id];
-        if (activeLevelTab.value === id) {
-            activeLevelTab.value = form.mesearument_unit.length ? form.mesearument_unit[0] : null;
-        }
+        return;
+    }
+
+    // Si el recetario tiene ingredientes cargados, quitarlo lo borraría al guardar: se pide
+    // confirmación antes de descartarlo.
+    const recipe = form.recipes[id];
+    if (recipe?.ingredients?.length > 0) {
+        const levelName = localLevels.value.find((l) => l.id === id)?.name || 'este nivel';
+        const result = await Swal.fire({
+            title: '¿Quitar nivel de aplicación?',
+            text: `El recetario "${levelName}" tiene ingredientes cargados. Al desactivarlo se eliminará su receta de este plato. ¿Desea continuar?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, eliminar receta',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#dc2626',
+        });
+        if (!result.isConfirmed) return;
+    }
+
+    form.mesearument_unit.splice(index, 1);
+    delete form.recipes[id];
+    if (activeLevelTab.value === id) {
+        activeLevelTab.value = form.mesearument_unit.length ? form.mesearument_unit[0] : null;
     }
 };
 
