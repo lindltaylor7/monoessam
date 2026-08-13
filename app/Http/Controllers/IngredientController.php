@@ -20,7 +20,7 @@ class IngredientController extends Controller
         return Inertia::render('food/Inputs', [
             'ingredients' => Ingredient::with(['ingredient_category', 'dosification', 'nutritionalFactors', 'atwaterFactor', 'atwaterSubfactor'])->get(),
             'categories' => \App\Models\Ingredient_category::all(),
-            'atwaterFactors' => \App\Models\AtwaterFactor::orderBy('order')->get(['id', 'group', 'name']),
+            'atwaterFactors' => \App\Models\AtwaterFactor::orderBy('order')->get(['id', 'group', 'name', 'protein_kcal', 'fat_kcal', 'carb_kcal']),
             'atwaterSubfactors' => \App\Models\AtwaterSubfactor::orderBy('name')->get(['id', 'name', 'carb_kcal']),
         ]);
     }
@@ -113,10 +113,19 @@ class IngredientController extends Controller
         ]);
 
         $ingredient = Ingredient::findOrFail($id);
-        $ingredient->dosification()->updateOrCreate(
+        $dosification = $ingredient->dosification()->updateOrCreate(
             ['ingredient_id' => $id],
             $validated
         );
+
+        // Llamadas por axios (p.ej. desde el editor de platos) reciben JSON en vez del redirect que
+        // espera el formulario Inertia de la página de Insumos.
+        if (!$request->header('X-Inertia')) {
+            return response()->json([
+                'message' => 'Dosificación actualizada correctamente',
+                'dosification' => $dosification,
+            ]);
+        }
 
         return redirect()->back()->with('success', 'Dosificación actualizada correctamente');
     }

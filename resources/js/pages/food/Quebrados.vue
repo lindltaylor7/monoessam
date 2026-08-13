@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { Badge } from '@/components/ui/badge';
 import Button from '@/components/ui/button/Button.vue';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -11,13 +13,17 @@ import axios from 'axios';
 import {
     AlertCircle,
     ArrowLeft,
+    Beef,
     Check,
     ChefHat,
     ChevronDown,
+    Cookie,
     Copy,
     DollarSign,
+    Droplets,
     FileUp,
     Flame,
+    FlaskConical,
     Layers,
     ListFilter,
     Loader2,
@@ -27,7 +33,10 @@ import {
     Sparkles,
     Trash,
     Utensils,
+    Waves,
+    Wheat,
     X,
+    Zap,
 } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
@@ -356,6 +365,84 @@ const calculateIngredientCalories = (ingredient: any) => {
         }, 0);
     }
     return ingredient?.dosification?.energy || ingredient?.energy || 0;
+};
+
+// Modal de "Valores Nutricionales" accesible desde la fila del ingrediente, para editar sus
+// macronutrientes sin salir del editor de platos.
+const isRecipeDosificationModalOpen = ref(false);
+const isSavingRecipeDosification = ref(false);
+const activeIngredientForDosification = ref<any>(null);
+const recipeDosificationErrors = ref<Record<string, string>>({});
+const recipeDosificationForm = ref({
+    energy: null as number | null,
+    water: null as number | null,
+    protein: null as number | null,
+    lipid: null as number | null,
+    carbohydrate: null as number | null,
+    carbohydrate_available: null as number | null,
+    fiber: null as number | null,
+});
+
+const openRecipeDosificationModal = (ingredient: any) => {
+    activeIngredientForDosification.value = ingredient;
+    const d = ingredient.dosification;
+    recipeDosificationForm.value = {
+        energy: d?.energy ?? null,
+        water: d?.water ?? null,
+        protein: d?.protein ?? null,
+        lipid: d?.lipid ?? null,
+        carbohydrate: d?.carbohydrate ?? null,
+        carbohydrate_available: d?.carbohydrate_available ?? null,
+        fiber: d?.fiber ?? null,
+    };
+    recipeDosificationErrors.value = {};
+    isRecipeDosificationModalOpen.value = true;
+};
+
+const submitRecipeDosification = async () => {
+    if (!activeIngredientForDosification.value || !activeLevelTab.value) return;
+
+    isSavingRecipeDosification.value = true;
+    recipeDosificationErrors.value = {};
+    try {
+        const response = await axios.post(
+            route('ingredients.dosification.update', activeIngredientForDosification.value.id),
+            recipeDosificationForm.value,
+        );
+
+        // Actualiza el ingrediente en el recetario activo y recalcula sus calorías con los nuevos
+        // valores, sin recargar la página (para no perder el resto del plato en edición).
+        const recipe = form.recipes[activeLevelTab.value];
+        const ingredientIndex = recipe.ingredients.findIndex((ing: any) => ing.id === activeIngredientForDosification.value.id);
+        if (ingredientIndex !== -1) {
+            const ing = recipe.ingredients[ingredientIndex];
+            ing.dosification = response.data.dosification;
+            ing.originalValues.calories = calculateIngredientCalories(ing);
+            ing.calories = (ing.gross_weight * ing.originalValues.calories) / 100;
+            recalculateTotals();
+        }
+
+        isRecipeDosificationModalOpen.value = false;
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'success',
+            title: 'Valores nutricionales actualizados',
+            showConfirmButton: false,
+            timer: 1800,
+            timerProgressBar: true,
+        });
+    } catch (error: any) {
+        if (error?.response?.status === 422) {
+            const errors = error.response.data.errors || {};
+            recipeDosificationErrors.value = Object.fromEntries(Object.entries(errors).map(([key, msgs]: [string, any]) => [key, msgs[0]]));
+        } else {
+            console.error('Error updating dosification:', error);
+            Swal.fire({ title: 'Error', text: 'No se pudo actualizar la dosificación.', icon: 'error', confirmButtonText: 'Entendido' });
+        }
+    } finally {
+        isSavingRecipeDosification.value = false;
+    }
 };
 
 const sortedRecipes = (dish: any) =>
@@ -1237,15 +1324,26 @@ onUnmounted(() => {
 
                                                 <!-- Calculadora Popover -->
                                                 <TableCell class="py-1.5 text-center">
-                                                    <CalcPopover
-                                                        :ingredient="ingredient"
-                                                        :totalMateriaPrima="form.recipes[activeLevelTab].total_gross_weight"
-                                                        :totalWasteWeight="form.recipes[activeLevelTab].total_waste_weight"
-                                                        :totalCalories="form.recipes[activeLevelTab].total_calories"
-                                                        :totalCost="form.recipes[activeLevelTab].total_cost"
-                                                        :totalfinalProduct="form.recipes[activeLevelTab].total_net_weight"
-                                                        @calcMassiveProperties="calcMassiveProperties"
-                                                    />
+                                                    <div class="flex items-center justify-center gap-0.5">
+                                                        <CalcPopover
+                                                            :ingredient="ingredient"
+                                                            :totalMateriaPrima="form.recipes[activeLevelTab].total_gross_weight"
+                                                            :totalWasteWeight="form.recipes[activeLevelTab].total_waste_weight"
+                                                            :totalCalories="form.recipes[activeLevelTab].total_calories"
+                                                            :totalCost="form.recipes[activeLevelTab].total_cost"
+                                                            :totalfinalProduct="form.recipes[activeLevelTab].total_net_weight"
+                                                            @calcMassiveProperties="calcMassiveProperties"
+                                                        />
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            @click="openRecipeDosificationModal(ingredient)"
+                                                            class="h-8 w-8 rounded-full text-zinc-500 transition-colors hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/50"
+                                                            title="Valores Nutricionales"
+                                                        >
+                                                            <FlaskConical class="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
                                                 </TableCell>
 
                                                 <!-- Acciones -->
@@ -1362,5 +1460,149 @@ onUnmounted(() => {
                 </Button>
             </div>
         </div>
+
+        <!-- Modal: Valores Nutricionales del ingrediente (editable desde la tabla de la receta) -->
+        <Dialog v-model:open="isRecipeDosificationModalOpen">
+            <DialogContent class="max-w-md">
+                <DialogHeader>
+                    <div class="flex items-center gap-3">
+                        <div class="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-950/60">
+                            <FlaskConical class="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                        </div>
+                        <div>
+                            <DialogTitle class="text-lg font-bold">Valores Nutricionales</DialogTitle>
+                            <DialogDescription class="text-xs">
+                                Gestionando dosificación para:
+                                <span class="font-semibold text-emerald-600 dark:text-emerald-400">{{ activeIngredientForDosification?.name }}</span>
+                            </DialogDescription>
+                        </div>
+                    </div>
+                </DialogHeader>
+
+                <div class="space-y-4 pt-2">
+                    <div class="mb-1 flex items-center gap-2">
+                        <div class="h-4 w-1 rounded-full bg-emerald-500"></div>
+                        <span class="text-[11px] font-bold tracking-wider text-zinc-400 uppercase">Macronutrientes</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="col-span-2 space-y-1.5">
+                            <Label class="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500 uppercase">
+                                <Zap class="h-3 w-3" /> Energía (kcal)
+                            </Label>
+                            <Input
+                                :model-value="recipeDosificationForm.energy ?? undefined"
+                                @update:model-value="(val) => (recipeDosificationForm.energy = val ? Number(val) : null)"
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                class="h-9 border-zinc-200"
+                            />
+                            <div v-if="recipeDosificationErrors.energy" class="text-xs font-medium text-red-500">
+                                {{ recipeDosificationErrors.energy }}
+                            </div>
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <Label class="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500 uppercase">
+                                <Waves class="h-3 w-3" /> Agua (g)
+                            </Label>
+                            <Input
+                                :model-value="recipeDosificationForm.water ?? undefined"
+                                @update:model-value="(val) => (recipeDosificationForm.water = val ? Number(val) : null)"
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                class="h-9 border-zinc-200"
+                            />
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <Label class="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500 uppercase">
+                                <Beef class="h-3 w-3" /> Proteína (g)
+                            </Label>
+                            <Input
+                                :model-value="recipeDosificationForm.protein ?? undefined"
+                                @update:model-value="(val) => (recipeDosificationForm.protein = val ? Number(val) : null)"
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                class="h-9 border-zinc-200"
+                            />
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <Label class="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500 uppercase">
+                                <Droplets class="h-3 w-3" /> Lípidos (g)
+                            </Label>
+                            <Input
+                                :model-value="recipeDosificationForm.lipid ?? undefined"
+                                @update:model-value="(val) => (recipeDosificationForm.lipid = val ? Number(val) : null)"
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                class="h-9 border-zinc-200"
+                            />
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <Label class="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500 uppercase">
+                                <Cookie class="h-3 w-3" /> Carbohidratos Totales (g)
+                            </Label>
+                            <Input
+                                :model-value="recipeDosificationForm.carbohydrate ?? undefined"
+                                @update:model-value="(val) => (recipeDosificationForm.carbohydrate = val ? Number(val) : null)"
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                class="h-9 border-zinc-200"
+                            />
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <Label class="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500 uppercase">
+                                <Cookie class="h-3 w-3" /> Carbohidratos Disponibles (g)
+                            </Label>
+                            <Input
+                                :model-value="recipeDosificationForm.carbohydrate_available ?? undefined"
+                                @update:model-value="(val) => (recipeDosificationForm.carbohydrate_available = val ? Number(val) : null)"
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                class="h-9 border-zinc-200"
+                            />
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <Label class="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500 uppercase">
+                                <Wheat class="h-3 w-3" /> Fibra (g)
+                            </Label>
+                            <Input
+                                :model-value="recipeDosificationForm.fiber ?? undefined"
+                                @update:model-value="(val) => (recipeDosificationForm.fiber = val ? Number(val) : null)"
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                class="h-9 border-zinc-200"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <DialogFooter class="gap-2 pt-4">
+                    <Button type="button" variant="ghost" @click="isRecipeDosificationModalOpen = false" class="font-bold text-zinc-500">
+                        Cancelar
+                    </Button>
+                    <Button
+                        type="button"
+                        :disabled="isSavingRecipeDosification"
+                        @click="submitRecipeDosification"
+                        class="bg-emerald-600 font-bold text-white hover:bg-emerald-700"
+                    >
+                        {{ isSavingRecipeDosification ? 'Guardando...' : 'Guardar Nutrientes' }}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </div>
 </template>
