@@ -23,6 +23,8 @@ class FoodController extends Controller
             'recipes.ingredients.assignments.city',
             'recipes.ingredients.nutritionalFactors',
             'recipes.ingredients.dosification',
+            'recipes.ingredients.atwaterFactor',
+            'recipes.ingredients.atwaterSubfactor',
             'recipes.level'
         ])->take(50)->get();
 
@@ -47,7 +49,7 @@ class FoodController extends Controller
             'ingredient_categories' => Ingredient_category::all(),
             'dish_categories' => Dish_category::all(),
             'levels' => \App\Models\Level::all(),
-            'ingredients' => Ingredient::with(['assignments.provider', 'assignments.city', 'nutritionalFactors', 'dosification'])
+            'ingredients' => Ingredient::with(['assignments.provider', 'assignments.city', 'nutritionalFactors', 'dosification', 'atwaterFactor', 'atwaterSubfactor'])
                 ->orderBy('name')
                 ->take(300)
                 ->get()
@@ -57,7 +59,7 @@ class FoodController extends Controller
     public function searchIngredients($query)
     {
         return Ingredient::where('name', 'like', "%$query%")
-            ->with(['assignments.provider', 'assignments.city', 'dosification', 'nutritionalFactors'])
+            ->with(['assignments.provider', 'assignments.city', 'dosification', 'nutritionalFactors', 'atwaterFactor', 'atwaterSubfactor'])
             ->take(20)
             ->get();
     }

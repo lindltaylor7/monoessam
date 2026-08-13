@@ -65,6 +65,7 @@ interface Dosification {
     protein: number | null;
     lipid: number | null;
     carbohydrate: number | null;
+    carbohydrate_available: number | null;
     fiber: number | null;
     ash: number | null;
     calcium: number | null;
@@ -161,6 +162,7 @@ const dosificationForm = useForm({
     protein: null as number | null,
     lipid: null as number | null,
     carbohydrate: null as number | null,
+    carbohydrate_available: null as number | null,
     fiber: null as number | null,
     ash: null as number | null,
     calcium: null as number | null,
@@ -194,6 +196,7 @@ const openDosificationModal = (ingredient: Ingredient) => {
     dosificationForm.protein = d?.protein ?? null;
     dosificationForm.lipid = d?.lipid ?? null;
     dosificationForm.carbohydrate = d?.carbohydrate ?? null;
+    dosificationForm.carbohydrate_available = d?.carbohydrate_available ?? null;
     dosificationForm.fiber = d?.fiber ?? null;
     dosificationForm.ash = d?.ash ?? null;
     dosificationForm.calcium = d?.calcium ?? null;
@@ -938,11 +941,24 @@ const uploadDosificationFile = () => {
                                     </div>
                                     <div class="space-y-1.5">
                                         <Label class="flex items-center gap-2 text-[11px] font-bold text-zinc-500 uppercase">
-                                            <Cookie class="h-3 w-3" /> Carbohidratos (g)
+                                            <Cookie class="h-3 w-3" /> Carbohidratos Totales (g)
                                         </Label>
                                         <Input
                                             :model-value="dosificationForm.carbohydrate ?? undefined"
                                             @update:model-value="(val) => (dosificationForm.carbohydrate = val ? Number(val) : null)"
+                                            type="number"
+                                            step="0.01"
+                                            class="h-9 border-zinc-200"
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <Label class="flex items-center gap-2 text-[11px] font-bold text-zinc-500 uppercase">
+                                            <Cookie class="h-3 w-3" /> Carbohidratos Disponibles (g)
+                                        </Label>
+                                        <Input
+                                            :model-value="dosificationForm.carbohydrate_available ?? undefined"
+                                            @update:model-value="(val) => (dosificationForm.carbohydrate_available = val ? Number(val) : null)"
                                             type="number"
                                             step="0.01"
                                             class="h-9 border-zinc-200"

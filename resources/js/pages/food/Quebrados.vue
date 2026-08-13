@@ -63,6 +63,7 @@ watch(
 const ingredientsFounded = ref<Ingredient[]>([]);
 const isSearchingIngredients = ref(false);
 const ingredientSearchDone = ref(false);
+const ingredientSearchQuery = ref('');
 const isCreating = ref(false);
 const activeLevelTab = ref<number | null>(null);
 
@@ -311,7 +312,35 @@ const clearDishSearch = () => {
     performDishSearch('');
 };
 
+// Un nutriente expresado en gramos por 100 g de alimento nunca puede superar 100. Los datos
+// importados por Excel (DosificationsImport) quedan en mg/kg (~10000× un valor de g/100g), mientras
+// que los ingresados a mano en "Valores Nutricionales" ya están en g/100g. Como ambas rutas escriben
+// en las mismas columnas, se detecta la escala por campo en vez de asumir una sola.
+const toGramsPer100g = (rawValue: unknown): number => {
+    const value = parseFloat(rawValue as string) || 0;
+    return value > 100 ? value / 10000 : value;
+};
+
 const calculateIngredientCalories = (ingredient: any) => {
+    const dosification = ingredient?.dosification;
+    const atwaterFactor = ingredient?.atwater_factor || ingredient?.atwaterFactor;
+    const atwaterSubfactor = ingredient?.atwater_subfactor || ingredient?.atwaterSubfactor;
+
+    // Fórmula Atwater: kcal = proteína×factor + lípidos×factor + carbohidratos×factor, usando el
+    // factor asignado a este ingrediente (y su subfactor, si tiene la excepción de carbohidrato).
+    if (dosification && atwaterFactor) {
+        const protein = toGramsPer100g(dosification.protein);
+        const lipid = toGramsPer100g(dosification.lipid);
+        const carbohydrate = toGramsPer100g(dosification.carbohydrate);
+
+        const proteinFactor = parseFloat(atwaterFactor.protein_kcal) || 0;
+        const fatFactor = parseFloat(atwaterFactor.fat_kcal) || 0;
+        const carbFactor = parseFloat(atwaterSubfactor?.carb_kcal ?? atwaterFactor.carb_kcal) || 0;
+
+        return protein * proteinFactor + lipid * fatFactor + carbohydrate * carbFactor;
+    }
+
+    // Ingrediente sin factor Atwater asignado todavía: se conserva el cálculo anterior.
     const factors = ingredient?.nutritional_factors || ingredient?.nutritionalFactors;
     if (factors && factors.length > 0) {
         return factors.reduce((sum: number, factor: any) => {
@@ -504,8 +533,7 @@ const recalculateTotals = () => {
 };
 
 let ingredientSearchTimer: ReturnType<typeof setTimeout> | null = null;
-const searchIngredients = (e: Event) => {
-    const value = (e.target as HTMLInputElement).value;
+watch(ingredientSearchQuery, (value) => {
     if (ingredientSearchTimer) clearTimeout(ingredientSearchTimer);
 
     if (!value) {
@@ -530,12 +558,13 @@ const searchIngredients = (e: Event) => {
                 isSearchingIngredients.value = false;
             });
     }, 300);
-};
+});
 
-const closeIngredientSearch = (e?: Event) => {
+const closeIngredientSearch = () => {
     ingredientsFounded.value = [];
     ingredientSearchDone.value = false;
-    if (e) (e.target as HTMLInputElement).value = '';
+    ingredientSearchQuery.value = '';
+    (document.activeElement as HTMLElement | null)?.blur();
 };
 
 const selectIngredient = (ingredient: Ingredient) => {
@@ -567,6 +596,9 @@ const selectIngredient = (ingredient: Ingredient) => {
     };
     recipe.ingredients.push(newIng);
     ingredientsFounded.value = [];
+    ingredientSearchDone.value = false;
+    ingredientSearchQuery.value = '';
+    (document.activeElement as HTMLElement | null)?.blur();
     recalculateTotals();
 };
 
@@ -1072,8 +1104,8 @@ onUnmounted(() => {
                                     <Search v-if="!isSearchingIngredients" class="absolute top-2 left-2.5 h-3.5 w-3.5 text-indigo-500" />
                                     <Loader2 v-else class="absolute top-2 left-2.5 h-3.5 w-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
                                     <Input
+                                        v-model="ingredientSearchQuery"
                                         placeholder="Agregar ingrediente... (Esc para cerrar)"
-                                        @input="searchIngredients"
                                         @keyup.esc="closeIngredientSearch"
                                         class="h-7.5 rounded-lg border-zinc-200 bg-white pl-8 text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 dark:border-zinc-800 dark:bg-zinc-900"
                                     />

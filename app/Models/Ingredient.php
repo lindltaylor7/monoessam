@@ -15,11 +15,19 @@ class Ingredient extends Model
 {
     /** @use HasFactory<\Database\Factories\MineFactory> */
     use HasFactory;
-    protected $fillable = ['name', 'description', 'amount', 'waste', 'energy', 'ingredient_category_id', 'measurement_unit_id'];
+    protected $fillable = ['name', 'description', 'amount', 'waste', 'energy', 'ingredient_category_id', 'measurement_unit_id', 'atwater_factor_id', 'atwater_subfactor_id'];
 
     public function ingredient_category(): BelongsTo
     {
         return $this->belongsTo(Ingredient_category::class);
+    }
+    public function atwaterFactor(): BelongsTo
+    {
+        return $this->belongsTo(AtwaterFactor::class);
+    }
+    public function atwaterSubfactor(): BelongsTo
+    {
+        return $this->belongsTo(AtwaterSubfactor::class);
     }
     public function dosification(): HasOne
     {

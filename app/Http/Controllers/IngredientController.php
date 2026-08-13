@@ -81,6 +81,7 @@ class IngredientController extends Controller
             'protein' => 'nullable|numeric',
             'lipid' => 'nullable|numeric',
             'carbohydrate' => 'nullable|numeric',
+            'carbohydrate_available' => 'nullable|numeric',
             'fiber' => 'nullable|numeric',
             'ash' => 'nullable|numeric',
             'calcium' => 'nullable|numeric',

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AreaController;
+use App\Http\Controllers\AtwaterFactorController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EquipmentController;
 use App\Http\Controllers\InvoicesController;
@@ -197,6 +198,9 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::put('structure-menu/{id}', [FoodController::class, 'updateStructure'])->name('structure.update');
         Route::delete('structure-menu/{id}', [FoodController::class, 'destroyStructure'])->name('structure.destroy');
     });
+
+    Route::get('atwater', [AtwaterFactorController::class, 'index'])->name('atwater.index');
+    Route::put('atwater/ingredients/{ingredient}', [AtwaterFactorController::class, 'updateIngredientAtwater'])->name('atwater.ingredients.assign');
 
     Route::prefix('dishes')->name('dishes.')->group(function () {
         Route::get('search/{query?}', [DishController::class, 'search'])->name('search');
