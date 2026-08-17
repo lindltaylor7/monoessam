@@ -351,10 +351,9 @@ const toGramsPer100g = (rawValue: unknown): number => {
 const calculateIngredientCalories = (ingredient: any) => {
     const dosification = ingredient?.dosification;
     const atwaterFactor = ingredient?.atwater_factor || ingredient?.atwaterFactor;
-    const atwaterSubfactor = ingredient?.atwater_subfactor || ingredient?.atwaterSubfactor;
 
     // Fórmula Atwater: kcal = proteína×factor + lípidos×factor + carbohidratos×factor, usando el
-    // factor asignado a este ingrediente (y su subfactor, si tiene la excepción de carbohidrato).
+    // factor asignado a este ingrediente.
     if (dosification && atwaterFactor) {
         const protein = toGramsPer100g(dosification.protein);
         const lipid = toGramsPer100g(dosification.lipid);
@@ -368,7 +367,7 @@ const calculateIngredientCalories = (ingredient: any) => {
 
         const proteinFactor = parseFloat(atwaterFactor.protein_kcal) || 0;
         const fatFactor = parseFloat(atwaterFactor.fat_kcal) || 0;
-        const carbFactor = parseFloat(atwaterSubfactor?.carb_kcal ?? atwaterFactor.carb_kcal) || 0;
+        const carbFactor = parseFloat(atwaterFactor.carb_kcal) || 0;
 
         return protein * proteinFactor + lipid * fatFactor + carbohydrate * carbFactor;
     }

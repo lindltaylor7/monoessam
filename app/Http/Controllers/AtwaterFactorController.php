@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\AtwaterFactor;
-use App\Models\AtwaterSubfactor;
 use App\Models\Ingredient;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -30,7 +29,6 @@ class AtwaterFactorController extends Controller
         return Inertia::render('atwater/Index', [
             'groups' => $groups,
             'factors' => AtwaterFactor::orderBy('order')->get(['id', 'group', 'name']),
-            'subfactors' => AtwaterSubfactor::orderBy('name')->get(['id', 'name', 'carb_kcal']),
         ]);
     }
 
@@ -38,13 +36,11 @@ class AtwaterFactorController extends Controller
     {
         $validated = $request->validate([
             'atwater_factor_id' => 'nullable|exists:atwater_factors,id',
-            'atwater_subfactor_id' => 'nullable|exists:atwater_subfactors,id',
         ]);
 
         $ingredientModel = Ingredient::findOrFail($ingredient);
         $ingredientModel->update([
             'atwater_factor_id' => $validated['atwater_factor_id'] ?? null,
-            'atwater_subfactor_id' => $validated['atwater_subfactor_id'] ?? null,
         ]);
 
         // Se consume vía axios (XHR), así que devolvemos JSON. Un back() responde 302 hacia el
@@ -54,7 +50,6 @@ class AtwaterFactorController extends Controller
             'ingredient' => [
                 'id' => $ingredientModel->id,
                 'atwater_factor_id' => $ingredientModel->atwater_factor_id,
-                'atwater_subfactor_id' => $ingredientModel->atwater_subfactor_id,
             ],
         ]);
     }

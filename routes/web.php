@@ -176,6 +176,8 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     Route::prefix('dealerships')->name('dealerships.')->group(function () {
         Route::get('/', [DealershipController::class, 'index'])->name('index');
         Route::post('/', [DealershipController::class, 'store'])->name('store');
+        Route::put('{id}', [DealershipController::class, 'update'])->name('update');
+        Route::delete('{id}', [DealershipController::class, 'destroy'])->name('destroy');
     });
 
     Route::prefix('subdealerships')->name('subdealerships.')->group(function () {

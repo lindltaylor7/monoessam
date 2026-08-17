@@ -29,23 +29,15 @@ interface Factor {
     name: string;
 }
 
-interface Subfactor {
-    id: number;
-    name: string;
-    carb_kcal: string | null;
-}
-
 interface SearchedIngredient {
     id: number;
     name: string;
     atwater_factor_id: number | null;
-    atwater_subfactor_id: number | null;
 }
 
 const props = defineProps<{
     groups: AtwaterGroup[];
     factors: Factor[];
-    subfactors: Subfactor[];
 }>();
 
 const showReferenceTable = ref(false);
@@ -63,7 +55,6 @@ const ingredientSearch = ref('');
 const searchedIngredients = ref<SearchedIngredient[]>([]);
 const isSearchingIngredients = ref(false);
 const factorAssignments = ref<Record<number, string>>({});
-const subfactorAssignments = ref<Record<number, string>>({});
 const savingIngredientId = ref<number | null>(null);
 
 let searchTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -80,7 +71,6 @@ const searchIngredients = async (query: string) => {
         searchedIngredients.value = response.data;
         response.data.forEach((ingredient: SearchedIngredient) => {
             factorAssignments.value[ingredient.id] = ingredient.atwater_factor_id ? String(ingredient.atwater_factor_id) : 'none';
-            subfactorAssignments.value[ingredient.id] = ingredient.atwater_subfactor_id ? String(ingredient.atwater_subfactor_id) : 'none';
         });
     } catch (error) {
         console.error('Error searching ingredients:', error);
@@ -94,24 +84,17 @@ watch(ingredientSearch, (newVal) => {
     searchTimeout = setTimeout(() => searchIngredients(newVal), 300);
 });
 
-const assignAtwater = async (ingredient: SearchedIngredient, field: 'factor' | 'subfactor', value: string) => {
-    if (field === 'factor') {
-        factorAssignments.value[ingredient.id] = value;
-    } else {
-        subfactorAssignments.value[ingredient.id] = value;
-    }
+const assignAtwater = async (ingredient: SearchedIngredient, value: string) => {
+    factorAssignments.value[ingredient.id] = value;
 
     savingIngredientId.value = ingredient.id;
     try {
         const atwaterFactorId = factorAssignments.value[ingredient.id];
-        const atwaterSubfactorId = subfactorAssignments.value[ingredient.id];
 
         await axios.put(route('atwater.ingredients.assign', ingredient.id), {
             atwater_factor_id: atwaterFactorId === 'none' ? null : Number(atwaterFactorId),
-            atwater_subfactor_id: atwaterSubfactorId === 'none' ? null : Number(atwaterSubfactorId),
         });
         ingredient.atwater_factor_id = atwaterFactorId === 'none' ? null : Number(atwaterFactorId);
-        ingredient.atwater_subfactor_id = atwaterSubfactorId === 'none' ? null : Number(atwaterSubfactorId);
         Swal.fire({
             toast: true,
             position: 'top-end',
@@ -124,7 +107,6 @@ const assignAtwater = async (ingredient: SearchedIngredient, field: 'factor' | '
     } catch (error: any) {
         console.error('Error updating ingredient atwater assignment:', error);
         factorAssignments.value[ingredient.id] = ingredient.atwater_factor_id ? String(ingredient.atwater_factor_id) : 'none';
-        subfactorAssignments.value[ingredient.id] = ingredient.atwater_subfactor_id ? String(ingredient.atwater_subfactor_id) : 'none';
 
         const status = error?.response?.status;
         const serverMessage = error?.response?.data?.message;
@@ -213,9 +195,7 @@ const assignAtwater = async (ingredient: SearchedIngredient, field: 'factor' | '
 
             <div class="mx-auto w-full max-w-4xl rounded-2xl border border-zinc-200/80 bg-white p-6 shadow-xs dark:border-zinc-800 dark:bg-zinc-950">
                 <h2 class="text-base font-extrabold text-zinc-900 dark:text-zinc-100">Asociar Ingredientes a Factores Atwater</h2>
-                <p class="mt-0.5 text-xs text-zinc-400">
-                    Busque un ingrediente y asígnele su factor Atwater general (Anexo 2) y, si corresponde, una excepción de carbohidrato.
-                </p>
+                <p class="mt-0.5 text-xs text-zinc-400">Busque un ingrediente y asígnele su factor Atwater (Anexo 2).</p>
 
                 <div class="relative mt-4">
                     <Search v-if="!isSearchingIngredients" class="absolute top-2.5 left-3 h-4 w-4 text-indigo-500" />
@@ -243,41 +223,24 @@ const assignAtwater = async (ingredient: SearchedIngredient, field: 'factor' | '
                         class="flex flex-col gap-2 border-b border-zinc-100 p-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800"
                     >
                         <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">{{ ingredient.name }}</span>
-                        <div class="flex flex-col gap-1.5 sm:flex-row">
-                            <Select
-                                :model-value="factorAssignments[ingredient.id] ?? 'none'"
-                                :disabled="savingIngredientId === ingredient.id"
-                                @update:model-value="(value) => assignAtwater(ingredient, 'factor', String(value))"
-                            >
-                                <SelectTrigger class="h-8 w-64 shrink-0 text-xs">
-                                    <SelectValue placeholder="Sin factor Atwater" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="none">Sin factor Atwater</SelectItem>
-                                    <SelectGroup v-for="group in groupedFactors" :key="group.title">
-                                        <SelectLabel>{{ group.title }}</SelectLabel>
-                                        <SelectItem v-for="f in group.items" :key="f.id" :value="String(f.id)">
-                                            {{ f.name }}
-                                        </SelectItem>
-                                    </SelectGroup>
-                                </SelectContent>
-                            </Select>
-                            <Select
-                                :model-value="subfactorAssignments[ingredient.id] ?? 'none'"
-                                :disabled="savingIngredientId === ingredient.id"
-                                @update:model-value="(value) => assignAtwater(ingredient, 'subfactor', String(value))"
-                            >
-                                <SelectTrigger class="h-8 w-64 shrink-0 text-xs">
-                                    <SelectValue placeholder="Sin excepción de carbohidrato" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="none">Sin excepción de carbohidrato</SelectItem>
-                                    <SelectItem v-for="sf in subfactors" :key="sf.id" :value="String(sf.id)">
-                                        {{ sf.name }} ({{ sf.carb_kcal }} kcal/g)
+                        <Select
+                            :model-value="factorAssignments[ingredient.id] ?? 'none'"
+                            :disabled="savingIngredientId === ingredient.id"
+                            @update:model-value="(value) => assignAtwater(ingredient, String(value))"
+                        >
+                            <SelectTrigger class="h-8 w-64 shrink-0 text-xs">
+                                <SelectValue placeholder="Sin factor Atwater" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">Sin factor Atwater</SelectItem>
+                                <SelectGroup v-for="group in groupedFactors" :key="group.title">
+                                    <SelectLabel>{{ group.title }}</SelectLabel>
+                                    <SelectItem v-for="f in group.items" :key="f.id" :value="String(f.id)">
+                                        {{ f.name }}
                                     </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
+                                </SelectGroup>
+                            </SelectContent>
+                        </Select>
                     </div>
                 </div>
             </div>

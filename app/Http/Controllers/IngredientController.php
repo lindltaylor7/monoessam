@@ -18,10 +18,9 @@ class IngredientController extends Controller
     public function index()
     {
         return Inertia::render('food/Inputs', [
-            'ingredients' => Ingredient::with(['ingredient_category', 'dosification', 'nutritionalFactors', 'atwaterFactor', 'atwaterSubfactor'])->get(),
+            'ingredients' => Ingredient::with(['ingredient_category', 'dosification', 'nutritionalFactors', 'atwaterFactor'])->get(),
             'categories' => \App\Models\Ingredient_category::all(),
             'atwaterFactors' => \App\Models\AtwaterFactor::orderBy('order')->get(['id', 'group', 'name', 'protein_kcal', 'fat_kcal', 'carb_kcal']),
-            'atwaterSubfactors' => \App\Models\AtwaterSubfactor::orderBy('name')->get(['id', 'name', 'carb_kcal']),
         ]);
     }
 
@@ -38,7 +37,6 @@ class IngredientController extends Controller
             'energy' => 'nullable|numeric',
             'ingredient_category_id' => 'nullable|exists:ingredient_categories,id',
             'atwater_factor_id' => 'nullable|exists:atwater_factors,id',
-            'atwater_subfactor_id' => 'nullable|exists:atwater_subfactors,id',
         ]);
 
         Ingredient::create($validated);
@@ -59,7 +57,6 @@ class IngredientController extends Controller
             'energy' => 'nullable|numeric',
             'ingredient_category_id' => 'nullable|exists:ingredient_categories,id',
             'atwater_factor_id' => 'nullable|exists:atwater_factors,id',
-            'atwater_subfactor_id' => 'nullable|exists:atwater_subfactors,id',
         ]);
 
         $ingredient = Ingredient::findOrFail($id);
