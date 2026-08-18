@@ -2,14 +2,29 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/AppLayout.vue';
+import CalcPopover from '@/pages/food/CalcPopover.vue';
 import MenuDisplay from '@/pages/structure-menu/MenuDisplay.vue';
 import { Mine } from '@/types';
 import { Head, router } from '@inertiajs/vue3';
 import axios from 'axios';
-import { CalendarDays, Download, FolderOpen, Plus, Save, Search, Settings2 } from 'lucide-vue-next';
+import {
+    AlertTriangle,
+    Calculator,
+    CalendarDays,
+    ChevronDown,
+    Download,
+    FolderOpen,
+    LineChart,
+    Loader2,
+    Plus,
+    Save,
+    Search,
+    Settings2,
+} from 'lucide-vue-next';
 import Swal from 'sweetalert2';
 import { computed, ref, watch } from 'vue';
 
@@ -296,6 +311,32 @@ const getSemaphoreText = (status: string) => {
     }
 };
 
+const getSemaphoreCellClass = (status: string) => {
+    switch (status) {
+        case 'gravisimo':
+            return 'bg-red-50/80 group-hover/row:bg-red-100/70';
+        case 'pesimo':
+            return 'bg-yellow-50/80 group-hover/row:bg-yellow-100/60';
+        case 'bueno':
+            return 'bg-green-50/70 group-hover/row:bg-green-100/50';
+        default:
+            return 'bg-slate-50/40 group-hover/row:bg-slate-100/50';
+    }
+};
+
+const getSemaphoreTextClass = (status: string) => {
+    switch (status) {
+        case 'gravisimo':
+            return 'text-red-700';
+        case 'pesimo':
+            return 'text-yellow-700';
+        case 'bueno':
+            return 'text-green-700';
+        default:
+            return 'text-slate-400';
+    }
+};
+
 const getRowStatus = (row: any) => {
     const days = Object.values(row.days || {}) as any[];
     if (days.length === 0) return 'desconocido';
@@ -315,6 +356,281 @@ const getRowStatus = (row: any) => {
         return 'gravisimo';
     } else {
         return 'bueno';
+    }
+};
+
+// Cost-vs-limits range indicator (opens from a row's aggregate semaphore, or from a single day cell)
+const isChartModalOpen = ref(false);
+const chartRow = ref<any>(null);
+const chartDayIndex = ref<number | null>(null);
+
+const openRowChartModal = (row: any) => {
+    if (Object.keys(row.days || {}).length === 0) return;
+    chartRow.value = row;
+    chartDayIndex.value = null;
+    isChartModalOpen.value = true;
+};
+
+const openDayChartModal = (row: any, dayIndex: number) => {
+    if (!row.days[dayIndex]) return;
+    chartRow.value = row;
+    chartDayIndex.value = dayIndex;
+    isChartModalOpen.value = true;
+};
+
+// Per-day status uses the same thresholds as the row's aggregate semaphore (getRowStatus),
+// but compares a single day's price instead of the average across all assigned days.
+const getDayStatus = (price: number, min: number, max: number): 'pesimo' | 'gravisimo' | 'bueno' => {
+    if (price < min) return 'pesimo';
+    if (price > max) return 'gravisimo';
+    return 'bueno';
+};
+
+// Reuses the same cost-vs-limits logic as getRowStatus/getDayStatus, but also returns
+// the raw numbers and their position (0-100%) along a padded scale, so the modal
+// can place the value marker between the min/max ticks without ever pinning it
+// flush to the track edge. Shows the average across days, or a single day's price
+// when opened from a day cell (chartDayIndex set).
+const chartStats = computed(() => {
+    if (!chartRow.value) return null;
+
+    const min = parseFloat(chartRow.value.costValue || 0);
+    const max = parseFloat(chartRow.value.costValueMax || 0);
+
+    let value: number;
+    if (chartDayIndex.value !== null) {
+        const day = chartRow.value.days[chartDayIndex.value];
+        value = day ? parseFloat(day.price || 0) : 0;
+    } else {
+        const days = Object.values(chartRow.value.days || {}) as any[];
+        const total = days.reduce((sum: number, d: any) => sum + parseFloat(d.price || 0), 0);
+        value = days.length ? total / days.length : 0;
+    }
+
+    const status: 'pesimo' | 'gravisimo' | 'bueno' = value < min ? 'pesimo' : value > max ? 'gravisimo' : 'bueno';
+
+    const span = Math.max(max - min, 0.01);
+    const padding = Math.max(span * 0.5, 0.3);
+    const domainMin = Math.min(min, value) - padding;
+    const domainMax = Math.max(max, value) + padding;
+    const domainSpan = domainMax - domainMin;
+    const toPct = (v: number) => ((v - domainMin) / domainSpan) * 100;
+
+    return {
+        value,
+        min,
+        max,
+        status,
+        minPct: toPct(min),
+        maxPct: toPct(max),
+        valuePct: toPct(value),
+    };
+});
+
+// Quebrado (recipe breakdown) quick editor — opens from a day cell's calculator button.
+// Edits here save straight to the dish's master DishRecipe (so the Alimentos module and any
+// future assignment picks up the change), but never touch cycle_data already persisted on
+// other saved cycles, since that data is a frozen snapshot taken at save time. The current,
+// still-unsaved cycle being edited IS updated live so what's on screen matches what was saved.
+const isQuebradoModalOpen = ref(false);
+const isQuebradoLoading = ref(false);
+const isQuebradoSaving = ref(false);
+const quebradoDishName = ref('');
+const quebradoRecipeId = ref<number | null>(null);
+const quebradoRecipe = ref<{
+    total_gross_weight: number;
+    total_waste_weight: number;
+    total_calories: number;
+    total_cost: number;
+    total_net_weight: number;
+    ingredients: any[];
+} | null>(null);
+const quebradoRow = ref<any>(null);
+const quebradoDayIndex = ref<number | null>(null);
+
+// Same formula as food/Quebrados.vue's calculateIngredientCalories/toGramsPer100g, duplicated
+// here since this editor lives on a different page and only needs this one calculation.
+const toGramsPer100g = (rawValue: unknown): number => {
+    const value = parseFloat(rawValue as string) || 0;
+    return value > 100 ? value / 10000 : value;
+};
+
+const calculateIngredientCalories = (ingredient: any) => {
+    const dosification = ingredient?.dosification;
+    const atwaterFactor = ingredient?.atwater_factor || ingredient?.atwaterFactor;
+
+    if (dosification && atwaterFactor) {
+        const protein = toGramsPer100g(dosification.protein);
+        const lipid = toGramsPer100g(dosification.lipid);
+        const carbohydrate =
+            dosification.carbohydrate_available !== null && dosification.carbohydrate_available !== undefined
+                ? toGramsPer100g(dosification.carbohydrate_available)
+                : toGramsPer100g(dosification.carbohydrate);
+
+        const proteinFactor = parseFloat(atwaterFactor.protein_kcal) || 0;
+        const fatFactor = parseFloat(atwaterFactor.fat_kcal) || 0;
+        const carbFactor = parseFloat(atwaterFactor.carb_kcal) || 0;
+
+        return protein * proteinFactor + lipid * fatFactor + carbohydrate * carbFactor;
+    }
+
+    const factors = ingredient?.nutritional_factors || ingredient?.nutritionalFactors;
+    if (factors && factors.length > 0) {
+        return factors.reduce((sum: number, factor: any) => {
+            const nfactor = parseFloat(factor.nfactorcal) || 0;
+            const comp = parseFloat(factor.composition) || 0;
+            return sum + nfactor * comp;
+        }, 0);
+    }
+    return ingredient?.dosification?.energy || ingredient?.energy || 0;
+};
+
+const openQuebradoModal = async (row: any, dayIndex: number) => {
+    const day = row.days[dayIndex];
+    if (!day) return;
+
+    quebradoRow.value = row;
+    quebradoDayIndex.value = dayIndex;
+    quebradoDishName.value = day.dish_name;
+    quebradoRecipeId.value = null;
+    quebradoRecipe.value = null;
+    isQuebradoModalOpen.value = true;
+    isQuebradoLoading.value = true;
+
+    try {
+        const response = await axios.get(route('dish-recipes.lookup'), {
+            params: { dish_id: day.dish_id, level_id: day.level_id },
+        });
+        const recipe = response.data;
+        quebradoRecipeId.value = recipe.id;
+        quebradoRecipe.value = {
+            total_gross_weight: parseFloat(recipe.total_gross_weight) || 0,
+            total_waste_weight: parseFloat(recipe.total_waste_weight) || 0,
+            total_calories: parseFloat(recipe.total_calories) || 0,
+            total_cost: parseFloat(recipe.total_cost) || 0,
+            total_net_weight: parseFloat(recipe.total_net_weight) || 0,
+            ingredients: (recipe.ingredients || []).map((ing: any) => {
+                const newIng = {
+                    ...ing,
+                    gross_weight: parseFloat(ing.gross_weight) || 0,
+                    solid_waste: parseFloat(ing.solid_waste) || 0,
+                    liquid_waste: parseFloat(ing.liquid_waste) || 0,
+                    calories: parseFloat(ing.calories) || 0,
+                    cost: parseFloat(ing.cost) || 0,
+                    final_product: parseFloat(ing.final_product) || 0,
+                    unit_price: parseFloat(ing.unit_price) || 0,
+                    selected_unit: 'g',
+                    input_quantity: parseFloat(ing.gross_weight) || 0,
+                    originalValues: {
+                        waste: ing.waste || 0,
+                        calories: calculateIngredientCalories(ing),
+                    },
+                };
+                newIng.calories = (newIng.gross_weight * newIng.originalValues.calories) / 100;
+                return newIng;
+            }),
+        };
+    } catch (err: any) {
+        isQuebradoModalOpen.value = false;
+        Swal.fire('Atención', err?.response?.data?.message || 'No se pudo cargar el quebrado de este plato.', 'warning');
+    } finally {
+        isQuebradoLoading.value = false;
+    }
+};
+
+const recalculateQuebradoTotals = () => {
+    if (!quebradoRecipe.value) return;
+    const recipe = quebradoRecipe.value;
+    recipe.total_gross_weight = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.gross_weight) || 0), 0);
+    recipe.total_waste_weight = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.solid_waste) || 0), 0);
+    recipe.total_calories = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.calories) || 0), 0);
+    recipe.total_cost = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.cost) || 0), 0);
+    recipe.total_net_weight = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.final_product) || 0), 0);
+};
+
+const onQuebradoWeightInput = (ingredient: any) => {
+    const inputVal = parseFloat(ingredient.input_quantity) || 0;
+    const weightInGrams = ingredient.selected_unit === 'Kg' || ingredient.selected_unit === 'kg' ? inputVal * 1000 : inputVal;
+    ingredient.gross_weight = weightInGrams;
+
+    const origWaste = parseFloat(ingredient.originalValues?.waste) || 0;
+    const origCalories = parseFloat(ingredient.originalValues?.calories) || 0;
+
+    ingredient.solid_waste = (weightInGrams * origWaste) / 100;
+    ingredient.final_product = weightInGrams - ingredient.solid_waste;
+    ingredient.calories = (ingredient.gross_weight * origCalories) / 100;
+
+    if (ingredient.unit_price) {
+        ingredient.cost =
+            ingredient.selected_unit === 'Kg' || ingredient.selected_unit === 'kg'
+                ? inputVal * ingredient.unit_price
+                : (inputVal / 1000) * ingredient.unit_price;
+    }
+
+    recalculateQuebradoTotals();
+};
+
+const calcQuebradoMassiveProperties = (id: number, calcArray: number[]) => {
+    if (!quebradoRecipe.value) return;
+    const ingredientIndex = quebradoRecipe.value.ingredients.findIndex((ing) => ing.id == id);
+    if (ingredientIndex !== -1) {
+        const ing = quebradoRecipe.value.ingredients[ingredientIndex];
+        ing.gross_weight = calcArray[0];
+        ing.solid_waste = calcArray[1];
+        ing.calories = calcArray[2];
+        ing.cost = calcArray[3];
+        ing.final_product = calcArray[4];
+        ing.unit_price = calcArray[5];
+        recalculateQuebradoTotals();
+    }
+};
+
+const saveQuebrado = async () => {
+    if (!quebradoRecipeId.value || !quebradoRecipe.value) return;
+
+    isQuebradoSaving.value = true;
+    try {
+        const recipe = quebradoRecipe.value;
+        await axios.put(route('dish-recipes.update', quebradoRecipeId.value), {
+            total_gross_weight: recipe.total_gross_weight,
+            total_waste_weight: recipe.total_waste_weight,
+            total_calories: recipe.total_calories,
+            total_cost: recipe.total_cost,
+            total_net_weight: recipe.total_net_weight,
+            ingredients: recipe.ingredients.map((ing) => ({
+                id: ing.id,
+                gross_weight: ing.gross_weight,
+                solid_waste: ing.solid_waste,
+                liquid_waste: ing.liquid_waste,
+                calories: ing.calories,
+                cost: ing.cost,
+                unit_price: ing.unit_price,
+                final_product: ing.final_product,
+            })),
+        });
+
+        // The cycle currently being edited hasn't been saved yet (or is being re-edited before
+        // the next save), so reflect the new totals immediately in the day cell on screen.
+        if (quebradoRow.value && quebradoDayIndex.value !== null) {
+            const day = quebradoRow.value.days[quebradoDayIndex.value];
+            if (day) {
+                day.calories = recipe.total_calories;
+                day.price = recipe.total_cost;
+            }
+        }
+
+        isQuebradoModalOpen.value = false;
+        Swal.fire({
+            icon: 'success',
+            title: 'Quebrado actualizado',
+            text: 'Los cambios se guardaron en la receta del plato.',
+            timer: 1500,
+            showConfirmButton: false,
+        });
+    } catch (err: any) {
+        Swal.fire('Error', err?.response?.data?.message || 'No se pudo guardar el quebrado.', 'error');
+    } finally {
+        isQuebradoSaving.value = false;
     }
 };
 
@@ -444,32 +760,27 @@ const resetToNew = () => {
                     <h1 class="text-2xl font-bold tracking-tight text-slate-900">Configuración de Ciclos</h1>
                     <p class="mt-1 text-sm text-slate-500">Gestione la programación de platos por día para cada servicio.</p>
                 </div>
-                <div class="flex items-center gap-3">
-                    <Button
-                        variant="outline"
-                        class="flex items-center gap-2 border-green-200 bg-white text-green-700 hover:bg-green-50"
-                        @click="exportCycle"
-                    >
-                        <Download class="h-4 w-4" />
-                        Exportar Excel (Kcal)
-                    </Button>
-                    <Button
-                        variant="outline"
-                        class="flex items-center gap-2 border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
-                        @click="exportCycleWithoutKcal"
-                    >
-                        <Download class="h-4 w-4" />
-                        Exportar Excel (Sin Kcal)
-                    </Button>
-                    <Button
-                        variant="outline"
-                        class="flex items-center gap-2 border-blue-200 bg-white text-blue-600 hover:bg-blue-50"
-                        @click="resetToNew"
-                    >
+                <div class="flex items-center gap-2">
+                    <Button variant="outline" class="flex items-center gap-2 border-slate-200 bg-white text-slate-600 hover:bg-slate-50" @click="resetToNew">
                         <Plus class="h-4 w-4" />
                         Nuevo Ciclo
                     </Button>
-                    <Button variant="outline" class="flex items-center gap-2 bg-white" @click="isSavedCyclesModalOpen = true">
+
+                    <DropdownMenu>
+                        <DropdownMenuTrigger as-child>
+                            <Button variant="outline" class="flex items-center gap-2 border-slate-200 bg-white text-slate-600 hover:bg-slate-50">
+                                <Download class="h-4 w-4" />
+                                Exportar
+                                <ChevronDown class="h-3.5 w-3.5 text-slate-400" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" class="w-56">
+                            <DropdownMenuItem class="cursor-pointer" @select="exportCycle">Con calorías</DropdownMenuItem>
+                            <DropdownMenuItem class="cursor-pointer" @select="exportCycleWithoutKcal">Sin calorías</DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    <Button variant="outline" class="flex items-center gap-2 border-slate-200 bg-white text-slate-600 hover:bg-slate-50" @click="isSavedCyclesModalOpen = true">
                         <Settings2 class="h-4 w-4" />
                         Ajustes
                     </Button>
@@ -506,6 +817,13 @@ const resetToNew = () => {
                                 Generar Columnas
                             </Button>
                         </div>
+                    </div>
+
+                    <div class="flex items-center gap-4 text-xs font-medium text-slate-500">
+                        <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-green-500"></span>Óptimo</span>
+                        <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-yellow-400"></span>Muy bajo</span>
+                        <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-red-500"></span>Muy alto</span>
+                        <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-gray-300"></span>Sin asignar</span>
                     </div>
                 </div>
 
@@ -558,13 +876,30 @@ const resetToNew = () => {
                                 </TableCell>
 
                                 <TableCell
-                                    class="sticky left-[280px] z-10 border-r border-slate-100 bg-slate-50/40 text-center shadow-[1px_0_0_0_#f1f5f9] backdrop-blur group-hover/row:bg-slate-100/50"
+                                    class="sticky left-[280px] z-10 border-r border-slate-100 text-center shadow-[1px_0_0_0_#f1f5f9] backdrop-blur transition-colors"
+                                    :class="[
+                                        getSemaphoreCellClass(getRowStatus(row)),
+                                        Object.keys(row.days || {}).length > 0 ? 'cursor-pointer' : '',
+                                    ]"
+                                    @click="openRowChartModal(row)"
                                 >
-                                    <div class="flex flex-col items-center justify-center gap-2 py-2">
+                                    <div class="group/semaphore flex flex-col items-center justify-center gap-1 py-2">
                                         <div
-                                            class="h-5 w-5 rounded-full shadow-sm ring-2 ring-white"
+                                            class="h-3 w-3 rounded-full shadow-sm ring-2 ring-white"
                                             :class="getSemaphoreColor(getRowStatus(row))"
                                         ></div>
+                                        <span
+                                            class="text-[10px] leading-tight font-bold"
+                                            :class="getSemaphoreTextClass(getRowStatus(row))"
+                                            >{{ getSemaphoreText(getRowStatus(row)) }}</span
+                                        >
+                                        <span
+                                            v-if="Object.keys(row.days || {}).length > 0"
+                                            class="flex items-center gap-1 text-[9px] font-medium text-slate-400 opacity-0 transition-opacity group-hover/semaphore:opacity-100"
+                                        >
+                                            <LineChart class="h-2.5 w-2.5" />
+                                            Ver gráfico
+                                        </span>
                                     </div>
                                 </TableCell>
 
@@ -581,31 +916,68 @@ const resetToNew = () => {
                                                 row.id,
                                                 dayIndex,
                                             ),
-                                            'rounded-md border-red-500 bg-red-50/80 shadow-md ring-2 ring-red-200': isRepeated(row.id, dayIndex),
+                                            'rounded-md border-red-400 bg-red-50/80 shadow-md ring-2 ring-red-200': isRepeated(row.id, dayIndex),
                                         }"
                                     >
                                         <div
                                             v-if="!row.days[dayIndex]"
-                                            class="flex h-full min-h-[80px] w-full cursor-pointer items-center justify-center transition-colors hover:bg-slate-50"
+                                            class="group/empty flex h-full min-h-[80px] w-full cursor-pointer flex-col items-center justify-center gap-1 rounded-md border border-dashed border-slate-200 transition-colors hover:border-[#FF5A1F] hover:bg-orange-50/40"
                                             @click="openSearchModal(rowIndex, dayIndex, row.dishCategoryId)"
                                         >
-                                            <span class="text-xs font-medium text-slate-400">Vacío</span>
+                                            <Plus class="h-4 w-4 text-slate-300 transition-colors group-hover/empty:text-[#FF5A1F]" />
+                                            <span class="text-[11px] font-medium text-slate-400 transition-colors group-hover/empty:text-[#FF5A1F]"
+                                                >Agregar plato</span
+                                            >
                                         </div>
 
                                         <template v-else>
                                             <div class="cursor-pointer p-3" @click="openSearchModal(rowIndex, dayIndex, row.dishCategoryId)">
-                                                <div class="mb-2 flex items-center justify-between">
+                                                <div class="mb-2 flex items-center justify-between gap-1">
+                                                    <div class="flex min-w-0 items-center gap-1.5">
+                                                        <button
+                                                            type="button"
+                                                            class="h-2.5 w-2.5 shrink-0 rounded-full ring-1 ring-white transition-transform hover:scale-125"
+                                                            :class="
+                                                                getSemaphoreColor(
+                                                                    getDayStatus(Number(row.days[dayIndex].price), row.costValue, row.costValueMax),
+                                                                )
+                                                            "
+                                                            :title="
+                                                                getSemaphoreText(
+                                                                    getDayStatus(Number(row.days[dayIndex].price), row.costValue, row.costValueMax),
+                                                                )
+                                                            "
+                                                            @click.stop="openDayChartModal(row, dayIndex)"
+                                                        ></button>
+                                                        <div
+                                                            v-if="isRepeated(row.id, dayIndex)"
+                                                            class="flex items-center gap-1 truncate rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-600"
+                                                        >
+                                                            <AlertTriangle class="h-3 w-3 shrink-0" />
+                                                            Repetido
+                                                        </div>
+                                                    </div>
                                                     <div
-                                                        class="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-700 shadow-sm"
+                                                        class="shrink-0 rounded border border-orange-100 bg-orange-50 px-1.5 py-0.5 text-[10px] font-bold text-orange-700 shadow-sm"
                                                     >
                                                         {{ row.days[dayIndex].calories }} kcal
                                                     </div>
                                                 </div>
-                                                <span class="line-clamp-2 text-[12px] leading-snug font-semibold text-blue-700">
+                                                <span class="line-clamp-2 text-[12px] leading-snug font-semibold text-slate-800">
                                                     {{ row.days[dayIndex].dish_name }}
                                                 </span>
-                                                <div class="mt-2 text-[12px] font-bold text-red-600">
-                                                    S/ {{ Number(row.days[dayIndex].price).toFixed(2) }}
+                                                <div class="mt-2 flex items-center justify-between gap-1">
+                                                    <span class="text-[12px] font-bold tabular-nums text-slate-900">
+                                                        S/ {{ Number(row.days[dayIndex].price).toFixed(2) }}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        title="Ver / editar quebrado"
+                                                        class="rounded-full p-1 text-slate-400 transition-colors hover:bg-orange-50 hover:text-[#FF5A1F]"
+                                                        @click.stop="openQuebradoModal(row, dayIndex)"
+                                                    >
+                                                        <Calculator class="h-3.5 w-3.5" />
+                                                    </button>
                                                 </div>
                                             </div>
                                         </template>
@@ -888,6 +1260,254 @@ const resetToNew = () => {
                             </Button>
                         </li>
                     </ul>
+                </div>
+            </DialogContent>
+        </Dialog>
+
+        <!-- Cost-vs-limits range indicator (opens from a row's aggregate semaphore, or a single day cell) -->
+        <Dialog :open="isChartModalOpen" @update:open="isChartModalOpen = $event">
+            <DialogContent class="overflow-hidden rounded-xl border-0 bg-white p-0 shadow-2xl sm:max-w-[480px]">
+                <DialogHeader class="border-b border-slate-100 bg-white p-6 pb-4">
+                    <DialogTitle class="flex items-center gap-2 text-xl font-bold text-slate-800">
+                        <LineChart class="h-5 w-5 text-[#FF5A1F]" />
+                        {{ chartRow?.category }}
+                        <span
+                            v-if="chartDayIndex !== null"
+                            class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500"
+                        >
+                            Día {{ chartDayIndex }}
+                        </span>
+                    </DialogTitle>
+                    <p class="mt-1 text-sm text-slate-500">
+                        <template v-if="chartDayIndex !== null">
+                            {{ chartRow?.days[chartDayIndex]?.dish_name }} — costo de ese día frente al rango de costo de la estructura.
+                        </template>
+                        <template v-else> Costo promedio del plato frente al rango de costo de la estructura. </template>
+                    </p>
+                </DialogHeader>
+
+                <div v-if="chartStats" class="p-6 pt-8 pb-12">
+                    <div class="mb-10 text-center">
+                        <p class="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
+                            {{ chartDayIndex !== null ? 'Costo del Día' : 'Costo Promedio' }}
+                        </p>
+                        <p class="mt-1 text-3xl font-bold tabular-nums" :class="getSemaphoreTextClass(chartStats.status)">
+                            S/ {{ chartStats.value.toFixed(2) }}
+                        </p>
+                        <p class="mt-1 text-xs font-bold" :class="getSemaphoreTextClass(chartStats.status)">
+                            {{ getSemaphoreText(chartStats.status) }}
+                        </p>
+                    </div>
+
+                    <div class="relative">
+                        <div class="relative h-2 rounded-full bg-slate-100">
+                            <div
+                                class="absolute inset-y-0 rounded-full bg-green-200/70"
+                                :style="{ left: chartStats.minPct + '%', width: chartStats.maxPct - chartStats.minPct + '%' }"
+                            ></div>
+                            <div
+                                class="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-md"
+                                :class="getSemaphoreColor(chartStats.status)"
+                                :style="{ left: chartStats.valuePct + '%' }"
+                            ></div>
+                        </div>
+
+                        <div
+                            class="absolute top-full mt-1.5 flex -translate-x-1/2 flex-col items-center"
+                            :style="{ left: chartStats.minPct + '%' }"
+                        >
+                            <span class="h-1.5 w-px bg-slate-300"></span>
+                            <span class="mt-1 text-center text-[10px] font-semibold whitespace-nowrap text-slate-500"
+                                >Mínimo<br />S/ {{ chartStats.min.toFixed(2) }}</span
+                            >
+                        </div>
+                        <div
+                            class="absolute top-full mt-1.5 flex -translate-x-1/2 flex-col items-center"
+                            :style="{ left: chartStats.maxPct + '%' }"
+                        >
+                            <span class="h-1.5 w-px bg-slate-300"></span>
+                            <span class="mt-1 text-center text-[10px] font-semibold whitespace-nowrap text-slate-500"
+                                >Máximo<br />S/ {{ chartStats.max.toFixed(2) }}</span
+                            >
+                        </div>
+                    </div>
+                </div>
+            </DialogContent>
+        </Dialog>
+
+        <!-- Quebrado (recipe breakdown) quick editor — opens from a day cell's calculator button -->
+        <Dialog :open="isQuebradoModalOpen" @update:open="isQuebradoModalOpen = $event">
+            <DialogContent class="flex max-h-[85vh] flex-col overflow-hidden rounded-xl border-0 bg-white p-0 shadow-2xl sm:max-w-[1080px]">
+                <DialogHeader class="flex-none border-b border-slate-100 bg-white p-6 pb-4">
+                    <DialogTitle class="flex items-center gap-2 text-xl font-bold text-slate-800">
+                        <Calculator class="h-5 w-5 text-[#FF5A1F]" />
+                        Quebrado — {{ quebradoDishName }}
+                    </DialogTitle>
+                    <p class="mt-1 text-sm text-slate-500">
+                        Estás editando la receta maestra de este plato: los cambios se reflejarán en toda la app, pero no alteran los ciclos ya
+                        guardados.
+                    </p>
+                </DialogHeader>
+
+                <div v-if="isQuebradoLoading" class="flex flex-1 flex-col items-center justify-center gap-3 p-16">
+                    <Loader2 class="h-6 w-6 animate-spin text-[#FF5A1F]" />
+                    <span class="text-sm font-medium text-slate-500">Cargando quebrado...</span>
+                </div>
+
+                <div v-else-if="quebradoRecipe" class="flex-1 overflow-y-auto p-6">
+                    <div class="overflow-x-auto rounded-lg border border-slate-100">
+                        <Table class="w-full text-xs">
+                            <TableHeader>
+                                <TableRow class="border-b-slate-200 bg-slate-50/80 hover:bg-slate-50/80">
+                                    <TableHead class="h-9 text-[10px] font-semibold tracking-wider text-slate-600 uppercase">Insumo</TableHead>
+                                    <TableHead class="h-9 text-center text-[10px] font-semibold tracking-wider text-slate-500 uppercase"
+                                        >P. Unit</TableHead
+                                    >
+                                    <TableHead class="h-9 text-center text-[10px] font-semibold tracking-wider text-slate-500 uppercase"
+                                        >P. x Gr</TableHead
+                                    >
+                                    <TableHead class="h-9 text-center text-[10px] font-semibold tracking-wider text-slate-600 uppercase"
+                                        >Cantidad</TableHead
+                                    >
+                                    <TableHead class="h-9 text-center text-[10px] font-semibold tracking-wider text-slate-600 uppercase">Und</TableHead>
+                                    <TableHead class="h-9 text-center text-[10px] font-semibold tracking-wider text-slate-600 uppercase"
+                                        >Costo Base</TableHead
+                                    >
+                                    <TableHead class="h-9 text-center text-[10px] font-semibold tracking-wider text-slate-500 uppercase"
+                                        >Mat. Prima</TableHead
+                                    >
+                                    <TableHead class="h-9 text-center text-[10px] font-semibold tracking-wider text-slate-500 uppercase"
+                                        >Desecho</TableHead
+                                    >
+                                    <TableHead class="h-9 text-center text-[10px] font-semibold tracking-wider text-slate-500 uppercase"
+                                        >Prod. Final</TableHead
+                                    >
+                                    <TableHead class="h-9 text-center text-[10px] font-semibold tracking-wider text-orange-700 uppercase"
+                                        >Calorías</TableHead
+                                    >
+                                    <TableHead class="h-9 text-center text-[10px] font-semibold tracking-wider text-slate-600 uppercase"
+                                        >Ajustes</TableHead
+                                    >
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                <TableRow
+                                    v-for="ingredient in quebradoRecipe.ingredients"
+                                    :key="ingredient.id"
+                                    class="border-b-slate-100 transition-colors hover:bg-slate-50/50"
+                                >
+                                    <TableCell class="py-2 font-semibold text-slate-800">{{ ingredient.name }}</TableCell>
+                                    <TableCell class="py-2 text-center font-mono text-slate-500">
+                                        S/ {{ Number(ingredient.unit_price || 0).toFixed(2) }}
+                                    </TableCell>
+                                    <TableCell class="py-2 text-center font-mono text-[11px] text-slate-400">
+                                        S/ {{ Number((ingredient.unit_price || 0) / 1000).toFixed(4) }}
+                                    </TableCell>
+                                    <TableCell class="py-2 text-center">
+                                        <Input
+                                            type="number"
+                                            v-model="ingredient.input_quantity"
+                                            @input="onQuebradoWeightInput(ingredient)"
+                                            step="any"
+                                            class="mx-auto h-7 w-18 rounded-lg border-slate-200 text-center text-xs font-bold text-slate-800 focus-visible:ring-[#FF5A1F]"
+                                        />
+                                    </TableCell>
+                                    <TableCell class="py-2 text-center">
+                                        <select
+                                            v-model="ingredient.selected_unit"
+                                            @change="onQuebradoWeightInput(ingredient)"
+                                            class="h-7 rounded-lg border-slate-200 bg-slate-50 text-[11px] font-bold text-slate-700 focus:ring-2 focus:ring-[#FF5A1F]/30"
+                                        >
+                                            <option value="Kg">Kg</option>
+                                            <option value="g">Gr</option>
+                                        </select>
+                                    </TableCell>
+                                    <TableCell class="py-2 text-center font-mono font-bold tabular-nums text-slate-900">
+                                        S/ {{ Number(ingredient.cost).toFixed(2) }}
+                                    </TableCell>
+                                    <TableCell class="py-2 text-center font-mono text-slate-500">
+                                        {{ Number(ingredient.gross_weight).toFixed(1) }} g
+                                    </TableCell>
+                                    <TableCell class="py-2 text-center font-mono text-slate-500">
+                                        {{ Number(ingredient.solid_waste).toFixed(1) }} g
+                                    </TableCell>
+                                    <TableCell class="py-2 text-center font-mono font-semibold text-slate-700">
+                                        {{ Number(ingredient.final_product).toFixed(1) }} g
+                                    </TableCell>
+                                    <TableCell class="py-2 text-center font-mono font-semibold text-orange-700">
+                                        {{ Number(ingredient.calories).toFixed(1) }} kcal
+                                    </TableCell>
+                                    <TableCell class="py-2 text-center">
+                                        <div class="flex items-center justify-center">
+                                            <CalcPopover
+                                                :ingredient="ingredient"
+                                                :totalMateriaPrima="quebradoRecipe.total_gross_weight"
+                                                :totalWasteWeight="quebradoRecipe.total_waste_weight"
+                                                :totalCalories="quebradoRecipe.total_calories"
+                                                :totalCost="quebradoRecipe.total_cost"
+                                                :totalfinalProduct="quebradoRecipe.total_net_weight"
+                                                @calcMassiveProperties="calcQuebradoMassiveProperties"
+                                            />
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+
+                                <TableRow v-if="quebradoRecipe.ingredients.length === 0">
+                                    <TableCell colspan="10" class="h-24 text-center text-sm text-slate-400">
+                                        Este plato no tiene ingredientes registrados en su quebrado.
+                                    </TableCell>
+                                </TableRow>
+                            </TableBody>
+                        </Table>
+                    </div>
+
+                    <div class="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
+                        <div class="rounded-lg border border-slate-100 bg-slate-50/60 p-3 text-center">
+                            <div class="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Peso Bruto</div>
+                            <div class="mt-0.5 font-mono text-sm font-bold text-slate-800">
+                                {{ Number(quebradoRecipe.total_gross_weight).toFixed(1) }} g
+                            </div>
+                        </div>
+                        <div class="rounded-lg border border-slate-100 bg-slate-50/60 p-3 text-center">
+                            <div class="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Mermas Totales</div>
+                            <div class="mt-0.5 font-mono text-sm font-bold text-slate-800">
+                                {{ Number(quebradoRecipe.total_waste_weight).toFixed(1) }} g
+                            </div>
+                        </div>
+                        <div class="rounded-lg border border-slate-100 bg-slate-50/60 p-3 text-center">
+                            <div class="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Calorías</div>
+                            <div class="mt-0.5 font-mono text-sm font-bold text-orange-700">
+                                {{ Number(quebradoRecipe.total_calories).toFixed(1) }} kcal
+                            </div>
+                        </div>
+                        <div class="rounded-lg border border-orange-100 bg-orange-50/60 p-3 text-center">
+                            <div class="text-[10px] font-semibold tracking-wider text-orange-600 uppercase">Costo Receta</div>
+                            <div class="mt-0.5 font-mono text-sm font-bold text-orange-700">
+                                S/ {{ Number(quebradoRecipe.total_cost).toFixed(2) }}
+                            </div>
+                        </div>
+                        <div class="rounded-lg border border-slate-100 bg-slate-50/60 p-3 text-center">
+                            <div class="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Prod. Final</div>
+                            <div class="mt-0.5 font-mono text-sm font-bold text-slate-800">
+                                {{ Number(quebradoRecipe.total_net_weight).toFixed(1) }} g
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="quebradoRecipe" class="flex flex-none items-center justify-end gap-2 border-t border-slate-100 bg-white p-4">
+                    <Button variant="outline" class="border-slate-200 text-slate-600 hover:bg-slate-50" @click="isQuebradoModalOpen = false">
+                        Cancelar
+                    </Button>
+                    <Button
+                        :disabled="isQuebradoSaving"
+                        class="flex items-center gap-2 bg-[#FF5A1F] text-white hover:bg-[#e04a17]"
+                        @click="saveQuebrado"
+                    >
+                        <Loader2 v-if="isQuebradoSaving" class="h-4 w-4 animate-spin" />
+                        <Save v-else class="h-4 w-4" />
+                        Guardar Cambios
+                    </Button>
                 </div>
             </DialogContent>
         </Dialog>

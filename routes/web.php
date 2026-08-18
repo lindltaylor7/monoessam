@@ -13,6 +13,7 @@ use App\Http\Controllers\DealershipController;
 use App\Http\Controllers\DinnerController;
 use App\Http\Controllers\DishCategoryController;
 use App\Http\Controllers\DishController;
+use App\Http\Controllers\DishRecipeController;
 use App\Http\Controllers\FoodController;
 use App\Http\Controllers\GuardController;
 use App\Http\Controllers\HeadcountController;
@@ -211,6 +212,11 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::put('{id}', [DishController::class, 'update'])->name('update');
         Route::delete('{id}', [DishController::class, 'destroy'])->name('destroy');
         Route::post('import', [DishController::class, 'import'])->name('import');
+    });
+
+    Route::prefix('dish-recipes')->name('dish-recipes.')->group(function () {
+        Route::get('lookup', [DishRecipeController::class, 'lookup'])->name('lookup');
+        Route::put('{id}', [DishRecipeController::class, 'update'])->name('update');
     });
 
     Route::prefix('dish-categories')->name('dish-categories.')->group(function () {

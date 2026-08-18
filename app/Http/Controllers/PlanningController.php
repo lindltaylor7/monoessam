@@ -84,6 +84,13 @@ class PlanningController extends Controller
         ]);
 
         foreach ($validated['items'] as $item) {
+            // Empty grid cells (no dish assigned yet) are sent too, since the form allows
+            // saving a plan before every cell is filled in — skip them rather than inserting
+            // a row with a null dish_id, which the column doesn't allow.
+            if (empty($item['dish_id'])) {
+                continue;
+            }
+
             WeeklyProgramItem::create([
                 'weekly_program_id' => $program->id,
                 'date' => $item['date'],
