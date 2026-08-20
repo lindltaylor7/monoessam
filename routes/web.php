@@ -493,6 +493,11 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     Route::prefix('purchase-orders')->name('purchase_orders.')->group(function () {
         Route::get('/', [PurchaseOrderController::class, 'index'])->name('index');
         Route::get('{id}', [PurchaseOrderController::class, 'show'])->name('show');
+        Route::delete('{id}', [PurchaseOrderController::class, 'destroy'])->name('destroy');
+    });
+
+    Route::prefix('orders')->name('orders.')->group(function () {
+        Route::get('/', [PurchaseOrderController::class, 'ordersIndex'])->name('index');
     });
 
     // ========================================================================

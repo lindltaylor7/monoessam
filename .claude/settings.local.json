@@ -16,7 +16,11 @@
       "Bash(node -e \"const icons = require\\('lucide-vue-next'\\); const names = Object.keys\\(icons\\).filter\\(k => /^[A-Z]/.test\\(k\\) && !k.endsWith\\('Icon'\\) && k !== 'default' && typeof icons[k] === 'function'\\); console.log\\(names.length\\); console.log\\(JSON.stringify\\(names.slice\\(0,15\\)\\)\\)\")",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\ESSAM R701\\\\Desktop\\\\erp\" -Depth 2)",
       "Bash(Select-Object FullName)",
-      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\ESSAM R701\\\\Desktop\\\\erp\\\\resources\\\\js\" -Directory)"
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\ESSAM R701\\\\Desktop\\\\erp\\\\resources\\\\js\" -Directory)",
+      "Bash(node *)",
+      "Bash(php *)",
+      "Bash(git check-ignore *)",
+      "Bash(git status *)"
     ]
   }
 }

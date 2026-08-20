@@ -61,7 +61,7 @@ class PlanningController extends Controller
 
         return Inertia::render('planning/Index', [
             'cafes' => Cafe::all(),
-            'programs' => WeeklyProgram::with(['cafe', 'structure'])->get(),
+            'programs' => WeeklyProgram::with(['cafe.unit', 'structure'])->get(),
             'dish_categories' => Dish_category::all(),
             'menu_structure' => MenuStructure::with('dish_category')->get(),
             'structures' => \App\Models\Structure::with('costs')->get(),

@@ -1206,7 +1206,10 @@ const loadStructure = (structureIdStr: string) => {
                             </TableHeader>
                             <TableBody>
                                 <TableRow v-for="program in programs" :key="program.id" class="hover:bg-slate-50/50">
-                                    <TableCell class="font-semibold text-slate-800">{{ program.cafe?.name || '—' }}</TableCell>
+                                    <TableCell>
+                                        <div class="font-semibold text-slate-800">{{ program.cafe?.name || '—' }}</div>
+                                        <div v-if="program.cafe?.unit?.name" class="text-xs text-slate-400">{{ program.cafe.unit.name }}</div>
+                                    </TableCell>
                                     <TableCell class="text-slate-600">
                                         {{ dayjs(program.start_date).format('DD/MM/YYYY') }} - {{ dayjs(program.end_date).format('DD/MM/YYYY') }}
                                     </TableCell>
