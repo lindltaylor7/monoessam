@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AreaController;
+use App\Http\Controllers\AtwaterFactorController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\EquipmentController;
 use App\Http\Controllers\InvoicesController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\DealershipController;
 use App\Http\Controllers\DinnerController;
 use App\Http\Controllers\DishCategoryController;
 use App\Http\Controllers\DishController;
+use App\Http\Controllers\DishRecipeController;
 use App\Http\Controllers\FoodController;
 use App\Http\Controllers\GuardController;
 use App\Http\Controllers\HeadcountController;
@@ -175,6 +177,8 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     Route::prefix('dealerships')->name('dealerships.')->group(function () {
         Route::get('/', [DealershipController::class, 'index'])->name('index');
         Route::post('/', [DealershipController::class, 'store'])->name('store');
+        Route::put('{id}', [DealershipController::class, 'update'])->name('update');
+        Route::delete('{id}', [DealershipController::class, 'destroy'])->name('destroy');
     });
 
     Route::prefix('subdealerships')->name('subdealerships.')->group(function () {
@@ -194,8 +198,12 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('/', [FoodController::class, 'index'])->name('index');
         Route::get('structure-menu', [FoodController::class, 'structure'])->name('structure');
         Route::post('structure-menu', [FoodController::class, 'storeStructure'])->name('structure.store');
+        Route::put('structure-menu/{id}', [FoodController::class, 'updateStructure'])->name('structure.update');
         Route::delete('structure-menu/{id}', [FoodController::class, 'destroyStructure'])->name('structure.destroy');
     });
+
+    Route::get('atwater', [AtwaterFactorController::class, 'index'])->name('atwater.index');
+    Route::put('atwater/ingredients/{ingredient}', [AtwaterFactorController::class, 'updateIngredientAtwater'])->name('atwater.ingredients.assign');
 
     Route::prefix('dishes')->name('dishes.')->group(function () {
         Route::get('search/{query?}', [DishController::class, 'search'])->name('search');
@@ -204,6 +212,11 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::put('{id}', [DishController::class, 'update'])->name('update');
         Route::delete('{id}', [DishController::class, 'destroy'])->name('destroy');
         Route::post('import', [DishController::class, 'import'])->name('import');
+    });
+
+    Route::prefix('dish-recipes')->name('dish-recipes.')->group(function () {
+        Route::get('lookup', [DishRecipeController::class, 'lookup'])->name('lookup');
+        Route::put('{id}', [DishRecipeController::class, 'update'])->name('update');
     });
 
     Route::prefix('dish-categories')->name('dish-categories.')->group(function () {
@@ -329,6 +342,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
 
     Route::prefix('mercantiles')->name('mercantiles.')->group(function () {
         Route::get('/',      [MercantilController::class, 'index'])->name('index');
+        Route::get('/admin', [MercantilController::class, 'index'])->name('admin');
         Route::post('/',     [MercantilController::class, 'store'])->name('store');
         Route::put('{id}',   [MercantilController::class, 'update'])->name('update');
         Route::delete('{id}',[MercantilController::class, 'destroy'])->name('destroy');
@@ -472,11 +486,19 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('/', [PlanningController::class, 'index'])->name('index');
         Route::post('/', [PlanningController::class, 'store'])->name('store');
         Route::post('{id}/generate-po', [PlanningController::class, 'generatePurchaseOrder'])->name('generate-po');
+        Route::get('{id}/quebrado-pdf', [PlanningController::class, 'quebradoPdf'])->name('quebrado-pdf');
+        Route::get('{id}/requerimiento-pdf', [PlanningController::class, 'requerimientoPdf'])->name('requerimiento-pdf');
+        Route::get('{id}/orden-pedido-excel', [PlanningController::class, 'purchaseOrderExcel'])->name('orden-pedido-excel');
     });
 
     Route::prefix('purchase-orders')->name('purchase_orders.')->group(function () {
         Route::get('/', [PurchaseOrderController::class, 'index'])->name('index');
         Route::get('{id}', [PurchaseOrderController::class, 'show'])->name('show');
+        Route::delete('{id}', [PurchaseOrderController::class, 'destroy'])->name('destroy');
+    });
+
+    Route::prefix('orders')->name('orders.')->group(function () {
+        Route::get('/', [PurchaseOrderController::class, 'ordersIndex'])->name('index');
     });
 
     // ========================================================================

@@ -17,6 +17,7 @@ class Dosification extends Model
         'protein',
         'lipid',
         'carbohydrate',
+        'carbohydrate_available',
         'fiber',
         'ash',
         'calcium',

@@ -1,16 +1,45 @@
 <script setup lang="ts">
 import { Badge } from '@/components/ui/badge';
 import Button from '@/components/ui/button/Button.vue';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dish, Ingredient } from '@/types';
 import { router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
-import { Check, ChevronDown, Copy, FileUp, ListFilter, Loader2, Plus, Search, Trash, X } from 'lucide-vue-next';
+import {
+    AlertCircle,
+    ArrowLeft,
+    Beef,
+    Check,
+    ChefHat,
+    ChevronDown,
+    Cookie,
+    Copy,
+    DollarSign,
+    Droplets,
+    FileUp,
+    Flame,
+    FlaskConical,
+    Layers,
+    ListFilter,
+    Loader2,
+    Plus,
+    Scale,
+    Search,
+    Sparkles,
+    Trash,
+    Utensils,
+    Waves,
+    Wheat,
+    X,
+    Zap,
+} from 'lucide-vue-next';
 import Swal from 'sweetalert2';
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import CalcPopover from './CalcPopover.vue';
 
 const props = defineProps<{
@@ -19,6 +48,11 @@ const props = defineProps<{
     dishCategories: any[];
     levels: any[];
 }>();
+
+// Helper to format category names (preserving full name including prefixes like 'zBase(Master) | JUGO')
+const formatCategoryName = (name: string) => {
+    return name || '';
+};
 
 // State
 const searchQuery = ref('');
@@ -38,6 +72,7 @@ watch(
 const ingredientsFounded = ref<Ingredient[]>([]);
 const isSearchingIngredients = ref(false);
 const ingredientSearchDone = ref(false);
+const ingredientSearchQuery = ref('');
 const isCreating = ref(false);
 const activeLevelTab = ref<number | null>(null);
 
@@ -64,6 +99,9 @@ const confirmDiscard = async (): Promise<boolean> => {
         confirmButtonColor: '#ef4444',
         confirmButtonText: 'Sí, descartar',
         cancelButtonText: 'Seguir editando',
+        customClass: {
+            popup: 'rounded-2xl dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-100',
+        },
     });
     return result.isConfirmed;
 };
@@ -127,20 +165,31 @@ const form = useForm({
 
 const localLevels = ref([...props.levels]);
 
+watch(
+    () => props.levels,
+    (newLevels) => {
+        localLevels.value = [...(newLevels || [])];
+    },
+);
+
 const addNewLevel = async () => {
     const { value: name } = await Swal.fire({
         title: 'Nuevo Nivel de Aplicación',
         input: 'text',
-        inputLabel: 'Nombre del nivel',
-        inputPlaceholder: 'Ej: VIP, Especial, etc.',
+        inputLabel: 'Nombre del nivel (Ej. VIP, Menú, Especial)',
+        inputPlaceholder: 'Nombre del recetario',
         showCancelButton: true,
-        confirmButtonColor: '#18181b',
+        confirmButtonColor: '#4f46e5',
+        customClass: {
+            popup: 'rounded-2xl dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-100',
+        },
     });
 
     if (name) {
         try {
             const response = await axios.post(route('levels.store'), { name });
             localLevels.value.push(response.data);
+            router.reload({ only: ['levels'] });
             Swal.fire({
                 title: '¡Añadido!',
                 text: `Nivel "${name}" añadido correctamente.`,
@@ -187,6 +236,7 @@ const deleteLevelFromList = (levelId: number) => {
                 .delete(route('levels.destroy', levelId))
                 .then(() => {
                     localLevels.value = localLevels.value.filter((l) => l.id !== levelId);
+                    router.reload({ only: ['levels'] });
                     const index = form.mesearument_unit.indexOf(levelId);
                     if (index !== -1) {
                         form.mesearument_unit.splice(index, 1);
@@ -196,7 +246,7 @@ const deleteLevelFromList = (levelId: number) => {
                         }
                     }
                 })
-                .catch((error) => {
+                .catch(() => {
                     Swal.fire({
                         title: 'Error',
                         text: 'No se pudo eliminar el nivel. Es posible que esté en uso.',
@@ -207,7 +257,7 @@ const deleteLevelFromList = (levelId: number) => {
     });
 };
 
-const toggleLevel = (id: number) => {
+const toggleLevel = async (id: number) => {
     const index = form.mesearument_unit.indexOf(id);
     if (index === -1) {
         form.mesearument_unit.push(id);
@@ -220,22 +270,37 @@ const toggleLevel = (id: number) => {
             total_net_weight: 0,
         };
         activeLevelTab.value = id;
-    } else {
-        form.mesearument_unit.splice(index, 1);
-        delete form.recipes[id];
-        if (activeLevelTab.value === id) {
-            activeLevelTab.value = form.mesearument_unit.length ? form.mesearument_unit[0] : null;
-        }
+        return;
+    }
+
+    // Si el recetario tiene ingredientes cargados, quitarlo lo borraría al guardar: se pide
+    // confirmación antes de descartarlo.
+    const recipe = form.recipes[id];
+    if (recipe?.ingredients?.length > 0) {
+        const levelName = localLevels.value.find((l) => l.id === id)?.name || 'este nivel';
+        const result = await Swal.fire({
+            title: '¿Quitar nivel de aplicación?',
+            text: `El recetario "${levelName}" tiene ingredientes cargados. Al desactivarlo se eliminará su receta de este plato. ¿Desea continuar?`,
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, eliminar receta',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#dc2626',
+        });
+        if (!result.isConfirmed) return;
+    }
+
+    form.mesearument_unit.splice(index, 1);
+    delete form.recipes[id];
+    if (activeLevelTab.value === id) {
+        activeLevelTab.value = form.mesearument_unit.length ? form.mesearument_unit[0] : null;
     }
 };
 
 // List Logic
 let dishSearchTimer: ReturnType<typeof setTimeout> | null = null;
-const searchDish = (e: Event) => {
-    const value = (e.target as HTMLInputElement).value;
-    searchQuery.value = value;
-    if (dishSearchTimer) clearTimeout(dishSearchTimer);
 
+const performDishSearch = (value: string) => {
     if (!value) {
         isSearchingDishes.value = false;
         dishesSearched.value = props.dishes || [];
@@ -243,22 +308,71 @@ const searchDish = (e: Event) => {
     }
 
     isSearchingDishes.value = true;
-    dishSearchTimer = setTimeout(() => {
-        axios
-            .get(route('dishes.search', value))
-            .then((result) => {
-                dishesSearched.value = result.data;
-            })
-            .catch((err) => {
-                console.error(err);
-            })
-            .finally(() => {
-                isSearchingDishes.value = false;
-            });
-    }, 300);
+    axios
+        .get(route('dishes.search', value))
+        .then((result) => {
+            dishesSearched.value = result.data;
+        })
+        .catch((err) => {
+            console.error(err);
+        })
+        .finally(() => {
+            isSearchingDishes.value = false;
+        });
+};
+
+const searchDish = (e: Event) => {
+    const value = (e.target as HTMLInputElement).value;
+    searchQuery.value = value;
+    if (dishSearchTimer) clearTimeout(dishSearchTimer);
+
+    if (!value) {
+        performDishSearch(value);
+        return;
+    }
+
+    dishSearchTimer = setTimeout(() => performDishSearch(value), 300);
+};
+
+const clearDishSearch = () => {
+    searchQuery.value = '';
+    performDishSearch('');
+};
+
+// Un nutriente expresado en gramos por 100 g de alimento nunca puede superar 100. Los datos
+// importados por Excel (DosificationsImport) quedan en mg/kg (~10000× un valor de g/100g), mientras
+// que los ingresados a mano en "Valores Nutricionales" ya están en g/100g. Como ambas rutas escriben
+// en las mismas columnas, se detecta la escala por campo en vez de asumir una sola.
+const toGramsPer100g = (rawValue: unknown): number => {
+    const value = parseFloat(rawValue as string) || 0;
+    return value > 100 ? value / 10000 : value;
 };
 
 const calculateIngredientCalories = (ingredient: any) => {
+    const dosification = ingredient?.dosification;
+    const atwaterFactor = ingredient?.atwater_factor || ingredient?.atwaterFactor;
+
+    // Fórmula Atwater: kcal = proteína×factor + lípidos×factor + carbohidratos×factor, usando el
+    // factor asignado a este ingrediente.
+    if (dosification && atwaterFactor) {
+        const protein = toGramsPer100g(dosification.protein);
+        const lipid = toGramsPer100g(dosification.lipid);
+        // El término de carbohidratos usa los disponibles (total menos fibra), que es la base
+        // correcta para el cálculo Atwater; si el ingrediente aún no la tiene cargada, se usa el
+        // total como respaldo.
+        const carbohydrate =
+            dosification.carbohydrate_available !== null && dosification.carbohydrate_available !== undefined
+                ? toGramsPer100g(dosification.carbohydrate_available)
+                : toGramsPer100g(dosification.carbohydrate);
+
+        const proteinFactor = parseFloat(atwaterFactor.protein_kcal) || 0;
+        const fatFactor = parseFloat(atwaterFactor.fat_kcal) || 0;
+        const carbFactor = parseFloat(atwaterFactor.carb_kcal) || 0;
+
+        return protein * proteinFactor + lipid * fatFactor + carbohydrate * carbFactor;
+    }
+
+    // Ingrediente sin factor Atwater asignado todavía: se conserva el cálculo anterior.
     const factors = ingredient?.nutritional_factors || ingredient?.nutritionalFactors;
     if (factors && factors.length > 0) {
         return factors.reduce((sum: number, factor: any) => {
@@ -270,8 +384,84 @@ const calculateIngredientCalories = (ingredient: any) => {
     return ingredient?.dosification?.energy || ingredient?.energy || 0;
 };
 
-// If a dish has duplicate recipes for the same level (legacy data), keep the one
-// with the most ingredients so it wins when loading the form
+// Modal de "Valores Nutricionales" accesible desde la fila del ingrediente, para editar sus
+// macronutrientes sin salir del editor de platos.
+const isRecipeDosificationModalOpen = ref(false);
+const isSavingRecipeDosification = ref(false);
+const activeIngredientForDosification = ref<any>(null);
+const recipeDosificationErrors = ref<Record<string, string>>({});
+const recipeDosificationForm = ref({
+    energy: null as number | null,
+    water: null as number | null,
+    protein: null as number | null,
+    lipid: null as number | null,
+    carbohydrate: null as number | null,
+    carbohydrate_available: null as number | null,
+    fiber: null as number | null,
+});
+
+const openRecipeDosificationModal = (ingredient: any) => {
+    activeIngredientForDosification.value = ingredient;
+    const d = ingredient.dosification;
+    recipeDosificationForm.value = {
+        energy: d?.energy ?? null,
+        water: d?.water ?? null,
+        protein: d?.protein ?? null,
+        lipid: d?.lipid ?? null,
+        carbohydrate: d?.carbohydrate ?? null,
+        carbohydrate_available: d?.carbohydrate_available ?? null,
+        fiber: d?.fiber ?? null,
+    };
+    recipeDosificationErrors.value = {};
+    isRecipeDosificationModalOpen.value = true;
+};
+
+const submitRecipeDosification = async () => {
+    if (!activeIngredientForDosification.value || !activeLevelTab.value) return;
+
+    isSavingRecipeDosification.value = true;
+    recipeDosificationErrors.value = {};
+    try {
+        const response = await axios.post(
+            route('ingredients.dosification.update', activeIngredientForDosification.value.id),
+            recipeDosificationForm.value,
+        );
+
+        // Actualiza el ingrediente en el recetario activo y recalcula sus calorías con los nuevos
+        // valores, sin recargar la página (para no perder el resto del plato en edición).
+        const recipe = form.recipes[activeLevelTab.value];
+        const ingredientIndex = recipe.ingredients.findIndex((ing: any) => ing.id === activeIngredientForDosification.value.id);
+        if (ingredientIndex !== -1) {
+            const ing = recipe.ingredients[ingredientIndex];
+            ing.dosification = response.data.dosification;
+            ing.originalValues.calories = calculateIngredientCalories(ing);
+            ing.calories = (ing.gross_weight * ing.originalValues.calories) / 100;
+            recalculateTotals();
+        }
+
+        isRecipeDosificationModalOpen.value = false;
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'success',
+            title: 'Valores nutricionales actualizados',
+            showConfirmButton: false,
+            timer: 1800,
+            timerProgressBar: true,
+        });
+    } catch (error: any) {
+        if (error?.response?.status === 422) {
+            const errors = error.response.data.errors || {};
+            recipeDosificationErrors.value = Object.fromEntries(Object.entries(errors).map(([key, msgs]: [string, any]) => [key, msgs[0]]));
+        } else {
+            console.error('Error updating dosification:', error);
+            Swal.fire({ title: 'Error', text: 'No se pudo actualizar la dosificación.', icon: 'error', confirmButtonText: 'Entendido' });
+        }
+    } finally {
+        isSavingRecipeDosification.value = false;
+    }
+};
+
 const sortedRecipes = (dish: any) =>
     [...(dish.recipes || [])].sort((a: any, b: any) => (b.ingredients?.length || 0) - (a.ingredients?.length || 0));
 
@@ -290,7 +480,6 @@ const copyIngredientsFromMaster = () => {
     if (!activeLevelTab.value) return;
     if (form.mesearument_unit.length <= 1) return;
 
-    // Find Master (level 1) or the first available level that has ingredients
     const sourceLevelId =
         form.recipes[1] && form.recipes[1].ingredients.length > 0
             ? 1
@@ -417,12 +606,16 @@ const resetView = async (skipConfirm = false) => {
 const deleteDish = (id: number) => {
     Swal.fire({
         title: '¿Estás seguro?',
-        text: 'No podrás revertir esto',
+        text: 'No podrás revertir esta acción.',
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#d33',
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#6b7280',
         confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar',
+        customClass: {
+            popup: 'rounded-2xl dark:bg-zinc-900 dark:border-zinc-800 dark:text-zinc-100',
+        },
     }).then((result) => {
         if (result.isConfirmed) {
             router.delete(route('dishes.destroy', id), {
@@ -437,8 +630,6 @@ const deleteDish = (id: number) => {
     });
 };
 
-// Form Logic
-
 const recalculateTotals = () => {
     if (!activeLevelTab.value) return;
     const recipe = form.recipes[activeLevelTab.value];
@@ -452,8 +643,7 @@ const recalculateTotals = () => {
 };
 
 let ingredientSearchTimer: ReturnType<typeof setTimeout> | null = null;
-const searchIngredients = (e: Event) => {
-    const value = (e.target as HTMLInputElement).value;
+watch(ingredientSearchQuery, (value) => {
     if (ingredientSearchTimer) clearTimeout(ingredientSearchTimer);
 
     if (!value) {
@@ -478,23 +668,24 @@ const searchIngredients = (e: Event) => {
                 isSearchingIngredients.value = false;
             });
     }, 300);
-};
+});
 
-const closeIngredientSearch = (e?: Event) => {
+const closeIngredientSearch = () => {
     ingredientsFounded.value = [];
     ingredientSearchDone.value = false;
-    if (e) (e.target as HTMLInputElement).value = '';
+    ingredientSearchQuery.value = '';
+    (document.activeElement as HTMLElement | null)?.blur();
 };
 
 const selectIngredient = (ingredient: Ingredient) => {
     if (!activeLevelTab.value) {
-        Swal.fire({ title: 'Error', text: 'Seleccione un nivel de aplicación primero.', icon: 'error' });
+        Swal.fire({ title: 'Atención', text: 'Seleccione un nivel de aplicación primero.', icon: 'warning' });
         return;
     }
     const recipe = form.recipes[activeLevelTab.value];
 
     if (recipe.ingredients.some((ing: any) => ing.id === ingredient.id)) {
-        Swal.fire({ title: 'Atención', text: 'El ingrediente ya está en la lista de este nivel.', icon: 'warning' });
+        Swal.fire({ title: 'Atención', text: 'El ingrediente ya está en la lista de este nivel.', icon: 'info' });
         return;
     }
 
@@ -515,6 +706,9 @@ const selectIngredient = (ingredient: Ingredient) => {
     };
     recipe.ingredients.push(newIng);
     ingredientsFounded.value = [];
+    ingredientSearchDone.value = false;
+    ingredientSearchQuery.value = '';
+    (document.activeElement as HTMLElement | null)?.blur();
     recalculateTotals();
 };
 
@@ -543,23 +737,16 @@ const calcMassiveProperties = (id: number, calcArray: number[]) => {
 const onWeightInput = (ingredient: any) => {
     const inputVal = parseFloat(ingredient.input_quantity) || 0;
 
-    // Convertir a gramos para cálculos internos
     const weightInGrams = ingredient.selected_unit === 'Kg' || ingredient.selected_unit === 'kg' ? inputVal * 1000 : inputVal;
     ingredient.gross_weight = weightInGrams;
 
     const origWaste = parseFloat(ingredient.originalValues?.waste) || 0;
     const origCalories = parseFloat(ingredient.originalValues?.calories) || 0;
 
-    // Recalcular Merma
     ingredient.solid_waste = (weightInGrams * origWaste) / 100;
-
-    // Recalcular Producto Final
     ingredient.final_product = weightInGrams - ingredient.solid_waste;
-
-    // Recalcular Calorías
     ingredient.calories = (ingredient.gross_weight * origCalories) / 100;
 
-    // Recalcular Costo si existe precio unitario
     if (ingredient.unit_price) {
         ingredient.cost =
             ingredient.selected_unit === 'Kg' || ingredient.selected_unit === 'kg'
@@ -587,6 +774,7 @@ const submit = () => {
     const options = {
         onSuccess: () => {
             resetView(true);
+            if (searchQuery.value) performDishSearch(searchQuery.value);
             Swal.fire({
                 title: form.id ? '¡Actualizado!' : '¡Creado!',
                 text: `El quebrado se ha ${form.id ? 'guardado' : 'creado'} exitosamente.`,
@@ -595,7 +783,7 @@ const submit = () => {
                 showConfirmButton: false,
             });
         },
-        onError: (errors) => {
+        onError: (errors: any) => {
             let errorMsg = 'Hubo un problema al procesar la solicitud.';
             if (errors) {
                 errorMsg = Object.values(errors).flat().join('\n');
@@ -615,555 +803,823 @@ const submit = () => {
         router.post(route('dishes.store'), data as any, options);
     }
 };
+
+// Keyboard Shortcut: Ctrl+S / Cmd+S to save
+const handleKeyDown = (e: KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        if (form.id !== null || isCreating.value) {
+            submit();
+        }
+    }
+};
+
+onMounted(() => {
+    window.addEventListener('keydown', handleKeyDown);
+});
+
+onUnmounted(() => {
+    window.removeEventListener('keydown', handleKeyDown);
+});
 </script>
 
 <template>
-    <!-- Content Wrapper -->
-    <div
-        class="flex h-full gap-0 overflow-hidden rounded-xl border border-zinc-200 bg-white p-0 md:gap-4 md:p-4 dark:border-zinc-800 dark:bg-zinc-950"
-    >
-        <!-- LEFT PANEL: Dish List -->
+    <div class="flex h-full w-full overflow-hidden bg-zinc-50/50 dark:bg-zinc-950">
+        <!-- LEFT PANEL: Dish List (Sidebar) -->
         <div
-            class="z-10 flex w-full min-w-0 flex-col gap-4 border-r bg-white pr-0 md:w-1/3 md:pr-4 dark:bg-zinc-950"
+            class="z-10 flex h-full min-h-0 w-full min-w-0 flex-col border-r border-zinc-200/80 bg-white md:w-80 lg:w-[340px] shrink-0 dark:border-zinc-800 dark:bg-zinc-900/90"
             :class="{ 'hidden md:flex': form.id !== null || isCreating }"
         >
-            <div class="flex items-center gap-2 border-b p-4 md:border-0 md:p-0">
-                <div class="relative flex-1">
-                    <Search v-if="!isSearchingDishes" class="absolute top-2.5 left-2.5 h-4 w-4 text-zinc-500" />
-                    <Loader2 v-else class="absolute top-2.5 left-2.5 h-4 w-4 animate-spin text-zinc-500" />
-                    <Input @input="searchDish" placeholder="Buscar plato..." class="w-full pl-9" />
-                </div>
-                <input type="file" ref="fileInput" class="hidden" accept=".xlsx,.xls,.csv" @change="handleFileUpload" />
-                <Button
-                    @click="fileInput?.click()"
-                    variant="outline"
-                    class="flex items-center gap-2 border-zinc-200"
-                    title="Importar platos e ingredientes"
-                >
-                    <FileUp class="h-4 w-4 text-zinc-500" />
-                    <span class="hidden text-xs lg:inline">Importar</span>
-                </Button>
-                <Button @click="createDish" size="icon" class="bg-primary hover:bg-primary/90 shrink-0" title="Nuevo plato">
-                    <Plus class="h-4 w-4" />
-                </Button>
-            </div>
-
-            <!-- Category filter -->
-            <div class="flex min-w-0 items-center gap-2 px-4 md:px-0">
-                <Select v-model="categoryFilter">
-                    <SelectTrigger class="h-9 min-w-0 flex-1 text-xs" title="Filtrar por categoría">
-                        <div class="flex min-w-0 items-center gap-2">
-                            <ListFilter class="h-3.5 w-3.5 shrink-0 text-zinc-400" />
-                            <span class="truncate">
-                                <SelectValue placeholder="Todas las categorías" />
-                            </span>
+            <!-- Header Section -->
+            <div class="space-y-2.5 p-3.5 border-b border-zinc-100 shrink-0 dark:border-zinc-800/80">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2.5">
+                        <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-xs">
+                            <ChefHat class="h-4.5 w-4.5" />
                         </div>
-                    </SelectTrigger>
-                    <SelectContent class="max-h-72">
-                        <SelectItem value="all">Todas las categorías</SelectItem>
-                        <SelectItem v-for="cat in dishCategories" :key="cat.id" :value="String(cat.id)">
-                            {{ cat.name }}
-                        </SelectItem>
-                    </SelectContent>
-                </Select>
-                <Button
-                    v-if="categoryFilter !== 'all'"
-                    @click="categoryFilter = 'all'"
-                    variant="ghost"
-                    size="icon"
-                    class="h-9 w-9 shrink-0 text-zinc-400 hover:text-zinc-700"
-                    title="Quitar filtro de categoría"
-                >
-                    <X class="h-4 w-4" />
-                </Button>
-                <span class="text-muted-foreground shrink-0 text-[11px] whitespace-nowrap">
-                    {{ filteredDishes.length }} plato{{ filteredDishes.length === 1 ? '' : 's' }}
-                </span>
+                        <div>
+                            <h2 class="text-sm font-extrabold text-zinc-900 dark:text-zinc-100 leading-tight">Platos y Recetas</h2>
+                            <p class="text-[10px] font-medium text-zinc-400">Catálogo de quebrados</p>
+                        </div>
+                    </div>
+                    <Badge variant="secondary" class="rounded-full bg-indigo-50 border border-indigo-100 px-2.5 py-0.5 text-[10px] font-extrabold text-indigo-600 dark:bg-indigo-950/60 dark:border-indigo-900/60 dark:text-indigo-400">
+                        {{ filteredDishes.length }}
+                    </Badge>
+                </div>
+
+                <!-- Search Input -->
+                <div class="relative">
+                    <Search v-if="!isSearchingDishes" class="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-indigo-500" />
+                    <Loader2 v-else class="absolute left-2.5 top-2.5 h-3.5 w-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
+                    <Input
+                        :model-value="searchQuery"
+                        @input="searchDish"
+                        placeholder="Buscar plato o receta..."
+                        class="h-8 w-full rounded-xl border-zinc-200 bg-zinc-50/80 pl-8 pr-7 text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 dark:border-zinc-800 dark:bg-zinc-800/50 dark:focus:bg-zinc-900"
+                    />
+                    <button
+                        v-if="searchQuery"
+                        @click="clearDishSearch"
+                        class="absolute right-2 top-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                    >
+                        <X class="h-3.5 w-3.5" />
+                    </button>
+                </div>
+
+                <!-- Filter & Import Controls -->
+                <div class="flex items-center gap-1.5">
+                    <Select v-model="categoryFilter">
+                        <SelectTrigger class="h-8 min-w-0 flex-1 rounded-lg border-zinc-200 text-[11px] dark:border-zinc-800">
+                            <div class="flex items-center gap-1.5 truncate">
+                                <ListFilter class="h-3 w-3 shrink-0 text-indigo-500" />
+                                <span class="truncate">
+                                    <SelectValue placeholder="Todas las categorías" />
+                                </span>
+                            </div>
+                        </SelectTrigger>
+                        <SelectContent class="max-h-72 rounded-xl">
+                            <SelectItem value="all">Todas las categorías</SelectItem>
+                            <SelectItem v-for="cat in dishCategories" :key="cat.id" :value="String(cat.id)">
+                                {{ formatCategoryName(cat.name) }}
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
+
+                    <input type="file" ref="fileInput" class="hidden" accept=".xlsx,.xls,.csv" @change="handleFileUpload" />
+                    <Button
+                        @click="fileInput?.click()"
+                        variant="outline"
+                        size="sm"
+                        class="h-8 px-2 rounded-lg border-zinc-200 text-[11px] gap-1 text-zinc-600 hover:bg-zinc-100 shrink-0 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                        title="Importar Excel"
+                    >
+                        <FileUp class="h-3 w-3 text-indigo-500" />
+                        <span>Importar</span>
+                    </Button>
+
+                    <Button
+                        @click="createDish"
+                        size="sm"
+                        class="h-8 px-3 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-bold text-[11px] gap-1 shadow-xs shadow-indigo-500/20 shrink-0"
+                        title="Nuevo plato"
+                    >
+                        <Plus class="h-3.5 w-3.5" />
+                        <span>Nuevo</span>
+                    </Button>
+                </div>
             </div>
 
-            <div class="scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800 flex-1 space-y-1 overflow-y-auto p-2 pr-2">
+            <!-- Dish List Content -->
+            <div class="min-h-0 flex-1 overflow-y-auto p-2.5 space-y-1.5 scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800">
                 <div
                     v-if="filteredDishes.length === 0"
-                    class="text-muted-foreground flex h-40 flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-center text-sm"
+                    class="flex h-48 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-200 text-center p-4 text-xs text-zinc-400 dark:border-zinc-800"
                 >
-                    <Search class="h-5 w-5 opacity-40" />
-                    <span v-if="searchQuery || categoryFilter !== 'all'">No se encontraron platos con los filtros actuales.</span>
-                    <span v-else>Aún no hay platos registrados. Cree el primero con el botón +.</span>
+                    <div class="rounded-full bg-indigo-50 p-2.5 text-indigo-500 dark:bg-indigo-950/60">
+                        <Utensils class="h-5 w-5" />
+                    </div>
+                    <span v-if="searchQuery || categoryFilter !== 'all'">No se encontraron platos con estos filtros.</span>
+                    <span v-else>Aún no hay platos. Cree el primero con el botón Nuevo.</span>
                 </div>
+
                 <div
                     v-for="dish in filteredDishes"
                     :key="dish.id"
                     @click="editDish(dish)"
-                    class="group relative cursor-pointer rounded-lg border p-3 transition-all hover:bg-zinc-100 dark:hover:bg-zinc-900"
-                    :class="form.id === dish.id ? 'border-primary bg-zinc-100 dark:bg-zinc-900' : 'border-transparent bg-zinc-50 dark:bg-zinc-900/50'"
+                    class="group relative cursor-pointer rounded-xl border p-3 transition-all duration-150 hover:border-indigo-200 hover:bg-indigo-50/30 dark:hover:border-indigo-900/50 dark:hover:bg-indigo-950/20"
+                    :class="
+                        form.id === dish.id
+                            ? 'border-indigo-500 bg-indigo-50/70 ring-1 ring-indigo-500/20 dark:border-indigo-500 dark:bg-indigo-950/40'
+                            : 'border-zinc-200/70 bg-white dark:border-zinc-800/70 dark:bg-zinc-900/40'
+                    "
                 >
-                    <div class="flex items-start justify-between">
-                        <div class="text-sm font-medium">{{ dish.name }}</div>
+                    <!-- Left Accent Bar for selected dish -->
+                    <div
+                        v-if="form.id === dish.id"
+                        class="absolute left-0 top-2.5 bottom-2.5 w-1 rounded-r-full bg-indigo-600 dark:bg-indigo-400"
+                    ></div>
+
+                    <div class="flex items-start justify-between gap-2">
+                        <h3 class="text-xs font-extrabold text-zinc-900 dark:text-zinc-100 leading-snug line-clamp-1 pr-12">
+                            {{ dish.name }}
+                        </h3>
                     </div>
-                    <div class="text-muted-foreground mt-1 line-clamp-2 text-xs">{{ dish.description }}</div>
-                    <div class="mt-2 flex flex-wrap gap-1">
-                        <div class="rounded-full bg-zinc-200 px-1.5 py-0.5 text-[10px] text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-                            {{ getDishIngredientsCount(dish) }} Ingredientes
-                        </div>
+
+                    <p v-if="dish.description" class="mt-0.5 line-clamp-1 text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
+                        {{ dish.description }}
+                    </p>
+
+                    <!-- Tags Footer -->
+                    <div class="mt-2 flex flex-wrap items-center gap-1">
+                        <span class="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[9px] font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                            {{ getDishIngredientsCount(dish) }} ing.
+                        </span>
+
                         <span
                             v-for="cat in dish.dish_categories"
                             :key="cat.id"
-                            class="rounded-full border border-indigo-100 bg-indigo-50 px-1.5 py-0.5 text-[9px] font-medium text-indigo-600"
+                            class="rounded-md border border-indigo-100 bg-indigo-50/80 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600 dark:border-indigo-900/40 dark:bg-indigo-950/60 dark:text-indigo-400 max-w-full truncate"
                         >
-                            {{ cat.name }}
+                            {{ formatCategoryName(cat.name) }}
                         </span>
+
                         <span
                             v-for="recipe in dish.recipes"
                             :key="recipe.id"
-                            class="rounded-md border border-blue-100 bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold text-blue-600 dark:border-blue-800/50 dark:bg-blue-900/30 dark:text-blue-400"
+                            class="rounded-md border border-sky-100 bg-sky-50/80 px-1.5 py-0.5 text-[9px] font-bold text-sky-600 dark:border-sky-900/40 dark:bg-sky-950/60 dark:text-sky-400"
                         >
                             {{ recipe.level?.name }}
                         </span>
                     </div>
 
-                    <div class="absolute top-2 right-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    <!-- Quick Action Buttons -->
+                    <div class="absolute top-2 right-2 flex items-center gap-0.5 opacity-80 group-hover:opacity-100">
                         <Button
                             @click.stop="duplicateDish(dish)"
                             variant="ghost"
                             size="icon"
-                            class="h-7 w-7 border border-transparent text-zinc-400 transition-all hover:border-blue-100 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/30"
+                            class="h-6 w-6 rounded-md text-zinc-400 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950 dark:hover:text-indigo-400"
                             title="Duplicar plato"
                         >
-                            <Copy class="h-3.5 w-3.5" />
+                            <Copy class="h-3 w-3" />
                         </Button>
                         <Button
                             @click.stop="deleteDish(dish.id)"
                             variant="ghost"
                             size="icon"
-                            class="h-7 w-7 border border-transparent text-zinc-400 transition-all hover:border-red-100 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/30"
+                            class="h-6 w-6 rounded-md text-zinc-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950 dark:hover:text-rose-400"
                             title="Eliminar plato"
                         >
-                            <Trash class="h-3.5 w-3.5" />
+                            <Trash class="h-3 w-3" />
                         </Button>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- RIGHT PANEL: Form/Details -->
+        <!-- RIGHT PANEL: Dish Details & Recipe Studio -->
         <div
-            class="flex h-full flex-1 flex-col overflow-hidden rounded-xl bg-zinc-50/30 p-1 md:border md:border-dashed md:border-zinc-200 dark:bg-zinc-900/10 dark:md:border-zinc-800"
+            class="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-white dark:bg-zinc-950"
             :class="{
-                'fixed inset-0 z-50 bg-white md:static md:bg-transparent dark:bg-zinc-950': form.id !== null || isCreating,
+                'fixed inset-0 z-50 bg-white md:static dark:bg-zinc-950': form.id !== null || isCreating,
                 'hidden md:flex': !form.id && !isCreating,
             }"
         >
-            <div v-if="form.id !== null || isCreating" class="flex h-full flex-col">
-                <div class="flex shrink-0 items-center justify-between rounded-t-xl border-b bg-white p-4 dark:bg-zinc-950">
-                    <div>
-                        <h3 class="flex items-center gap-2 text-lg leading-none font-bold">
-                            {{ form.id ? 'Editar Plato' : 'Nuevo Plato' }}
-                            <span
-                                v-if="hasUnsavedChanges()"
-                                class="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-600 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
-                                title="Hay cambios sin guardar"
-                            >
-                                Sin guardar
-                            </span>
-                        </h3>
-                        <p class="text-muted-foreground mt-1 text-xs">Configure los ingredientes y valores del plato.</p>
+            <template v-if="form.id !== null || isCreating">
+                <!-- Header Bar -->
+                <div class="sticky top-0 z-30 flex shrink-0 items-center justify-between border-b border-zinc-200/80 bg-white/90 px-4 py-2.5 backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-950/90 md:px-5">
+                    <div class="flex items-center gap-2.5">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            class="h-7 w-7 md:hidden"
+                            @click="resetView()"
+                        >
+                            <ArrowLeft class="h-4 w-4" />
+                        </Button>
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h3 class="text-base font-extrabold text-zinc-900 dark:text-zinc-100">
+                                    {{ form.id ? 'Editar Plato' : 'Nuevo Plato' }}
+                                </h3>
+                                <span
+                                    v-if="hasUnsavedChanges()"
+                                    class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/50 dark:text-amber-400"
+                                >
+                                    <span class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                                    Sin guardar
+                                </span>
+                            </div>
+                            <p class="text-[11px] text-zinc-400">Configure la información básica, categorías e ingredientes por recetario.</p>
+                        </div>
                     </div>
-                    <div class="flex gap-2">
-                        <Button type="button" variant="ghost" size="sm" @click="resetView()">Cancelar</Button>
-                        <Button type="button" size="sm" @click="submit" :disabled="form.processing">
-                            <Loader2 v-if="form.processing" class="mr-1 h-3.5 w-3.5 animate-spin" />
-                            {{ form.processing ? 'Guardando...' : form.id ? 'Guardar' : 'Crear' }}
+
+                    <div class="flex items-center gap-2">
+                        <kbd class="hidden lg:inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-zinc-100 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 dark:border-zinc-800 dark:bg-zinc-800" title="Atajo de teclado">
+                            Ctrl + S
+                        </kbd>
+
+                        <Button type="button" variant="ghost" size="sm" class="h-8 px-2.5 text-xs font-semibold" @click="resetView()">
+                            Cancelar
+                        </Button>
+                        <Button
+                            type="button"
+                            size="sm"
+                            @click="submit"
+                            :disabled="form.processing"
+                            class="h-8 px-4 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 shadow-xs shadow-indigo-500/20 gap-1.5"
+                        >
+                            <Loader2 v-if="form.processing" class="h-3.5 w-3.5 animate-spin" />
+                            <Check v-else class="h-3.5 w-3.5" />
+                            <span>{{ form.processing ? 'Guardando...' : form.id ? 'Guardar Plato' : 'Crear Plato' }}</span>
                         </Button>
                     </div>
                 </div>
 
-                <div class="flex-1 space-y-6 overflow-y-auto bg-white p-4 dark:bg-zinc-950">
-                    <!-- Basic Info Inputs -->
-                    <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
-                        <div class="space-y-1.5">
-                            <label class="text-xs font-semibold text-zinc-500 uppercase">Nombre</label>
-                            <Input v-model="form.name" placeholder="Nombre del plato" class="h-9" />
-                        </div>
-                        <div class="space-y-1.5">
-                            <label class="text-xs font-semibold text-zinc-500 uppercase">Descripción</label>
-                            <Input v-model="form.description" placeholder="Descripción breve" class="h-9" />
-                        </div>
-                        <div class="space-y-1.5">
-                            <div class="flex items-center justify-between">
-                                <label class="text-xs font-semibold text-zinc-500 uppercase">Categorías</label>
-                                <Popover>
-                                    <PopoverTrigger as-child>
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            class="h-6 gap-1 px-2 text-[10px] font-bold text-indigo-600 transition-all hover:bg-indigo-50 hover:text-indigo-700"
-                                        >
-                                            Gestionar <ChevronDown class="h-3 w-3" />
-                                        </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent class="w-64 p-0" align="start">
-                                        <div class="border-b p-2">
-                                            <h4 class="px-2 py-1 text-xs font-bold text-zinc-500 uppercase">Seleccionar Categorías</h4>
-                                        </div>
-                                        <div class="max-h-60 overflow-y-auto p-1">
-                                            <div
-                                                v-for="cat in dishCategories"
-                                                :key="cat.id"
-                                                @click="toggleCategory(cat)"
-                                                class="flex cursor-pointer items-center gap-2 rounded-md p-2 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                <!-- Main Form Body -->
+                <div class="min-h-0 flex-1 space-y-4 overflow-y-auto p-3.5 md:p-5 bg-zinc-50/40 dark:bg-zinc-950/40">
+                    <!-- Basic Info Card -->
+                    <div class="rounded-xl border border-zinc-200/80 bg-white p-3.5 md:p-4 shadow-xs space-y-3.5 dark:border-zinc-800 dark:bg-zinc-900/60">
+                        <div class="grid grid-cols-1 gap-3.5 md:grid-cols-3">
+                            <!-- Nombre -->
+                            <div class="space-y-1">
+                                <label class="text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Nombre del Plato</label>
+                                <Input v-model="form.name" placeholder="Ej. Lomo Saltado Especial" class="h-8 rounded-lg border-zinc-200 bg-white text-xs font-medium dark:border-zinc-700 dark:bg-zinc-900" />
+                            </div>
+
+                            <!-- Descripción -->
+                            <div class="space-y-1">
+                                <label class="text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Descripción</label>
+                                <Input v-model="form.description" placeholder="Breve detalle del plato" class="h-8 rounded-lg border-zinc-200 bg-white text-xs dark:border-zinc-700 dark:bg-zinc-900" />
+                            </div>
+
+                            <!-- Categorías -->
+                            <div class="space-y-1">
+                                <div class="flex items-center justify-between">
+                                    <label class="text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Categorías</label>
+                                    <Popover>
+                                        <PopoverTrigger as-child>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                class="h-5 gap-1 px-1.5 text-[10px] font-bold text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950"
                                             >
-                                                <div
-                                                    class="flex h-4 w-4 items-center justify-center rounded border transition-colors"
-                                                    :class="isCategorySelected(cat.id) ? 'border-indigo-600 bg-indigo-600' : 'border-zinc-300'"
-                                                >
-                                                    <Check v-if="isCategorySelected(cat.id)" class="h-3 w-3 text-white" />
-                                                </div>
-                                                <span
-                                                    class="text-xs font-medium"
-                                                    :class="isCategorySelected(cat.id) ? 'text-indigo-600' : 'text-zinc-600'"
-                                                >
-                                                    {{ cat.name }}
-                                                </span>
+                                                <span>Seleccionar</span>
+                                                <ChevronDown class="h-3 w-3" />
+                                            </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent class="w-64 p-0 rounded-xl shadow-xl border-zinc-200 dark:border-zinc-800" align="end">
+                                            <div class="border-b border-zinc-100 dark:border-zinc-800 p-2">
+                                                <h4 class="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Seleccionar Categorías</h4>
                                             </div>
-                                        </div>
-                                    </PopoverContent>
-                                </Popover>
-                            </div>
-                            <div class="mt-1 flex flex-wrap gap-1">
-                                <Badge
-                                    v-for="cat in form.dish_categories"
-                                    :key="cat.id"
-                                    variant="secondary"
-                                    class="border-indigo-100 bg-indigo-50 px-2 py-0 text-[10px] font-medium text-indigo-600"
-                                >
-                                    {{ cat.name }}
-                                    <button @click.stop="toggleCategory(cat)" class="ml-1 hover:text-indigo-800">
-                                        <Trash class="h-2.5 w-2.5" />
-                                    </button>
-                                </Badge>
-                                <span v-if="!form.dish_categories?.length" class="text-[10px] text-zinc-400 italic"
-                                    >Sin categorías seleccionadas</span
-                                >
+                                            <div class="max-h-60 overflow-y-auto p-1">
+                                                <div
+                                                    v-for="cat in dishCategories"
+                                                    :key="cat.id"
+                                                    @click="toggleCategory(cat)"
+                                                    class="flex cursor-pointer items-center gap-2 rounded-lg p-1.5 transition-colors hover:bg-indigo-50 dark:hover:bg-indigo-950/60"
+                                                >
+                                                    <div
+                                                        class="flex h-3.5 w-3.5 items-center justify-center rounded border transition-colors"
+                                                        :class="isCategorySelected(cat.id) ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-zinc-300 dark:border-zinc-700'"
+                                                    >
+                                                        <Check v-if="isCategorySelected(cat.id)" class="h-2.5 w-2.5" />
+                                                    </div>
+                                                    <span
+                                                        class="text-xs font-medium"
+                                                        :class="isCategorySelected(cat.id) ? 'text-indigo-600 font-bold dark:text-indigo-400' : 'text-zinc-600 dark:text-zinc-400'"
+                                                    >
+                                                        {{ formatCategoryName(cat.name) }}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </PopoverContent>
+                                    </Popover>
+                                </div>
+                                <div class="flex flex-wrap gap-1 pt-0.5">
+                                    <Badge
+                                        v-for="cat in form.dish_categories"
+                                        :key="cat.id"
+                                        variant="secondary"
+                                        class="rounded-md border border-indigo-100 bg-indigo-50/80 px-2 py-0.5 text-[10px] font-bold text-indigo-600 gap-1 max-w-full truncate dark:border-indigo-900/50 dark:bg-indigo-950/60 dark:text-indigo-400"
+                                    >
+                                        <span class="truncate">{{ formatCategoryName(cat.name) }}</span>
+                                        <button @click.stop="toggleCategory(cat)" class="hover:text-indigo-900 shrink-0 dark:hover:text-white">
+                                            <X class="h-2.5 w-2.5" />
+                                        </button>
+                                    </Badge>
+                                    <span v-if="!form.dish_categories?.length" class="text-[11px] text-zinc-400 italic">Sin categorías asignadas</span>
+                                </div>
                             </div>
                         </div>
-                        <div class="col-span-1 space-y-1.5 md:col-span-3">
-                            <div class="mb-1 flex items-center justify-between">
-                                <label class="text-xs font-semibold text-zinc-500 uppercase">Niveles de Aplicación</label>
+
+                        <!-- Niveles de Aplicación Selector -->
+                        <div class="border-t border-zinc-100 pt-2.5 dark:border-zinc-800 space-y-1.5">
+                            <div class="flex items-center justify-between">
+                                <label class="text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                                    Niveles de Aplicación (Recetarios)
+                                </label>
                                 <button
                                     type="button"
                                     @click="addNewLevel"
-                                    class="flex items-center gap-1 text-[10px] font-bold text-indigo-600 transition-colors hover:text-indigo-700"
+                                    class="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300"
                                 >
-                                    <Plus class="h-3 w-3" /> Añadir Nivel
+                                    <Plus class="h-3 w-3" />
+                                    <span>Añadir Nivel</span>
                                 </button>
                             </div>
-                            <div class="flex flex-wrap gap-2 pt-1">
+                            <div class="flex flex-wrap gap-1.5">
                                 <div v-for="level in localLevels" :key="level.id" class="group relative">
                                     <button
                                         type="button"
                                         @click="toggleLevel(level.id)"
-                                        class="flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold transition-all"
+                                        class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-bold transition-all shadow-2xs"
                                         :class="
                                             form.mesearument_unit.includes(level.id)
-                                                ? 'border-zinc-900 bg-zinc-900 text-white shadow-sm'
-                                                : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-zinc-100'
+                                                ? 'border-indigo-600 bg-indigo-600 text-white shadow-xs shadow-indigo-500/20'
+                                                : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 dark:border-zinc-800 dark:bg-zinc-800/80 dark:text-zinc-400 dark:hover:bg-indigo-950'
                                         "
                                     >
-                                        {{ level.name }}
+                                        <span>{{ level.name }}</span>
                                         <Trash
                                             @click.stop="deleteLevelFromList(level.id)"
-                                            class="ml-1 h-3 w-3 text-zinc-400 opacity-0 transition-all group-hover:opacity-100 hover:text-red-500"
+                                            class="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100 hover:text-rose-400"
                                         />
                                     </button>
                                 </div>
                             </div>
-                            <p v-if="form.errors.mesearument_unit" class="text-[10px] font-medium text-red-500">{{ form.errors.mesearument_unit }}</p>
+                            <p v-if="form.errors.mesearument_unit" class="text-xs font-semibold text-rose-500">{{ form.errors.mesearument_unit }}</p>
                         </div>
                     </div>
 
-                    <!-- Tabs de Niveles -->
-                    <div v-if="form.mesearument_unit.length > 0" class="mt-4 border-b">
-                        <div class="scrollbar-none -mb-px flex gap-2 overflow-x-auto pb-1">
+                    <!-- Recipe Level Tabs & Table -->
+                    <div v-if="form.mesearument_unit.length > 0" class="space-y-3">
+                        <!-- Level Tabs Navigation -->
+                        <div class="flex items-center gap-1.5 overflow-x-auto border-b border-zinc-200 pb-1.5 dark:border-zinc-800">
                             <button
                                 v-for="levelId in form.mesearument_unit"
                                 :key="levelId"
                                 type="button"
                                 @click="activeLevelTab = levelId"
-                                class="border-b-2 px-4 py-2 text-xs font-bold whitespace-nowrap transition-all"
+                                class="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-extrabold transition-all whitespace-nowrap"
                                 :class="
                                     activeLevelTab === levelId
-                                        ? 'border-primary text-primary'
-                                        : 'border-transparent text-zinc-400 hover:text-zinc-600'
+                                        ? 'bg-indigo-600 text-white shadow-xs shadow-indigo-500/20'
+                                        : 'text-zinc-500 hover:bg-indigo-50 hover:text-indigo-600 dark:text-zinc-400 dark:hover:bg-indigo-950/60'
                                 "
                             >
-                                {{ localLevels.find((l) => l.id === levelId)?.name }}
+                                <Layers class="h-3.5 w-3.5" />
+                                <span>{{ localLevels.find((l) => l.id === levelId)?.name }}</span>
+                                <Badge
+                                    variant="secondary"
+                                    class="rounded-md px-1.5 py-0 text-[9px] font-extrabold"
+                                    :class="activeLevelTab === levelId ? 'bg-indigo-700 text-white' : 'bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'"
+                                >
+                                    {{ form.recipes[levelId]?.ingredients.length || 0 }}
+                                </Badge>
                             </button>
                         </div>
-                    </div>
 
-                    <!-- Ingredients & Calculator -->
-                    <div v-if="activeLevelTab && form.recipes[activeLevelTab]" class="space-y-3 pt-2">
-                        <div class="flex items-center justify-between">
-                            <h4 class="text-sm font-semibold">Ingredientes - {{ localLevels.find((l) => l.id === activeLevelTab)?.name }}</h4>
-                            <div class="relative w-full max-w-xs">
-                                <Search v-if="!isSearchingIngredients" class="absolute top-2 left-2 h-3.5 w-3.5 text-zinc-400" />
-                                <Loader2 v-else class="absolute top-2 left-2 h-3.5 w-3.5 animate-spin text-zinc-400" />
-                                <Input
-                                    placeholder="Buscar ingrediente... (Esc para cerrar)"
-                                    @input="searchIngredients"
-                                    @keyup.esc="closeIngredientSearch"
-                                    class="h-8 pl-8 text-xs"
-                                />
-                                <!-- Dropdown Results -->
-                                <div
-                                    v-if="ingredientsFounded.length > 0 || (ingredientSearchDone && !isSearchingIngredients)"
-                                    class="absolute top-full right-0 left-0 z-50 mt-1 max-h-48 overflow-y-auto rounded-md border bg-white p-1 shadow-lg dark:bg-zinc-900"
-                                >
-                                    <div
-                                        v-for="ingredient in ingredientsFounded"
-                                        :key="ingredient.id"
-                                        @click="selectIngredient(ingredient)"
-                                        class="flex cursor-pointer items-center gap-2 rounded-sm p-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                                    >
-                                        <Plus class="text-primary h-3 w-3" />
-                                        <span>{{ ingredient.name }}</span>
-                                    </div>
-                                    <div
-                                        v-if="ingredientsFounded.length === 0"
-                                        class="text-muted-foreground p-3 text-center text-xs italic"
-                                    >
-                                        No se encontraron ingredientes con ese nombre.
-                                    </div>
+                        <!-- Ingredients & Calculator Table -->
+                        <div v-if="activeLevelTab && form.recipes[activeLevelTab]" class="space-y-2.5">
+                            <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                <div class="flex items-center gap-2">
+                                    <h4 class="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
+                                        Ingredientes — Receta {{ localLevels.find((l) => l.id === activeLevelTab)?.name }}
+                                    </h4>
                                 </div>
-                            </div>
-                        </div>
 
-                        <div class="scrollbar-thin scrollbar-thumb-zinc-200 overflow-x-auto rounded-md border bg-white dark:bg-zinc-950">
-                            <Table>
-                                <TableHeader class="sticky top-0 z-20 bg-zinc-50 dark:bg-zinc-900">
-                                    <TableRow class="border-none hover:bg-transparent">
-                                        <TableHead class="h-10 border-r border-zinc-400 bg-zinc-500 text-[10px] font-black text-white uppercase"
-                                            >Insumo</TableHead
-                                        >
-                                        <TableHead
-                                            class="h-10 border-r border-zinc-400 bg-blue-400 text-center text-[10px] font-black text-white uppercase"
-                                            >P. Unit</TableHead
-                                        >
-                                        <TableHead
-                                            class="h-10 border-r border-zinc-400 bg-purple-400 text-center text-[10px] font-black text-white uppercase"
-                                            >P. x Gr</TableHead
-                                        >
-                                        <TableHead
-                                            class="h-10 border-r border-zinc-400 bg-blue-900 text-center text-[10px] font-black text-white uppercase"
-                                            >Cant.</TableHead
-                                        >
-                                        <TableHead
-                                            class="h-10 border-r border-zinc-400 bg-lime-400 text-center text-[10px] font-black text-zinc-900 uppercase"
-                                            >Und</TableHead
-                                        >
-                                        <TableHead
-                                            class="h-10 border-r border-zinc-400 bg-sky-400 text-center text-[10px] font-black text-blue-900 uppercase"
-                                            >Costo Base</TableHead
-                                        >
-                                        <TableHead
-                                            class="h-10 border-r border-zinc-400 bg-red-900 text-center text-[10px] font-black text-white uppercase"
-                                            >Mat. Prima</TableHead
-                                        >
-                                        <TableHead
-                                            class="h-10 border-r border-zinc-400 bg-teal-900 text-center text-[10px] font-black text-white uppercase"
-                                            >Desecho</TableHead
-                                        >
-                                        <TableHead
-                                            class="h-10 border-r border-zinc-400 bg-orange-800 text-center text-[10px] font-black text-white uppercase"
-                                            >Prod Final</TableHead
-                                        >
-                                        <TableHead
-                                            class="h-10 border-r border-zinc-400 bg-orange-400 text-center text-[10px] font-black text-white uppercase"
-                                            >Calorías</TableHead
-                                        >
-                                        <TableHead class="h-10 bg-zinc-100 text-center"></TableHead>
-                                        <TableHead class="h-10 w-[40px] bg-zinc-100 text-right">Opc.</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    <TableRow
-                                        v-for="ingredient in form.recipes[activeLevelTab].ingredients"
-                                        :key="ingredient.id"
-                                        class="border-b border-zinc-200 transition-colors hover:bg-zinc-50/50 dark:hover:bg-zinc-900/50"
+                                <!-- Ingredient Search Bar -->
+                                <div class="relative w-full sm:w-72">
+                                    <Search v-if="!isSearchingIngredients" class="absolute top-2 left-2.5 h-3.5 w-3.5 text-indigo-500" />
+                                    <Loader2 v-else class="absolute top-2 left-2.5 h-3.5 w-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
+                                    <Input
+                                        v-model="ingredientSearchQuery"
+                                        placeholder="Agregar ingrediente... (Esc para cerrar)"
+                                        @keyup.esc="closeIngredientSearch"
+                                        class="h-7.5 rounded-lg border-zinc-200 bg-white pl-8 text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 dark:border-zinc-800 dark:bg-zinc-900"
+                                    />
+                                    <!-- Search Results Dropdown -->
+                                    <div
+                                        v-if="ingredientsFounded.length > 0 || (ingredientSearchDone && !isSearchingIngredients)"
+                                        class="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-1 shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
                                     >
-                                        <!-- Insumo -->
-                                        <TableCell class="border-r border-zinc-100 px-2 py-1">
-                                            <div class="text-[11px] leading-tight font-bold text-blue-800 uppercase">{{ ingredient.name }}</div>
-                                        </TableCell>
-
-                                        <!-- Precio Unitario -->
-                                        <TableCell class="border-r border-zinc-100 bg-amber-50/30 px-1 py-1 text-center">
-                                            <span class="text-xs font-bold text-red-600">{{ Number(ingredient.unit_price || 0).toFixed(2) }}</span>
-                                        </TableCell>
-
-                                        <!-- Precio x Gr -->
-                                        <TableCell class="border-r border-zinc-100 bg-purple-50/30 px-1 py-1 text-center">
-                                            <span class="font-mono text-[10px] text-purple-700">{{
-                                                Number((ingredient.unit_price || 0) / 1000).toFixed(5)
-                                            }}</span>
-                                        </TableCell>
-
-                                        <!-- Cantidad Input -->
-                                        <TableCell class="border-r border-zinc-100 bg-blue-50/50 px-1 py-1 text-center">
-                                            <input
-                                                type="number"
-                                                v-model="ingredient.input_quantity"
-                                                @input="onWeightInput(ingredient)"
-                                                class="h-7 w-16 rounded-none border border-red-800 text-center text-xs font-bold shadow-inner focus:outline-none"
-                                            />
-                                        </TableCell>
-
-                                        <!-- Unidad Select -->
-                                        <TableCell class="border-r border-zinc-100 bg-lime-50/30 px-1 py-1 text-center">
-                                            <select
-                                                v-model="ingredient.selected_unit"
-                                                @change="onWeightInput(ingredient)"
-                                                class="h-7 border-none bg-transparent text-[10px] font-bold text-red-800 focus:ring-0"
-                                            >
-                                                <option value="Kg">Kg</option>
-                                                <option value="g">Gr</option>
-                                            </select>
-                                        </TableCell>
-
-                                        <!-- Costo Base -->
-                                        <TableCell class="border-r border-zinc-100 bg-sky-50 px-1 py-1 text-center">
-                                            <span class="text-xs font-bold text-blue-800">{{ Number(ingredient.cost).toFixed(2) }}</span>
-                                        </TableCell>
-
-                                        <!-- Materia Prima (Gr) -->
-                                        <TableCell class="border-r border-zinc-100 px-1 py-1 text-center">
-                                            <span class="font-mono text-xs">{{ Number(ingredient.gross_weight).toFixed(1) }}</span>
-                                        </TableCell>
-
-                                        <!-- Desecho (Gr) -->
-                                        <TableCell class="border-r border-zinc-100 px-1 py-1 text-center">
-                                            <span class="font-mono text-xs text-zinc-600">{{ Number(ingredient.solid_waste).toFixed(1) }}</span>
-                                        </TableCell>
-
-                                        <!-- Producto Final (Gr) -->
-                                        <TableCell class="border-r border-zinc-100 px-1 py-1 text-center font-bold">
-                                            <span class="font-mono text-xs text-red-900">{{ Number(ingredient.final_product).toFixed(1) }}</span>
-                                        </TableCell>
-
-                                        <!-- Calorías -->
-                                        <TableCell class="border-r border-zinc-100 px-1 py-1 text-center">
-                                            <span class="font-mono text-xs">{{ Number(ingredient.calories).toFixed(2) }}</span>
-                                        </TableCell>
-
-                                        <!-- Calculadora -->
-                                        <TableCell class="px-1 py-1 text-center align-middle">
-                                            <CalcPopover
-                                                :ingredient="ingredient"
-                                                :totalMateriaPrima="form.recipes[activeLevelTab].total_gross_weight"
-                                                :totalWasteWeight="form.recipes[activeLevelTab].total_waste_weight"
-                                                :totalCalories="form.recipes[activeLevelTab].total_calories"
-                                                :totalCost="form.recipes[activeLevelTab].total_cost"
-                                                :totalfinalProduct="form.recipes[activeLevelTab].total_net_weight"
-                                                @calcMassiveProperties="calcMassiveProperties"
-                                            />
-                                        </TableCell>
-
-                                        <TableCell class="px-1 py-1 text-right">
-                                            <Button
-                                                variant="ghost"
-                                                size="icon"
-                                                @click="removeIngredientFromForm(ingredient.id)"
-                                                class="h-6 w-6 text-red-500 hover:text-red-700"
-                                            >
-                                                <Trash class="h-3 w-3" />
-                                            </Button>
-                                        </TableCell>
-                                    </TableRow>
-                                    <TableRow v-if="form.recipes[activeLevelTab].ingredients.length === 0">
-                                        <TableCell colspan="12" class="text-muted-foreground h-32 border-dashed text-center text-sm">
-                                            <div class="flex flex-col items-center gap-2">
-                                                <div class="rounded-full bg-zinc-50 p-2 dark:bg-zinc-900">
-                                                    <Plus class="h-4 w-4 text-zinc-400" />
+                                        <div
+                                            v-for="ingredient in ingredientsFounded"
+                                            :key="ingredient.id"
+                                            @click="selectIngredient(ingredient)"
+                                            class="flex cursor-pointer items-center justify-between rounded-lg p-1.5 text-xs transition-colors hover:bg-indigo-50 dark:hover:bg-indigo-950/60"
+                                        >
+                                            <div class="flex items-center gap-2">
+                                                <div class="flex h-5 w-5 items-center justify-center rounded bg-indigo-100 text-indigo-600 dark:bg-indigo-900/60 dark:text-indigo-400">
+                                                    <Plus class="h-3 w-3" />
                                                 </div>
-                                                <span>Seleccione ingredientes en el buscador superior para comenzar.</span>
-                                                <Button
-                                                    v-if="form.mesearument_unit.length > 1"
-                                                    type="button"
-                                                    @click="copyIngredientsFromMaster"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    class="mt-2 border-blue-200 text-xs text-blue-600 hover:bg-blue-50 dark:border-blue-900/50 dark:text-blue-400 dark:hover:bg-blue-900/30"
-                                                >
-                                                    <Copy class="mr-2 h-3 w-3" />
-                                                    Duplicar ingredientes (Master)
-                                                </Button>
+                                                <span class="font-semibold text-zinc-900 dark:text-zinc-100">{{ ingredient.name }}</span>
                                             </div>
-                                        </TableCell>
-                                    </TableRow>
-                                </TableBody>
-                            </Table>
+                                            <span v-if="ingredient.unit_price" class="text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400">
+                                                S/. {{ Number(ingredient.unit_price).toFixed(2) }}
+                                            </span>
+                                        </div>
+                                        <div
+                                            v-if="ingredientsFounded.length === 0"
+                                            class="p-2.5 text-center text-xs text-zinc-400 italic"
+                                        >
+                                            No se encontraron ingredientes con ese nombre.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Table Container -->
+                            <div class="overflow-hidden rounded-xl border border-zinc-200/80 bg-white shadow-2xs dark:border-zinc-800 dark:bg-zinc-900">
+                                <div class="overflow-x-auto">
+                                    <Table class="w-full text-xs">
+                                        <TableHeader class="bg-zinc-900 text-zinc-100 dark:bg-zinc-900 dark:text-zinc-100">
+                                            <TableRow class="border-zinc-800 hover:bg-transparent">
+                                                <TableHead class="h-8 text-[10px] font-extrabold uppercase tracking-wider text-zinc-200">Insumo</TableHead>
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-amber-300">P. Unit</TableHead>
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-purple-300">P. x Gr</TableHead>
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-sky-300">Cantidad</TableHead>
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-lime-300">Und</TableHead>
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-emerald-300">Costo Base</TableHead>
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-zinc-300">Mat. Prima</TableHead>
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-orange-300">Desecho</TableHead>
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-indigo-300">Prod. Final</TableHead>
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-rose-300">Calorías</TableHead>
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-indigo-300">Ajustes</TableHead>
+                                                <TableHead class="h-8 w-8 text-right"></TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            <TableRow
+                                                v-for="ingredient in form.recipes[activeLevelTab].ingredients"
+                                                :key="ingredient.id"
+                                                class="border-b border-zinc-100 dark:border-zinc-800/60 transition-colors hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20"
+                                            >
+                                                <!-- Insumo -->
+                                                <TableCell class="py-1.5 font-bold text-zinc-900 dark:text-zinc-100">
+                                                    {{ ingredient.name }}
+                                                </TableCell>
+
+                                                <!-- Precio Unitario -->
+                                                <TableCell class="py-1.5 text-center font-mono font-bold text-amber-600 dark:text-amber-400">
+                                                    S/. {{ Number(ingredient.unit_price || 0).toFixed(2) }}
+                                                </TableCell>
+
+                                                <!-- Precio x Gr -->
+                                                <TableCell class="py-1.5 text-center font-mono text-[11px] text-purple-600 dark:text-purple-400">
+                                                    S/. {{ Number((ingredient.unit_price || 0) / 1000).toFixed(4) }}
+                                                </TableCell>
+
+                                                <!-- Cantidad Input -->
+                                                <TableCell class="py-1.5 text-center">
+                                                    <Input
+                                                        type="number"
+                                                        v-model="ingredient.input_quantity"
+                                                        @input="onWeightInput(ingredient)"
+                                                        step="any"
+                                                        class="h-7 w-18 mx-auto rounded-lg border-zinc-200 text-center text-xs font-bold text-indigo-900 dark:text-indigo-200 dark:border-zinc-700 dark:bg-zinc-900 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
+                                                    />
+                                                </TableCell>
+
+                                                <!-- Unidad Select -->
+                                                <TableCell class="py-1.5 text-center">
+                                                    <select
+                                                        v-model="ingredient.selected_unit"
+                                                        @change="onWeightInput(ingredient)"
+                                                        class="h-7 rounded-lg border-zinc-200 bg-zinc-50 text-[11px] font-bold text-zinc-800 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 focus:ring-2 focus:ring-indigo-500/30"
+                                                    >
+                                                        <option value="Kg">Kg</option>
+                                                        <option value="g">Gr</option>
+                                                    </select>
+                                                </TableCell>
+
+                                                <!-- Costo Base -->
+                                                <TableCell class="py-1.5 text-center font-mono font-extrabold text-emerald-600 dark:text-emerald-400">
+                                                    S/. {{ Number(ingredient.cost).toFixed(2) }}
+                                                </TableCell>
+
+                                                <!-- Materia Prima -->
+                                                <TableCell class="py-1.5 text-center font-mono text-zinc-700 dark:text-zinc-300">
+                                                    {{ Number(ingredient.gross_weight).toFixed(1) }} g
+                                                </TableCell>
+
+                                                <!-- Desecho -->
+                                                <TableCell class="py-1.5 text-center font-mono text-orange-600 dark:text-orange-400">
+                                                    {{ Number(ingredient.solid_waste).toFixed(1) }} g
+                                                </TableCell>
+
+                                                <!-- Producto Final -->
+                                                <TableCell class="py-1.5 text-center font-mono font-extrabold text-indigo-600 dark:text-indigo-400">
+                                                    {{ Number(ingredient.final_product).toFixed(1) }} g
+                                                </TableCell>
+
+                                                <!-- Calorías -->
+                                                <TableCell class="py-1.5 text-center font-mono text-rose-600 dark:text-rose-400">
+                                                    {{ Number(ingredient.calories).toFixed(1) }} kcal
+                                                </TableCell>
+
+                                                <!-- Calculadora Popover -->
+                                                <TableCell class="py-1.5 text-center">
+                                                    <div class="flex items-center justify-center gap-0.5">
+                                                        <CalcPopover
+                                                            :ingredient="ingredient"
+                                                            :totalMateriaPrima="form.recipes[activeLevelTab].total_gross_weight"
+                                                            :totalWasteWeight="form.recipes[activeLevelTab].total_waste_weight"
+                                                            :totalCalories="form.recipes[activeLevelTab].total_calories"
+                                                            :totalCost="form.recipes[activeLevelTab].total_cost"
+                                                            :totalfinalProduct="form.recipes[activeLevelTab].total_net_weight"
+                                                            @calcMassiveProperties="calcMassiveProperties"
+                                                        />
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="icon"
+                                                            @click="openRecipeDosificationModal(ingredient)"
+                                                            class="h-8 w-8 rounded-full text-zinc-500 transition-colors hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/50"
+                                                            title="Valores Nutricionales"
+                                                        >
+                                                            <FlaskConical class="h-4 w-4" />
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+
+                                                <!-- Acciones -->
+                                                <TableCell class="py-1.5 text-right">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        @click="removeIngredientFromForm(ingredient.id)"
+                                                        class="h-6 w-6 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50"
+                                                    >
+                                                        <Trash class="h-3 w-3" />
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+
+                                            <TableRow v-if="form.recipes[activeLevelTab].ingredients.length === 0">
+                                                <TableCell colspan="12" class="h-36 text-center">
+                                                    <div class="flex flex-col items-center justify-center gap-1.5 text-xs text-zinc-400">
+                                                        <div class="rounded-full bg-indigo-50 p-2.5 text-indigo-500 dark:bg-indigo-950/60">
+                                                            <Plus class="h-4 w-4" />
+                                                        </div>
+                                                        <span class="font-medium text-zinc-600 dark:text-zinc-300">Busque e ingrese ingredientes para configurar la receta.</span>
+                                                        <Button
+                                                            v-if="form.mesearument_unit.length > 1"
+                                                            type="button"
+                                                            @click="copyIngredientsFromMaster"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            class="mt-1 rounded-lg border-indigo-200 text-xs font-bold text-indigo-600 hover:bg-indigo-50 dark:border-indigo-900 dark:text-indigo-400 dark:hover:bg-indigo-950"
+                                                        >
+                                                            <Copy class="mr-1.5 h-3 w-3" />
+                                                            Duplicar ingredientes (Master)
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+                                            </TableRow>
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </div>
+
+                            <!-- KPI Summary Footer Bar -->
+                            <div class="grid grid-cols-2 gap-2 pt-1 sm:grid-cols-3 md:grid-cols-5">
+                                <!-- Peso Bruto -->
+                                <div class="rounded-xl border border-zinc-200/80 bg-white p-2 text-center dark:border-zinc-800 dark:bg-zinc-900 shadow-2xs">
+                                    <div class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Peso Bruto</div>
+                                    <div class="mt-0.5 font-mono text-sm font-extrabold text-zinc-900 dark:text-zinc-100">
+                                        {{ Number(form.recipes[activeLevelTab].total_gross_weight).toFixed(1) }} <span class="text-[10px] font-normal text-zinc-400">g</span>
+                                    </div>
+                                </div>
+
+                                <!-- Mermas Totales -->
+                                <div class="rounded-xl border border-amber-200/80 bg-amber-50/50 p-2 text-center dark:border-amber-900/40 dark:bg-amber-950/30 shadow-2xs">
+                                    <div class="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">Mermas Totales</div>
+                                    <div class="mt-0.5 font-mono text-sm font-extrabold text-amber-700 dark:text-amber-300">
+                                        {{ Number(form.recipes[activeLevelTab].total_waste_weight).toFixed(1) }} <span class="text-[10px] font-normal text-amber-600">g</span>
+                                    </div>
+                                </div>
+
+                                <!-- Calorías -->
+                                <div class="rounded-xl border border-rose-200/80 bg-rose-50/50 p-2 text-center dark:border-rose-900/40 dark:bg-rose-950/30 shadow-2xs">
+                                    <div class="text-[10px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400">Calorías</div>
+                                    <div class="mt-0.5 font-mono text-sm font-extrabold text-rose-700 dark:text-rose-300">
+                                        {{ Number(form.recipes[activeLevelTab].total_calories).toFixed(1) }} <span class="text-[10px] font-normal text-rose-600">kcal</span>
+                                    </div>
+                                </div>
+
+                                <!-- Costo Receta -->
+                                <div class="rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-2 text-center dark:border-emerald-900/40 dark:bg-emerald-950/30 shadow-2xs">
+                                    <div class="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Costo Receta</div>
+                                    <div class="mt-0.5 font-mono text-sm font-extrabold text-emerald-700 dark:text-emerald-300">
+                                        S/. {{ Number(form.recipes[activeLevelTab].total_cost).toFixed(2) }}
+                                    </div>
+                                </div>
+
+                                <!-- Prod Final -->
+                                <div class="rounded-xl border border-indigo-200/80 bg-indigo-50/50 p-2 text-center dark:border-indigo-900/40 dark:bg-indigo-950/30 shadow-2xs">
+                                    <div class="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">Prod. Final</div>
+                                    <div class="mt-0.5 font-mono text-sm font-extrabold text-indigo-700 dark:text-indigo-300">
+                                        {{ Number(form.recipes[activeLevelTab].total_net_weight).toFixed(1) }} <span class="text-[10px] font-normal text-indigo-600">g</span>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
 
-                        <!-- Totals Footer -->
-                        <div
-                            class="sticky bottom-0 grid grid-cols-2 gap-2 border-t bg-white pt-4 pb-2 sm:grid-cols-2 md:grid-cols-5 dark:bg-zinc-950"
-                        >
-                            <div class="rounded border bg-zinc-50 p-2 text-center dark:bg-zinc-900">
-                                <div class="text-muted-foreground mb-1 text-[10px] font-bold uppercase">P. Bruto</div>
-                                <div class="font-mono text-sm font-bold">
-                                    {{ Number(form.recipes[activeLevelTab].total_gross_weight).toFixed(2) }}
-                                </div>
-                            </div>
-                            <div class="rounded border bg-zinc-50 p-2 text-center dark:bg-zinc-900">
-                                <div class="text-muted-foreground mb-1 text-[10px] font-bold uppercase">Mermas Tot.</div>
-                                <div class="font-mono text-sm font-bold text-amber-600">
-                                    {{ Number(form.recipes[activeLevelTab].total_waste_weight).toFixed(2) }}
-                                </div>
-                            </div>
-                            <div class="rounded border bg-zinc-50 p-2 text-center dark:bg-zinc-900">
-                                <div class="text-muted-foreground mb-1 text-[10px] font-bold uppercase">Calorías</div>
-                                <div class="font-mono text-sm font-bold text-rose-600">
-                                    {{ Number(form.recipes[activeLevelTab].total_calories).toFixed(2) }}
-                                </div>
-                            </div>
-                            <div class="rounded border bg-zinc-50 p-2 text-center dark:bg-zinc-900">
-                                <div class="text-muted-foreground mb-1 text-[10px] font-bold uppercase">Costo</div>
-                                <div class="font-mono text-sm font-bold text-emerald-600">
-                                    S/. {{ Number(form.recipes[activeLevelTab].total_cost).toFixed(2) }}
-                                </div>
-                            </div>
-                            <div class="rounded border bg-zinc-50 p-2 text-center dark:bg-zinc-900">
-                                <div class="text-muted-foreground mb-1 text-[10px] font-bold uppercase">P. Final</div>
-                                <div class="font-mono text-sm font-bold text-indigo-600">
-                                    {{ Number(form.recipes[activeLevelTab].total_net_weight).toFixed(2) }}
-                                </div>
-                            </div>
+                        <!-- Empty State for Level Selection -->
+                        <div v-else-if="form.mesearument_unit.length > 0" class="flex h-44 flex-col items-center justify-center rounded-xl border border-dashed border-zinc-200 text-zinc-400 dark:border-zinc-800">
+                            <Layers class="mb-2 h-7 w-7 opacity-40 text-indigo-500" />
+                            <p class="text-xs font-semibold text-zinc-600 dark:text-zinc-300">Seleccione un nivel de aplicación en la barra superior para ver su receta.</p>
                         </div>
                     </div>
 
-                    <!-- Empty State for Recipes -->
-                    <div v-else-if="form.mesearument_unit.length > 0" class="text-muted-foreground flex h-48 flex-col items-center justify-center">
-                        <Plus class="mb-2 h-8 w-8 opacity-20" />
-                        <p class="text-sm">Seleccione un nivel de aplicación arriba para ver su receta.</p>
-                    </div>
-
-                    <!-- No Levels Selected -->
-                    <div v-else class="text-muted-foreground flex h-48 flex-col items-center justify-center rounded-lg border border-dashed">
-                        <p class="text-sm">Debe seleccionar al menos un nivel de aplicación para configurar recetas.</p>
+                    <!-- Empty State for No Levels Selected -->
+                    <div v-else class="flex h-44 flex-col items-center justify-center rounded-xl border border-dashed border-zinc-200 text-zinc-400 dark:border-zinc-800">
+                        <AlertCircle class="mb-2 h-7 w-7 text-amber-500 opacity-80" />
+                        <p class="text-xs font-bold text-zinc-700 dark:text-zinc-300">Sin niveles de aplicación seleccionados</p>
+                        <p class="text-[11px] text-zinc-400">Seleccione o añada un nivel arriba para comenzar a armar la receta.</p>
                     </div>
                 </div>
-            </div>
+            </template>
 
-            <div v-else class="flex h-full flex-col items-center justify-center bg-zinc-50 p-8 text-center dark:bg-zinc-900/50">
-                <div class="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-zinc-200 dark:bg-zinc-800">
-                    <Plus class="h-8 w-8 text-zinc-400" />
+            <!-- Blank Empty State (No dish selected) -->
+            <div v-else class="flex h-full flex-col items-center justify-center p-8 text-center bg-zinc-50/50 dark:bg-zinc-950">
+                <div class="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md">
+                    <ChefHat class="h-7 w-7" />
                 </div>
-                <h3 class="text-lg font-semibold">Seleccione o cree un plato</h3>
-                <p class="text-muted-foreground mt-2 max-w-xs text-sm">
-                    Seleccione un plato de la lista izquierda para editar sus detalles o cree uno nuevo para comenzar.
+                <h3 class="text-base font-extrabold text-zinc-900 dark:text-zinc-100">Seleccione un plato o cree uno nuevo</h3>
+                <p class="mt-1 max-w-xs text-xs text-zinc-400 leading-relaxed">
+                    Seleccione un plato del panel izquierdo para revisar y modificar sus ingredientes y valores nutricionales, o cree una nueva receta.
                 </p>
-                <Button @click="createDish" class="mt-6"> Crear Nuevo Plato </Button>
+                <Button @click="createDish" class="mt-5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 shadow-sm shadow-indigo-500/20 gap-1.5">
+                    <Plus class="h-3.5 w-3.5" />
+                    <span>Crear Nuevo Plato</span>
+                </Button>
             </div>
         </div>
+
+        <!-- Modal: Valores Nutricionales del ingrediente (editable desde la tabla de la receta) -->
+        <Dialog v-model:open="isRecipeDosificationModalOpen">
+            <DialogContent class="max-w-md">
+                <DialogHeader>
+                    <div class="flex items-center gap-3">
+                        <div class="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-950/60">
+                            <FlaskConical class="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                        </div>
+                        <div>
+                            <DialogTitle class="text-lg font-bold">Valores Nutricionales</DialogTitle>
+                            <DialogDescription class="text-xs">
+                                Gestionando dosificación para:
+                                <span class="font-semibold text-emerald-600 dark:text-emerald-400">{{ activeIngredientForDosification?.name }}</span>
+                            </DialogDescription>
+                        </div>
+                    </div>
+                </DialogHeader>
+
+                <div class="space-y-4 pt-2">
+                    <div class="mb-1 flex items-center gap-2">
+                        <div class="h-4 w-1 rounded-full bg-emerald-500"></div>
+                        <span class="text-[11px] font-bold tracking-wider text-zinc-400 uppercase">Macronutrientes</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="col-span-2 space-y-1.5">
+                            <Label class="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500 uppercase">
+                                <Zap class="h-3 w-3" /> Energía (kcal)
+                            </Label>
+                            <Input
+                                :model-value="recipeDosificationForm.energy ?? undefined"
+                                @update:model-value="(val) => (recipeDosificationForm.energy = val ? Number(val) : null)"
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                class="h-9 border-zinc-200"
+                            />
+                            <div v-if="recipeDosificationErrors.energy" class="text-xs font-medium text-red-500">
+                                {{ recipeDosificationErrors.energy }}
+                            </div>
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <Label class="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500 uppercase">
+                                <Waves class="h-3 w-3" /> Agua (g)
+                            </Label>
+                            <Input
+                                :model-value="recipeDosificationForm.water ?? undefined"
+                                @update:model-value="(val) => (recipeDosificationForm.water = val ? Number(val) : null)"
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                class="h-9 border-zinc-200"
+                            />
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <Label class="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500 uppercase">
+                                <Beef class="h-3 w-3" /> Proteína (g)
+                            </Label>
+                            <Input
+                                :model-value="recipeDosificationForm.protein ?? undefined"
+                                @update:model-value="(val) => (recipeDosificationForm.protein = val ? Number(val) : null)"
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                class="h-9 border-zinc-200"
+                            />
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <Label class="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500 uppercase">
+                                <Droplets class="h-3 w-3" /> Lípidos (g)
+                            </Label>
+                            <Input
+                                :model-value="recipeDosificationForm.lipid ?? undefined"
+                                @update:model-value="(val) => (recipeDosificationForm.lipid = val ? Number(val) : null)"
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                class="h-9 border-zinc-200"
+                            />
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <Label class="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500 uppercase">
+                                <Cookie class="h-3 w-3" /> Carbohidratos Totales (g)
+                            </Label>
+                            <Input
+                                :model-value="recipeDosificationForm.carbohydrate ?? undefined"
+                                @update:model-value="(val) => (recipeDosificationForm.carbohydrate = val ? Number(val) : null)"
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                class="h-9 border-zinc-200"
+                            />
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <Label class="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500 uppercase">
+                                <Cookie class="h-3 w-3" /> Carbohidratos Disponibles (g)
+                            </Label>
+                            <Input
+                                :model-value="recipeDosificationForm.carbohydrate_available ?? undefined"
+                                @update:model-value="(val) => (recipeDosificationForm.carbohydrate_available = val ? Number(val) : null)"
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                class="h-9 border-zinc-200"
+                            />
+                        </div>
+
+                        <div class="space-y-1.5">
+                            <Label class="flex items-center gap-1.5 text-[11px] font-bold text-zinc-500 uppercase">
+                                <Wheat class="h-3 w-3" /> Fibra (g)
+                            </Label>
+                            <Input
+                                :model-value="recipeDosificationForm.fiber ?? undefined"
+                                @update:model-value="(val) => (recipeDosificationForm.fiber = val ? Number(val) : null)"
+                                type="number"
+                                step="0.01"
+                                placeholder="0.00"
+                                class="h-9 border-zinc-200"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <DialogFooter class="gap-2 pt-4">
+                    <Button type="button" variant="ghost" @click="isRecipeDosificationModalOpen = false" class="font-bold text-zinc-500">
+                        Cancelar
+                    </Button>
+                    <Button
+                        type="button"
+                        :disabled="isSavingRecipeDosification"
+                        @click="submitRecipeDosification"
+                        class="bg-emerald-600 font-bold text-white hover:bg-emerald-700"
+                    >
+                        {{ isSavingRecipeDosification ? 'Guardando...' : 'Guardar Nutrientes' }}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
     </div>
 </template>

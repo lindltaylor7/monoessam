@@ -7,17 +7,19 @@ import type { BreadcrumbItemType } from '@/types';
 
 interface Props {
     breadcrumbs?: BreadcrumbItemType[];
+    contentClass?: string;
 }
 
 withDefaults(defineProps<Props>(), {
     breadcrumbs: () => [],
+    contentClass: '',
 });
 </script>
 
 <template>
     <AppShell variant="sidebar">
         <AppSidebar />
-        <AppContent variant="sidebar">
+        <AppContent variant="sidebar" :class="contentClass">
             <AppSidebarHeader :breadcrumbs="breadcrumbs" />
             <slot />
         </AppContent>

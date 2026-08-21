@@ -23,6 +23,7 @@ class FoodController extends Controller
             'recipes.ingredients.assignments.city',
             'recipes.ingredients.nutritionalFactors',
             'recipes.ingredients.dosification',
+            'recipes.ingredients.atwaterFactor',
             'recipes.level'
         ])->take(50)->get();
 
@@ -47,7 +48,7 @@ class FoodController extends Controller
             'ingredient_categories' => Ingredient_category::all(),
             'dish_categories' => Dish_category::all(),
             'levels' => \App\Models\Level::all(),
-            'ingredients' => Ingredient::with(['assignments.provider', 'assignments.city', 'nutritionalFactors', 'dosification'])
+            'ingredients' => Ingredient::with(['assignments.provider', 'assignments.city', 'nutritionalFactors', 'dosification', 'atwaterFactor'])
                 ->orderBy('name')
                 ->take(300)
                 ->get()
@@ -57,7 +58,7 @@ class FoodController extends Controller
     public function searchIngredients($query)
     {
         return Ingredient::where('name', 'like', "%$query%")
-            ->with(['assignments.provider', 'assignments.city', 'dosification', 'nutritionalFactors'])
+            ->with(['assignments.provider', 'assignments.city', 'dosification', 'nutritionalFactors', 'atwaterFactor'])
             ->take(20)
             ->get();
     }
@@ -112,7 +113,24 @@ class FoodController extends Controller
         return Inertia::render('structure-menu/Index', [
             'categories' => Dish_category::all(),
             'mines' => \App\Models\Mine::with(['units', 'units.cafes', 'units.cafes.services'])->get(),
-            'structures' => \App\Models\Structure::with('costs')->get()
+            'structures' => \App\Models\Structure::with([
+                'costs',
+                'serviceableRecord.service',
+                'serviceableRecord.serviceable.unit.mine',
+            ])->get()->map(function ($structure) {
+                $cafe = $structure->serviceableRecord?->serviceable;
+                $unit = $cafe?->unit;
+                $mine = $unit?->mine;
+
+                $structure->mine_name = $mine?->name;
+                $structure->unit_name = $unit?->name;
+                $structure->cafe_name = $cafe?->name;
+                $structure->service_name = $structure->serviceableRecord?->service?->name;
+
+                unset($structure->serviceableRecord);
+
+                return $structure;
+            })
         ]);
     }
 
@@ -151,6 +169,44 @@ class FoodController extends Controller
         }
 
         return back()->with('success', 'Estructura guardada exitosamente.');
+    }
+
+    public function updateStructure(Request $request, $id)
+    {
+        $structure = \App\Models\Structure::findOrFail($id);
+
+        $request->validate([
+            'name' => 'required|string|max:255|unique:structures,name,' . $structure->id,
+            'categories' => 'required|array',
+            'selling_price' => 'nullable|numeric'
+        ], [
+            'name.unique' => 'Ya existe una estructura guardada con ese nombre. Por favor, elige otro.',
+        ]);
+
+        $structure->update([
+            'name' => $request->name,
+            'selling_price' => $request->selling_price,
+        ]);
+
+        $structure->costs()->delete();
+
+        foreach ($request->categories as $category) {
+            \App\Models\StructureCost::create([
+                'structure_id' => $structure->id,
+                'dish_category_id' => $category['id'] ?? null,
+                'name' => $category['name'] ?? null,
+                'order' => $category['order'] ?? 0,
+                'reference_volume' => $category['reference_volume'] ?? null,
+                'measurement_unit' => $category['measurement_unit'] ?? $category['mesearument_unit'] ?? null,
+                'ration' => $category['ration'] ?? null,
+                'unit_cost' => $category['unit_cost'] ?? null,
+                'total_cost' => $category['total_cost'] ?? null,
+                'unit_cost_superior' => $category['unit_cost_superior'] ?? null,
+                'total_cost_superior' => $category['total_cost_superior'] ?? null,
+            ]);
+        }
+
+        return back()->with('success', 'Estructura actualizada exitosamente.');
     }
 
     public function destroyStructure($id)

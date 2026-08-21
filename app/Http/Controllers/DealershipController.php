@@ -2,11 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Business;
 use App\Models\Dealership;
-use App\Models\Headquarter;
-use App\Models\Service;
-use App\Models\Subdealership;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -18,20 +14,8 @@ class DealershipController extends Controller
     public function index()
     {
         return Inertia::render('dealerships/Index', [
-            'dealerships'    => Dealership::all(),
-            'subdealerships' => Subdealership::all(),
-            'businesses'     => Business::with('headquarters')->get(),
-            'headquarters'   => Headquarter::with('business')->get(),
-            'services'       => Service::all(),
+            'dealerships' => Dealership::withCount(['contracts', 'mines'])->orderBy('name')->get(),
         ]);
-    }
-
-    /**
-     * Show the form for creating a new resource.
-     */
-    public function create()
-    {
-        //
     }
 
     /**
@@ -39,25 +23,18 @@ class DealershipController extends Controller
      */
     public function store(Request $request)
     {
-        $dealership = Dealership::create($request->all());
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'ruc' => 'nullable|string|max:255',
+            'fiscal_address' => 'nullable|string|max:255',
+            'legal_address' => 'nullable|string|max:255',
+            'phone' => 'nullable|string|max:255',
+            'email' => 'nullable|email|max:255',
+        ]);
 
-        return to_route('dealerships.index');
-    }
+        Dealership::create($validated);
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
-    {
-        //
-    }
-
-    /**
-     * Show the form for editing the specified resource.
-     */
-    public function edit(string $id)
-    {
-        //
+        return to_route('dealerships.index')->with('success', 'Concesionaria creada correctamente.');
     }
 
     /**
@@ -65,7 +42,19 @@ class DealershipController extends Controller
      */
     public function update(Request $request, string $id)
     {
-        //
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'ruc' => 'nullable|string|max:255',
+            'fiscal_address' => 'nullable|string|max:255',
+            'legal_address' => 'nullable|string|max:255',
+            'phone' => 'nullable|string|max:255',
+            'email' => 'nullable|email|max:255',
+        ]);
+
+        $dealership = Dealership::findOrFail($id);
+        $dealership->update($validated);
+
+        return to_route('dealerships.index')->with('success', 'Concesionaria actualizada correctamente.');
     }
 
     /**
@@ -73,6 +62,9 @@ class DealershipController extends Controller
      */
     public function destroy(string $id)
     {
-        //
+        $dealership = Dealership::findOrFail($id);
+        $dealership->delete();
+
+        return to_route('dealerships.index')->with('success', 'Concesionaria eliminada correctamente.');
     }
 }

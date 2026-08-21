@@ -1,14 +1,19 @@
 <script setup lang="ts">
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Cafe, Dish, DishCategory, MealType, MenuStructure, Structure, WeeklyProgram } from '@/types';
+import { Cafe, DishCategory, MealType, MenuStructure, Structure, WeeklyProgram } from '@/types';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import axios from 'axios';
 import dayjs from 'dayjs';
 import 'dayjs/locale/es';
+import { ChevronDown } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
 import { computed, ref, watch } from 'vue';
 
@@ -20,9 +25,10 @@ interface Props {
     dish_categories: DishCategory[];
     menu_structure: MenuStructure[];
     structures?: Structure[];
-    dishes: Dish[];
     menu_cycles?: any[];
     mines?: any[];
+    levels?: any[];
+    cities?: any[];
 }
 
 const props = defineProps<Props>();
@@ -30,6 +36,7 @@ const props = defineProps<Props>();
 const meals: MealType[] = ['Desayuno', 'Almuerzo', 'Cena', 'Refrigerio'];
 const startDate = ref(dayjs().startOf('week').add(1, 'day').format('YYYY-MM-DD'));
 const daysCount = ref(7);
+const activeTab = ref<'planificar' | 'programaciones'>('planificar');
 
 const form = useForm({
     cafe_id: '',
@@ -361,17 +368,136 @@ const generatePO = (program: WeeklyProgram) => {
     });
 };
 
+// The planning grid never records which recipe "nivel" (Master/Staff/Empleado/Obrero) a dish
+// was assigned under — only dish_id — so it's asked here and applied uniformly to every dish
+// in the week's PDF. Shared by both PDF reports below.
+const promptForLevel = async (title: string, prompt: string): Promise<string | null> => {
+    if (!props.levels || props.levels.length === 0) {
+        Swal.fire('Atención', 'No hay niveles de receta configurados en el sistema.', 'warning');
+        return null;
+    }
+
+    const { value: levelId } = await Swal.fire({
+        title,
+        html:
+            `<p class="mb-3 text-left text-sm text-gray-600">${prompt}</p>` +
+            '<select id="swal-level" class="swal2-select" style="display:block;width:100%;">' +
+            props.levels.map((l: any) => `<option value="${l.id}">${l.name}</option>`).join('') +
+            '</select>',
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Generar PDF',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#FF5A1F',
+        preConfirm: () => (document.getElementById('swal-level') as HTMLSelectElement)?.value,
+    });
+
+    return levelId || null;
+};
+
+const generateWeeklyQuebradoPdf = async (program: WeeklyProgram) => {
+    const levelId = await promptForLevel(
+        'Quebrado Semanal (PDF)',
+        'Seleccione el nivel de receta a usar para calcular los ingredientes de cada plato de esta semana.',
+    );
+    if (levelId) {
+        window.open(route('planning.quebrado-pdf', { id: program.id, level_id: levelId }), '_blank');
+    }
+};
+
+const generateWeeklyRequirementPdf = async (program: WeeklyProgram) => {
+    const levelId = await promptForLevel(
+        'Requerimiento x Producto (PDF)',
+        'Seleccione el nivel de receta a usar para calcular cuánto de cada insumo se necesita esta semana.',
+    );
+    if (levelId) {
+        window.open(route('planning.requerimiento-pdf', { id: program.id, level_id: levelId }), '_blank');
+    }
+};
+
+// Prices only exist per (insumo, ciudad, proveedor) — there's no relation from
+// Mina/Unidad/Comedor to Ciudad in the system — so the city used to price this order is also
+// chosen manually here, same reasoning as the recipe nivel above.
+const generateWeeklyPurchaseOrderExcel = async (program: WeeklyProgram) => {
+    if (!props.levels?.length || !props.cities?.length) {
+        Swal.fire('Atención', 'Faltan niveles o ciudades configuradas en el sistema.', 'warning');
+        return;
+    }
+
+    const { value: formValues } = await Swal.fire({
+        title: 'Orden de Pedido Semanal (Excel)',
+        html:
+            '<p class="mb-3 text-left text-sm text-gray-600">Seleccione el nivel de receta y la ciudad de precios a usar para esta orden.</p>' +
+            '<label class="mb-1 block text-left text-xs font-semibold text-gray-500">Nivel de receta</label>' +
+            '<select id="swal-level" class="swal2-select" style="display:block;width:100%;margin-bottom:12px;">' +
+            props.levels.map((l: any) => `<option value="${l.id}">${l.name}</option>`).join('') +
+            '</select>' +
+            '<label class="mb-1 block text-left text-xs font-semibold text-gray-500">Ciudad (precios)</label>' +
+            '<select id="swal-city" class="swal2-select" style="display:block;width:100%;">' +
+            props.cities.map((c: any) => `<option value="${c.id}">${c.name}</option>`).join('') +
+            '</select>',
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Generar Excel',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#FF5A1F',
+        preConfirm: () => ({
+            levelId: (document.getElementById('swal-level') as HTMLSelectElement)?.value,
+            cityId: (document.getElementById('swal-city') as HTMLSelectElement)?.value,
+        }),
+    });
+
+    if (formValues?.levelId && formValues?.cityId) {
+        window.open(
+            route('planning.orden-pedido-excel', { id: program.id, level_id: formValues.levelId, city_id: formValues.cityId }),
+            '_blank',
+        );
+    }
+};
+
+// Dishes are fetched on demand per category (instead of shipping the entire catalog on page
+// load) and cached here, keyed by dish_category_id.
+const dishesByCategory = ref<Record<number, { id: number; name: string }[]>>({});
+const knownDishNames = ref<Record<number, string>>({});
+const loadingDishCategories = new Set<number>();
+
+const fetchDishesForCategory = async (categoryId: number | null | undefined) => {
+    if (!categoryId || dishesByCategory.value[categoryId] || loadingDishCategories.has(categoryId)) return;
+    loadingDishCategories.add(categoryId);
+    try {
+        const response = await axios.get('/dishes/search', { params: { category_id: categoryId } });
+        const list = (response.data || []).map((d: any) => ({ id: d.id, name: d.name }));
+        dishesByCategory.value[categoryId] = list;
+        list.forEach((d: { id: number; name: string }) => {
+            knownDishNames.value[d.id] = d.name;
+        });
+    } catch (err) {
+        console.error('Error fetching dishes for category', categoryId, err);
+    } finally {
+        loadingDishCategories.delete(categoryId);
+    }
+};
+
+watch(
+    localMenuStructure,
+    (structs) => {
+        const categoryIds = new Set(structs.map((s) => s.dish_category_id).filter((id): id is number => !!id));
+        categoryIds.forEach((id) => fetchDishesForCategory(id));
+    },
+    { immediate: true, deep: true },
+);
+
 const getDishesForCell = (date: string, meal: string, struct: any) => {
     const categoryId = struct.dish_category_id;
-    const filtered = props.dishes.filter((d) => d.dish_categories?.some((c: any) => c.id === categoryId));
+    const filtered = dishesByCategory.value[categoryId] || [];
 
     const assignedIdStr = itemsGrid.value[`${date}_${meal}_${struct.id}`];
     if (assignedIdStr) {
         const assignedId = parseInt(assignedIdStr);
         if (!filtered.some((d) => d.id === assignedId)) {
-            const assignedDish = props.dishes.find((d) => d.id === assignedId);
-            if (assignedDish) {
-                return [...filtered, assignedDish];
+            const name = knownDishNames.value[assignedId];
+            if (name) {
+                return [...filtered, { id: assignedId, name }];
             }
         }
     }
@@ -473,6 +599,9 @@ const loadMenuCycle = (cycleIdStr: string) => {
                         if (dayData && dayData.dish_id) {
                             const itemKey = `${date}_${mealType}_${tempId}`;
                             itemsGrid.value[itemKey] = String(dayData.dish_id);
+                            if (dayData.dish_name) {
+                                knownDishNames.value[dayData.dish_id] = dayData.dish_name;
+                            }
                             assignedCount++;
                         }
                     }
@@ -603,7 +732,19 @@ const loadStructure = (structureIdStr: string) => {
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 items-start gap-6 lg:grid-cols-4">
+            <Tabs v-model="activeTab">
+                <TabsList class="bg-slate-100 p-1">
+                    <TabsTrigger value="planificar" class="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                        Planificar
+                    </TabsTrigger>
+                    <TabsTrigger value="programaciones" class="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                        Programaciones Guardadas
+                        <span class="ml-1.5 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">{{ programs.length }}</span>
+                    </TabsTrigger>
+                </TabsList>
+            </Tabs>
+
+            <div v-if="activeTab === 'planificar'" class="grid grid-cols-1 items-start gap-6 lg:grid-cols-4">
                 <!-- Sidebar de Configuración -->
                 <Card class="overflow-hidden rounded-2xl border-none bg-white shadow-sm lg:col-span-1">
                     <CardHeader class="border-b border-slate-100 pb-4">
@@ -1044,37 +1185,78 @@ const loadStructure = (structureIdStr: string) => {
                 </div>
             </div>
 
-            <div class="mt-8">
-                <h2 class="mb-4 text-xl font-bold">Programaciones Guardadas</h2>
+            <div v-if="activeTab === 'programaciones'">
                 <div
                     v-if="programs.length === 0"
                     class="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400"
                 >
-                    Aún no hay programaciones guardadas. Complete la matriz superior y presione "Guardar Planificación".
+                    Aún no hay programaciones guardadas. Complete la matriz en la pestaña "Planificar" y presione "Guardar Planificación".
                 </div>
-                <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    <Card v-for="program in programs" :key="program.id" class="rounded-2xl border-none shadow-sm">
-                        <CardHeader>
-                            <CardTitle class="text-lg">{{ program.cafe?.name }}</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div class="flex flex-col gap-2 text-sm">
-                                <div class="flex justify-between">
-                                    <span class="text-muted-foreground">Periodo:</span>
-                                    <span>{{ dayjs(program.start_date).format('DD/MM') }} - {{ dayjs(program.end_date).format('DD/MM') }}</span>
-                                </div>
-                                <div class="flex justify-between">
-                                    <span class="text-muted-foreground">Estado:</span>
-                                    <span class="capitalize">{{ program.status }}</span>
-                                </div>
-                                <div v-if="program.structure" class="flex justify-between">
-                                    <span class="text-muted-foreground">Estructura:</span>
-                                    <span>{{ program.structure.name }}</span>
-                                </div>
-                                <Button @click="generatePO(program)" class="mt-4 rounded-xl" variant="secondary"> Generar Quebrado (PO) </Button>
-                            </div>
-                        </CardContent>
-                    </Card>
+                <div v-else class="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+                    <div class="overflow-x-auto">
+                        <Table>
+                            <TableHeader>
+                                <TableRow class="bg-slate-50/80 hover:bg-slate-50/80">
+                                    <TableHead class="font-semibold text-slate-600">Comedor</TableHead>
+                                    <TableHead class="font-semibold text-slate-600">Periodo</TableHead>
+                                    <TableHead class="font-semibold text-slate-600">Estructura</TableHead>
+                                    <TableHead class="font-semibold text-slate-600">Estado</TableHead>
+                                    <TableHead class="text-right font-semibold text-slate-600">Acciones</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                <TableRow v-for="program in programs" :key="program.id" class="hover:bg-slate-50/50">
+                                    <TableCell>
+                                        <div class="font-semibold text-slate-800">{{ program.cafe?.name || '—' }}</div>
+                                        <div v-if="program.cafe?.unit?.name" class="text-xs text-slate-400">{{ program.cafe.unit.name }}</div>
+                                    </TableCell>
+                                    <TableCell class="text-slate-600">
+                                        {{ dayjs(program.start_date).format('DD/MM/YYYY') }} - {{ dayjs(program.end_date).format('DD/MM/YYYY') }}
+                                    </TableCell>
+                                    <TableCell class="text-slate-600">{{ program.structure?.name || '—' }}</TableCell>
+                                    <TableCell>
+                                        <Badge variant="outline" class="border-slate-200 bg-slate-50 font-medium text-slate-600 capitalize">
+                                            {{ program.status }}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                        <div class="flex items-center justify-end gap-2">
+                                            <Button
+                                                size="sm"
+                                                @click="generatePO(program)"
+                                                variant="outline"
+                                                class="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50"
+                                            >
+                                                Quebrado (PO)
+                                            </Button>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger as-child>
+                                                    <Button
+                                                        size="sm"
+                                                        class="flex items-center gap-1 rounded-lg bg-[#FF5A1F] text-white hover:bg-[#e04a17]"
+                                                    >
+                                                        Reportes
+                                                        <ChevronDown class="h-3.5 w-3.5" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" class="w-64">
+                                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyQuebradoPdf(program)">
+                                                        Quebrado Semanal (PDF)
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyRequirementPdf(program)">
+                                                        Requerimiento x Producto (PDF)
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyPurchaseOrderExcel(program)">
+                                                        Orden de Pedido Semanal (Excel)
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            </TableBody>
+                        </Table>
+                    </div>
                 </div>
             </div>
         </div>

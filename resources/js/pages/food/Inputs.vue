@@ -5,11 +5,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import Input from '@/components/ui/input/Input.vue';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
+import axios from 'axios';
 import {
     Activity,
     Beaker,
@@ -53,6 +54,7 @@ interface Ingredient {
         id: number;
         name: string;
     };
+    atwater_factor_id: number | null;
     dosification?: Dosification | null;
     nutritional_factors?: any[];
 }
@@ -65,6 +67,7 @@ interface Dosification {
     protein: number | null;
     lipid: number | null;
     carbohydrate: number | null;
+    carbohydrate_available: number | null;
     fiber: number | null;
     ash: number | null;
     calcium: number | null;
@@ -94,49 +97,74 @@ interface Category {
     name: string;
 }
 
+interface AtwaterFactor {
+    id: number;
+    group: string;
+    name: string;
+    protein_kcal: string | null;
+    fat_kcal: string | null;
+    carb_kcal: string | null;
+}
+
 const props = defineProps<{
     ingredients: Ingredient[];
     categories: Category[];
+    atwaterFactors: AtwaterFactor[];
 }>();
 
 const isDosificationModalOpen = ref(false);
 const isNutritionalModalOpen = ref(false);
 const activeIngredientForNutritional = ref<any>(null);
 
-const nutritionalForm = useForm({
-    ingredient_id: '',
-    nfactorcal: '',
-    composition: '',
+const groupedAtwaterFactors = computed(() => {
+    const groups = new Map<string, AtwaterFactor[]>();
+    props.atwaterFactors.forEach((factor) => {
+        if (!groups.has(factor.group)) groups.set(factor.group, []);
+        groups.get(factor.group)!.push(factor);
+    });
+    return Array.from(groups.entries()).map(([title, items]) => ({ title, items }));
+});
+
+const nutritionalModalAtwaterFactorId = ref('none');
+const isSavingNutritionalModalAtwater = ref(false);
+
+const resolvedAtwaterFactor = computed(() => {
+    if (nutritionalModalAtwaterFactorId.value === 'none') return null;
+    return props.atwaterFactors.find((f) => String(f.id) === nutritionalModalAtwaterFactorId.value) ?? null;
 });
 
 const openNutritionalModal = (ingredient: any) => {
     activeIngredientForNutritional.value = ingredient;
-    nutritionalForm.reset();
-    nutritionalForm.clearErrors();
+    nutritionalModalAtwaterFactorId.value = ingredient.atwater_factor_id ? String(ingredient.atwater_factor_id) : 'none';
     isNutritionalModalOpen.value = true;
 };
 
-const saveNutritionalFactor = () => {
-    nutritionalForm.ingredient_id = activeIngredientForNutritional.value.id;
-    nutritionalForm.post(route('nutritional.store'), {
-        preserveScroll: true,
-        onSuccess: () => {
-            nutritionalForm.reset('nfactorcal', 'composition');
-            activeIngredientForNutritional.value =
-                props.ingredients.find((i) => i.id === activeIngredientForNutritional.value.id) || activeIngredientForNutritional.value;
-        },
-    });
-};
+const saveNutritionalModalAtwater = async () => {
+    if (!activeIngredientForNutritional.value) return;
 
-const deleteNutritionalFactor = (id: number) => {
-    if (confirm('¿Eliminar factor nutricional?')) {
-        router.delete(route('nutritional.destroy', id), {
-            preserveScroll: true,
-            onSuccess: () => {
-                activeIngredientForNutritional.value =
-                    props.ingredients.find((i) => i.id === activeIngredientForNutritional.value.id) || activeIngredientForNutritional.value;
-            },
+    isSavingNutritionalModalAtwater.value = true;
+    try {
+        await axios.put(route('atwater.ingredients.assign', activeIngredientForNutritional.value.id), {
+            atwater_factor_id: nutritionalModalAtwaterFactorId.value === 'none' ? null : Number(nutritionalModalAtwaterFactorId.value),
         });
+
+        activeIngredientForNutritional.value.atwater_factor_id =
+            nutritionalModalAtwaterFactorId.value === 'none' ? null : Number(nutritionalModalAtwaterFactorId.value);
+
+        Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'success',
+            title: 'Factor Atwater actualizado',
+            showConfirmButton: false,
+            timer: 1800,
+            timerProgressBar: true,
+        });
+    } catch (error) {
+        console.error('Error updating Atwater assignment:', error);
+        Swal.fire({ title: 'Error', text: 'No se pudo actualizar el factor Atwater.', icon: 'error', confirmButtonText: 'Entendido' });
+    } finally {
+        isSavingNutritionalModalAtwater.value = false;
     }
 };
 
@@ -151,6 +179,7 @@ const form = useForm({
     waste: null as number | null,
     energy: null as number | null,
     ingredient_category_id: null as number | null,
+    atwater_factor_id: null as number | null,
 });
 
 const selectedIngredientForDosification = ref<Ingredient | null>(null);
@@ -161,6 +190,7 @@ const dosificationForm = useForm({
     protein: null as number | null,
     lipid: null as number | null,
     carbohydrate: null as number | null,
+    carbohydrate_available: null as number | null,
     fiber: null as number | null,
     ash: null as number | null,
     calcium: null as number | null,
@@ -194,6 +224,7 @@ const openDosificationModal = (ingredient: Ingredient) => {
     dosificationForm.protein = d?.protein ?? null;
     dosificationForm.lipid = d?.lipid ?? null;
     dosificationForm.carbohydrate = d?.carbohydrate ?? null;
+    dosificationForm.carbohydrate_available = d?.carbohydrate_available ?? null;
     dosificationForm.fiber = d?.fiber ?? null;
     dosificationForm.ash = d?.ash ?? null;
     dosificationForm.calcium = d?.calcium ?? null;
@@ -259,6 +290,7 @@ const openEditDialog = (ingredient: Ingredient) => {
     form.waste = ingredient.waste;
     form.energy = ingredient.energy;
     form.ingredient_category_id = ingredient.ingredient_category_id;
+    form.atwater_factor_id = ingredient.atwater_factor_id;
     isDialogOpen.value = true;
 };
 
@@ -266,6 +298,13 @@ const selectedCategoryId = computed({
     get: () => (form.ingredient_category_id ? String(form.ingredient_category_id) : undefined),
     set: (val) => {
         form.ingredient_category_id = val ? Number(val) : null;
+    },
+});
+
+const selectedAtwaterFactorId = computed({
+    get: () => (form.atwater_factor_id ? String(form.atwater_factor_id) : 'none'),
+    set: (val) => {
+        form.atwater_factor_id = val && val !== 'none' ? Number(val) : null;
     },
 });
 
@@ -825,6 +864,39 @@ const uploadDosificationFile = () => {
 
                     <Separator class="bg-zinc-100" />
 
+                    <!-- Sección: Factor Atwater -->
+                    <div class="space-y-4">
+                        <div class="mb-2 flex items-center gap-2">
+                            <div class="bg-primary h-4 w-1 rounded-full"></div>
+                            <span class="text-[11px] font-bold tracking-wider text-zinc-400 uppercase">Factor Atwater</span>
+                        </div>
+
+                        <div class="space-y-2">
+                            <Label for="atwater_factor" class="flex items-center gap-1.5 text-sm font-bold text-zinc-700 uppercase">
+                                <Calculator class="h-4 w-4 text-zinc-400" /> Factor general
+                            </Label>
+                            <Select v-model="selectedAtwaterFactorId">
+                                <SelectTrigger id="atwater_factor" class="h-11 border-zinc-200 bg-zinc-50/30 transition-colors">
+                                    <SelectValue placeholder="Sin factor Atwater" />
+                                </SelectTrigger>
+                                <SelectContent class="border-zinc-200 bg-white">
+                                    <SelectItem value="none">Sin factor Atwater</SelectItem>
+                                    <SelectGroup v-for="group in groupedAtwaterFactors" :key="group.title">
+                                        <SelectLabel>{{ group.title }}</SelectLabel>
+                                        <SelectItem v-for="f in group.items" :key="f.id" :value="String(f.id)" class="py-2.5">
+                                            {{ f.name }}
+                                        </SelectItem>
+                                    </SelectGroup>
+                                </SelectContent>
+                            </Select>
+                            <div v-if="form.errors.atwater_factor_id" class="text-sm font-medium text-red-500">
+                                {{ form.errors.atwater_factor_id }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <Separator class="bg-zinc-100" />
+
                     <!-- Sección: Notas -->
                     <div class="space-y-2">
                         <Label for="description" class="flex items-center gap-2 text-sm font-bold text-zinc-700">
@@ -938,11 +1010,24 @@ const uploadDosificationFile = () => {
                                     </div>
                                     <div class="space-y-1.5">
                                         <Label class="flex items-center gap-2 text-[11px] font-bold text-zinc-500 uppercase">
-                                            <Cookie class="h-3 w-3" /> Carbohidratos (g)
+                                            <Cookie class="h-3 w-3" /> Carbohidratos Totales (g)
                                         </Label>
                                         <Input
                                             :model-value="dosificationForm.carbohydrate ?? undefined"
                                             @update:model-value="(val) => (dosificationForm.carbohydrate = val ? Number(val) : null)"
+                                            type="number"
+                                            step="0.01"
+                                            class="h-9 border-zinc-200"
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <Label class="flex items-center gap-2 text-[11px] font-bold text-zinc-500 uppercase">
+                                            <Cookie class="h-3 w-3" /> Carbohidratos Disponibles (g)
+                                        </Label>
+                                        <Input
+                                            :model-value="dosificationForm.carbohydrate_available ?? undefined"
+                                            @update:model-value="(val) => (dosificationForm.carbohydrate_available = val ? Number(val) : null)"
                                             type="number"
                                             step="0.01"
                                             class="h-9 border-zinc-200"
@@ -1262,14 +1347,14 @@ const uploadDosificationFile = () => {
                 </form>
             </DialogContent>
         </Dialog>
-        <!-- Modal de Factores Nutricionales -->
+        <!-- Modal de Factor Atwater -->
         <Dialog :open="isNutritionalModalOpen" @update:open="isNutritionalModalOpen = $event">
             <DialogContent class="overflow-hidden rounded-xl border-0 bg-white p-0 shadow-2xl sm:max-w-[500px]">
                 <div class="bg-gradient-to-r from-amber-500 to-amber-600 p-6">
                     <DialogHeader>
                         <DialogTitle class="flex items-center gap-2 text-xl font-bold text-white">
-                            <Activity class="h-5 w-5" />
-                            Factores Nutricionales
+                            <Calculator class="h-5 w-5" />
+                            Factor Atwater
                         </DialogTitle>
                         <DialogDescription class="mt-1 text-amber-100">
                             {{ activeIngredientForNutritional?.name }}
@@ -1278,70 +1363,69 @@ const uploadDosificationFile = () => {
                 </div>
 
                 <div class="p-6">
-                    <!-- Lista de Factores -->
-                    <div class="mb-6 overflow-hidden rounded-lg border">
-                        <table class="w-full text-sm">
-                            <thead class="border-b bg-zinc-50">
-                                <tr>
-                                    <th class="px-4 py-2 text-left font-semibold text-zinc-600">NFactorCal</th>
-                                    <th class="px-4 py-2 text-left font-semibold text-zinc-600">Composición</th>
-                                    <th class="px-4 py-2 text-right font-semibold text-zinc-600">Acción</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y">
-                                <tr v-for="factor in activeIngredientForNutritional?.nutritional_factors" :key="factor.id" class="hover:bg-zinc-50">
-                                    <td class="px-4 py-2 font-medium text-zinc-700">{{ Number(factor.nfactorcal).toFixed(2) }}</td>
-                                    <td class="px-4 py-2 font-medium text-zinc-700">{{ Number(factor.composition).toFixed(2) }}</td>
-                                    <td class="px-4 py-2 text-right">
-                                        <button
-                                            @click="deleteNutritionalFactor(factor.id)"
-                                            class="p-1 text-red-500 transition-colors hover:text-red-700"
-                                            title="Eliminar"
-                                        >
-                                            <Trash2 class="h-4 w-4" />
-                                        </button>
-                                    </td>
-                                </tr>
-                                <tr v-if="!activeIngredientForNutritional?.nutritional_factors?.length">
-                                    <td colspan="3" class="px-4 py-6 text-center text-zinc-400">No hay factores nutricionales registrados.</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <!-- Asociación con Factor Atwater -->
+                    <div class="rounded-lg border bg-zinc-50 p-4">
+                        <Label class="text-xs text-zinc-500">Factor general</Label>
+                        <Select v-model="nutritionalModalAtwaterFactorId">
+                            <SelectTrigger class="mt-1 h-9">
+                                <SelectValue placeholder="Sin factor Atwater" />
+                            </SelectTrigger>
+                            <SelectContent class="border-zinc-200 bg-white">
+                                <SelectItem value="none">Sin factor Atwater</SelectItem>
+                                <SelectGroup v-for="group in groupedAtwaterFactors" :key="group.title">
+                                    <SelectLabel>{{ group.title }}</SelectLabel>
+                                    <SelectItem v-for="f in group.items" :key="f.id" :value="String(f.id)" class="py-2.5">
+                                        {{ f.name }}
+                                    </SelectItem>
+                                </SelectGroup>
+                            </SelectContent>
+                        </Select>
                     </div>
 
-                    <!-- Formulario Nuevo Factor -->
-                    <div class="rounded-lg border bg-zinc-50 p-4">
-                        <h4 class="mb-3 text-sm font-semibold text-zinc-700">Añadir Nuevo Factor</h4>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <Label class="text-xs text-zinc-500">NFactorCal</Label>
-                                <Input type="number" step="0.01" v-model="nutritionalForm.nfactorcal" class="mt-1 h-9" placeholder="Ej. 4.00" />
-                                <span v-if="nutritionalForm.errors.nfactorcal" class="mt-1 block text-xs text-red-500">{{
-                                    nutritionalForm.errors.nfactorcal
-                                }}</span>
-                            </div>
-                            <div>
-                                <Label class="text-xs text-zinc-500">Composición</Label>
-                                <Input type="number" step="0.01" v-model="nutritionalForm.composition" class="mt-1 h-9" placeholder="Ej. 2.20" />
-                                <span v-if="nutritionalForm.errors.composition" class="mt-1 block text-xs text-red-500">{{
-                                    nutritionalForm.errors.composition
-                                }}</span>
-                            </div>
+                    <!-- Valores Atwater resueltos según lo seleccionado -->
+                    <div class="mt-4 rounded-lg border bg-zinc-50 p-4">
+                        <h4 class="mb-3 text-sm font-semibold text-zinc-700">Valores asignados (kcal/g)</h4>
+                        <div v-if="!resolvedAtwaterFactor" class="py-4 text-center text-sm text-zinc-400 italic">
+                            Seleccione un factor Atwater para ver sus valores.
                         </div>
-                        <div class="mt-4 flex justify-end">
-                            <Button
-                                @click="saveNutritionalFactor"
-                                :disabled="nutritionalForm.processing || !nutritionalForm.nfactorcal || !nutritionalForm.composition"
-                                class="h-9 bg-amber-600 font-bold text-white hover:bg-amber-700"
-                            >
-                                Guardar Factor
-                            </Button>
+                        <div v-else class="grid grid-cols-3 gap-3">
+                            <div class="rounded-lg border border-rose-100 bg-rose-50 p-3 text-center">
+                                <div class="flex items-center justify-center gap-1 text-[10px] font-bold text-rose-600 uppercase">
+                                    <Beef class="h-3 w-3" /> Proteína
+                                </div>
+                                <div class="mt-1 text-lg font-extrabold text-rose-700">
+                                    {{ resolvedAtwaterFactor.protein_kcal ?? '--' }}
+                                </div>
+                            </div>
+                            <div class="rounded-lg border border-amber-100 bg-amber-50 p-3 text-center">
+                                <div class="flex items-center justify-center gap-1 text-[10px] font-bold text-amber-600 uppercase">
+                                    <Droplets class="h-3 w-3" /> Grasa
+                                </div>
+                                <div class="mt-1 text-lg font-extrabold text-amber-700">
+                                    {{ resolvedAtwaterFactor.fat_kcal ?? '--' }}
+                                </div>
+                            </div>
+                            <div class="rounded-lg border border-indigo-100 bg-indigo-50 p-3 text-center">
+                                <div class="flex items-center justify-center gap-1 text-[10px] font-bold text-indigo-600 uppercase">
+                                    <Cookie class="h-3 w-3" /> Carbohidrato
+                                </div>
+                                <div class="mt-1 text-lg font-extrabold text-indigo-700">
+                                    {{ resolvedAtwaterFactor.carb_kcal ?? '--' }}
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="flex justify-end border-t bg-zinc-50 px-6 py-4">
+                <div class="flex justify-end gap-2 border-t bg-zinc-50 px-6 py-4">
                     <Button type="button" variant="ghost" @click="isNutritionalModalOpen = false">Cerrar</Button>
+                    <Button
+                        @click="saveNutritionalModalAtwater"
+                        :disabled="isSavingNutritionalModalAtwater"
+                        class="h-9 bg-zinc-900 font-bold text-white hover:bg-zinc-800"
+                    >
+                        {{ isSavingNutritionalModalAtwater ? 'Guardando...' : 'Guardar Asociación' }}
+                    </Button>
                 </div>
             </DialogContent>
         </Dialog>
