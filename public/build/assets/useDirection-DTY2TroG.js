@@ -1,1 +1,0 @@
-import{i as r}from"./Teleport-BYWcGKj4.js";import{l as n,c}from"./app-HJogErN7.js";function a(t){const e=r({dir:n("ltr")});return c(()=>{var o;return(t==null?void 0:t.value)||((o=e.dir)==null?void 0:o.value)||"ltr"})}export{a as u};

@@ -342,6 +342,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
 
     Route::prefix('mercantiles')->name('mercantiles.')->group(function () {
         Route::get('/',      [MercantilController::class, 'index'])->name('index');
+        Route::get('/admin', [MercantilController::class, 'index'])->name('admin');
         Route::post('/',     [MercantilController::class, 'store'])->name('store');
         Route::put('{id}',   [MercantilController::class, 'update'])->name('update');
         Route::delete('{id}',[MercantilController::class, 'destroy'])->name('destroy');

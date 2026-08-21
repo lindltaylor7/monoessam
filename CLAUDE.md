@@ -78,4 +78,6 @@ Most models use standard singular PascalCase (`Dish`, `Ingredient`), but a chunk
 
 Pest is configured (`tests/Pest.php`) but most existing test files are plain PHPUnit-style classes extending `Tests\TestCase`. Tests run against in-memory SQLite (`phpunit.xml`). Feature tests live under `tests/Feature`, mirroring controller/domain names (`SaleTest`, `DinnerTest`, `ReportSalesTest`, etc.).
 
+### Git workflow
+
 After completing the update, commit the changes with a descriptive message and push them to the remote repository with a git push origin dev.
