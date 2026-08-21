@@ -65,9 +65,17 @@ import {
 import { computed, ref } from 'vue';
 
 // ── Types ──────────────────────────────────────────────────────────────────
+interface Mine {
+    id: number;
+    name: string;
+    units?: Unit[];
+}
+
 interface Unit {
     id: number;
     name: string;
+    mine_id?: number;
+    mine?: { id: number; name: string };
 }
 
 interface Batch {
@@ -116,7 +124,7 @@ interface Sale {
 interface Mercantil {
     id: number;
     unit_id: number;
-    unit?: { id: number; name: string };
+    unit?: { id: number; name: string; mine_id?: number; mine?: { id: number; name: string } };
     name: string;
     address?: string | null;
     is_active: boolean;
@@ -145,6 +153,7 @@ interface GlobalStats {
     active_mercantiles: number;
     inactive_mercantiles: number;
     total_units: number;
+    total_mines?: number;
     total_products: number;
     total_stock: number;
     total_inventory_value: number;
@@ -161,18 +170,57 @@ interface GlobalStats {
 const props = defineProps<{
     mercantiles: Mercantil[];
     units: Unit[];
+    mines?: Mine[];
     globalStats?: GlobalStats;
 }>();
 
-// ── State & Filters ────────────────────────────────────────────────────────
+// ── Mines & Units Catalog Helpers ──────────────────────────────────────────
+const availableMines = computed<Mine[]>(() => {
+    if (props.mines && props.mines.length > 0) {
+        return props.mines;
+    }
+    // Fallback if mines prop was not passed: derive from units
+    const map = new Map<number, Mine>();
+    props.units.forEach((u) => {
+        if (u.mine_id && u.mine) {
+            if (!map.has(u.mine_id)) {
+                map.set(u.mine_id, { id: u.mine_id, name: u.mine.name });
+            }
+        }
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+});
+
+// ── Toolbar State & Filters ────────────────────────────────────────────────
 const search = ref('');
+const mineFilter = ref('__all__');
 const unitFilter = ref('__all__');
 const statusFilter = ref<'all' | 'active' | 'inactive'>('all');
 const alertFilter = ref<'all' | 'low_stock' | 'out_of_stock' | 'expiring' | 'with_sales_today'>('all');
 const sortBy = ref<'name' | 'valuation_desc' | 'revenue_desc' | 'products_desc' | 'stock_desc' | 'today_sales_desc'>('name');
 const viewMode = ref<'grid' | 'table' | 'analytics'>('grid');
 
-// ── Computed Statistics ────────────────────────────────────────────────────
+// Toolbar Units dropdown dynamically filtered by selected mine in toolbar
+const toolbarUnits = computed(() => {
+    if (mineFilter.value === '__all__') {
+        return props.units;
+    }
+    const mineIdNum = Number(mineFilter.value);
+    return props.units.filter((u) => u.mine_id === mineIdNum);
+});
+
+const handleToolbarMineChange = (val: string) => {
+    mineFilter.value = val;
+    if (val !== '__all__') {
+        const mineIdNum = Number(val);
+        const childs = props.units.filter((u) => u.mine_id === mineIdNum);
+        if (unitFilter.value !== '__all__' && !childs.some((u) => u.id === Number(unitFilter.value))) {
+            unitFilter.value = '__all__';
+        }
+    }
+};
+
+// ── Computed Global Statistics ─────────────────────────────────────────────
 const stats = computed(() => {
     if (props.globalStats) return props.globalStats;
 
@@ -198,6 +246,7 @@ const stats = computed(() => {
         active_mercantiles: activeMercantiles,
         inactive_mercantiles: inactiveMercantiles,
         total_units: totalUnits,
+        total_mines: availableMines.value.length,
         total_products: totalProducts,
         total_stock: totalStock,
         total_inventory_value: totalInventoryValue,
@@ -223,12 +272,22 @@ const filteredMercantiles = computed(() => {
             const nameMatch = m.name.toLowerCase().includes(query);
             const addressMatch = (m.address ?? '').toLowerCase().includes(query);
             const unitMatch = (m.unit?.name ?? '').toLowerCase().includes(query);
+            const mineMatch = (m.unit?.mine?.name ?? '').toLowerCase().includes(query);
             const categoryMatch = (m.categories ?? []).some((c) => c.toLowerCase().includes(query));
-            return nameMatch || addressMatch || unitMatch || categoryMatch;
+            return nameMatch || addressMatch || unitMatch || mineMatch || categoryMatch;
         });
     }
 
-    // Unit filter
+    // Mine filter in toolbar
+    if (mineFilter.value !== '__all__') {
+        const targetMineId = Number(mineFilter.value);
+        list = list.filter((m) => {
+            const unit = props.units.find((u) => u.id === m.unit_id) || m.unit;
+            return (unit?.mine_id ?? (m.unit as any)?.mine_id) === targetMineId;
+        });
+    }
+
+    // Unit filter in toolbar
     if (unitFilter.value !== '__all__') {
         const targetUnitId = Number(unitFilter.value);
         list = list.filter((m) => m.unit_id === targetUnitId);
@@ -279,6 +338,16 @@ const filteredMercantiles = computed(() => {
 const showCreateEditModal = ref(false);
 const editingId = ref<number | null>(null);
 
+// Modal Mine Selector
+const modalSelectedMineId = ref<string>('');
+
+// Child units strictly filtered for the selected Mine in the modal
+const modalChildUnits = computed<Unit[]>(() => {
+    if (!modalSelectedMineId.value) return [];
+    const targetMineId = Number(modalSelectedMineId.value);
+    return props.units.filter((u) => u.mine_id === targetMineId);
+});
+
 const form = useForm({
     unit_id: '' as string | number,
     name: '',
@@ -286,17 +355,57 @@ const form = useForm({
     is_active: true as boolean,
 });
 
+// Handle change of Mine in the modal: updates child units and resets/picks unit
+const handleModalMineChange = (val: any) => {
+    const stringVal = String(val ?? '');
+    modalSelectedMineId.value = stringVal;
+    const targetMineId = Number(stringVal);
+    const childs = props.units.filter((u) => u.mine_id === targetMineId);
+
+    const currentUnitId = Number(form.unit_id);
+    const exists = childs.some((u) => u.id === currentUnitId);
+    if (!exists) {
+        form.unit_id = childs.length > 0 ? String(childs[0].id) : '';
+    }
+};
+
 const openCreateModal = () => {
     editingId.value = null;
     form.reset();
-    form.unit_id = props.units[0]?.id ?? '';
+
+    // Default to the first available mine or currently filtered mine
+    const initialMineId = mineFilter.value !== '__all__' ? Number(mineFilter.value) : availableMines.value[0]?.id;
+
+    if (initialMineId) {
+        modalSelectedMineId.value = String(initialMineId);
+        const childs = props.units.filter((u) => u.mine_id === initialMineId);
+        form.unit_id = childs.length > 0 ? String(childs[0].id) : '';
+    } else {
+        modalSelectedMineId.value = '';
+        form.unit_id = props.units[0]?.id ? String(props.units[0].id) : '';
+    }
+
     form.is_active = true;
     showCreateEditModal.value = true;
 };
 
 const openEditModal = (m: Mercantil) => {
     editingId.value = m.id;
-    form.unit_id = m.unit_id;
+
+    // Find the unit to get its mine_id
+    const unit = props.units.find((u) => u.id === m.unit_id) || m.unit;
+    const mineId = unit?.mine_id ?? (m.unit as any)?.mine_id;
+
+    if (mineId) {
+        modalSelectedMineId.value = String(mineId);
+    } else {
+        const found = availableMines.value.find((mine) =>
+            props.units.some((u) => u.mine_id === mine.id && u.id === m.unit_id),
+        );
+        modalSelectedMineId.value = found ? String(found.id) : (availableMines.value[0]?.id ? String(availableMines.value[0].id) : '');
+    }
+
+    form.unit_id = String(m.unit_id);
     form.name = m.name;
     form.address = m.address ?? '';
     form.is_active = m.is_active;
@@ -307,6 +416,7 @@ const closeCreateEditModal = () => {
     showCreateEditModal.value = false;
     form.reset();
     editingId.value = null;
+    modalSelectedMineId.value = '';
 };
 
 const saveMercantil = () => {
@@ -412,6 +522,15 @@ const detailCategories = computed(() => {
     });
     return Array.from(set).sort();
 });
+
+// ── Helper to resolve Unit and Mine Names ───────────────────────────────────
+const getMercantilLocation = (m: Mercantil) => {
+    const unit = props.units.find((u) => u.id === m.unit_id) || m.unit;
+    const unitName = unit?.name ?? 'Sin Unidad';
+    const mine = unit?.mine ?? availableMines.value.find((mine) => mine.id === unit?.mine_id);
+    const mineName = mine?.name ?? null;
+    return { unitName, mineName };
+};
 
 // ── Formatters ─────────────────────────────────────────────────────────────
 const formatMoney = (val?: number | null) => {
@@ -521,7 +640,7 @@ const exportMercantilSales = (mercantilId?: number) => {
                                 </Badge>
                             </div>
                             <p class="text-sm text-muted-foreground mt-0.5">
-                                Supervisión general de puntos de venta, control de inventario valorizado y recaudación por unidad minera.
+                                Supervisión general de puntos de venta, control de inventario valorizado y recaudación por mina y unidad.
                             </p>
                         </div>
                     </div>
@@ -601,7 +720,7 @@ const exportMercantilSales = (mercantilId?: number) => {
                         </div>
                         <div class="mt-3 flex items-center justify-between text-xs pt-2 border-t border-border/40">
                             <span class="text-muted-foreground flex items-center gap-1">
-                                <Building2 class="h-3 w-3" /> {{ stats.total_units }} Unidades mineras
+                                <Building2 class="h-3 w-3" /> {{ availableMines.length }} Minas • {{ props.units.length }} Unidades
                             </span>
                             <span class="font-medium text-emerald-600 dark:text-emerald-400">
                                 {{ stats.total_mercantiles > 0 ? Math.round((stats.active_mercantiles / stats.total_mercantiles) * 100) : 0 }}% operatividad
@@ -695,14 +814,14 @@ const exportMercantilSales = (mercantilId?: number) => {
 
             <!-- ── 3. TOOLBAR & CONTROLS ───────────────────────────────────── -->
             <div class="bg-card/70 backdrop-blur-sm border border-border/60 rounded-xl p-4 shadow-xs space-y-3">
-                <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
 
                     <!-- Search Input -->
                     <div class="relative flex-1 min-w-[240px] max-w-md">
                         <Search class="text-muted-foreground absolute top-2.5 left-3 h-4 w-4" />
                         <Input
                             v-model="search"
-                            placeholder="Buscar por mercantil, unidad, dirección o categoría…"
+                            placeholder="Buscar por mercantil, mina, unidad o categoría…"
                             class="pl-9 h-9 text-xs bg-background/50 focus:bg-background"
                         />
                         <button
@@ -714,17 +833,35 @@ const exportMercantilSales = (mercantilId?: number) => {
                         </button>
                     </div>
 
-                    <!-- Filter Selects -->
+                    <!-- Cascading Filters: Mine & Unit -->
                     <div class="flex items-center flex-wrap gap-2.5">
-                        <!-- Unit Filter -->
+                        <!-- Mine Filter (Cascading parent) -->
+                        <div class="w-44">
+                            <Select
+                                :model-value="mineFilter"
+                                @update:model-value="handleToolbarMineChange"
+                            >
+                                <SelectTrigger class="h-9 text-xs">
+                                    <SelectValue placeholder="Todas las minas" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="__all__">Todas las Minas ({{ availableMines.length }})</SelectItem>
+                                    <SelectItem v-for="m in availableMines" :key="m.id" :value="String(m.id)">
+                                        {{ m.name }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <!-- Unit Filter (Cascading child) -->
                         <div class="w-48">
                             <Select v-model="unitFilter">
                                 <SelectTrigger class="h-9 text-xs">
                                     <SelectValue placeholder="Todas las unidades" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="__all__">Todas las Unidades ({{ units.length }})</SelectItem>
-                                    <SelectItem v-for="u in units" :key="u.id" :value="String(u.id)">
+                                    <SelectItem value="__all__">Todas las Unidades ({{ toolbarUnits.length }})</SelectItem>
+                                    <SelectItem v-for="u in toolbarUnits" :key="u.id" :value="String(u.id)">
                                         {{ u.name }}
                                     </SelectItem>
                                 </SelectContent>
@@ -732,7 +869,7 @@ const exportMercantilSales = (mercantilId?: number) => {
                         </div>
 
                         <!-- Sort By Select -->
-                        <div class="w-48">
+                        <div class="w-44">
                             <Select v-model="sortBy">
                                 <SelectTrigger class="h-9 text-xs">
                                     <SelectValue placeholder="Ordenar por..." />
@@ -855,12 +992,16 @@ const exportMercantilSales = (mercantilId?: number) => {
                 >
                     <!-- Card Top Banner -->
                     <div class="p-5 pb-4 space-y-4">
-                        <!-- Top Header: Unit & Status & Actions -->
+                        <!-- Top Header: Mine & Unit Badges + Status & Actions -->
                         <div class="flex items-start justify-between gap-2">
-                            <div class="flex items-center gap-2 flex-wrap">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <Badge v-if="getMercantilLocation(m).mineName" variant="outline" class="font-semibold text-[11px] bg-indigo-50/50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800">
+                                    {{ getMercantilLocation(m).mineName }}
+                                </Badge>
+
                                 <Badge variant="outline" class="font-normal text-xs bg-muted/60 text-foreground flex items-center gap-1">
                                     <Building2 class="h-3 w-3 text-muted-foreground" />
-                                    {{ m.unit?.name ?? 'Sin Unidad' }}
+                                    {{ getMercantilLocation(m).unitName }}
                                 </Badge>
 
                                 <button
@@ -1040,7 +1181,7 @@ const exportMercantilSales = (mercantilId?: number) => {
                         <thead class="bg-muted/60 border-b border-border/60 text-muted-foreground uppercase text-[11px] font-semibold tracking-wider">
                             <tr>
                                 <th class="p-3.5 pl-4">Mercantil</th>
-                                <th class="p-3.5">Unidad</th>
+                                <th class="p-3.5">Mina / Unidad</th>
                                 <th class="p-3.5">Dirección</th>
                                 <th class="p-3.5 text-center">Catálogo (SKUs)</th>
                                 <th class="p-3.5 text-center">Stock Total</th>
@@ -1081,9 +1222,14 @@ const exportMercantilSales = (mercantilId?: number) => {
                                 </td>
 
                                 <td class="p-3.5">
-                                    <div class="flex items-center gap-1.5 text-foreground font-medium">
-                                        <Building2 class="h-3.5 w-3.5 text-muted-foreground" />
-                                        {{ m.unit?.name ?? '—' }}
+                                    <div class="flex flex-col gap-0.5">
+                                        <span v-if="getMercantilLocation(m).mineName" class="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+                                            {{ getMercantilLocation(m).mineName }}
+                                        </span>
+                                        <span class="flex items-center gap-1 text-foreground font-medium">
+                                            <Building2 class="h-3.5 w-3.5 text-muted-foreground" />
+                                            {{ getMercantilLocation(m).unitName }}
+                                        </span>
                                     </div>
                                 </td>
 
@@ -1194,7 +1340,7 @@ const exportMercantilSales = (mercantilId?: number) => {
                                     <span class="text-foreground truncate flex items-center gap-1.5">
                                         <Store class="h-3 w-3 text-indigo-500" />
                                         {{ m.name }}
-                                        <span class="text-[10px] text-muted-foreground">({{ m.unit?.name }})</span>
+                                        <span class="text-[10px] text-muted-foreground">({{ getMercantilLocation(m).unitName }})</span>
                                     </span>
                                     <span class="font-mono font-bold text-emerald-600 dark:text-emerald-400">
                                         {{ formatMoney(m.total_revenue) }}
@@ -1265,7 +1411,7 @@ const exportMercantilSales = (mercantilId?: number) => {
                         <Button
                             variant="outline"
                             size="sm"
-                            @click="search = ''; unitFilter = '__all__'; statusFilter = 'all'; alertFilter = 'all'"
+                            @click="search = ''; mineFilter = '__all__'; unitFilter = '__all__'; statusFilter = 'all'; alertFilter = 'all'"
                             class="text-xs"
                         >
                             Limpiar Filtros
@@ -1283,7 +1429,7 @@ const exportMercantilSales = (mercantilId?: number) => {
 
         </div>
 
-        <!-- ── 7. MODAL: CREATE / EDIT MERCANTIL ────────────────────────── -->
+        <!-- ── 7. MODAL: CREATE / EDIT MERCANTIL (WITH MINE & CHILD UNITS) ── -->
         <Dialog v-model:open="showCreateEditModal">
             <DialogContent class="sm:max-w-[480px]">
                 <DialogHeader>
@@ -1292,28 +1438,65 @@ const exportMercantilSales = (mercantilId?: number) => {
                         {{ editingId ? 'Editar Mercantil' : 'Registrar Nuevo Mercantil' }}
                     </DialogTitle>
                     <DialogDescription class="text-xs">
-                        Ingresa los datos del punto de venta y asígnalo a una unidad minera.
+                        Selecciona la mina y su respectiva unidad para asociar este punto de venta.
                     </DialogDescription>
                 </DialogHeader>
 
                 <form @submit.prevent="saveMercantil" class="space-y-4 py-2">
-                    <!-- Unidad Minera -->
+                    <!-- 1. Mina Selector (Parent) -->
                     <div class="space-y-1.5">
-                        <Label class="text-xs font-semibold">Unidad Minera <span class="text-red-500">*</span></Label>
-                        <Select v-model="form.unit_id">
+                        <Label class="text-xs font-semibold flex items-center justify-between">
+                            <span class="flex items-center gap-1.5">
+                                <Building2 class="h-3.5 w-3.5 text-indigo-600" />
+                                Mina <span class="text-red-500">*</span>
+                            </span>
+                            <span v-if="modalSelectedMineId" class="text-[11px] font-normal text-muted-foreground">
+                                {{ modalChildUnits.length }} {{ modalChildUnits.length === 1 ? 'unidad disponible' : 'unidades disponibles' }}
+                            </span>
+                        </Label>
+                        <Select
+                            :model-value="String(modalSelectedMineId)"
+                            @update:model-value="handleModalMineChange"
+                        >
                             <SelectTrigger class="h-9 text-xs">
-                                <SelectValue placeholder="Seleccionar unidad minera" />
+                                <SelectValue placeholder="Seleccionar mina" />
                             </SelectTrigger>
                             <SelectContent>
-                                <SelectItem v-for="u in units" :key="u.id" :value="String(u.id)">
+                                <SelectItem v-for="m in availableMines" :key="m.id" :value="String(m.id)">
+                                    {{ m.name }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <!-- 2. Unidad Minera (Child Units strictly belonging to selected Mine) -->
+                    <div class="space-y-1.5">
+                        <Label class="text-xs font-semibold flex items-center justify-between">
+                            <span>Unidad Minera <span class="text-red-500">*</span></span>
+                            <span v-if="!modalSelectedMineId" class="text-[10px] text-amber-600 dark:text-amber-400 font-normal">
+                                Primero elige una mina
+                            </span>
+                        </Label>
+                        <Select
+                            v-model="form.unit_id"
+                            :disabled="!modalSelectedMineId || modalChildUnits.length === 0"
+                        >
+                            <SelectTrigger class="h-9 text-xs">
+                                <SelectValue :placeholder="!modalSelectedMineId ? 'Primero selecciona una mina' : modalChildUnits.length === 0 ? 'Sin unidades disponibles en esta mina' : 'Seleccionar unidad minera'" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem v-for="u in modalChildUnits" :key="u.id" :value="String(u.id)">
                                     {{ u.name }}
                                 </SelectItem>
                             </SelectContent>
                         </Select>
+                        <p v-if="modalSelectedMineId && modalChildUnits.length === 0" class="text-[11px] text-amber-600 dark:text-amber-400">
+                            Esta mina no tiene unidades registradas. Crea una unidad primero o selecciona otra mina.
+                        </p>
                         <p v-if="form.errors.unit_id" class="text-xs text-red-500">{{ form.errors.unit_id }}</p>
                     </div>
 
-                    <!-- Nombre del Mercantil -->
+                    <!-- 3. Nombre del Mercantil -->
                     <div class="space-y-1.5">
                         <Label class="text-xs font-semibold">Nombre del Mercantil <span class="text-red-500">*</span></Label>
                         <Input
@@ -1325,7 +1508,7 @@ const exportMercantilSales = (mercantilId?: number) => {
                         <p v-if="form.errors.name" class="text-xs text-red-500">{{ form.errors.name }}</p>
                     </div>
 
-                    <!-- Dirección o Ubicación -->
+                    <!-- 4. Ubicación / Dirección Interna -->
                     <div class="space-y-1.5">
                         <Label class="text-xs font-semibold">Ubicación / Dirección Interna</Label>
                         <Input
@@ -1336,7 +1519,7 @@ const exportMercantilSales = (mercantilId?: number) => {
                         <p v-if="form.errors.address" class="text-xs text-red-500">{{ form.errors.address }}</p>
                     </div>
 
-                    <!-- Estado Activo Toggle -->
+                    <!-- 5. Estado Operativo Toggle -->
                     <div class="flex items-center justify-between rounded-lg border p-3 bg-muted/30">
                         <div class="space-y-0.5">
                             <Label class="text-xs font-semibold">Estado Operativo</Label>
@@ -1362,7 +1545,7 @@ const exportMercantilSales = (mercantilId?: number) => {
                         <Button
                             type="submit"
                             size="sm"
-                            :disabled="form.processing"
+                            :disabled="form.processing || !form.unit_id"
                             class="text-xs bg-indigo-600 hover:bg-indigo-700 text-white"
                         >
                             {{ form.processing ? 'Guardando…' : editingId ? 'Guardar Cambios' : 'Crear Mercantil' }}
@@ -1424,8 +1607,11 @@ const exportMercantilSales = (mercantilId?: number) => {
                                     </Badge>
                                 </div>
                                 <div class="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
+                                    <span v-if="selectedMercantil && getMercantilLocation(selectedMercantil).mineName" class="flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400">
+                                        <Building2 class="h-3.5 w-3.5" /> Mina: {{ getMercantilLocation(selectedMercantil).mineName }}
+                                    </span>
                                     <span class="flex items-center gap-1">
-                                        <Building2 class="h-3.5 w-3.5" /> {{ selectedMercantil?.unit?.name }}
+                                        <Building2 class="h-3.5 w-3.5" /> Unidad: {{ selectedMercantil && getMercantilLocation(selectedMercantil).unitName }}
                                     </span>
                                     <span class="flex items-center gap-1" v-if="selectedMercantil?.address">
                                         <MapPin class="h-3.5 w-3.5" /> {{ selectedMercantil?.address }}

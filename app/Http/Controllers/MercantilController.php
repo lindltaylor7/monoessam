@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Mercantil;
 use App\Models\MercantilSale;
+use App\Models\Mine;
 use App\Models\Product;
 use App\Models\Unit;
 use Illuminate\Http\Request;
@@ -17,35 +18,35 @@ class MercantilController extends Controller
     {
         $user = Auth::user();
 
-        $units = Unit::where('mine_id', $user->mine_id)->orderBy('name')->get(['id', 'name']);
-        $unitIds = $units->pluck('id');
+        $mines = Mine::with(['units:id,name,mine_id'])->orderBy('name')->get(['id', 'name']);
+        $units = Unit::with('mine:id,name')->orderBy('name')->get(['id', 'name', 'mine_id']);
 
-        $mercantiles = Mercantil::whereIn('unit_id', $unitIds)
-            ->with([
-                'unit:id,name',
-                'products' => function ($q) {
-                    $q->select('id', 'mercantil_id', 'name', 'marca', 'category', 'price', 'stock', 'is_active', 'sku')
-                      ->with('batches')
-                      ->orderBy('name');
-                },
-                'sales' => function ($q) {
-                    $q->select('id', 'mercantil_id', 'unit_id', 'user_id', 'sale_type_id', 'payment_method', 'payment_condition', 'buyer_dni', 'date', 'subtotal', 'igv', 'total', 'created_at')
-                      ->with(['user:id,name', 'saleType:id,name', 'dinner:id,name,dni'])
-                      ->latest()
-                      ->limit(20);
-                }
-            ])
-            ->withCount([
-                'products',
-                'products as active_products_count' => fn($q) => $q->where('is_active', true),
-                'products as out_of_stock_count' => fn($q) => $q->where('stock', '<=', 0),
-                'products as low_stock_count' => fn($q) => $q->where('stock', '>', 0)->where('stock', '<=', 5),
-                'sales',
-            ])
-            ->withSum('sales as total_revenue', 'total')
-            ->withSum('products as total_stock', 'stock')
-            ->orderBy('name')
-            ->get();
+        $mercantiles = Mercantil::with([
+            'unit:id,name,mine_id',
+            'unit.mine:id,name',
+            'products' => function ($q) {
+                $q->select('id', 'mercantil_id', 'name', 'marca', 'category', 'price', 'stock', 'is_active', 'sku')
+                  ->with('batches')
+                  ->orderBy('name');
+            },
+            'sales' => function ($q) {
+                $q->select('id', 'mercantil_id', 'unit_id', 'user_id', 'sale_type_id', 'payment_method', 'payment_condition', 'buyer_dni', 'date', 'subtotal', 'igv', 'total', 'created_at')
+                  ->with(['user:id,name', 'saleType:id,name', 'dinner:id,name,dni'])
+                  ->latest()
+                  ->limit(20);
+            }
+        ])
+        ->withCount([
+            'products',
+            'products as active_products_count' => fn($q) => $q->where('is_active', true),
+            'products as out_of_stock_count' => fn($q) => $q->where('stock', '<=', 0),
+            'products as low_stock_count' => fn($q) => $q->where('stock', '>', 0)->where('stock', '<=', 5),
+            'sales',
+        ])
+        ->withSum('sales as total_revenue', 'total')
+        ->withSum('products as total_stock', 'stock')
+        ->orderBy('name')
+        ->get();
 
         $mercantilIds = $mercantiles->pluck('id');
         $today = now()->format('Y-m-d');
@@ -108,6 +109,7 @@ class MercantilController extends Controller
             'active_mercantiles'       => $mercantiles->where('is_active', true)->count(),
             'inactive_mercantiles'     => $mercantiles->where('is_active', false)->count(),
             'total_units'              => $units->count(),
+            'total_mines'              => $mines->count(),
             'total_products'           => (int) $mercantiles->sum('products_count'),
             'total_stock'              => (int) $mercantiles->sum('total_stock'),
             'total_inventory_value'    => round((float) $mercantiles->sum('inventory_valuation'), 2),
@@ -124,6 +126,7 @@ class MercantilController extends Controller
         return Inertia::render('mercantiles/AdminMercantil', [
             'mercantiles' => $mercantiles,
             'units'       => $units,
+            'mines'       => $mines,
             'globalStats' => $globalStats,
         ]);
     }
