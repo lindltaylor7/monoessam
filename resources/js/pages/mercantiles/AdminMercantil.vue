@@ -390,6 +390,9 @@ const openCreateModal = () => {
 };
 
 const openEditModal = (m: Mercantil) => {
+    // Cerrar el modal de detalle para evitar que se dupliquen los overlays oscuros (DialogOverlay)
+    showDetailDrawer.value = false;
+
     editingId.value = m.id;
 
     // Find the unit to get its mine_id
