@@ -1,8 +1,8 @@
 <script setup lang="ts">
+import AtwaterFactorPicker from '@/components/AtwaterFactorPicker.vue';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head } from '@inertiajs/vue3';
@@ -223,24 +223,12 @@ const assignAtwater = async (ingredient: SearchedIngredient, value: string) => {
                         class="flex flex-col gap-2 border-b border-zinc-100 p-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between dark:border-zinc-800"
                     >
                         <span class="text-sm font-medium text-zinc-700 dark:text-zinc-300">{{ ingredient.name }}</span>
-                        <Select
+                        <AtwaterFactorPicker
                             :model-value="factorAssignments[ingredient.id] ?? 'none'"
                             :disabled="savingIngredientId === ingredient.id"
-                            @update:model-value="(value) => assignAtwater(ingredient, String(value))"
-                        >
-                            <SelectTrigger class="h-8 w-64 shrink-0 text-xs">
-                                <SelectValue placeholder="Sin factor Atwater" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="none">Sin factor Atwater</SelectItem>
-                                <SelectGroup v-for="group in groupedFactors" :key="group.title">
-                                    <SelectLabel>{{ group.title }}</SelectLabel>
-                                    <SelectItem v-for="f in group.items" :key="f.id" :value="String(f.id)">
-                                        {{ f.name }}
-                                    </SelectItem>
-                                </SelectGroup>
-                            </SelectContent>
-                        </Select>
+                            :grouped-factors="groupedFactors"
+                            @update:model-value="(value) => assignAtwater(ingredient, value)"
+                        />
                     </div>
                 </div>
             </div>
