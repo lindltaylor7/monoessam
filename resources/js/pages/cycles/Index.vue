@@ -24,6 +24,7 @@ import {
     Save,
     Search,
     Settings2,
+    X,
 } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
 import { computed, ref, watch } from 'vue';
@@ -282,6 +283,22 @@ const assignDish = (dish: any, recipe: any, action: 'single' | 'all') => {
         }
     }
     isSearchModalOpen.value = false;
+};
+
+const clearDayDish = async (rowIndex: number, dayIndex: number) => {
+    const result = await Swal.fire({
+        title: '¿Quitar plato asignado?',
+        text: 'La casilla quedará vacía y podrá asignar otro plato.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#FF5A1F',
+        confirmButtonText: 'Sí, quitar',
+        cancelButtonText: 'Cancelar',
+    });
+
+    if (!result.isConfirmed) return;
+
+    delete menuStructureData.value[rowIndex].days[dayIndex];
 };
 
 // Helper for semaphore colors
@@ -977,6 +994,14 @@ const resetToNew = () => {
                                                         @click.stop="openQuebradoModal(row, dayIndex)"
                                                     >
                                                         <Calculator class="h-3.5 w-3.5" />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        title="Quitar plato asignado"
+                                                        class="rounded-full p-1 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500"
+                                                        @click.stop="clearDayDish(rowIndex, dayIndex)"
+                                                    >
+                                                        <X class="h-3.5 w-3.5" />
                                                     </button>
                                                 </div>
                                             </div>
