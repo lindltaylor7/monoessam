@@ -299,6 +299,7 @@ const toggleLevel = async (id: number) => {
 
 // List Logic
 let dishSearchTimer: ReturnType<typeof setTimeout> | null = null;
+let dishSearchRequestId = 0;
 
 const performDishSearch = (value: string) => {
     if (!value) {
@@ -307,16 +308,20 @@ const performDishSearch = (value: string) => {
         return;
     }
 
+    const requestId = ++dishSearchRequestId;
     isSearchingDishes.value = true;
     axios
         .get(route('dishes.search', value))
         .then((result) => {
+            if (requestId !== dishSearchRequestId) return;
             dishesSearched.value = result.data;
         })
         .catch((err) => {
+            if (requestId !== dishSearchRequestId) return;
             console.error(err);
         })
         .finally(() => {
+            if (requestId !== dishSearchRequestId) return;
             isSearchingDishes.value = false;
         });
 };
@@ -331,7 +336,7 @@ const searchDish = (e: Event) => {
         return;
     }
 
-    dishSearchTimer = setTimeout(() => performDishSearch(value), 300);
+    dishSearchTimer = setTimeout(() => performDishSearch(value), 150);
 };
 
 const clearDishSearch = () => {
@@ -911,6 +916,16 @@ onUnmounted(() => {
 
             <!-- Dish List Content -->
             <div class="min-h-0 flex-1 overflow-y-auto p-2.5 space-y-1.5 scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800">
+                <!-- Loading Skeleton -->
+                <div v-if="isSearchingDishes" class="space-y-1.5">
+                    <div
+                        v-for="n in 6"
+                        :key="n"
+                        class="h-16 animate-pulse rounded-xl border border-zinc-200/70 bg-zinc-100 dark:border-zinc-800/70 dark:bg-zinc-800/60"
+                    ></div>
+                </div>
+
+                <template v-else>
                 <div
                     v-if="filteredDishes.length === 0"
                     class="flex h-48 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-200 text-center p-4 text-xs text-zinc-400 dark:border-zinc-800"
@@ -994,6 +1009,7 @@ onUnmounted(() => {
                         </Button>
                     </div>
                 </div>
+                </template>
             </div>
         </div>
 
