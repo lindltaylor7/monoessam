@@ -431,16 +431,24 @@ const chartStats = computed(() => {
     const domainMin = Math.min(min, value) - padding;
     const domainMax = Math.max(max, value) + padding;
     const domainSpan = domainMax - domainMin;
-    const toPct = (v: number) => ((v - domainMin) / domainSpan) * 100;
+    const clamp = (v: number, lo = 0, hi = 100) => Math.min(hi, Math.max(lo, v));
+    const toPct = (v: number) => clamp(((v - domainMin) / domainSpan) * 100);
+
+    const minPct = toPct(min);
+    const maxPct = toPct(max);
+    const valuePct = toPct(value);
 
     return {
         value,
         min,
         max,
         status,
-        minPct: toPct(min),
-        maxPct: toPct(max),
-        valuePct: toPct(value),
+        minPct,
+        maxPct,
+        valuePct,
+        bandPct: Math.max(0, maxPct - minPct),
+        // keep the floating value label from spilling past the track edges
+        labelPct: clamp(valuePct, 6, 94),
     };
 });
 
@@ -1311,8 +1319,8 @@ const resetToNew = () => {
                     </p>
                 </DialogHeader>
 
-                <div v-if="chartStats" class="p-6 pt-8 pb-12">
-                    <div class="mb-10 text-center">
+                <div v-if="chartStats" class="p-6 pt-6 pb-8">
+                    <div class="mb-9 text-center">
                         <p class="text-[11px] font-semibold tracking-wide text-slate-400 uppercase">
                             {{ chartDayIndex !== null ? 'Costo del Día' : 'Costo Promedio' }}
                         </p>
@@ -1324,36 +1332,61 @@ const resetToNew = () => {
                         </p>
                     </div>
 
-                    <div class="relative">
-                        <div class="relative h-2 rounded-full bg-slate-100">
-                            <div
-                                class="absolute inset-y-0 rounded-full bg-green-200/70"
-                                :style="{ left: chartStats.minPct + '%', width: chartStats.maxPct - chartStats.minPct + '%' }"
-                            ></div>
-                            <div
-                                class="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-md"
-                                :class="getSemaphoreColor(chartStats.status)"
-                                :style="{ left: chartStats.valuePct + '%' }"
-                            ></div>
+                    <div class="px-1">
+                        <!-- floating value callout, tracks the needle -->
+                        <div class="relative mb-2 h-4">
+                            <span
+                                class="absolute -translate-x-1/2 text-[11px] font-bold tabular-nums whitespace-nowrap"
+                                :class="getSemaphoreTextClass(chartStats.status)"
+                                :style="{ left: chartStats.labelPct + '%' }"
+                            >
+                                S/ {{ chartStats.value.toFixed(2) }}
+                            </span>
                         </div>
 
-                        <div
-                            class="absolute top-full mt-1.5 flex -translate-x-1/2 flex-col items-center"
-                            :style="{ left: chartStats.minPct + '%' }"
-                        >
-                            <span class="h-1.5 w-px bg-slate-300"></span>
-                            <span class="mt-1 text-center text-[10px] font-semibold whitespace-nowrap text-slate-500"
-                                >Mínimo<br />S/ {{ chartStats.min.toFixed(2) }}</span
-                            >
+                        <!-- track: below-budget · acceptable band · over-budget -->
+                        <div class="relative">
+                            <div class="relative h-2.5 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200/70 ring-inset">
+                                <div class="absolute inset-y-0 left-0 bg-amber-100" :style="{ width: chartStats.minPct + '%' }"></div>
+                                <div
+                                    class="absolute inset-y-0 bg-emerald-300/70"
+                                    :style="{ left: chartStats.minPct + '%', width: chartStats.bandPct + '%' }"
+                                ></div>
+                                <div class="absolute inset-y-0 right-0 bg-rose-100" :style="{ width: 100 - chartStats.maxPct + '%' }"></div>
+                            </div>
+
+                            <!-- boundary ticks (no labels — never collide) -->
+                            <span
+                                class="absolute top-full mt-0.5 h-1.5 w-px -translate-x-1/2 bg-slate-300"
+                                :style="{ left: chartStats.minPct + '%' }"
+                            ></span>
+                            <span
+                                class="absolute top-full mt-0.5 h-1.5 w-px -translate-x-1/2 bg-slate-300"
+                                :style="{ left: chartStats.maxPct + '%' }"
+                            ></span>
+
+                            <!-- value needle -->
+                            <span
+                                class="pointer-events-none absolute -top-1.5 -bottom-1.5 w-0.5 -translate-x-1/2 rounded-full bg-slate-800"
+                                :style="{ left: chartStats.valuePct + '%' }"
+                            ></span>
+                            <span
+                                class="pointer-events-none absolute -top-2.5 h-2.5 w-2.5 -translate-x-1/2 rounded-full border-2 border-white shadow-sm"
+                                :class="getSemaphoreColor(chartStats.status)"
+                                :style="{ left: chartStats.valuePct + '%' }"
+                            ></span>
                         </div>
-                        <div
-                            class="absolute top-full mt-1.5 flex -translate-x-1/2 flex-col items-center"
-                            :style="{ left: chartStats.maxPct + '%' }"
-                        >
-                            <span class="h-1.5 w-px bg-slate-300"></span>
-                            <span class="mt-1 text-center text-[10px] font-semibold whitespace-nowrap text-slate-500"
-                                >Máximo<br />S/ {{ chartStats.max.toFixed(2) }}</span
-                            >
+
+                        <!-- min / max legend — fixed at the edges, always readable -->
+                        <div class="mt-4 flex items-start justify-between">
+                            <div class="flex flex-col">
+                                <span class="text-[10px] font-semibold tracking-wide text-slate-400 uppercase">Mínimo</span>
+                                <span class="mt-0.5 text-xs font-semibold tabular-nums text-slate-600">S/ {{ chartStats.min.toFixed(2) }}</span>
+                            </div>
+                            <div class="flex flex-col items-end">
+                                <span class="text-[10px] font-semibold tracking-wide text-slate-400 uppercase">Máximo</span>
+                                <span class="mt-0.5 text-xs font-semibold tabular-nums text-slate-600">S/ {{ chartStats.max.toFixed(2) }}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
