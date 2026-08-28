@@ -50,12 +50,15 @@ There is no `npm test` / JS test runner configured — frontend correctness is c
 
 ### Permissions model
 
-Uses `spatie/laravel-permission`. Route-level authorization is _not_ done with policies/gates in the route file — instead `App\Http\Middleware\CheckRoutePermission` (registered as `check.permission`) inspects the **first URL segment** of every authenticated `GET` request, looks up a `Permission` row by `route_name`, and checks `$user->hasPermissionTo(...)`. Implications when adding routes:
+Uses `spatie/laravel-permission`. Route-level authorization is _not_ done with policies/gates in the route file — instead `App\Http\Middleware\CheckRoutePermission` (registered as `check.permission`) inspects the **first URL segment** of every authenticated request, looks up `Permission` rows by `route_name`, and checks `$user->hasPermissionTo(...)`. Implications when adding routes:
 
 - If a new top-level route prefix should be gated, a matching `permissions.route_name` row must exist (or it's implicitly open, like `dashboard`/`settings`/`profile`).
 - Because gating is keyed off the first segment, routes that should be reachable by a role that doesn't own that segment are deliberately placed under a _different_ segment they do have (see the `pos/find-dinner-by-dni` comment in `routes/web.php` for a real example — don't "fix" that by moving it back under `dinners`).
-- Non-GET requests are not checked by this middleware — write authorization happens inside controllers/form requests.
-- A handful of entities (`Area`, `Guard`, `Mine`, `Observation`, `Period`, `StaffClothes`, `StaffFile`, `StaffFinancial`, `Staff`) also have real `App\Policies\*` classes for finer-grained checks.
+- Both reads and writes are checked. Two maps in the middleware handle segments that don't line up 1:1 with a permission:
+  - `SEGMENT_PERMISSION_ALIASES` — segments with **no** `permissions` row of their own (`dishes`, `mines`, `cafes`, `equipment-dispatches`, …). Applies to reads and writes. Without it these are open to any authenticated user.
+  - `WRITE_PERMISSION_ALIASES` — segments that **do** own a permission but are written to from other modules' screens (POS registering a diner under `dinners`, Headcount managing `roles`/`staff`, …). Write-only **on purpose**: applying it to GET would hand a `pos` user the whole Comensales padrón. Keep that separation when adding entries.
+- A segment with no permission row and no alias entry is still **fail-open** (any authenticated user). That's deliberate for loose endpoints, not an oversight — but it means adding a prefix without a permission row leaves it public-to-authenticated.
+- There are **no policies/gates**: nothing in the codebase calls `authorize()`, `Gate::`, or `->can()`. The nine `App\Policies\*` stubs that used to live here were `make:policy` scaffolding whose 63 methods all returned `false`; they were never wired up and were removed. Authorization is module-level via the middleware — there is currently no per-record check anywhere.
 
 ### Frontend structure (Inertia/Vue)
 

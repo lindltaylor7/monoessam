@@ -23,7 +23,7 @@ const form = useForm({
 });
 
 const submit = () => {
-    form.post(route('dinners.insert'), {
+    form.post(route('dinners.save'), {
         onSuccess: () => {
             open.value = false;
             form.reset();

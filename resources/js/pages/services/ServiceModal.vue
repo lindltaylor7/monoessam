@@ -61,7 +61,7 @@ const form = useForm({
 ); */
 
 const saveService = () => {
-    form.post(route('services.insert'), {
+    form.post(route('services.store'), {
         onSuccess: () => {
             emit('fetchServices');
             form.reset();

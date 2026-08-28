@@ -41,7 +41,7 @@ const sendPermissions = () => {
     form.roleId = props.role.id;
     form.permissions = selectedPermissions.value;
 
-    form.post(route('role-permissions'), {
+    form.post(route('roles.permissions'), {
         onSuccess: () => {
             form.reset();
         },

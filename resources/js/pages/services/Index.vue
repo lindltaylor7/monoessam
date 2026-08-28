@@ -105,9 +105,9 @@ const openServiceModal = (service: Service | null = null) => {
 const saveService = async () => {
     try {
         if (editingService.value) {
-            await axios.put(`/api/services/${editingService.value.id}`, form);
+            await axios.put(`/services/${editingService.value.id}`, form);
         } else {
-            await axios.post('/api/services', form);
+            await axios.post('/services', form);
         }
 
         showModal.value = false;

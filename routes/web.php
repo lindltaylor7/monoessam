@@ -75,9 +75,9 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('/', [UsersController::class, 'store'])->name('store');
         Route::put('{id}', [UsersController::class, 'update'])->name('update');
         Route::delete('{id}', [UsersController::class, 'destroy'])->name('destroy');
-        Route::get('ban/{id}', [UsersController::class, 'banUser'])->name('ban');
-        Route::get('blacklist/{id}', [UsersController::class, 'blacklist'])->name('blacklist');
-        Route::get('assigned/{id}', [UsersController::class, 'assignedUsers'])->name('assigned');
+        // ban / blacklist / assigned vivian aqui apuntando a metodos que UsersController
+        // no tiene (estan en HeadcountController), asi que cualquier llamada daba 500.
+        // Las versiones funcionales son headcount.ban / .blacklist / .assigned.
     });
 
 
@@ -285,6 +285,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('/', [ServiceController::class, 'store'])->name('store');
         Route::delete('{id}', [ServiceController::class, 'destroy'])->name('destroy');
         Route::put('prices', [ServiceController::class, 'updatePrices'])->name('update-prices');
+        Route::put('{id}', [ServiceController::class, 'update'])->name('update');
     });
 
     // ========================================================================
