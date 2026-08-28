@@ -49,6 +49,21 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        // El baneo/lista negra (columna `type`) se escribía pero no se comprobaba en
+        // ningún sitio: la única barrera era resetear la contraseña. Se verifica aquí,
+        // después de validar credenciales, y se cierra la sesión recién abierta.
+        if (Auth::user()->isBlocked()) {
+            Auth::guard('web')->logout();
+            $this->session()->invalidate();
+            $this->session()->regenerateToken();
+
+            RateLimiter::hit($this->throttleKey());
+
+            throw ValidationException::withMessages([
+                'email' => trans('auth.blocked'),
+            ]);
+        }
+
         RateLimiter::clear($this->throttleKey());
     }
 

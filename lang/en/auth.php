@@ -15,6 +15,7 @@ return [
 
     'failed' => 'These credentials do not match our records.',
     'password' => 'The provided password is incorrect.',
+    'blocked' => 'This account has been suspended. Please contact an administrator.',
     'throttle' => 'Too many login attempts. Please try again in :seconds seconds.',
 
 ];
