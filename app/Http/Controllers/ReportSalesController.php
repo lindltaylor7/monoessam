@@ -127,9 +127,11 @@ class ReportSalesController extends Controller
                 'subdealership_id' => $subdealershipFilter,
             ],
             'statistics' => [
-                'total_amount' => $totalAmount,
+                // Se castea a float: sum() devuelve int/string según el driver (SQLite vs MySQL)
+                // y el front espera siempre un número.
+                'total_amount' => (float) $totalAmount,
                 'total_sales'  => $totalSales,
-                'average_sale' => $totalSales > 0 ? $totalAmount / $totalSales : 0,
+                'average_sale' => $totalSales > 0 ? (float) $totalAmount / $totalSales : 0.0,
             ],
         ]);
     }

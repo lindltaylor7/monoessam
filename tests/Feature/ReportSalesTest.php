@@ -29,7 +29,9 @@ test('report sales page loads with correct statistics', function () {
                     'statistics',
                     fn($stats) => $stats
                         ->where('total_sales', 5)
-                        ->where('total_amount', 500.00)
+                        // json_encode colapsa 500.0 a 500, así que se compara numéricamente
+                        // en vez de exigir identidad estricta de tipo.
+                        ->where('total_amount', fn($amount) => (float) $amount === 500.00)
                         ->etc()
                 )
         );

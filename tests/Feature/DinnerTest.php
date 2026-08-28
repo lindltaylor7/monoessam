@@ -2,6 +2,7 @@
 
 use App\Models\Cafe;
 use App\Models\Dinner;
+use App\Models\Mine;
 use App\Models\Unit;
 use App\Models\User;
 use App\Models\Subdealership;
@@ -27,30 +28,33 @@ test('dinners page is displayed for authenticated users', function () {
 });
 
 test('can create a dinner', function () {
-    $user = User::factory()->create();
-    $cafe = Cafe::factory()->create();
+    $mine = Mine::factory()->create();
+    $user = User::factory()->create(['mine_id' => $mine->id]);
     $subdealership = Subdealership::factory()->create();
 
+    // El alta de comensal vive en dinners.save; dinners.store es el registro de venta.
     $dinnerData = [
         'name' => 'John Doe',
         'dni' => '12345678',
         'phone' => '987654321',
         'subdealership_id' => $subdealership->id,
-        'cafe_id' => $cafe->id,
     ];
 
     $this->actingAs($user)
-        ->post(route('dinners.store'), $dinnerData)
+        ->post(route('dinners.save'), $dinnerData)
         ->assertRedirect(); // Back
 
+    // mine_id no se envía: el controlador lo toma del usuario autenticado.
     $this->assertDatabaseHas('dinners', [
         'name' => 'John Doe',
         'dni' => '12345678',
+        'mine_id' => $mine->id,
     ]);
 });
 
 test('can update a dinner', function () {
-    $user = User::factory()->create();
+    $mine = Mine::factory()->create();
+    $user = User::factory()->create(['mine_id' => $mine->id]);
     $dinner = Dinner::factory()->create();
 
     $updatedData = [
@@ -58,7 +62,6 @@ test('can update a dinner', function () {
         'dni' => $dinner->dni,
         'phone' => '111222333',
         'subdealership_id' => $dinner->subdealership_id,
-        'cafe_id' => $dinner->cafe_id,
     ];
 
     $this->actingAs($user)
@@ -86,21 +89,21 @@ test('can delete a dinner', function () {
 });
 
 test('can search for a dinner', function () {
-    $user = User::factory()->create();
-    $cafe = Cafe::factory()->create();
-    $dinner = Dinner::factory()->create([
-        'name' => 'UniqueName',
-        'cafe_id' => $cafe->id
-    ]);
+    $mine = Mine::factory()->create();
+    $user = User::factory()->create(['mine_id' => $mine->id]);
 
-    // Create another dinner to ensure filter works
-    Dinner::factory()->create(['name' => 'OtherName', 'cafe_id' => $cafe->id]);
+    Dinner::factory()->create(['name' => 'UniqueName', 'mine_id' => $mine->id]);
+    Dinner::factory()->create(['name' => 'OtherName', 'mine_id' => $mine->id]);
 
-    $response = $this->actingAs($user)
-        ->get(route('dinners.search', ['word' => 'Unique', 'id' => $cafe->id]));
-
-    $response->assertOk();
-    // Search returns JSON array
-    $this->assertEquals(1, count($response->json()));
-    $this->assertEquals('UniqueName', $response->json()[0]['name']);
+    // No existe una ruta dinners.search: el filtrado se hace con el parámetro
+    // `search` del índice, que es lo que consume la pantalla.
+    $this->actingAs($user)
+        ->get(route('dinners.index', ['search' => 'Unique']))
+        ->assertOk()
+        ->assertInertia(
+            fn($page) => $page
+                ->component('dinners/Index')
+                ->has('dinners.data', 1)
+                ->where('dinners.data.0.name', 'UniqueName')
+        );
 });
