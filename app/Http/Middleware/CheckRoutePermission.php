@@ -39,7 +39,10 @@ class CheckRoutePermission
         'delete-dish-category' => ['food'],
         'levels'               => ['food'],
         'equipment-dispatches' => ['equipments', 'logistics', 'inventory', 'store'],
-        'generalreport'        => ['reportsales'],
+        // 'reportsales' es el permiso legado de /reportsales (otro módulo) que también daba
+        // acceso al dashboard. Se conserva por compatibilidad y se suma 'generalreport': el
+        // permiso propio ("reporte completo") con el que se está asignando el acceso ahora.
+        'generalreport'        => ['reportsales', 'generalreport'],
         'satisfaction'         => ['management'],
         'areas'                => ['headcount'],
         'guards'               => ['headcount'],

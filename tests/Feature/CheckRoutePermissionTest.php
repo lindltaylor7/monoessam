@@ -122,3 +122,24 @@ test('a segment with no permission row and no alias stays open', function () {
         ->get('/laboral')
         ->assertOk();
 });
+
+test('generalreport accepts either its own permission or the legacy reportsales one', function () {
+    // 'generalreport' tiene dos permisos válidos por historia: 'Reporte de Ventas' (route_name
+    // reportsales, de otro módulo) que ya daba acceso al dashboard, y 'reporte completo'
+    // (route_name generalreport), el que de hecho se asigna hoy desde Usuarios > Permisos.
+    // Un usuario con cualquiera de los dos debe poder entrar — perder cualquiera de los dos
+    // caminos deja a alguien viendo el permiso en verde y aun así con Acceso Denegado.
+    crearPermiso('Reporte de Ventas', 'reportsales');
+    crearPermiso('reporte completo', 'generalreport');
+
+    $sinPermiso = User::factory()->create();
+    $this->actingAs($sinPermiso)->get('/generalreport')->assertStatus(403);
+
+    $conPermisoLegado = User::factory()->create();
+    $conPermisoLegado->givePermissionTo('Reporte de Ventas');
+    $this->actingAs($conPermisoLegado)->get('/generalreport')->assertOk();
+
+    $conPermisoPropio = User::factory()->create();
+    $conPermisoPropio->givePermissionTo('reporte completo');
+    $this->actingAs($conPermisoPropio)->get('/generalreport')->assertOk();
+});
