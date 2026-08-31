@@ -28,7 +28,7 @@ const form = useForm({
 });
 
 const submit = () => {
-    form.post(route('ingredient-category-insert'), {
+    form.post(route('ingredient-categories.store'), {
         onSuccess: () => {
             open.value = false;
             form.reset();

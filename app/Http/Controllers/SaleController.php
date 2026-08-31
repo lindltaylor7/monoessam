@@ -411,8 +411,8 @@ class SaleController extends Controller
             $query->where('name', 'like', '%' . $word . '%')
                 ->orWhere('dni', 'like', '%' . $word . '%');
         })
-            ->where('cafe_id', $id)
-            ->with(['cafe', 'cafe.unit', 'subdealership'])
+            ->where('mine_id', $id)
+            ->with(['mine', 'subdealership'])
             ->take(8)
             ->get();
     }

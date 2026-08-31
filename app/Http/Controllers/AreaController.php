@@ -73,6 +73,6 @@ class AreaController extends Controller
 
         $area->delete();
 
-        return to_route('users');
+        return to_route('users.index');
     }
 }

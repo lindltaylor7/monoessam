@@ -12,7 +12,7 @@ const form = useForm({
 });
 
 const submit = () => {
-    form.post(route('providers.insert'), {
+    form.post(route('providers.store'), {
         onSuccess: () => {
             open.value = false;
             form.reset();

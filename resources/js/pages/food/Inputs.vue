@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AtwaterFactorPicker from '@/components/AtwaterFactorPicker.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -1366,20 +1367,7 @@ const uploadDosificationFile = () => {
                     <!-- Asociación con Factor Atwater -->
                     <div class="rounded-lg border bg-zinc-50 p-4">
                         <Label class="text-xs text-zinc-500">Factor general</Label>
-                        <Select v-model="nutritionalModalAtwaterFactorId">
-                            <SelectTrigger class="mt-1 h-9">
-                                <SelectValue placeholder="Sin factor Atwater" />
-                            </SelectTrigger>
-                            <SelectContent class="border-zinc-200 bg-white">
-                                <SelectItem value="none">Sin factor Atwater</SelectItem>
-                                <SelectGroup v-for="group in groupedAtwaterFactors" :key="group.title">
-                                    <SelectLabel>{{ group.title }}</SelectLabel>
-                                    <SelectItem v-for="f in group.items" :key="f.id" :value="String(f.id)" class="py-2.5">
-                                        {{ f.name }}
-                                    </SelectItem>
-                                </SelectGroup>
-                            </SelectContent>
-                        </Select>
+                        <AtwaterFactorPicker v-model="nutritionalModalAtwaterFactorId" :grouped-factors="groupedAtwaterFactors" class="mt-1 w-full" />
                     </div>
 
                     <!-- Valores Atwater resueltos según lo seleccionado -->

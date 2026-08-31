@@ -45,7 +45,7 @@ const form = useForm({
 });
 
 const submit = () => {
-    form.post(route('dish-category-insert'), {
+    form.post(route('dish-categories.store'), {
         onSuccess: () => {
             open.value = false;
             form.reset();

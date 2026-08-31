@@ -17,6 +17,7 @@ return [
 
     'failed' => 'Las credenciales introducidas son incorrectas.',
     'password' => 'La contraseña es incorrecta.',
+    'blocked' => 'Esta cuenta está suspendida. Contacte con un administrador.',
     'throttle' => 'Demasiados intentos de acceso. Inténtelo de nuevo en :seconds segundos.',
 
 ];

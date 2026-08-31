@@ -14,7 +14,9 @@ class BusinessFactory extends Factory
         return [
             'name' => $this->faker->company,
             'ruc' => $this->faker->numerify('###########'),
-            'address' => $this->faker->address,
+            'fiscal_address' => $this->faker->address,
+            'legal_address' => $this->faker->address,
+            'email' => $this->faker->unique()->safeEmail(),
         ];
     }
 }

@@ -7,6 +7,7 @@ use App\Models\DishRecipe;
 use App\Models\Level;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class DishController extends Controller
 {
@@ -230,18 +231,6 @@ class DishController extends Controller
 
         $query = Dish::query();
 
-        if ($word) {
-            $query->where(function ($q) use ($word) {
-                $q->where('name', 'like', '%' . $word . '%')
-                    ->orWhereHas('dish_categories', function ($q2) use ($word) {
-                        $q2->where('name', 'like', '%' . $word . '%');
-                    })
-                    ->orWhereHas('recipes.level', function ($q2) use ($word) {
-                        $q2->where('name', 'like', '%' . $word . '%');
-                    });
-            });
-        }
-
         if ($categoryId) {
             $query->whereHas('dish_categories', function ($q) use ($categoryId) {
                 $q->where('dish_categories.id', $categoryId);
@@ -254,6 +243,70 @@ class DishController extends Controller
             });
         }
 
+        $resultLimit = 25;
+
+        if ($word) {
+            // Camino rápido: la mayoría de las búsquedas reales coinciden por substring,
+            // así que primero se intenta un LIKE en SQL (rápido, no trae los ~17k platos
+            // a PHP). Solo si eso no alcanza el tope se recurre al escaneo completo con
+            // Levenshtein para tolerar errores de tipeo.
+            $likeIds = (clone $query)
+                ->where(function ($q) use ($word) {
+                    $q->where('name', 'like', '%' . $word . '%')
+                        ->orWhereHas('dish_categories', function ($q2) use ($word) {
+                            $q2->where('name', 'like', '%' . $word . '%');
+                        })
+                        ->orWhereHas('recipes.level', function ($q2) use ($word) {
+                            $q2->where('name', 'like', '%' . $word . '%');
+                        });
+                })
+                ->take($resultLimit)
+                ->pluck('id');
+
+            if ($likeIds->count() >= $resultLimit) {
+                $matchingIds = $likeIds->values();
+            } else {
+                // Con ~17k platos, cargar las relaciones pesadas (ingredientes, proveedores,
+                // factores nutricionales, etc.) para toda la tabla agota la memoria. Por eso
+                // primero se filtra con una consulta liviana (solo lo necesario para el
+                // matching difuso) y recién después se hace el eager load completo, solo
+                // para los platos que coincidieron.
+                $needle = Str::lower(trim($word));
+
+                $matchingIds = (clone $query)
+                    ->select('id', 'name')
+                    ->with(['dish_categories:id,name', 'recipes:id,dish_id,level_id', 'recipes.level:id,name'])
+                    ->get()
+                    ->map(function ($dish) use ($needle) {
+                        $score = $this->fuzzyScore($needle, $dish->name);
+
+                        foreach ($dish->dish_categories as $category) {
+                            $categoryScore = $this->fuzzyScore($needle, $category->name);
+                            if ($categoryScore !== null) {
+                                $score = $score === null ? $categoryScore : min($score, $categoryScore);
+                            }
+                        }
+
+                        foreach ($dish->recipes as $recipe) {
+                            $levelScore = $this->fuzzyScore($needle, $recipe->level->name ?? null);
+                            if ($levelScore !== null) {
+                                $score = $score === null ? $levelScore : min($score, $levelScore);
+                            }
+                        }
+
+                        return ['id' => $dish->id, 'score' => $score];
+                    })
+                    ->filter(fn ($row) => $row['score'] !== null)
+                    // Mejor coincidencia primero (0 = substring exacto).
+                    ->sortBy('score')
+                    ->take($resultLimit)
+                    ->pluck('id')
+                    ->values();
+            }
+
+            $query->whereIn('id', $matchingIds);
+        }
+
         $dishes = $query->with([
                 'dish_categories',
                 'recipes.ingredients.assignments.provider',
@@ -263,8 +316,12 @@ class DishController extends Controller
                 'recipes.ingredients.atwaterFactor',
                 'recipes.level'
             ])
-            ->take(8)
             ->get();
+
+        if ($word) {
+            $order = $matchingIds->flip();
+            $dishes = $dishes->sortBy(fn ($dish) => $order[$dish->id] ?? PHP_INT_MAX)->values();
+        }
 
         foreach ($dishes as $dish) {
             $dish->mesearument_unit = $dish->recipes->pluck('level_id')->toArray();
@@ -283,6 +340,40 @@ class DishController extends Controller
         }
 
         return $dishes;
+    }
+
+    /**
+     * Compara $needle contra $haystack tolerando errores de tipeo: primero por
+     * substring (score 0), luego por la menor distancia de Levenshtein (contra
+     * la cadena completa y contra cada palabra) que quede dentro de un umbral
+     * proporcional al largo de las cadenas comparadas. Devuelve null si no matchea,
+     * o un score (menor = mejor) útil para ordenar resultados por relevancia.
+     */
+    private function fuzzyScore(string $needle, ?string $haystack): ?int
+    {
+        if (!$needle || !$haystack) {
+            return null;
+        }
+
+        $haystack = Str::lower($haystack);
+
+        if (Str::contains($haystack, $needle)) {
+            return 0;
+        }
+
+        $candidates = array_filter(array_merge([$haystack], preg_split('/\s+/', $haystack)));
+        $best = null;
+
+        foreach ($candidates as $candidate) {
+            $distance = levenshtein(substr($needle, 0, 255), substr($candidate, 0, 255));
+            $threshold = max(1, (int) floor(min(strlen($needle), strlen($candidate)) / 3));
+
+            if ($distance <= $threshold) {
+                $best = $best === null ? $distance : min($best, $distance);
+            }
+        }
+
+        return $best;
     }
 
     public function import(Request $request)

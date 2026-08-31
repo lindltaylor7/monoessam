@@ -149,7 +149,7 @@ class PermissionController extends Controller
 
         $user->syncRoles([$role->name]);
 
-        return to_route('users');
+        return to_route('users.index');
     }
 
     public function userPermissions(Request $request, $id)

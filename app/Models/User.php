@@ -19,6 +19,24 @@ class User extends Authenticatable
     use HasRoles;
 
     /**
+     * Valores de la columna `type`. Un usuario normal la tiene en NULL; los otros dos
+     * estados los escribe HeadcountController (blacklist / banUser) y los bloquea
+     * LoginRequest::authenticate().
+     */
+    public const TYPE_BLACKLISTED = 2;
+    public const TYPE_BANNED = 3;
+
+    /**
+     * Estados que impiden iniciar sesión.
+     */
+    public const BLOCKED_TYPES = [self::TYPE_BLACKLISTED, self::TYPE_BANNED];
+
+    public function isBlocked(): bool
+    {
+        return in_array((int) $this->type, self::BLOCKED_TYPES, true);
+    }
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>

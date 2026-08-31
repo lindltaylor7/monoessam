@@ -8,6 +8,7 @@ use App\Models\Mine;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Spatie\Permission\Models\Role;
 
@@ -74,7 +75,7 @@ class HeadcountController extends Controller
         $user = User::find($id);
 
         $user->update([
-            'type' => 2
+            'type' => User::TYPE_BLACKLISTED
         ]);
     }
 
@@ -84,14 +85,19 @@ class HeadcountController extends Controller
 
         if ($user) {
             $user->update([
-                'type' => 3,
-                'password' => Hash::make('lindltaylor7@gmail.com') // Reset password to a default value
+                'type' => User::TYPE_BANNED,
+                // Se invalida la contraseña con un valor aleatorio irrecuperable, no con
+                // uno fijo: antes se reseteaba a una cadena hardcodeada, así que todas
+                // las cuentas baneadas compartían una contraseña conocida.
+                // El bloqueo real lo aplica LoginRequest::authenticate() mirando `type`;
+                // esto solo evita que la contraseña anterior siga siendo válida.
+                'password' => Hash::make(Str::random(64)),
             ]);
         }
 
         event(new SessionEnded($id));
 
-        return to_route('users');
+        return to_route('users.index');
     }
 
     public function assignedUsers($cafeID)

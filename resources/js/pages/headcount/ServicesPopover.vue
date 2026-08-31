@@ -39,7 +39,7 @@ const sendServices = () => {
     popoverOpen.value = false;
     form.businessId = props.business.id;
     form.services = selectedServices.value;
-    form.post(route('businessServices'), {
+    form.post(route('businesses.services'), {
         onSuccess: () => {
             form.reset();
         },

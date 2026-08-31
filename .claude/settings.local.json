@@ -23,5 +23,6 @@
       "Bash(git status *)",
       "Bash(git commit -m ' *)"
     ]
-  }
+  },
+  "skillOverrides": {}
 }

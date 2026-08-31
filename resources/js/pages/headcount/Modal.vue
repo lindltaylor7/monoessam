@@ -59,7 +59,7 @@ watch(form, (newVal) => {
 });
 
 const submit = () => {
-    form.post(route('users'), {
+    form.post(route('users.index'), {
         onSuccess: () => {
             open.value = false;
             form.reset();
