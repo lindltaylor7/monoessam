@@ -13,7 +13,7 @@ import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import dayjs from 'dayjs';
 import 'dayjs/locale/es';
-import { ChevronDown } from 'lucide-vue-next';
+import { ChevronDown, FileSpreadsheet } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
 import { computed, ref, watch } from 'vue';
 
@@ -422,6 +422,56 @@ const generateWeeklyDosificacionPdf = async (program: WeeklyProgram) => {
     );
     if (levelId) {
         window.open(route('planning.dosificacion-pdf', { id: program.id, level_id: levelId }), '_blank');
+    }
+};
+
+// Excel de menú semanal: a diferencia del resto de reportes, no parte de una programación fija —
+// el usuario marca en este diálogo qué programaciones incluir y cada una va en su propia hoja.
+const generateWeeklyMenuExcel = async () => {
+    if (!props.programs?.length) {
+        Swal.fire('Atención', 'No hay programaciones guardadas para exportar.', 'warning');
+        return;
+    }
+
+    const optionsHtml = props.programs
+        .map((p: any) => {
+            const label = `${p.cafe?.name ?? 'Comedor'} · ${dayjs(p.start_date).format('DD/MM/YYYY')} – ${dayjs(p.end_date).format('DD/MM/YYYY')}`;
+            return `<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;font-size:13px;cursor:pointer;">
+                <input type="checkbox" class="swal-prog" value="${p.id}" style="width:16px;height:16px;flex-shrink:0;">
+                <span style="text-align:left;">${label}</span>
+            </label>`;
+        })
+        .join('');
+
+    const { value: ids } = await Swal.fire({
+        title: 'Menú Semanal (Excel)',
+        html:
+            '<p style="margin-bottom:8px;text-align:left;font-size:13px;color:#4b5563;">Seleccione las programaciones a incluir (una hoja por programación).</p>' +
+            `<div style="max-height:320px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;padding:6px;">${optionsHtml}</div>` +
+            '<label style="display:flex;align-items:center;gap:8px;padding:10px 4px 0;font-size:12px;font-weight:600;color:#475569;cursor:pointer;"><input type="checkbox" id="swal-prog-all" style="width:15px;height:15px;">Seleccionar todas</label>',
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Generar Excel',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#FF5A1F',
+        didOpen: () => {
+            document.getElementById('swal-prog-all')?.addEventListener('change', (e) => {
+                const checked = (e.target as HTMLInputElement).checked;
+                document.querySelectorAll<HTMLInputElement>('.swal-prog').forEach((c) => (c.checked = checked));
+            });
+        },
+        preConfirm: () => {
+            const selected = Array.from(document.querySelectorAll<HTMLInputElement>('.swal-prog:checked')).map((c) => c.value);
+            if (selected.length === 0) {
+                Swal.showValidationMessage('Seleccione al menos una programación.');
+                return false;
+            }
+            return selected;
+        },
+    });
+
+    if (ids && ids.length) {
+        window.open(route('planning.menu-excel', { program_ids: ids }), '_blank');
     }
 };
 
@@ -1196,6 +1246,18 @@ const loadStructure = (structureIdStr: string) => {
             </div>
 
             <div v-if="activeTab === 'programaciones'">
+                <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <h2 class="text-sm font-bold tracking-wide text-slate-700">Programaciones guardadas</h2>
+                    <Button
+                        v-if="programs.length"
+                        size="sm"
+                        @click="generateWeeklyMenuExcel"
+                        class="flex items-center gap-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
+                    >
+                        <FileSpreadsheet class="h-4 w-4" />
+                        Menú Semanal (Excel)
+                    </Button>
+                </div>
                 <div
                     v-if="programs.length === 0"
                     class="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400"

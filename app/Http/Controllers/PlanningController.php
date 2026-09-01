@@ -16,6 +16,7 @@ use App\Models\Serviceable;
 use App\Models\Service;
 use App\Services\QuebradosService;
 use App\Exports\WeeklyPurchaseOrderExport;
+use App\Exports\WeeklyMenuExport;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -463,6 +464,38 @@ class PlanningController extends Controller
         ]);
 
         return $pdf->setPaper('a4', 'landscape')->stream("Dosificacion_Nutricional_{$program->id}.pdf");
+    }
+
+    /**
+     * Builds the "Menú Semanal" Excel: one sheet per programación seleccionada, con la grilla
+     * de menú de la semana (opciones/categorías en filas, días en columnas). A diferencia del
+     * resto de reportes de este módulo, se dispara sin un programa fijo: el usuario elige en el
+     * front qué programaciones incluir y sus ids llegan en `program_ids[]`.
+     */
+    public function menuExcel(Request $request)
+    {
+        $validated = $request->validate([
+            'program_ids'   => 'required|array|min:1',
+            'program_ids.*' => 'integer|exists:weekly_programs,id',
+        ]);
+
+        $programs = WeeklyProgram::with([
+                'cafe.unit.mine',
+                'structure.costs',
+                'items.dish',
+                'items.dish_category',
+                'portions',
+            ])
+            ->whereIn('id', $validated['program_ids'])
+            ->orderBy('start_date')
+            ->orderBy('id')
+            ->get();
+
+        $menuStructure = MenuStructure::orderBy('sort_order')->get();
+
+        $filename = 'Menu_Semanal_' . now()->format('Ymd_His') . '.xlsx';
+
+        return Excel::download(new WeeklyMenuExport($programs, $menuStructure), $filename);
     }
 
     /**

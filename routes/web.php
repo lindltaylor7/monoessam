@@ -490,6 +490,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('{id}/quebrado-pdf', [PlanningController::class, 'quebradoPdf'])->name('quebrado-pdf');
         Route::get('{id}/requerimiento-pdf', [PlanningController::class, 'requerimientoPdf'])->name('requerimiento-pdf');
         Route::get('{id}/dosificacion-pdf', [PlanningController::class, 'dosificacionPdf'])->name('dosificacion-pdf');
+        Route::get('menu-excel', [PlanningController::class, 'menuExcel'])->name('menu-excel');
         Route::get('{id}/orden-pedido-excel', [PlanningController::class, 'purchaseOrderExcel'])->name('orden-pedido-excel');
     });
 
