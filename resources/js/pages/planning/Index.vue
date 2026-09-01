@@ -415,6 +415,16 @@ const generateWeeklyRequirementPdf = async (program: WeeklyProgram) => {
     }
 };
 
+const generateWeeklyDosificacionPdf = async (program: WeeklyProgram) => {
+    const levelId = await promptForLevel(
+        'Dosificación Nutricional (PDF)',
+        'Seleccione el nivel de receta a usar para calcular los valores nutricionales de cada plato de esta semana.',
+    );
+    if (levelId) {
+        window.open(route('planning.dosificacion-pdf', { id: program.id, level_id: levelId }), '_blank');
+    }
+};
+
 // Prices only exist per (insumo, ciudad, proveedor) — there's no relation from
 // Mina/Unidad/Comedor to Ciudad in the system — so the city used to price this order is also
 // chosen manually here, same reasoning as the recipe nivel above.
@@ -1245,6 +1255,9 @@ const loadStructure = (structureIdStr: string) => {
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyRequirementPdf(program)">
                                                         Requerimiento x Producto (PDF)
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyDosificacionPdf(program)">
+                                                        Dosificación Nutricional (PDF)
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyPurchaseOrderExcel(program)">
                                                         Orden de Pedido Semanal (Excel)

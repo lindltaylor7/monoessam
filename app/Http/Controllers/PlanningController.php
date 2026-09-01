@@ -321,6 +321,151 @@ class PlanningController extends Controller
     }
 
     /**
+     * Builds the "Dosificación Nutricional" PDF: one page per date + servicio, and within it a
+     * block per plato listing every insumo of its receta with the nutritional breakdown per
+     * ración (17 nutrientes) plus a totals row for the plato.
+     *
+     * Cada valor nutricional del insumo = valor por 100 g (tabla `dosifications`) escalado por
+     * el peso neto por ración del quebrado (`dish_recipe_ingredients.net_weight` / 100), igual
+     * que el cálculo de calorías por insumo en el editor de quebrados (CalcPopover.vue). La
+     * columna "IC" es el id del registro de dosificación usado (0 si el insumo no tiene una).
+     *
+     * Mismo caveat de nivel que quebradoPdf()/requerimientoPdf(): el grid de planificación no
+     * guarda el nivel de receta por plato, así que se elige aquí y se aplica a toda la semana.
+     */
+    public function dosificacionPdf(Request $request, string $id)
+    {
+        $validated = $request->validate([
+            'level_id' => 'required|exists:levels,id',
+        ]);
+
+        $program = WeeklyProgram::with(['cafe.unit.mine'])->findOrFail($id);
+        $level = Level::findOrFail($validated['level_id']);
+
+        $items = $program->items()->with('dish', 'dish_category')->orderBy('date')->orderBy('meal_type')->get();
+        $portions = $program->portions->keyBy(fn ($p) => $p->date . '_' . $p->meal_type);
+
+        $dishIds = $items->pluck('dish_id')->unique()->values();
+        $recipes = DishRecipe::where('level_id', $level->id)
+            ->whereIn('dish_id', $dishIds)
+            ->with('ingredients.dosification')
+            ->get()
+            ->keyBy('dish_id');
+
+        // Columnas nutricionales del reporte, en el orden de la plantilla, mapeadas a la columna
+        // de `dosifications`. "CARB" cae a carbohydrate_available cuando no hay carbohydrate.
+        $nutrients = [
+            'ENERG' => 'energy',
+            'AGUA'  => 'water',
+            'PROT'  => 'protein',
+            'LIPID' => 'lipid',
+            'CARB'  => 'carbohydrate',
+            'FIBRA' => 'fiber',
+            'CENIZ' => 'ash',
+            'CALC'  => 'calcium',
+            'FOSF'  => 'phosphorus',
+            'HIERR' => 'iron',
+            'RETIN' => 'retinol',
+            'TIAMI' => 'thiamine',
+            'RIBOF' => 'riboflavin',
+            'NIACI' => 'niacin',
+            'A ASC' => 'a_asc',
+            'Na'    => 'sodium',
+            'K'     => 'potassium',
+        ];
+
+        $pages = collect();
+
+        foreach ($items->groupBy('date') as $date => $dayItems) {
+            foreach ($dayItems->groupBy('meal_type') as $mealType => $mealItems) {
+                $portionsCount = optional($portions->get($date . '_' . $mealType))->portions_count ?? 0;
+
+                $categoryCounters = [];
+
+                $dishes = $mealItems->values()->map(function ($item, $idx) use ($portionsCount, $recipes, $nutrients, &$categoryCounters) {
+                    $recipe = $recipes->get($item->dish_id);
+
+                    $categoryName = $item->dish_category->name ?? 'Sin categoría';
+                    $categoryCounters[$categoryName] = ($categoryCounters[$categoryName] ?? 0) + 1;
+
+                    $totals = array_fill_keys(array_keys($nutrients), 0.0);
+
+                    $ingredients = $recipe
+                        ? $recipe->ingredients->map(function ($ingredient) use ($nutrients, &$totals) {
+                            $dosification = $ingredient->dosification;
+
+                            $grossWeight = (float) $ingredient->pivot->gross_weight;
+                            $netWeight   = (float) $ingredient->pivot->net_weight;
+                            if ($netWeight <= 0) {
+                                $netWeight = $grossWeight;
+                            }
+                            $factor = $netWeight / 100;
+
+                            $values = [];
+                            foreach ($nutrients as $label => $column) {
+                                $per100 = 0.0;
+                                if ($dosification) {
+                                    $raw = $dosification->{$column};
+                                    if (($raw === null || $raw === '') && $column === 'carbohydrate') {
+                                        $raw = $dosification->carbohydrate_available;
+                                    }
+                                    $per100 = (float) ($raw ?? 0);
+                                }
+                                $amount = $per100 * $factor;
+                                $values[$label] = $amount;
+                                $totals[$label] += $amount;
+                            }
+
+                            return [
+                                'code'    => $ingredient->id,
+                                'name'    => $ingredient->name,
+                                'gramaje' => $grossWeight,
+                                'ic'      => $dosification?->id ?? 0,
+                                'values'  => $values,
+                            ];
+                        })->values()
+                        : collect();
+
+                    return [
+                        'index'          => $idx + 1,
+                        'category'       => $categoryName,
+                        'category_index' => $categoryCounters[$categoryName],
+                        'dish_code'      => $item->dish_id,
+                        'dish_name'      => $item->dish->name ?? 'Plato eliminado',
+                        'portions'       => $portionsCount,
+                        'ingredients'    => $ingredients,
+                        'totals'         => $totals,
+                        'has_recipe'     => (bool) $recipe,
+                    ];
+                });
+
+                $pages->push([
+                    'date'      => $date,
+                    'meal_type' => $mealType,
+                    'portions'  => $portionsCount,
+                    'dishes'    => $dishes,
+                ]);
+            }
+        }
+
+        $baseChain = collect([
+            optional(optional($program->cafe->unit)->mine)->name,
+            optional($program->cafe->unit)->name,
+            optional($program->cafe)->name,
+        ])->filter()->implode(' - ');
+
+        $pdf = Pdf::loadView('pdf.dosificacion_nutricional', [
+            'program'    => $program,
+            'level'      => $level,
+            'pages'      => $pages,
+            'baseChain'  => $baseChain,
+            'nutrients'  => $nutrients,
+        ]);
+
+        return $pdf->setPaper('a4', 'landscape')->stream("Dosificacion_Nutricional_{$program->id}.pdf");
+    }
+
+    /**
      * Builds the "Orden de Pedido Semanal" Excel: total quantity needed per insumo across the
      * whole week (grouped by ingredient_category), priced and summed to a grand total.
      *
