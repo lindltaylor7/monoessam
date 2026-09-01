@@ -91,7 +91,7 @@ defineExpose({
                             placeholder="Ingrese DNI (8 dígitos)..."
                             class="h-14 w-full rounded-2xl border-none bg-white pr-4 pl-12 text-xl font-black text-slate-900 shadow-inner transition-all placeholder:text-sm placeholder:font-bold placeholder:text-slate-300 focus:ring-4 focus:ring-white/20 disabled:opacity-60"
                             @keyup.enter="triggerSearch"
-                            maxlength="8"
+                            maxlength="12"
                         />
                     </div>
                     <Button
@@ -118,7 +118,7 @@ defineExpose({
                         <Icon name="user" size="16" />
                     </div>
                     <div class="min-w-0">
-                        <p class="truncate text-[13px] font-black leading-tight text-slate-900 uppercase">{{ dinnerFound.name }}</p>
+                        <p class="truncate text-[13px] leading-tight font-black text-slate-900 uppercase">{{ dinnerFound.name }}</p>
                         <div class="mt-0.5 flex items-center gap-2">
                             <Badge variant="secondary" class="h-4 bg-emerald-100 px-1.5 text-[9px] font-bold text-emerald-700">
                                 <Icon name="id-card" size="9" class="mr-0.5" />{{ dinnerFound.dni }}
@@ -139,7 +139,7 @@ defineExpose({
                         <Icon name="building" size="16" />
                     </div>
                     <div class="min-w-0">
-                        <p class="truncate text-[13px] font-black leading-tight text-slate-900 uppercase">{{ subdealership.name || '—' }}</p>
+                        <p class="truncate text-[13px] leading-tight font-black text-slate-900 uppercase">{{ subdealership.name || '—' }}</p>
                         <div class="mt-0.5 flex items-center gap-2">
                             <Badge v-if="subdealership.ruc" variant="secondary" class="h-4 bg-blue-100 px-1.5 text-[9px] font-bold text-blue-700">
                                 RUC {{ subdealership.ruc }}
