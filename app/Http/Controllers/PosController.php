@@ -57,7 +57,7 @@ class PosController extends Controller
             'payment_method'    => ['nullable', 'string', $isCredito ? Rule::in(['valorizado']) : Rule::notIn(['valorizado'])],
             'payment_condition' => 'nullable|string|in:contado,credito',
             // Solo obligatorio cuando la venta es al crédito — queda registrado a quién se le fía.
-            'buyer_dni'         => 'required_if:payment_condition,credito|nullable|digits:8',
+            'buyer_dni'         => ['required_if:payment_condition,credito', 'nullable', 'string', 'regex:/^[A-Za-z0-9]{8,12}$/'],
             'subdealership_id'  => 'nullable|exists:subdealerships,id',
             // Comensal vinculado si el DNI coincidió con uno existente o se registró uno nuevo;
             // se admite null (venta al crédito sin comensal vinculado en la tabla dinners).
@@ -65,8 +65,8 @@ class PosController extends Controller
             'date'              => 'required|date',
             'products'          => 'required|string',
         ], [
-            'buyer_dni.required_if' => 'El DNI del comprador es obligatorio para ventas al crédito.',
-            'buyer_dni.digits'      => 'El DNI debe tener 8 dígitos.',
+            'buyer_dni.required_if' => 'El documento del comprador es obligatorio para ventas al crédito.',
+            'buyer_dni.regex'       => 'El documento debe tener entre 8 y 12 caracteres alfanuméricos (DNI o Carné de Extranjería).',
             'payment_method.in'     => 'Al crédito, el único método de pago permitido es "Valorizado".',
             'payment_method.not_in' => 'El método de pago "Valorizado" solo aplica a ventas al crédito.',
         ]);

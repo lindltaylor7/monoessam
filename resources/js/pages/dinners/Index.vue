@@ -180,7 +180,7 @@ const clearFilters = () => {
                         <Icon name="search" class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
                         <Input
                             v-model="search"
-                            placeholder="Buscar por nombre, DNI..."
+                            placeholder="Buscar por nombre, DNI o Carné de Extranjería..."
                             class="focus:ring-primary/20 focus:border-primary h-11 rounded-xl border-slate-200 pl-10 transition-all"
                         />
                     </div>
@@ -256,7 +256,7 @@ const clearFilters = () => {
                                 </TableCell>
                                 <TableCell class="py-4">
                                     <div class="flex flex-col gap-1">
-                                        <span class="text-[13px] font-semibold text-slate-700">DNI {{ dinner.dni }}</span>
+                                        <span class="text-[13px] font-semibold text-slate-700">Doc. {{ dinner.dni }}</span>
                                         <span v-if="dinner.phone" class="flex items-center gap-1 text-[11px] text-slate-400">
                                             <Icon name="phone" size="10" /> {{ dinner.phone }}
                                         </span>

@@ -277,7 +277,7 @@ class SaleController extends Controller
 
         $request->validate([
             'name' => 'required|string|max:255',
-            'dni' => 'required|string|max:8|unique:dinners,dni,' . $dinner->id,
+            'dni' => 'required|string|regex:/^[A-Za-z0-9]{8,12}$/|unique:dinners,dni,' . $dinner->id,
             'phone' => 'nullable|string|max:15',
             'subdealership_id' => 'required|exists:subdealerships,id',
             'cafe_id' => 'required|exists:cafes,id',

@@ -72,7 +72,8 @@ watch(() => props.open, (v) => {
 const validate = () => {
     const e: Record<string, string> = {};
     if (!form.value.name.trim())                                   e.name       = 'Requerido';
-    if (!form.value.dni || String(form.value.dni).length !== 8)    e.dni        = 'DNI debe tener 8 dígitos';
+    if (!form.value.dni || String(form.value.dni).length < 8 || String(form.value.dni).length > 12)
+        e.dni = 'El documento debe tener entre 8 y 12 caracteres (DNI o Carné de Extranjería)';
     if (!form.value.service_id)                                    e.service_id = 'Requerido';
     if (!form.value.price || Number(form.value.price) <= 0)        e.price      = 'Ingrese un monto válido';
     if (!props.cafeId)                                             e.cafe       = 'Seleccione una cafetería primero';
@@ -155,8 +156,8 @@ const submit = async () => {
                         <p v-if="errors.name" class="text-[10px] font-semibold text-red-500">{{ errors.name }}</p>
                     </div>
                     <div class="grid gap-1.5">
-                        <Label class="text-[11px] font-bold tracking-wider text-slate-400 uppercase">DNI</Label>
-                        <Input v-model="form.dni" placeholder="12345678" maxlength="8"
+                        <Label class="text-[11px] font-bold tracking-wider text-slate-400 uppercase">DNI / Carné de Extranjería</Label>
+                        <Input v-model="form.dni" placeholder="DNI o Carné de Extranjería" maxlength="12"
                             :class="{ 'border-red-400': errors.dni }"
                             class="h-10 border-slate-200 text-sm" />
                         <p v-if="errors.dni" class="text-[10px] font-semibold text-red-500">{{ errors.dni }}</p>

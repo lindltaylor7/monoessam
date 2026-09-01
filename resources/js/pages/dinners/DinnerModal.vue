@@ -45,11 +45,13 @@ const dniTaken = ref(false);
 let dniTimeout: ReturnType<typeof setTimeout> | null = null;
 
 const onDniInput = () => {
+    // Acepta DNI (8 dígitos) o Carné de Extranjería (hasta 12 alfanuméricos).
+    form.dni = form.dni.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
     dniTaken.value = false;
     form.clearErrors('dni');
     if (dniTimeout) clearTimeout(dniTimeout);
     const val = form.dni.trim();
-    if (val.length !== 8) return;
+    if (val.length < 8 || val.length > 12) return;
     dniTimeout = setTimeout(async () => {
         dniChecking.value = true;
         try {
@@ -198,7 +200,7 @@ const submit = () => {
 
                         <div class="grid grid-cols-2 gap-4">
                             <div class="grid gap-2">
-                                <Label for="dni" class="ml-1 text-xs font-bold text-slate-700">DNI</Label>
+                                <Label for="dni" class="ml-1 text-xs font-bold text-slate-700">DNI / Carné de Extranjería</Label>
                                 <div class="group relative">
                                     <Icon
                                         name="id-card"
@@ -207,12 +209,12 @@ const submit = () => {
                                     <Input
                                         id="dni"
                                         v-model="form.dni"
-                                        placeholder="12345678"
-                                        maxlength="8"
+                                        placeholder="DNI o Carné de Extranjería"
+                                        maxlength="12"
                                         @input="onDniInput"
                                         :class="{
                                             'border-destructive ring-destructive/20': form.errors.dni || dniTaken,
-                                            'border-emerald-400 ring-emerald-100': !dniTaken && !form.errors.dni && form.dni.length === 8 && !dniChecking,
+                                            'border-emerald-400 ring-emerald-100': !dniTaken && !form.errors.dni && form.dni.length >= 8 && !dniChecking,
                                         }"
                                         class="focus:ring-primary/20 focus:border-primary h-11 rounded-xl border-slate-200 pl-10 pr-10 shadow-sm transition-all"
                                     />
@@ -227,7 +229,7 @@ const submit = () => {
                                         class="text-destructive absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2"
                                     />
                                     <Icon
-                                        v-else-if="!form.errors.dni && form.dni.length === 8"
+                                        v-else-if="!form.errors.dni && form.dni.length >= 8"
                                         name="check-circle"
                                         class="absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-emerald-500"
                                     />

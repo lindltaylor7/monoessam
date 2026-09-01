@@ -34,7 +34,9 @@ class DinnersImport implements ToModel
         }
 
         $rawDni = trim($row['dni'] ?? $row[1] ?? '');
-        $dni = preg_replace('/[^0-9]/', '', $rawDni);
+        // Se admite DNI (8 dígitos) y Carné de Extranjería (hasta 12 alfanuméricos).
+        $dni = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $rawDni));
+        $dni = substr($dni, 0, 12);
         if (!$dni) {
             return null;
         }

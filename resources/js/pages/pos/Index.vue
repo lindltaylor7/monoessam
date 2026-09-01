@@ -135,7 +135,7 @@ async function lookupDinnerByDni() {
     dinnerFound.value = null;
     showManualRegister.value = false;
 
-    if (buyerDni.value.length !== 8) {
+    if (buyerDni.value.length < 8 || buyerDni.value.length > 12) {
         dinnerLookupStatus.value = 'idle';
         return;
     }
@@ -335,7 +335,7 @@ const cartTotal = computed(() => cartSubtotal.value);
 const inCart = (id: number) => cart.value.some((i) => i.productId === id);
 const cartItem = (id: number) => cart.value.find((i) => i.productId === id);
 
-const dniValid = computed(() => paymentConditionSelected.value !== 'credito' || /^\d{8}$/.test(buyerDni.value.trim()));
+const dniValid = computed(() => paymentConditionSelected.value !== 'credito' || /^[A-Za-z0-9]{8,12}$/.test(buyerDni.value.trim()));
 const canSubmit = computed(() => !submitting.value && cart.value.length > 0 && dniValid.value);
 
 // ── Cart ───────────────────────────────────────────────────────────────────
@@ -504,11 +504,11 @@ const submit = async () => {
         return;
     }
 
-    if (paymentConditionSelected.value === 'credito' && !/^\d{8}$/.test(buyerDni.value.trim())) {
+    if (paymentConditionSelected.value === 'credito' && !/^[A-Za-z0-9]{8,12}$/.test(buyerDni.value.trim())) {
         Swal.fire({
             icon: 'warning',
-            title: 'DNI requerido',
-            text: 'Para ventas al crédito, ingresa el DNI del comprador (8 dígitos).',
+            title: 'Documento requerido',
+            text: 'Para ventas al crédito, ingresa el documento del comprador (DNI de 8 dígitos o Carné de Extranjería de hasta 12).',
             confirmButtonColor: '#dc2626',
         });
         return;
@@ -909,19 +909,19 @@ const submit = async () => {
 
                                 <div>
                                     <span class="mb-1 block text-[10px] font-bold tracking-wider text-zinc-500 uppercase">
-                                        DNI del Comprador <span class="text-red-500">*</span>
+                                        DNI / Carné de Extranjería del Comprador <span class="text-red-500">*</span>
                                     </span>
                                     <div class="relative">
                                         <input
                                             v-model="buyerDni"
                                             type="text"
-                                            inputmode="numeric"
-                                            maxlength="8"
-                                            placeholder="Ej. 45678912"
-                                            @input="buyerDni = buyerDni.replace(/\D/g, '').slice(0, 8)"
+                                            inputmode="text"
+                                            maxlength="12"
+                                            placeholder="Ej. 45678912 o CE001234567"
+                                            @input="buyerDni = buyerDni.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12)"
                                             :class="[
                                                 'w-full rounded-lg border bg-white px-3 py-1.5 pr-8 text-sm font-semibold text-zinc-800 outline-none focus:ring-2',
-                                                buyerDni.length > 0 && buyerDni.length !== 8
+                                                buyerDni.length > 0 && (buyerDni.length < 8 || buyerDni.length > 12)
                                                     ? 'border-red-300 focus:border-red-400 focus:ring-red-100'
                                                     : 'border-zinc-200 focus:border-amber-400 focus:ring-amber-100',
                                             ]"
@@ -935,8 +935,8 @@ const submit = async () => {
                                             class="absolute top-2.5 right-2.5 h-4 w-4 text-emerald-500"
                                         />
                                     </div>
-                                    <p v-if="buyerDni.length > 0 && buyerDni.length !== 8" class="mt-1 text-[10px] font-semibold text-red-500">
-                                        El DNI debe tener 8 dígitos.
+                                    <p v-if="buyerDni.length > 0 && (buyerDni.length < 8 || buyerDni.length > 12)" class="mt-1 text-[10px] font-semibold text-red-500">
+                                        El documento debe tener entre 8 y 12 caracteres (DNI o Carné de Extranjería).
                                     </p>
 
                                     <!-- Comensal encontrado -->
