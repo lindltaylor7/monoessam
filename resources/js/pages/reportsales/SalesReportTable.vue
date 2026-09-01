@@ -312,7 +312,7 @@ const getInitials = (name: string) =>
                                                     <p class="font-bold text-slate-700">{{ sale.cafe.name }}</p>
                                                 </div>
                                                 <div>
-                                                    <p class="text-slate-400">DNI</p>
+                                                    <p class="text-slate-400">DNI / C.E.</p>
                                                     <p class="font-bold font-mono text-slate-700">{{ sale?.tickets[0]?.dni || '—' }}</p>
                                                 </div>
                                                 <div v-if="sale?.tickets[0]?.subdealership_name" class="col-span-2">

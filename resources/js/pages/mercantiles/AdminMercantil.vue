@@ -1851,7 +1851,7 @@ const exportMercantilSales = (mercantilId?: number) => {
                                 <thead class="bg-muted/60 text-muted-foreground uppercase text-[10px] font-semibold tracking-wider">
                                     <tr>
                                         <th class="p-2.5 pl-3">Fecha & Ticket</th>
-                                        <th class="p-2.5">Comprador / DNI</th>
+                                        <th class="p-2.5">Comprador / Doc.</th>
                                         <th class="p-2.5">Método de Pago</th>
                                         <th class="p-2.5">Condición</th>
                                         <th class="p-2.5 pr-3 text-right">Total</th>
@@ -1865,10 +1865,10 @@ const exportMercantilSales = (mercantilId?: number) => {
                                         </td>
                                         <td class="p-2.5">
                                             <div class="font-medium text-foreground">
-                                                {{ s.dinner?.name || (s.buyer_dni ? `DNI: ${s.buyer_dni}` : 'Público General') }}
+                                                {{ s.dinner?.name || (s.buyer_dni ? `Doc.: ${s.buyer_dni}` : 'Público General') }}
                                             </div>
                                             <div v-if="s.dinner?.dni" class="text-[10px] text-muted-foreground">
-                                                DNI: {{ s.dinner.dni }}
+                                                Doc.: {{ s.dinner.dni }}
                                             </div>
                                         </td>
                                         <td class="p-2.5">

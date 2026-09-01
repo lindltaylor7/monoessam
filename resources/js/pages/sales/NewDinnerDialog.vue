@@ -47,7 +47,7 @@ const submit = () => {
             <DialogHeader>
                 <DialogTitle>Nuevo Comensal</DialogTitle>
                 <Input v-model="form.name" type="text" placeholder="Nombre" />
-                <Input v-model="form.dni" type="text" placeholder="DNI" />
+                <Input v-model="form.dni" type="text" maxlength="12" placeholder="DNI / Carné de Extranjería" />
                 <Input v-model="form.phone" type="text" placeholder="Teléfono" />
             </DialogHeader>
             <div class="flex w-full flex-col">

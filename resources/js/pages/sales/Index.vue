@@ -131,8 +131,9 @@ const updateDate = (date: string) => {
 };
 
 const handleDniUpdate = (dni: string) => {
-    if (!dni.trim() || dni.length != 8) {
-        showError('Por favor, ingrese un DNI válido (8 dígitos).');
+    const doc = dni.trim();
+    if (!doc || doc.length < 8 || doc.length > 12) {
+        showError('Por favor, ingrese un documento válido (DNI de 8 dígitos o Carné de Extranjería de hasta 12).');
         return;
     }
     saveSale(dni);

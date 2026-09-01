@@ -544,7 +544,7 @@ const deleteDuplicateSale = (saleId: number) => {
                         <div class="flex items-center justify-between border-b border-amber-100 bg-amber-50 px-4 py-2.5">
                             <div>
                                 <p class="text-sm font-bold text-slate-800">{{ group.dinner_name }}</p>
-                                <p class="text-[11px] text-slate-500">DNI {{ group.dni || '—' }} · {{ group.date }}</p>
+                                <p class="text-[11px] text-slate-500">Doc. {{ group.dni || '—' }} · {{ group.date }}</p>
                             </div>
                             <span class="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700">
                                 {{ group.service_name }} ({{ group.code }})

@@ -25,6 +25,16 @@ use Illuminate\Support\Facades\Auth;
 class DinnerController extends Controller
 {
     /**
+     * Documento de identidad del comensal: DNI (8 dígitos) o Carné de Extranjería
+     * (hasta 12 caracteres alfanuméricos).
+     */
+    private const DNI_RULE = 'required|string|regex:/^[A-Za-z0-9]{8,12}$/';
+
+    private const DNI_MESSAGES = [
+        'dni.regex' => 'El documento debe tener entre 8 y 12 caracteres alfanuméricos (DNI o Carné de Extranjería).',
+    ];
+
+    /**
      * Display a listing of the resource.
      */
     public function index(Request $request)
@@ -97,7 +107,7 @@ class DinnerController extends Controller
     {
         $dni = trim((string) $request->get('dni', ''));
 
-        if (strlen($dni) !== 8) {
+        if (strlen($dni) < 8 || strlen($dni) > 12) {
             return response()->json(['found' => false]);
         }
 
@@ -118,10 +128,10 @@ class DinnerController extends Controller
     {
         $data = $request->validate([
             'name'             => 'required|string|max:255',
-            'dni'              => 'required|string|max:8|unique:dinners,dni',
+            'dni'              => self::DNI_RULE . '|unique:dinners,dni',
             'phone'            => 'nullable|string|max:20',
             'subdealership_id' => 'nullable|exists:subdealerships,id',
-        ]);
+        ], self::DNI_MESSAGES);
 
         $dinner = Dinner::create([
             'name'             => $data['name'],
@@ -138,10 +148,10 @@ class DinnerController extends Controller
     {
         $request->validate([
             'name'             => 'required|string|max:255',
-            'dni'              => 'required|string|max:8|unique:dinners,dni',
+            'dni'              => self::DNI_RULE . '|unique:dinners,dni',
             'phone'            => 'nullable|string|max:20',
             'subdealership_id' => 'nullable|exists:subdealerships,id',
-        ]);
+        ], self::DNI_MESSAGES);
 
         Dinner::create([
             'name'             => $request->name,
@@ -350,10 +360,10 @@ class DinnerController extends Controller
     {
         $request->validate([
             'name'             => 'required|string|max:255',
-            'dni'              => 'required|string|max:8|unique:dinners,dni,' . $dinner->id,
+            'dni'              => self::DNI_RULE . '|unique:dinners,dni,' . $dinner->id,
             'phone'            => 'nullable|string|max:20',
             'subdealership_id' => 'nullable|exists:subdealerships,id',
-        ]);
+        ], self::DNI_MESSAGES);
 
         $dinner->update([
             'name'             => $request->name,
