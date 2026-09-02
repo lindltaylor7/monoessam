@@ -384,20 +384,16 @@ const handleRelFileImport = (event: Event) => {
     }
 };
 
-const generatePO = (program: WeeklyProgram) => {
-    Swal.fire({
-        title: '¿Generar Quebrado (PO)?',
-        text: `Se generará la orden de compra para "${program.cafe?.name}" del ${dayjs(program.start_date).format('DD/MM')} al ${dayjs(program.end_date).format('DD/MM')}.`,
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Sí, generar',
-        cancelButtonText: 'Cancelar',
-        confirmButtonColor: '#FF5A1F',
-    }).then((result) => {
-        if (result.isConfirmed) {
-            router.post(route('planning.generate-po', program.id));
-        }
-    });
+const generatePO = async (program: WeeklyProgram) => {
+    // El quebrado resuelve la receta de cada plato por nivel (igual que los PDF del módulo),
+    // así que se pide el nivel antes de generar la orden.
+    const levelId = await promptForLevel(
+        '¿Generar Quebrado (PO)?',
+        `Se generará la orden de compra para "${program.cafe?.name}" del ${dayjs(program.start_date).format('DD/MM')} al ${dayjs(program.end_date).format('DD/MM')}. Elija el nivel de receta:`,
+    );
+    if (!levelId) return;
+
+    router.post(route('planning.generate-po', program.id), { level_id: levelId });
 };
 
 // The planning grid never records which recipe "nivel" (Master/Staff/Empleado/Obrero) a dish

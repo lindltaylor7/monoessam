@@ -149,10 +149,20 @@ class PlanningController extends Controller
         return redirect()->route('planning.index')->with('success', 'Plan guardado correctamente');
     }
 
-    public function generatePurchaseOrder($id)
+    public function generatePurchaseOrder(Request $request, $id)
     {
-        $program = WeeklyProgram::findOrFail($id);
-        $order = $this->quebradosService->generatePurchaseOrder($program);
+        $validated = $request->validate([
+            'level_id' => 'required|exists:levels,id',
+        ]);
+
+        $program = WeeklyProgram::with('portions')->findOrFail($id);
+        $level   = Level::findOrFail($validated['level_id']);
+        $order   = $this->quebradosService->generatePurchaseOrder($program, $level);
+
+        if ($order->items()->count() === 0) {
+            return redirect()->route('purchase_orders.show', $order->id)
+                ->with('error', 'La orden se creó sin ítems: los platos de esta programación no tienen receta en el nivel elegido, o no hay raciones cargadas.');
+        }
 
         return redirect()->route('purchase_orders.show', $order->id)->with('success', 'Pedido (Quebrado) generado con éxito');
     }
