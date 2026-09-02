@@ -10,6 +10,7 @@ use App\Models\Subdealership;
 use App\Models\Ticket_detail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -343,10 +344,24 @@ class ReportSalesController extends Controller
             return redirect()->back()->with('error', 'No se puede eliminar el único ítem de la venta.');
         }
 
-        $sale->total = max(0, $sale->total - $detail->unit_price);
-        $sale->save();
+        DB::transaction(function () use ($detail, $ticket, $sale) {
+            // Se resta el total de la LÍNEA (unit_price * amount), no solo unit_price:
+            // con amount > 1 la resta anterior descuadraba el total. Y se recalcula el IGV
+            // desde el nuevo total en vez de dejar el del importe anterior.
+            $lineTotal = (float) ($detail->total ?: $detail->unit_price * max(1, (int) $detail->amount));
 
-        $detail->delete();
+            $newTotal = max(0, (float) $sale->total - $lineTotal);
+            $sale->total     = $newTotal;
+            $sale->total_igv = round($newTotal * 0.18, 2);
+            $sale->save();
+
+            $newTicketValue = max(0, (float) $ticket->price_value - $lineTotal);
+            $ticket->price_value = $newTicketValue;
+            $ticket->igv         = round($newTicketValue * 0.18, 2);
+            $ticket->save();
+
+            $detail->delete();
+        });
 
         return redirect()->back()->with('success', 'Ítem eliminado. Total actualizado.');
     }
@@ -368,10 +383,18 @@ class ReportSalesController extends Controller
             return redirect()->back()->with('error', 'No tienes permisos para eliminar esta venta');
         }
 
-        // Eliminar tickets y detalles relacionados
-        $sale->tickets()->delete();
-        $sale->sale_details()->delete();
-        $sale->delete();
+        DB::transaction(function () use ($sale) {
+            // La FK ticket_details.ticket_id es nullOnDelete, así que un borrado masivo por
+            // query builder ($sale->tickets()->delete()) deja los detalles huérfanos en vez
+            // de eliminarlos. Se recorren los tickets y se borran sus detalles primero.
+            $sale->load('tickets.ticket_details');
+            foreach ($sale->tickets as $ticket) {
+                $ticket->ticket_details()->delete();
+                $ticket->delete();
+            }
+            $sale->sale_details()->delete();
+            $sale->delete();
+        });
 
         return redirect()->back()->with('success', 'Venta eliminada correctamente');
     }

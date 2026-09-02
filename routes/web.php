@@ -268,10 +268,8 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('/excel', [SaleController::class, 'excel'])->name('excel');
         Route::put('/{dinner}', [DinnerController::class, 'update'])->name('update');
         Route::delete('/{dinner}', [DinnerController::class, 'destroy'])->name('destroy');
-        Route::post('/', [DinnerController::class, 'store'])->name('store');
         Route::get('pagination/{offset}', [DinnerController::class, 'pagination'])->name('pagination');
         Route::get('report/{dateInitial}/{datFinal}', [DinnerController::class, 'report'])->name('report');
-        Route::get('print-ticket/{ticketId}/{businessId}', [DinnerController::class, 'printTest'])->name('print-ticket');
     });
 
     // ========================================================================
@@ -352,8 +350,6 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     Route::prefix('sales')->name('sales.')->group(function () {
         Route::get('/', [SaleController::class, 'index'])->name('index');
         Route::post('/', [SaleController::class, 'store'])->name('store');
-        Route::put('{id}', [SaleController::class, 'update'])->name('update');
-        Route::delete('{id}', [SaleController::class, 'destroy'])->name('destroy');
         Route::post('excel', [SaleController::class, 'excel'])->name('excel');
         Route::get('by-date', [SaleController::class, 'byDate'])->name('byDate');
         Route::post('visitor', [SaleController::class, 'storeVisitor'])->name('storeVisitor');

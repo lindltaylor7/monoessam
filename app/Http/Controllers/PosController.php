@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -77,53 +78,89 @@ class PosController extends Controller
             return response()->json(['message' => 'El carrito está vacío.'], 422);
         }
 
-        $mercantil = Mercantil::findOrFail($data['mercantil_id']);
+        $mercantil = Mercantil::with('unit:id,mine_id')->findOrFail($data['mercantil_id']);
 
-        $subtotal = 0;
-        foreach ($items as $item) {
-            $subtotal += (float) ($item['total'] ?? (($item['quantity'] ?? 0) * ($item['unit_price'] ?? 0)));
+        // Solo se puede vender en un mercantil de la mina del usuario (mismo criterio que
+        // ProductController::scopedMercantilIds()). Se desactiva para perfiles sin mina.
+        if (Auth::user()->mine_id && optional($mercantil->unit)->mine_id !== Auth::user()->mine_id) {
+            abort(403, 'El mercantil seleccionado no pertenece a su mina.');
         }
-        $subtotal = round($subtotal, 2);
+
+        // El precio de cada línea sale del maestro de productos, no del carrito del cliente:
+        // se resuelve aquí y con él se recalcula subtotal/igv. Un ítem sin productId
+        // (venta libre) conserva el unit_price enviado.
+        $productPrices = Product::whereIn('id', collect($items)->pluck('productId')->filter()->all())
+            ->pluck('price', 'id');
+
+        $resolved = [];
+        foreach ($items as $item) {
+            $quantity  = (int) ($item['quantity'] ?? 0);
+            $productId = $item['productId'] ?? null;
+            $unitPrice = $productId && $productPrices->has($productId)
+                ? (float) $productPrices->get($productId)
+                : (float) ($item['unit_price'] ?? 0);
+            $resolved[] = [
+                'raw'        => $item,
+                'productId'  => $productId,
+                'quantity'   => $quantity,
+                'unit_price' => $unitPrice,
+                'line_total' => round($unitPrice * $quantity, 2),
+            ];
+        }
+
+        $subtotal = round(array_sum(array_column($resolved, 'line_total')), 2);
         $igv      = round($subtotal * 0.18, 2);
 
-        $sale = DB::transaction(function () use ($data, $mercantil, $items, $subtotal, $igv) {
-            $sale = MercantilSale::create([
-                'mercantil_id'      => $mercantil->id,
-                'unit_id'           => $mercantil->unit_id,
-                'user_id'           => Auth::id(),
-                'sale_type_id'      => $data['sale_type_id'] ?? null,
-                'payment_method'    => $data['payment_method'] ?? 'efectivo',
-                'payment_condition' => $data['payment_condition'] ?? 'contado',
-                'buyer_dni'         => $data['buyer_dni'] ?? null,
-                'subdealership_id'  => $data['subdealership_id'] ?? null,
-                'dinner_id'         => $data['dinner_id'] ?? null,
-                'date'              => $data['date'],
-                'subtotal'          => $subtotal,
-                'igv'               => $igv,
-                'total'             => $subtotal,
-            ]);
-
-            foreach ($items as $item) {
-                $quantity  = (int) ($item['quantity'] ?? 0);
-                $unitPrice = (float) ($item['unit_price'] ?? 0);
-                $lineTotal = (float) ($item['total'] ?? ($quantity * $unitPrice));
-
-                $sale->details()->create([
-                    'product_id'   => $item['productId'] ?? null,
-                    'product_name' => $item['name'] ?? '',
-                    'category'     => $item['category'] ?? null,
-                    'quantity'     => $quantity,
-                    'unit_price'   => $unitPrice,
-                    'subtotal'     => $lineTotal,
+        try {
+            $sale = DB::transaction(function () use ($data, $mercantil, $resolved, $subtotal, $igv) {
+                $sale = MercantilSale::create([
+                    'mercantil_id'      => $mercantil->id,
+                    'unit_id'           => $mercantil->unit_id,
+                    'user_id'           => Auth::id(),
+                    'sale_type_id'      => $data['sale_type_id'] ?? null,
+                    'payment_method'    => $data['payment_method'] ?? 'efectivo',
+                    'payment_condition' => $data['payment_condition'] ?? 'contado',
+                    'buyer_dni'         => $data['buyer_dni'] ?? null,
+                    'subdealership_id'  => $data['subdealership_id'] ?? null,
+                    'dinner_id'         => $data['dinner_id'] ?? null,
+                    'date'              => $data['date'],
+                    'subtotal'          => $subtotal,
+                    'igv'               => $igv,
+                    'total'             => $subtotal,
                 ]);
 
-                if (!empty($item['productId'])) {
-                    Product::where('id', $item['productId'])->decrement('stock', $quantity);
-                }
-            }
+                foreach ($resolved as $line) {
+                    if ($line['productId']) {
+                        // Bloqueo de fila + comprobación de disponibilidad: el stock nunca
+                        // debe quedar negativo (antes se hacía decrement() a ciegas).
+                        $product = Product::lockForUpdate()->find($line['productId']);
+                        if (!$product || $product->stock < $line['quantity']) {
+                            $available = $product->stock ?? 0;
+                            throw ValidationException::withMessages([
+                                'products' => "Stock insuficiente para \"{$line['raw']['name']}\": disponible {$available}, solicitado {$line['quantity']}.",
+                            ]);
+                        }
+                    }
 
-            return $sale;
-        });
+                    $sale->details()->create([
+                        'product_id'   => $line['productId'],
+                        'product_name' => $line['raw']['name'] ?? '',
+                        'category'     => $line['raw']['category'] ?? null,
+                        'quantity'     => $line['quantity'],
+                        'unit_price'   => $line['unit_price'],
+                        'subtotal'     => $line['line_total'],
+                    ]);
+
+                    if ($line['productId']) {
+                        Product::where('id', $line['productId'])->decrement('stock', $line['quantity']);
+                    }
+                }
+
+                return $sale;
+            });
+        } catch (ValidationException $e) {
+            return response()->json(['message' => $e->validator->errors()->first(), 'errors' => $e->errors()], 422);
+        }
 
         return response()->json($sale->load('details'), 201);
     }

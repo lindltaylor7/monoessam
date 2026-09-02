@@ -189,7 +189,7 @@ class SaleController extends Controller
                     'total_exonerated_operations'  => 0.0,
                     'total_exported_operations'    => 0.0,
                     'total_igv'                    => $total * 0.18,
-                    'total_icsc'                   => 0.0,
+                    'total_isc'                    => 0.0,
                     'total_other_taxes'            => 0.0,
                     'total_other_charges'          => 0.0,
                     'total'                        => $total,
@@ -268,40 +268,19 @@ class SaleController extends Controller
         //
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, string $id)
-    {
-        $dinner = Dinner::findOrFail($id);
-
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'dni' => 'required|string|regex:/^[A-Za-z0-9]{8,12}$/|unique:dinners,dni,' . $dinner->id,
-            'phone' => 'nullable|string|max:15',
-            'subdealership_id' => 'required|exists:subdealerships,id',
-            'cafe_id' => 'required|exists:cafes,id',
-        ]);
-
-        $dinner->update($request->all());
-
-        return redirect()->back();
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(string $id)
-    {
-        $dinner = Dinner::findOrFail($id);
-        $dinner->delete();
-
-        return redirect()->back();
-    }
-
     public function storeVisitor(Request $request)
     {
-        $cafe = Cafe::find($request->cafe_id);
+        $request->validate([
+            'cafe_id'          => 'required|exists:cafes,id',
+            'service_id'       => 'required|exists:services,id',
+            'name'             => 'required|string|max:255',
+            'dni'              => 'required|string|regex:/^[A-Za-z0-9]{8,12}$/',
+            'date'             => 'required|date',
+            'business_id'      => 'nullable|exists:businesses,id',
+            'subdealership_id' => 'nullable|exists:subdealerships,id',
+        ]);
+
+        $cafe = Cafe::with('unit')->find($request->cafe_id);
         if (!$cafe) {
             return response()->json(['message' => 'Cafetería no encontrada.'], 404);
         }
@@ -311,12 +290,56 @@ class SaleController extends Controller
             return response()->json(['message' => 'Servicio no encontrado.'], 404);
         }
 
-        $user           = Auth::user();
-        $price          = floatval($request->price);
-        $business       = Business::find($request->business_id);
+        $user = Auth::user();
+
+        // Scoping por mina: si el cajero está asignado a una mina, solo puede vender en
+        // comedores de esa mina (se desactiva para perfiles sin mina, como administración).
+        if ($user->mine_id && optional($cafe->unit)->mine_id && $cafe->unit->mine_id !== $user->mine_id) {
+            return response()->json(['message' => 'Este comedor pertenece a otra mina.'], 403);
+        }
+
+        // El precio lo fija el sistema desde el pivote servicio×comedor, nunca el cliente:
+        // antes se tomaba floatval($request->price) sin contrastar contra nada.
+        $servicePivot = $cafe->services()->where('services.id', $service->id)->first();
+        $price = $servicePivot ? (float) $servicePivot->pivot->price : null;
+
+        if ($price === null || $price <= 0) {
+            return response()->json([
+                'message' => 'El servicio seleccionado no tiene un precio configurado para esta cafetería.',
+            ], 422);
+        }
+
+        $business       = $request->business_id ? Business::find($request->business_id) : null;
         $subdealership  = $request->subdealership_id ? Subdealership::find($request->subdealership_id) : null;
 
-        return DB::transaction(function () use ($request, $cafe, $service, $user, $price, $business, $subdealership) {
+        // Lock + control de duplicados equivalente al de la venta a comensal, pero por DNI
+        // (el visitante no está en el padrón).
+        $lockKey = 'visitor_sale_lock_' . $request->dni . '_' . $request->date;
+        $lock    = Cache::lock($lockKey, 10);
+
+        if (!$lock->get()) {
+            return response()->json([
+                'message' => 'Se está procesando una venta para este visitante. Por favor espere.',
+            ], 429);
+        }
+
+        try {
+            if (!$request->boolean('force')) {
+                $already = Sale::where('is_visitor', true)
+                    ->where('date', $request->date)
+                    ->whereHas('tickets', fn($q) => $q->where('dni', $request->dni)
+                        ->whereHas('ticket_details', fn($td) => $td->where('code', $service->code)))
+                    ->exists();
+
+                if ($already) {
+                    return response()->json([
+                        'duplicate' => true,
+                        'message'   => 'Este visitante ya consumió este servicio hoy.',
+                    ], 409);
+                }
+            }
+
+            return DB::transaction(function () use ($request, $cafe, $service, $user, $price, $business, $subdealership) {
             $sale = Sale::create([
                 'dinner_id'    => null,
                 'cafe_id'      => $cafe->id,
@@ -326,7 +349,8 @@ class SaleController extends Controller
                 'business_name' => $business?->name,
                 'cafe_name'    => $cafe->name,
                 'user_id'      => $user->id,
-                'mine_id'      => $request->mine_id ?: null,
+                // La mina sale del comedor (o del usuario), no del payload del cliente.
+                'mine_id'      => optional($cafe->unit)->mine_id ?: $user->mine_id,
                 'is_visitor'   => true,
                 'total_igv'    => $price * 0.18,
                 'total'        => $price,
@@ -372,7 +396,10 @@ class SaleController extends Controller
                 'message' => 'Venta de visitante registrada correctamente.',
                 'sales'   => $recentSales,
             ], 200);
-        });
+            });
+        } finally {
+            optional($lock)->release();
+        }
     }
 
     public function byDate(Request $request)

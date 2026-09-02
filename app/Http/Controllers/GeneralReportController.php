@@ -101,17 +101,27 @@ class GeneralReportController extends Controller
         $paymentMethod = $request->input('payment_method') ?: null;
         $paymentMethod = $paymentMethod === 'all' ? null : $paymentMethod;
 
+        // Si el usuario está asignado a una mina, todo el reporte queda acotado a ella:
+        // el filtro de mina de la petición no puede ampliar el alcance por encima de la
+        // suya (antes, sin `mine_id` en la query, se agregaban todas las minas).
+        $userMineId = optional($request->user())->mine_id;
+        if ($userMineId) {
+            $mineId = $userMineId;
+        }
+
         /* ── Alcance geográfico: comedor > unidad > mina > todo ── */
         $cafeIds = Cafe::query()
             ->when($cafeId, fn ($q) => $q->where('id', $cafeId))
             ->when(! $cafeId && $unitId, fn ($q) => $q->where('unit_id', $unitId))
             ->when(! $cafeId && ! $unitId && $mineId, fn ($q) => $q->whereHas('unit', fn ($u) => $u->where('mine_id', $mineId)))
+            ->when($userMineId, fn ($q) => $q->whereHas('unit', fn ($u) => $u->where('mine_id', $userMineId)))
             ->pluck('id')->all();
 
         // Los mercantiles cuelgan de la unidad, no del comedor: el filtro de comedor no aplica.
         $unitIds = Unit::query()
             ->when($unitId, fn ($q) => $q->where('id', $unitId))
             ->when(! $unitId && $mineId, fn ($q) => $q->where('mine_id', $mineId))
+            ->when($userMineId, fn ($q) => $q->where('mine_id', $userMineId))
             ->pluck('id')->all();
 
         $mercantilIds = Mercantil::query()
