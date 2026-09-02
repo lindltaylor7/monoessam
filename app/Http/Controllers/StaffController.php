@@ -74,6 +74,14 @@ class StaffController extends Controller
     {
         $staff = Staff::with(['staff_financial', 'staff_clothes', 'photo'])->findOrFail($id);
 
+        // Antes update() no validaba nada: el dni podía quedar duplicado o con más de
+        // 8 caracteres. Se replica la regla de store(), ignorando el propio registro.
+        $request->validate([
+            'name' => 'required',
+            'dni'  => "required|max:8|unique:staff,dni,{$staff->id}",
+            'cell' => 'required',
+        ]);
+
         $this->handleStaffPhoto($request, $staff, replacing: true);
 
         $staff->update([
@@ -123,28 +131,6 @@ class StaffController extends Controller
         $staff->delete();
     }
 
-    public function banStaff(string $id)
-    {
-        $staffFiles     = Staff_file::where('staff_id', $id)->get();
-        $staffFinancial = Staff_financial::where('staff_id', $id)->first();
-        $staffClothes   = Staff_clothes::where('staff_id', $id)->get();
-
-        foreach ($staffFiles as $file) {
-            Storage::disk('public')->delete($file->file_path);
-        }
-        $staffFiles->each->delete();
-        $staffFinancial?->delete();
-        $staffClothes->each->delete();
-
-        Staff::findOrFail($id)->update(['status' => 0]);
-
-        return response()->json([
-            'cafes' => Cafe::with('unit')->get(),
-            'staff' => Staff::with(['staff_files', 'observations', 'observations.user'])->where('status', '!=', 0)->get(),
-            'roles' => Role::all(),
-        ]);
-    }
-
     public function updateStatusStaff(Request $request)
     {
         Staff::findOrFail($request->staff_id)->update(['status' => $request->status]);
@@ -173,12 +159,17 @@ class StaffController extends Controller
             }
         } else {
             $staffFile = Staff_file::findOrFail($request->fileId);
-            Storage::disk('public')->delete($staffFile->file_path);
 
+            // El borrado del archivo anterior va DENTRO del if: antes se borraba antes de
+            // comprobar que llegaba el reemplazo, así que una petición sin archivo (timeout
+            // de subida) dejaba la fila apuntando a un path inexistente.
             if ($request->hasFile('file')) {
+                $newPath = $this->storeUploadedFile($request);
+                Storage::disk('public')->delete($staffFile->file_path);
+
                 $staffFile->update([
                     'file_type'       => $request->fileTypeKey,
-                    'file_path'       => $this->storeUploadedFile($request),
+                    'file_path'       => $newPath,
                     'expiration_date' => $request->expirationDate,
                     'start_date'      => $request->startDate,
                 ]);
@@ -421,11 +412,13 @@ class StaffController extends Controller
             $staff->save();
 
             $guard = Guard::firstOrCreate(['cafe_id' => $request->cafeId, 'name' => $request->guard]);
-            DB::table('guard_roles')->insert([
-                'guard_id' => $guard->id,
-                'role_id'  => $request->roleId,
-                'staff_id' => $staff->id,
-            ]);
+            // updateOrInsert, no insert: antes cada edición del trabajador añadía una fila
+            // nueva a guard_roles, acumulando puestos duplicados que contaminaban Headcount
+            // y el cálculo asignado/no-asignado.
+            DB::table('guard_roles')->updateOrInsert(
+                ['guard_id' => $guard->id, 'role_id' => $request->roleId, 'staff_id' => $staff->id],
+                []
+            );
         } elseif ($request->areaId && !$request->cafeId) {
             $staff->staffable_id   = $request->areaId;
             $staff->staffable_type = Area::class;

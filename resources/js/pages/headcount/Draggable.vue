@@ -12,6 +12,9 @@ interface Props {
         avatar?: string;
     };
     showButtonDelete: boolean;
+    // Id de la fila guard_roles (el puesto). Cuando se pasa, quitar al usuario libera
+    // solo ese puesto y no todos los turnos de esa persona.
+    guardRoleId?: number;
 }
 
 const message = ref('Drag the item to the drop zone');
@@ -35,7 +38,7 @@ const { elementRef, handleDragStart, isDragging } = useDraggable({
 const deleteUser = (userId: number) => {
     if (confirm('¿Estás seguro de quitar este usuario de este rol?')) {
         axios
-            .delete(`guards/roles/user/${userId}`)
+            .delete(`guards/roles/user/${props.guardRoleId ?? userId}`)
             .then(() => {
                 emit('unassignUser', userId);
             })

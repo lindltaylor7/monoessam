@@ -119,7 +119,6 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('/', [StaffController::class, 'store'])->name('store');
         Route::put('{id}', [StaffController::class, 'update'])->name('update');
         Route::delete('{id}', [StaffController::class, 'destroy'])->name('destroy');
-        Route::get('ban/{id}', [StaffController::class, 'banStaff'])->name('ban');
         Route::post('/update-status', [StaffController::class, 'updateStatusStaff'])->name('update-status');
         Route::post('/upload-file', [StaffController::class, 'uploadFile'])->name('upload-file');
         Route::post('/upload-filedate', [StaffController::class, 'uploadFileDate'])->name('update-filedate');

@@ -158,7 +158,7 @@ const unassignStaff = async (role: any) => {
     if (!role.staff) return;
     if (!confirm('¿Está seguro de quitar a este personal?')) return;
     try {
-        await axios.delete(`/guards/roles/user/${role.staff.id}`);
+        await axios.delete(`/guards/roles/user/${role.id}`);
         role.staff = null;
         emit('fetchCafeData', props.cafeId);
     } catch (e) {

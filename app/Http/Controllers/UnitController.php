@@ -81,11 +81,11 @@ class UnitController extends Controller
 
     public function unitServiceables(Request $request)
     {
-        $unit = Unit::find($request->placeId);
+        $unit = Unit::findOrFail($request->placeId);
 
-        $selectedIds = array_map('intval', array_keys(array_filter($request->services)));
+        $selectedIds = array_map('intval', array_keys(array_filter($request->services ?? [])));
 
-        $serviceables = $unit->services()->sync($selectedIds);
+        $unit->services()->sync($selectedIds);
 
         return to_route('management');
     }
