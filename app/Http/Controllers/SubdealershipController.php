@@ -27,11 +27,6 @@ class SubdealershipController extends Controller
         ]);
     }
 
-    public function create()
-    {
-        return Inertia::render('subdealerships/Create');
-    }
-
     public function store(Request $request)
     {
         $request->validate(['name' => 'required|string|max:255']);
@@ -59,20 +54,6 @@ class SubdealershipController extends Controller
         }
 
         return redirect()->back()->with('success', 'Subdealership created successfully.');
-    }
-
-    public function show(Subdealership $subdealership)
-    {
-        return Inertia::render('subdealerships/Show', [
-            'subdealership' => $subdealership->load('dinners', 'units', 'mines'),
-        ]);
-    }
-
-    public function edit(Subdealership $subdealership)
-    {
-        return Inertia::render('subdealerships/Edit', [
-            'subdealership' => $subdealership,
-        ]);
     }
 
     public function update(UpdateSubdealershipRequest $request, Subdealership $subdealership)
@@ -115,5 +96,7 @@ class SubdealershipController extends Controller
     public function destroy($id)
     {
         Subdealership::destroy($id);
+
+        return redirect()->back()->with('success', 'Subconcesionaria eliminada.');
     }
 }

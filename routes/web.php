@@ -185,7 +185,6 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('/', [SubdealershipController::class, 'store'])->name('store');
         Route::get('/search', [SubdealershipController::class, 'search'])->name('search');
         Route::post('/{subdealership}/attach', [SubdealershipController::class, 'attachToMine'])->name('attach');
-        Route::get('/{subdealership}', [SubdealershipController::class, 'show'])->name('show');
         Route::put('/{subdealership}', [SubdealershipController::class, 'update'])->name('update');
         Route::delete('/{id}', [SubdealershipController::class, 'destroy'])->name('destroy');
     });
