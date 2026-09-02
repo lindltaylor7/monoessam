@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Requerimiento x Producto {{ $program->id }}</title>
+    <title>Requerimiento x Producto</title>
     <style>
         @page { margin: 1.2cm; }
         body {
@@ -84,21 +84,21 @@
     <table class="unidad-base-table">
         <tr>
             <td class="ub-label">Unidad:</td>
-            <td class="ub-value">{{ strtoupper($program->cafe->unit->name ?? '—') }}</td>
+            <td class="ub-value">{{ strtoupper($meta['unit'] ?: '—') }}</td>
             <td class="ub-label">Base:</td>
-            <td class="ub-value">{{ strtoupper($baseChain ?: '—') }}</td>
+            <td class="ub-value">{{ strtoupper($meta['base'] ?: '—') }}</td>
         </tr>
     </table>
 
     <table class="meta-table">
         <tr>
             <td style="text-align:left">
-                <span class="meta-item"><span class="meta-label">Período:</span> {{ \Carbon\Carbon::parse($program->start_date)->year }}</span>
-                <span class="meta-item"><span class="meta-label">Mes:</span> {{ ucfirst(\Carbon\Carbon::parse($program->start_date)->locale('es')->translatedFormat('F')) }}</span>
-                <span class="meta-item"><span class="meta-label">Semana:</span> {{ \Carbon\Carbon::parse($program->start_date)->isoWeek() }}</span>
+                <span class="meta-item"><span class="meta-label">Período:</span> {{ $meta['year'] }}</span>
+                <span class="meta-item"><span class="meta-label">Mes:</span> {{ $meta['month'] }}</span>
+                <span class="meta-item"><span class="meta-label">Semana:</span> {{ $meta['week'] }}</span>
                 <span class="meta-item"><span class="meta-label">Nivel:</span> {{ $level->name }}</span>
             </td>
-            <td class="orden-box"><span class="orden-label">Orden:</span><span class="orden-value">{{ $program->id }}</span></td>
+            <td class="orden-box"><span class="orden-label">Orden:</span><span class="orden-value">{{ $meta['orden'] }}</span></td>
         </tr>
     </table>
 

@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Dosificación Nutricional {{ $program->id }}</title>
+    <title>Dosificación Nutricional</title>
     <style>
         @page { margin: 1cm; }
         body {
@@ -99,9 +99,9 @@
                 <table class="unidad-base-table">
                     <tr>
                         <td class="ub-label">Unidad:</td>
-                        <td class="ub-value">{{ strtoupper($program->cafe->unit->name ?? '—') }}</td>
+                        <td class="ub-value">{{ $page['unit'] ?: '—' }}</td>
                         <td class="ub-label">Base:</td>
-                        <td class="ub-value">{{ strtoupper($baseChain ?: '—') }}</td>
+                        <td class="ub-value">{{ strtoupper($page['base'] ?: '—') }}</td>
                     </tr>
                 </table>
 
@@ -109,8 +109,8 @@
                     <span class="meta-item"><span class="meta-label">Período:</span> {{ \Carbon\Carbon::parse($page['date'])->year }}</span>
                     <span class="meta-item"><span class="meta-label">Mes:</span> {{ strtoupper(\Carbon\Carbon::parse($page['date'])->locale('es')->translatedFormat('M')) }}</span>
                     <span class="meta-item"><span class="meta-label">Semana:</span> {{ \Carbon\Carbon::parse($page['date'])->isoWeek() }}</span>
-                    <span class="meta-item"><span class="meta-label">Programación:</span> {{ $program->id }}</span>
-                    <span class="meta-item"><span class="meta-label">Nº Orden:</span> {{ $program->id }}</span>
+                    <span class="meta-item"><span class="meta-label">Programación:</span> {{ $page['program_id'] }}</span>
+                    <span class="meta-item"><span class="meta-label">Nº Orden:</span> {{ $page['program_id'] }}</span>
                     <span class="meta-item"><span class="meta-label">Nivel:</span> {{ $level->name }}</span>
                 </div>
 

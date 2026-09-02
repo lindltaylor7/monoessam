@@ -487,11 +487,13 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('/', [PlanningController::class, 'index'])->name('index');
         Route::post('/', [PlanningController::class, 'store'])->name('store');
         Route::post('{id}/generate-po', [PlanningController::class, 'generatePurchaseOrder'])->name('generate-po');
-        Route::get('{id}/quebrado-pdf', [PlanningController::class, 'quebradoPdf'])->name('quebrado-pdf');
-        Route::get('{id}/requerimiento-pdf', [PlanningController::class, 'requerimientoPdf'])->name('requerimiento-pdf');
-        Route::get('{id}/dosificacion-pdf', [PlanningController::class, 'dosificacionPdf'])->name('dosificacion-pdf');
+        // Todos los reportes operan sobre una o varias programaciones seleccionadas (program_ids[]),
+        // igual que menu-excel.
+        Route::get('quebrado-pdf', [PlanningController::class, 'quebradoPdf'])->name('quebrado-pdf');
+        Route::get('requerimiento-pdf', [PlanningController::class, 'requerimientoPdf'])->name('requerimiento-pdf');
+        Route::get('dosificacion-pdf', [PlanningController::class, 'dosificacionPdf'])->name('dosificacion-pdf');
         Route::get('menu-excel', [PlanningController::class, 'menuExcel'])->name('menu-excel');
-        Route::get('{id}/orden-pedido-excel', [PlanningController::class, 'purchaseOrderExcel'])->name('orden-pedido-excel');
+        Route::get('orden-pedido-excel', [PlanningController::class, 'purchaseOrderExcel'])->name('orden-pedido-excel');
     });
 
     Route::prefix('purchase-orders')->name('purchase_orders.')->group(function () {

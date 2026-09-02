@@ -2,6 +2,7 @@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -424,90 +425,138 @@ const promptForLevel = async (title: string, prompt: string): Promise<string | n
     return levelId || null;
 };
 
-const generateWeeklyQuebradoPdf = async (program: WeeklyProgram) => {
+// ── Programaciones guardadas: selección múltiple + filtros ───────────────────────────────
+// Todos los reportes (no solo el Menú Semanal) se generan sobre las programaciones marcadas
+// en la tabla, enviando program_ids[] al backend.
+const selectedProgramIds = ref<number[]>([]);
+
+const programFilters = ref({
+    mine: '',
+    unit: '',
+    service: '',
+    savedFrom: '',
+    savedTo: '',
+});
+
+const programRow = (p: any) => ({
+    id: p.id as number,
+    cafe: p.cafe?.name ?? '—',
+    unit: p.cafe?.unit?.name ?? '—',
+    mine: p.cafe?.unit?.mine?.name ?? '—',
+    services: (p.services ?? []) as string[],
+    savedAt: p.created_at as string | null,
+});
+
+const programMineOptions = computed(() => [...new Set(props.programs.map((p: any) => p.cafe?.unit?.mine?.name).filter(Boolean))].sort());
+const programUnitOptions = computed(() =>
+    [
+        ...new Set(
+            props.programs
+                .filter((p: any) => !programFilters.value.mine || p.cafe?.unit?.mine?.name === programFilters.value.mine)
+                .map((p: any) => p.cafe?.unit?.name)
+                .filter(Boolean),
+        ),
+    ].sort(),
+);
+const programServiceOptions = computed(() => [...new Set(props.programs.flatMap((p: any) => (p.services ?? []) as string[]))].sort());
+
+const filteredPrograms = computed(() => {
+    const f = programFilters.value;
+    return props.programs.filter((p: any) => {
+        const row = programRow(p);
+        if (f.mine && row.mine !== f.mine) return false;
+        if (f.unit && row.unit !== f.unit) return false;
+        if (f.service && !row.services.includes(f.service)) return false;
+        if (f.savedFrom && (!row.savedAt || dayjs(row.savedAt).isBefore(dayjs(f.savedFrom), 'day'))) return false;
+        if (f.savedTo && (!row.savedAt || dayjs(row.savedAt).isAfter(dayjs(f.savedTo), 'day'))) return false;
+        return true;
+    });
+});
+
+const hasProgramFilters = computed(() => Object.values(programFilters.value).some(Boolean));
+const clearProgramFilters = () => {
+    programFilters.value = { mine: '', unit: '', service: '', savedFrom: '', savedTo: '' };
+};
+
+const visibleProgramIds = computed<number[]>(() => filteredPrograms.value.map((p: any) => p.id));
+const allVisibleSelected = computed(
+    () => visibleProgramIds.value.length > 0 && visibleProgramIds.value.every((id) => selectedProgramIds.value.includes(id)),
+);
+const toggleSelectAllVisible = (checked: boolean) => {
+    if (checked) {
+        selectedProgramIds.value = [...new Set([...selectedProgramIds.value, ...visibleProgramIds.value])];
+    } else {
+        selectedProgramIds.value = selectedProgramIds.value.filter((id) => !visibleProgramIds.value.includes(id));
+    }
+};
+const toggleProgram = (id: number, checked: boolean) => {
+    if (checked) {
+        if (!selectedProgramIds.value.includes(id)) selectedProgramIds.value = [...selectedProgramIds.value, id];
+    } else {
+        selectedProgramIds.value = selectedProgramIds.value.filter((x) => x !== id);
+    }
+};
+
+// Drop selections that are filtered out of view so the action bar count always matches what's checked on screen.
+watch(filteredPrograms, () => {
+    selectedProgramIds.value = selectedProgramIds.value.filter((id) => visibleProgramIds.value.includes(id));
+});
+
+const requireSelection = (): number[] | null => {
+    if (!selectedProgramIds.value.length) {
+        Swal.fire('Sin selección', 'Marque al menos una programación en la tabla para generar el reporte.', 'info');
+        return null;
+    }
+    return [...selectedProgramIds.value];
+};
+
+const openReport = (routeName: string, params: Record<string, unknown>) => {
+    window.open(route(routeName, params), '_blank');
+};
+
+const generateWeeklyQuebradoPdf = async () => {
+    const ids = requireSelection();
+    if (!ids) return;
     const levelId = await promptForLevel(
         'Quebrado Semanal (PDF)',
-        'Seleccione el nivel de receta a usar para calcular los ingredientes de cada plato de esta semana.',
+        `Seleccione el nivel de receta a usar para calcular los ingredientes de cada plato (${ids.length} programación/es).`,
     );
-    if (levelId) {
-        window.open(route('planning.quebrado-pdf', { id: program.id, level_id: levelId }), '_blank');
-    }
+    if (levelId) openReport('planning.quebrado-pdf', { program_ids: ids, level_id: levelId });
 };
 
-const generateWeeklyRequirementPdf = async (program: WeeklyProgram) => {
+const generateWeeklyRequirementPdf = async () => {
+    const ids = requireSelection();
+    if (!ids) return;
     const levelId = await promptForLevel(
         'Requerimiento x Producto (PDF)',
-        'Seleccione el nivel de receta a usar para calcular cuánto de cada insumo se necesita esta semana.',
+        `Seleccione el nivel de receta a usar para consolidar cuánto de cada insumo se necesita (${ids.length} programación/es).`,
     );
-    if (levelId) {
-        window.open(route('planning.requerimiento-pdf', { id: program.id, level_id: levelId }), '_blank');
-    }
+    if (levelId) openReport('planning.requerimiento-pdf', { program_ids: ids, level_id: levelId });
 };
 
-const generateWeeklyDosificacionPdf = async (program: WeeklyProgram) => {
+const generateWeeklyDosificacionPdf = async () => {
+    const ids = requireSelection();
+    if (!ids) return;
     const levelId = await promptForLevel(
         'Dosificación Nutricional (PDF)',
-        'Seleccione el nivel de receta a usar para calcular los valores nutricionales de cada plato de esta semana.',
+        `Seleccione el nivel de receta a usar para calcular los valores nutricionales de cada plato (${ids.length} programación/es).`,
     );
-    if (levelId) {
-        window.open(route('planning.dosificacion-pdf', { id: program.id, level_id: levelId }), '_blank');
-    }
+    if (levelId) openReport('planning.dosificacion-pdf', { program_ids: ids, level_id: levelId });
 };
 
-// Excel de menú semanal: a diferencia del resto de reportes, no parte de una programación fija —
-// el usuario marca en este diálogo qué programaciones incluir y cada una va en su propia hoja.
-const generateWeeklyMenuExcel = async () => {
-    if (!props.programs?.length) {
-        Swal.fire('Atención', 'No hay programaciones guardadas para exportar.', 'warning');
-        return;
-    }
-
-    const optionsHtml = props.programs
-        .map((p: any) => {
-            const label = `${p.cafe?.name ?? 'Comedor'} · ${dayjs(p.start_date).format('DD/MM/YYYY')} – ${dayjs(p.end_date).format('DD/MM/YYYY')}`;
-            return `<label style="display:flex;align-items:center;gap:8px;padding:6px 4px;font-size:13px;cursor:pointer;">
-                <input type="checkbox" class="swal-prog" value="${p.id}" style="width:16px;height:16px;flex-shrink:0;">
-                <span style="text-align:left;">${label}</span>
-            </label>`;
-        })
-        .join('');
-
-    const { value: ids } = await Swal.fire({
-        title: 'Menú Semanal (Excel)',
-        html:
-            '<p style="margin-bottom:8px;text-align:left;font-size:13px;color:#4b5563;">Seleccione las programaciones a incluir (una hoja por programación).</p>' +
-            `<div style="max-height:320px;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;padding:6px;">${optionsHtml}</div>` +
-            '<label style="display:flex;align-items:center;gap:8px;padding:10px 4px 0;font-size:12px;font-weight:600;color:#475569;cursor:pointer;"><input type="checkbox" id="swal-prog-all" style="width:15px;height:15px;">Seleccionar todas</label>',
-        focusConfirm: false,
-        showCancelButton: true,
-        confirmButtonText: 'Generar Excel',
-        cancelButtonText: 'Cancelar',
-        confirmButtonColor: '#FF5A1F',
-        didOpen: () => {
-            document.getElementById('swal-prog-all')?.addEventListener('change', (e) => {
-                const checked = (e.target as HTMLInputElement).checked;
-                document.querySelectorAll<HTMLInputElement>('.swal-prog').forEach((c) => (c.checked = checked));
-            });
-        },
-        preConfirm: () => {
-            const selected = Array.from(document.querySelectorAll<HTMLInputElement>('.swal-prog:checked')).map((c) => c.value);
-            if (selected.length === 0) {
-                Swal.showValidationMessage('Seleccione al menos una programación.');
-                return false;
-            }
-            return selected;
-        },
-    });
-
-    if (ids && ids.length) {
-        window.open(route('planning.menu-excel', { program_ids: ids }), '_blank');
-    }
+// Una hoja por programación seleccionada.
+const generateWeeklyMenuExcel = () => {
+    const ids = requireSelection();
+    if (!ids) return;
+    openReport('planning.menu-excel', { program_ids: ids });
 };
 
 // Prices only exist per (insumo, ciudad, proveedor) — there's no relation from
 // Mina/Unidad/Comedor to Ciudad in the system — so the city used to price this order is also
 // chosen manually here, same reasoning as the recipe nivel above.
-const generateWeeklyPurchaseOrderExcel = async (program: WeeklyProgram) => {
+const generateWeeklyPurchaseOrderExcel = async () => {
+    const ids = requireSelection();
+    if (!ids) return;
     if (!props.levels?.length || !props.cities?.length) {
         Swal.fire('Atención', 'Faltan niveles o ciudades configuradas en el sistema.', 'warning');
         return;
@@ -516,7 +565,7 @@ const generateWeeklyPurchaseOrderExcel = async (program: WeeklyProgram) => {
     const { value: formValues } = await Swal.fire({
         title: 'Orden de Pedido Semanal (Excel)',
         html:
-            '<p class="mb-3 text-left text-sm text-gray-600">Seleccione el nivel de receta y la ciudad de precios a usar para esta orden.</p>' +
+            `<p class="mb-3 text-left text-sm text-gray-600">Se consolidará el pedido de ${ids.length} programación/es. Seleccione el nivel de receta y la ciudad de precios.</p>` +
             '<label class="mb-1 block text-left text-xs font-semibold text-gray-500">Nivel de receta</label>' +
             '<select id="swal-level" class="swal2-select" style="display:block;width:100%;margin-bottom:12px;">' +
             props.levels.map((l: any) => `<option value="${l.id}">${l.name}</option>`).join('') +
@@ -537,7 +586,7 @@ const generateWeeklyPurchaseOrderExcel = async (program: WeeklyProgram) => {
     });
 
     if (formValues?.levelId && formValues?.cityId) {
-        window.open(route('planning.orden-pedido-excel', { id: program.id, level_id: formValues.levelId, city_id: formValues.cityId }), '_blank');
+        openReport('planning.orden-pedido-excel', { program_ids: ids, level_id: formValues.levelId, city_id: formValues.cityId });
     }
 };
 
@@ -1327,94 +1376,228 @@ const loadStructure = (structureIdStr: string) => {
                 </div>
             </div>
 
-            <div v-if="activeTab === 'programaciones'">
-                <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-                    <h2 class="text-sm font-bold tracking-wide text-slate-700">Programaciones guardadas</h2>
-                    <Button
-                        v-if="programs.length"
-                        size="sm"
-                        @click="generateWeeklyMenuExcel"
-                        class="flex items-center gap-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"
-                    >
-                        <FileSpreadsheet class="h-4 w-4" />
-                        Menú Semanal (Excel)
-                    </Button>
-                </div>
+            <div v-if="activeTab === 'programaciones'" class="flex flex-col gap-4">
                 <div
                     v-if="programs.length === 0"
                     class="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400"
                 >
                     Aún no hay programaciones guardadas. Complete la matriz en la pestaña "Planificar" y presione "Guardar Planificación".
                 </div>
-                <div v-else class="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-                    <div class="overflow-x-auto">
-                        <Table>
-                            <TableHeader>
-                                <TableRow class="bg-slate-50/80 hover:bg-slate-50/80">
-                                    <TableHead class="font-semibold text-slate-600">Comedor</TableHead>
-                                    <TableHead class="font-semibold text-slate-600">Periodo</TableHead>
-                                    <TableHead class="font-semibold text-slate-600">Estructura</TableHead>
-                                    <TableHead class="font-semibold text-slate-600">Estado</TableHead>
-                                    <TableHead class="text-right font-semibold text-slate-600">Acciones</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                <TableRow v-for="program in programs" :key="program.id" class="hover:bg-slate-50/50">
-                                    <TableCell>
-                                        <div class="font-semibold text-slate-800">{{ program.cafe?.name || '—' }}</div>
-                                        <div v-if="program.cafe?.unit?.name" class="text-xs text-slate-400">{{ program.cafe.unit.name }}</div>
-                                    </TableCell>
-                                    <TableCell class="text-slate-600">
-                                        {{ dayjs(program.start_date).format('DD/MM/YYYY') }} - {{ dayjs(program.end_date).format('DD/MM/YYYY') }}
-                                    </TableCell>
-                                    <TableCell class="text-slate-600">{{ program.structure?.name || '—' }}</TableCell>
-                                    <TableCell>
-                                        <Badge variant="outline" class="border-slate-200 bg-slate-50 font-medium text-slate-600 capitalize">
-                                            {{ program.status }}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell>
-                                        <div class="flex items-center justify-end gap-2">
-                                            <Button
-                                                size="sm"
-                                                @click="generatePO(program)"
-                                                variant="outline"
-                                                class="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50"
-                                            >
-                                                Quebrado (PO)
-                                            </Button>
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger as-child>
-                                                    <Button
-                                                        size="sm"
-                                                        class="flex items-center gap-1 rounded-lg bg-[#FF5A1F] text-white hover:bg-[#e04a17]"
-                                                    >
-                                                        Reportes
-                                                        <ChevronDown class="h-3.5 w-3.5" />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" class="w-64">
-                                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyQuebradoPdf(program)">
-                                                        Quebrado Semanal (PDF)
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyRequirementPdf(program)">
-                                                        Requerimiento x Producto (PDF)
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyDosificacionPdf(program)">
-                                                        Dosificación Nutricional (PDF)
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyPurchaseOrderExcel(program)">
-                                                        Orden de Pedido Semanal (Excel)
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
-                            </TableBody>
-                        </Table>
+
+                <template v-else>
+                    <!-- Filtros -->
+                    <div class="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Mina</label>
+                            <select
+                                v-model="programFilters.mine"
+                                class="h-9 min-w-[150px] rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none"
+                            >
+                                <option value="">Todas</option>
+                                <option v-for="m in programMineOptions" :key="m" :value="m">{{ m }}</option>
+                            </select>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Unidad</label>
+                            <select
+                                v-model="programFilters.unit"
+                                class="h-9 min-w-[150px] rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none"
+                            >
+                                <option value="">Todas</option>
+                                <option v-for="u in programUnitOptions" :key="u" :value="u">{{ u }}</option>
+                            </select>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Servicio</label>
+                            <select
+                                v-model="programFilters.service"
+                                class="h-9 min-w-[140px] rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none"
+                            >
+                                <option value="">Todos</option>
+                                <option v-for="s in programServiceOptions" :key="s" :value="s">{{ s }}</option>
+                            </select>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Guardado desde</label>
+                            <Input
+                                type="date"
+                                v-model="programFilters.savedFrom"
+                                class="h-9 w-[150px] rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F]"
+                            />
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Guardado hasta</label>
+                            <Input
+                                type="date"
+                                v-model="programFilters.savedTo"
+                                class="h-9 w-[150px] rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F]"
+                            />
+                        </div>
+                        <button
+                            v-if="hasProgramFilters"
+                            type="button"
+                            @click="clearProgramFilters"
+                            class="h-9 rounded-lg px-2.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+                        >
+                            Limpiar filtros
+                        </button>
+                        <span class="ml-auto self-center text-xs text-slate-400"> {{ filteredPrograms.length }} de {{ programs.length }} </span>
                     </div>
-                </div>
+
+                    <!-- Barra de acciones sobre la selección -->
+                    <div
+                        class="flex flex-wrap items-center gap-3 rounded-2xl border p-3 px-4 transition-colors"
+                        :class="selectedProgramIds.length ? 'border-[#FF5A1F]/30 bg-orange-50/60' : 'border-slate-100 bg-white'"
+                    >
+                        <span class="text-sm font-semibold" :class="selectedProgramIds.length ? 'text-[#FF5A1F]' : 'text-slate-400'">
+                            {{ selectedProgramIds.length }} seleccionada{{ selectedProgramIds.length === 1 ? '' : 's' }}
+                        </span>
+                        <span v-if="!selectedProgramIds.length" class="text-xs text-slate-400">
+                            — marque programaciones para generar reportes combinados
+                        </span>
+                        <button
+                            v-if="selectedProgramIds.length"
+                            type="button"
+                            @click="selectedProgramIds = []"
+                            class="text-xs font-medium text-slate-500 underline-offset-2 hover:underline"
+                        >
+                            Quitar selección
+                        </button>
+                        <div class="ml-auto flex items-center gap-2">
+                            <Button
+                                size="sm"
+                                :disabled="!selectedProgramIds.length"
+                                @click="generateWeeklyMenuExcel"
+                                class="flex items-center gap-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40"
+                            >
+                                <FileSpreadsheet class="h-4 w-4" />
+                                Menú Semanal (Excel)
+                            </Button>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger as-child>
+                                    <Button
+                                        size="sm"
+                                        :disabled="!selectedProgramIds.length"
+                                        class="flex items-center gap-1 rounded-lg bg-[#FF5A1F] text-white hover:bg-[#e04a17] disabled:opacity-40"
+                                    >
+                                        Reportes
+                                        <ChevronDown class="h-3.5 w-3.5" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" class="w-72">
+                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyQuebradoPdf">
+                                        <span class="flex-1">Quebrado Semanal</span>
+                                        <span class="text-[10px] font-semibold text-slate-400">PDF</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyRequirementPdf">
+                                        <span class="flex-1">Requerimiento x Producto</span>
+                                        <span class="text-[10px] font-semibold text-slate-400">PDF · consolidado</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyDosificacionPdf">
+                                        <span class="flex-1">Dosificación Nutricional</span>
+                                        <span class="text-[10px] font-semibold text-slate-400">PDF</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyPurchaseOrderExcel">
+                                        <span class="flex-1">Orden de Pedido Semanal</span>
+                                        <span class="text-[10px] font-semibold text-slate-400">Excel · consolidado</span>
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
+                    </div>
+
+                    <div class="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+                        <div class="overflow-x-auto">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow class="bg-slate-50/80 hover:bg-slate-50/80">
+                                        <TableHead class="w-[44px]">
+                                            <Checkbox
+                                                :model-value="allVisibleSelected"
+                                                @update:model-value="toggleSelectAllVisible(Boolean($event))"
+                                                aria-label="Seleccionar todas"
+                                            />
+                                        </TableHead>
+                                        <TableHead class="font-semibold text-slate-600">Servicio</TableHead>
+                                        <TableHead class="font-semibold text-slate-600">Comedor</TableHead>
+                                        <TableHead class="font-semibold text-slate-600">Periodo</TableHead>
+                                        <TableHead class="font-semibold text-slate-600">Guardado</TableHead>
+                                        <TableHead class="font-semibold text-slate-600">Estructura</TableHead>
+                                        <TableHead class="font-semibold text-slate-600">Estado</TableHead>
+                                        <TableHead class="text-right font-semibold text-slate-600">Acciones</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    <TableRow
+                                        v-for="program in filteredPrograms"
+                                        :key="program.id"
+                                        class="transition-colors hover:bg-slate-50/50"
+                                        :class="selectedProgramIds.includes(program.id) ? 'bg-orange-50/50' : ''"
+                                    >
+                                        <TableCell>
+                                            <Checkbox
+                                                :model-value="selectedProgramIds.includes(program.id)"
+                                                @update:model-value="toggleProgram(program.id, Boolean($event))"
+                                                :aria-label="`Seleccionar programación ${program.id}`"
+                                            />
+                                        </TableCell>
+                                        <TableCell>
+                                            <div class="flex flex-wrap gap-1">
+                                                <Badge
+                                                    v-for="s in programRow(program).services"
+                                                    :key="s"
+                                                    variant="outline"
+                                                    class="border-[#FF5A1F]/25 bg-orange-50 font-semibold text-[#FF5A1F]"
+                                                >
+                                                    {{ s }}
+                                                </Badge>
+                                                <span v-if="!programRow(program).services.length" class="text-xs text-slate-300">—</span>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div class="font-semibold text-slate-800">{{ programRow(program).cafe }}</div>
+                                            <div class="text-xs text-slate-400">{{ programRow(program).unit }} · {{ programRow(program).mine }}</div>
+                                        </TableCell>
+                                        <TableCell class="text-slate-600">
+                                            {{ dayjs(program.start_date).format('DD/MM/YYYY') }} –
+                                            {{ dayjs(program.end_date).format('DD/MM/YYYY') }}
+                                        </TableCell>
+                                        <TableCell class="text-slate-500 tabular-nums">
+                                            <template v-if="programRow(program).savedAt">
+                                                {{ dayjs(programRow(program).savedAt).format('DD/MM/YYYY') }}
+                                                <span class="text-xs text-slate-400">{{ dayjs(programRow(program).savedAt).format('HH:mm') }}</span>
+                                            </template>
+                                            <span v-else class="text-slate-300">—</span>
+                                        </TableCell>
+                                        <TableCell class="text-slate-600">{{ program.structure?.name || '—' }}</TableCell>
+                                        <TableCell>
+                                            <Badge variant="outline" class="border-slate-200 bg-slate-50 font-medium text-slate-600 capitalize">
+                                                {{ program.status }}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div class="flex items-center justify-end">
+                                                <Button
+                                                    size="sm"
+                                                    @click="generatePO(program)"
+                                                    variant="outline"
+                                                    class="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50"
+                                                >
+                                                    Quebrado (PO)
+                                                </Button>
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                    <tr v-if="filteredPrograms.length === 0">
+                                        <td colspan="8" class="py-10 text-center text-sm text-slate-400">
+                                            Ninguna programación coincide con los filtros.
+                                        </td>
+                                    </tr>
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </div>
+                </template>
             </div>
         </div>
     </AppLayout>

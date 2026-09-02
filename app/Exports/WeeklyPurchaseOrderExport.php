@@ -4,7 +4,6 @@ namespace App\Exports;
 
 use App\Models\City;
 use App\Models\Level;
-use App\Models\WeeklyProgram;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -18,7 +17,8 @@ use PhpOffice\PhpSpreadsheet\Style\Alignment;
 
 class WeeklyPurchaseOrderExport implements FromArray, ShouldAutoSize, WithStyles, WithDrawings
 {
-    protected WeeklyProgram $program;
+    /** @var Collection<int,\App\Models\WeeklyProgram> */
+    protected Collection $programs;
     protected Level $level;
     protected City $city;
     protected Collection $categories;
@@ -29,9 +29,9 @@ class WeeklyPurchaseOrderExport implements FromArray, ShouldAutoSize, WithStyles
     protected array $categoryRows = [];
     protected int $lastRow = 0;
 
-    public function __construct(WeeklyProgram $program, Level $level, City $city, Collection $categories, float $grandTotal, int $missingPriceCount)
+    public function __construct(Collection $programs, Level $level, City $city, Collection $categories, float $grandTotal, int $missingPriceCount)
     {
-        $this->program = $program;
+        $this->programs = $programs;
         $this->level = $level;
         $this->city = $city;
         $this->categories = $categories;
@@ -61,21 +61,26 @@ class WeeklyPurchaseOrderExport implements FromArray, ShouldAutoSize, WithStyles
     {
         $rows = [];
 
-        $unidad = optional($this->program->cafe->unit)->name ?? 'N/A';
-        $baseChain = collect([
-            optional(optional($this->program->cafe->unit)->mine)->name,
-            optional($this->program->cafe->unit)->name,
-            optional($this->program->cafe)->name,
-        ])->filter()->implode(' - ') ?: 'N/A';
+        $unidad = $this->programs->map(fn ($p) => optional($p->cafe->unit)->name)->filter()->unique()->implode(' / ') ?: 'N/A';
+        $baseChain = $this->programs->map(function ($p) {
+            return collect([
+                optional(optional($p->cafe->unit)->mine)->name,
+                optional($p->cafe->unit)->name,
+                optional($p->cafe)->name,
+            ])->filter()->implode(' - ');
+        })->filter()->unique()->implode('  ·  ') ?: 'N/A';
 
-        $week = \Carbon\Carbon::parse($this->program->start_date)->isoWeek();
-        $year = \Carbon\Carbon::parse($this->program->start_date)->year;
+        $first = $this->programs->first();
+        $week = $first ? \Carbon\Carbon::parse($first->start_date)->isoWeek() : '';
+        $year = $first ? \Carbon\Carbon::parse($first->start_date)->year : '';
+        $ordenes = $this->programs->pluck('id')->implode(', ');
+        $countLabel = $this->programs->count() > 1 ? " ({$this->programs->count()} programaciones: {$ordenes})" : '';
 
         // Fila 1: espacio para logo + total general
         $rows[] = ['', '', '', '', 'TOTAL:', number_format($this->grandTotal, 2)];
 
         // Fila 2: título + semana/año
-        $rows[] = ['ORDEN DE PEDIDO SEMANAL COMPLETO', '', '', '', "SEMANA: {$week}", "AÑO: {$year}"];
+        $rows[] = ['ORDEN DE PEDIDO SEMANAL COMPLETO' . $countLabel, '', '', '', "SEMANA: {$week}", "AÑO: {$year}"];
 
         // Fila 3: metadata
         $rows[] = ["Unidad: {$unidad}  |  Base: {$baseChain}  |  Nivel: {$this->level->name}  |  Ciudad: {$this->city->name}", '', '', '', '', ''];

@@ -78,7 +78,7 @@ test('dosificacion nutricional pdf renders for a program', function () {
     [$user, $program, $level] = seedDosificacionProgram();
 
     $response = $this->actingAs($user)
-        ->get(route('planning.dosificacion-pdf', ['id' => $program->id, 'level_id' => $level->id]));
+        ->get(route('planning.dosificacion-pdf', ['program_ids' => [$program->id], 'level_id' => $level->id]));
 
     $response->assertOk();
     $response->assertHeader('content-type', 'application/pdf');
@@ -88,6 +88,6 @@ test('dosificacion nutricional pdf requires a valid level', function () {
     [$user, $program] = seedDosificacionProgram();
 
     $this->actingAs($user)
-        ->get(route('planning.dosificacion-pdf', ['id' => $program->id, 'level_id' => 999999]))
+        ->get(route('planning.dosificacion-pdf', ['program_ids' => [$program->id], 'level_id' => 999999]))
         ->assertSessionHasErrors('level_id');
 });
