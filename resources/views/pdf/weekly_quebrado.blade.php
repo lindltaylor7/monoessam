@@ -115,7 +115,7 @@
                             <td class="dh-code">{{ $dish['category_id'] }}</td>
                             <td class="dh-category">{{ strtoupper($dish['category']) }}</td>
                             <td class="dh-name">{{ $dish['dish_id'] }} {{ $dish['dish_name'] }}</td>
-                            <td class="dh-portions">N° Raciones: {{ $page['portions'] }}</td>
+                            <td class="dh-portions">N° Raciones: {{ $dish['portions'] }}@if(($dish['percentage'] ?? 100) < 100) <span style="color:#a0aec0;">({{ rtrim(rtrim(number_format($dish['percentage'], 2), '0'), '.') }}% de {{ $page['portions'] }})</span>@endif</td>
                         </tr>
                     </table>
 

@@ -81,6 +81,7 @@ class PlanningController extends Controller
             'start_date' => 'required|date',
             'end_date' => 'required|date',
             'items' => 'required|array',
+            'items.*.percentage' => 'nullable|numeric|min:0|max:100',
             'portions' => 'required|array',
         ]);
 
@@ -107,6 +108,7 @@ class PlanningController extends Controller
                 'meal_type' => $item['meal_type'],
                 'dish_category_id' => $item['dish_category_id'],
                 'dish_id' => $item['dish_id'],
+                'percentage' => $item['percentage'] ?? 100,
             ]);
         }
 
@@ -168,11 +170,13 @@ class PlanningController extends Controller
 
                 $dishes = $mealItems->values()->map(function ($item) use ($portionsCount, $recipes) {
                     $recipe = $recipes->get($item->dish_id);
+                    // Raciones del plato = raciones del servicio * % de comensales que lo toman.
+                    $dishPortions = $item->effectivePortions($portionsCount);
 
                     $ingredients = $recipe
-                        ? $recipe->ingredients->map(function ($ingredient) use ($portionsCount) {
+                        ? $recipe->ingredients->map(function ($ingredient) use ($dishPortions) {
                             $qtyPerRation = (float) $ingredient->pivot->gross_weight;
-                            $totalRequired = $qtyPerRation * $portionsCount;
+                            $totalRequired = $qtyPerRation * $dishPortions;
                             return [
                                 'code' => $ingredient->id,
                                 'name' => $ingredient->name,
@@ -188,6 +192,8 @@ class PlanningController extends Controller
                         'category' => $item->dish_category->name ?? 'Sin categoría',
                         'dish_id' => $item->dish_id,
                         'dish_name' => $item->dish->name ?? 'Plato eliminado',
+                        'portions' => $dishPortions,
+                        'percentage' => (float) ($item->percentage ?? 100),
                         'ingredients' => $ingredients,
                         'has_recipe' => (bool) $recipe,
                     ];
@@ -256,10 +262,13 @@ class PlanningController extends Controller
                 $hasMatchingRecipes = true;
             }
 
-            $portionsCount = optional($portions->get($item->date . '_' . $item->meal_type))->portions_count ?? 0;
-            if ($portionsCount > 0) {
+            $servicePortions = optional($portions->get($item->date . '_' . $item->meal_type))->portions_count ?? 0;
+            if ($servicePortions > 0) {
                 $hasAnyPortions = true;
             }
+
+            // Raciones del plato = raciones del servicio * % de comensales que lo toman.
+            $portionsCount = $item->effectivePortions($servicePortions);
 
             if (!$recipe || $portionsCount <= 0) {
                 continue;
@@ -385,6 +394,8 @@ class PlanningController extends Controller
 
                 $dishes = $mealItems->values()->map(function ($item, $idx) use ($portionsCount, $recipes, $nutrients, &$categoryCounters) {
                     $recipe = $recipes->get($item->dish_id);
+                    // Raciones del plato = raciones del servicio * % de comensales que lo toman.
+                    $dishPortions = $item->effectivePortions($portionsCount);
 
                     $categoryName = $item->dish_category->name ?? 'Sin categoría';
                     $categoryCounters[$categoryName] = ($categoryCounters[$categoryName] ?? 0) + 1;
@@ -433,7 +444,8 @@ class PlanningController extends Controller
                         'category_index' => $categoryCounters[$categoryName],
                         'dish_code'      => $item->dish_id,
                         'dish_name'      => $item->dish->name ?? 'Plato eliminado',
-                        'portions'       => $portionsCount,
+                        'portions'       => $dishPortions,
+                        'percentage'     => (float) ($item->percentage ?? 100),
                         'ingredients'    => $ingredients,
                         'totals'         => $totals,
                         'has_recipe'     => (bool) $recipe,
@@ -538,7 +550,9 @@ class PlanningController extends Controller
                 continue;
             }
 
-            $portionsCount = optional($portions->get($item->date . '_' . $item->meal_type))->portions_count ?? 0;
+            $servicePortions = optional($portions->get($item->date . '_' . $item->meal_type))->portions_count ?? 0;
+            // Raciones del plato = raciones del servicio * % de comensales que lo toman.
+            $portionsCount = $item->effectivePortions($servicePortions);
             if ($portionsCount <= 0) {
                 continue;
             }

@@ -35,7 +35,9 @@ class QuebradosService
 
             foreach ($items as $item) {
                 $key = $item->date . '_' . $item->meal_type;
-                $portionCount = isset($portions[$key]) ? $portions[$key]->first()->portions_count : 0;
+                $servicePortions = isset($portions[$key]) ? $portions[$key]->first()->portions_count : 0;
+                // Raciones del plato = raciones del servicio * % de comensales que lo toman.
+                $portionCount = $item->effectivePortions($servicePortions);
 
                 if ($portionCount <= 0) continue;
 

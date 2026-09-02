@@ -150,6 +150,31 @@ watch(
 // Local reactive state for the grid to avoid find() in template
 const portionsGrid = ref<Record<string, number>>({});
 const itemsGrid = ref<Record<string, string>>({});
+// Percentage of diners that take each dish (per date + meal + structure row). 100 = every
+// diner of that day's service. Effective rations of a dish = portions * percentage / 100.
+const percentagesGrid = ref<Record<string, number>>({});
+
+const clampPct = (val: unknown): number => {
+    const n = Number(val);
+    if (!Number.isFinite(n)) return 100;
+    return Math.min(100, Math.max(0, Math.round(n * 100) / 100));
+};
+
+const effectiveRations = (date: string, meal: string, structId: number | string): number => {
+    const base = Number(portionsGrid.value[`${date}_${meal}`]) || 0;
+    const pct = clampPct(percentagesGrid.value[`${date}_${meal}_${structId}`] ?? 100);
+    return Math.round((base * pct) / 100);
+};
+
+// Copy the first day's percentage of a dish row to every day of the active service
+const replicatePercentages = (meal: string, structId: number | string) => {
+    if (dates.value.length === 0) return;
+    const firstKey = `${dates.value[0]}_${meal}_${structId}`;
+    const firstVal = clampPct(percentagesGrid.value[firstKey] ?? 100);
+    dates.value.forEach((date) => {
+        percentagesGrid.value[`${date}_${meal}_${structId}`] = firstVal;
+    });
+};
 const localMenuStructure = ref<MenuStructure[]>(JSON.parse(JSON.stringify(props.menu_structure)));
 
 const dates = computed(() => {
@@ -160,8 +185,10 @@ const dates = computed(() => {
 const initializeGrid = () => {
     const oldPortions = { ...portionsGrid.value };
     const oldItems = { ...itemsGrid.value };
+    const oldPercentages = { ...percentagesGrid.value };
     portionsGrid.value = {};
     itemsGrid.value = {};
+    percentagesGrid.value = {};
 
     dates.value.forEach((date) => {
         meals.forEach((meal) => {
@@ -172,6 +199,7 @@ const initializeGrid = () => {
             structureForMeal.forEach((s) => {
                 const itemKey = `${date}_${meal}_${s.id}`;
                 itemsGrid.value[itemKey] = oldItems[itemKey] || '';
+                percentagesGrid.value[itemKey] = oldPercentages[itemKey] !== undefined ? oldPercentages[itemKey] : 100;
             });
         });
     });
@@ -246,6 +274,7 @@ const submit = async () => {
             meal_type: meal as MealType,
             dish_category_id: struct ? struct.dish_category_id : null,
             dish_id: val || null,
+            percentage: clampPct(percentagesGrid.value[key] ?? 100),
         });
     }
 
@@ -508,10 +537,7 @@ const generateWeeklyPurchaseOrderExcel = async (program: WeeklyProgram) => {
     });
 
     if (formValues?.levelId && formValues?.cityId) {
-        window.open(
-            route('planning.orden-pedido-excel', { id: program.id, level_id: formValues.levelId, city_id: formValues.cityId }),
-            '_blank',
-        );
+        window.open(route('planning.orden-pedido-excel', { id: program.id, level_id: formValues.levelId, city_id: formValues.cityId }), '_blank');
     }
 };
 
@@ -626,9 +652,11 @@ const loadMenuCycle = (cycleIdStr: string) => {
             // 2. Inicializar la cuadrícula local preservando valores de otras comidas
             const oldPortions = { ...portionsGrid.value };
             const oldItems = { ...itemsGrid.value };
+            const oldPercentages = { ...percentagesGrid.value };
 
             portionsGrid.value = {};
             itemsGrid.value = {};
+            percentagesGrid.value = {};
 
             dates.value.forEach((date) => {
                 meals.forEach((meal) => {
@@ -640,8 +668,10 @@ const loadMenuCycle = (cycleIdStr: string) => {
                         const itemKey = `${date}_${meal}_${s.id}`;
                         if (meal === mealType) {
                             itemsGrid.value[itemKey] = '';
+                            percentagesGrid.value[itemKey] = 100;
                         } else {
                             itemsGrid.value[itemKey] = oldItems[itemKey] || '';
+                            percentagesGrid.value[itemKey] = oldPercentages[itemKey] !== undefined ? oldPercentages[itemKey] : 100;
                         }
                     });
                 });
@@ -705,6 +735,7 @@ const loadStructure = (structureIdStr: string) => {
         // 1. Capturar asignaciones actuales del servicio activo, indexadas por categoría (no por id de
         //    fila, que va a cambiar) para poder preservarlas si la nueva categoría coincide.
         const oldByCategory: Record<string, string> = {};
+        const oldPctByCategory: Record<string, number> = {};
         localMenuStructure.value
             .filter((s) => s.meal_type === mealType)
             .forEach((s) => {
@@ -713,6 +744,7 @@ const loadStructure = (structureIdStr: string) => {
                     const val = itemsGrid.value[oldKey];
                     if (val) {
                         oldByCategory[`${date}_${s.dish_category_id}`] = val;
+                        oldPctByCategory[`${date}_${s.dish_category_id}`] = percentagesGrid.value[oldKey] ?? 100;
                     }
                 });
             });
@@ -738,8 +770,10 @@ const loadStructure = (structureIdStr: string) => {
         //    servicio activo (en vez de vaciarlo, como hace loadMenuCycle).
         const oldPortions = { ...portionsGrid.value };
         const oldItems = { ...itemsGrid.value };
+        const oldPercentages = { ...percentagesGrid.value };
         portionsGrid.value = {};
         itemsGrid.value = {};
+        percentagesGrid.value = {};
 
         dates.value.forEach((date) => {
             meals.forEach((meal) => {
@@ -750,9 +784,12 @@ const loadStructure = (structureIdStr: string) => {
                 structureForMeal.forEach((s) => {
                     const itemKey = `${date}_${meal}_${s.id}`;
                     if (meal === mealType) {
-                        itemsGrid.value[itemKey] = oldByCategory[`${date}_${s.dish_category_id}`] || '';
+                        const catKey = `${date}_${s.dish_category_id}`;
+                        itemsGrid.value[itemKey] = oldByCategory[catKey] || '';
+                        percentagesGrid.value[itemKey] = oldPctByCategory[catKey] ?? 100;
                     } else {
                         itemsGrid.value[itemKey] = oldItems[itemKey] || '';
+                        percentagesGrid.value[itemKey] = oldPercentages[itemKey] !== undefined ? oldPercentages[itemKey] : 100;
                     }
                 });
             });
@@ -1083,7 +1120,7 @@ const loadStructure = (structureIdStr: string) => {
                     <div class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-100/50 bg-white p-4 px-6 shadow-sm">
                         <div class="flex flex-col">
                             <h2 class="text-lg font-bold text-slate-800">Matriz de Programación</h2>
-                            <p class="text-xs text-slate-500">Asigne platos y defina raciones por día</p>
+                            <p class="text-xs text-slate-500">Asigne platos, ajuste el % de comensales y defina raciones por día</p>
                         </div>
                         <div class="flex items-center gap-2">
                             <input type="file" ref="fileInput" class="hidden" accept=".xlsx,.xls,.csv" @change="handleFileImport" />
@@ -1215,22 +1252,67 @@ const loadStructure = (structureIdStr: string) => {
                                                 L.Inf S/ {{ Number(struct.total_cost).toFixed(2) }} · L.Sup S/
                                                 {{ Number(struct.total_cost_superior).toFixed(2) }}
                                             </p>
+                                            <button
+                                                type="button"
+                                                @click="replicatePercentages(meal, struct.id)"
+                                                class="mt-1.5 w-fit rounded-md border border-dashed border-slate-300 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-slate-500 uppercase transition-colors hover:border-[#FF5A1F] hover:text-[#FF5A1F]"
+                                                title="Copia el % del primer día a todos los días de esta fila"
+                                            >
+                                                Replicar % 1er día →
+                                            </button>
                                         </TableCell>
-                                        <TableCell v-for="date in dates" :key="date" class="min-w-[160px] border-l border-slate-100/55 p-2">
-                                            <Select v-model="itemsGrid[`${date}_${meal}_${struct.id}`]">
-                                                <SelectTrigger class="h-9 rounded-xl border-slate-200 text-xs focus:ring-[#FF5A1F]">
-                                                    <SelectValue placeholder="Elegir plato" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem
-                                                        v-for="dish in getDishesForCell(date, meal, struct)"
-                                                        :key="dish.id"
-                                                        :value="dish.id.toString()"
+                                        <TableCell v-for="date in dates" :key="date" class="min-w-[184px] border-l border-slate-100/55 p-2 align-top">
+                                            <div class="flex flex-col gap-1.5">
+                                                <Select v-model="itemsGrid[`${date}_${meal}_${struct.id}`]">
+                                                    <SelectTrigger class="h-9 rounded-xl border-slate-200 text-xs focus:ring-[#FF5A1F]">
+                                                        <SelectValue placeholder="Elegir plato" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem
+                                                            v-for="dish in getDishesForCell(date, meal, struct)"
+                                                            :key="dish.id"
+                                                            :value="dish.id.toString()"
+                                                        >
+                                                            {{ dish.name }}
+                                                        </SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                <div
+                                                    v-if="itemsGrid[`${date}_${meal}_${struct.id}`]"
+                                                    class="flex items-center justify-between gap-1.5 pl-0.5"
+                                                >
+                                                    <div class="relative">
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max="100"
+                                                            step="1"
+                                                            v-model.number="percentagesGrid[`${date}_${meal}_${struct.id}`]"
+                                                            @blur="
+                                                                percentagesGrid[`${date}_${meal}_${struct.id}`] = clampPct(
+                                                                    percentagesGrid[`${date}_${meal}_${struct.id}`],
+                                                                )
+                                                            "
+                                                            title="Porcentaje de comensales que toma este plato"
+                                                            class="h-6 w-[52px] rounded-md border border-slate-200 bg-slate-50 pr-3.5 pl-1.5 text-right text-[11px] font-semibold text-slate-600 tabular-nums transition-colors focus:border-[#FF5A1F] focus:bg-white focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none"
+                                                        />
+                                                        <span
+                                                            class="pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 text-[10px] text-slate-400"
+                                                            >%</span
+                                                        >
+                                                    </div>
+                                                    <span
+                                                        class="text-[10px] font-semibold tracking-tight tabular-nums"
+                                                        :class="
+                                                            Number(percentagesGrid[`${date}_${meal}_${struct.id}`]) < 100
+                                                                ? 'text-[#FF5A1F]'
+                                                                : 'text-slate-400'
+                                                        "
                                                     >
-                                                        {{ dish.name }}
-                                                    </SelectItem>
-                                                </SelectContent>
-                                            </Select>
+                                                        {{ effectiveRations(date, meal, struct.id).toLocaleString('es-PE') }} rac.
+                                                    </span>
+                                                </div>
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 </template>
