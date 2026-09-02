@@ -21,6 +21,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
 
 class PlanningController extends Controller
@@ -60,20 +61,20 @@ class PlanningController extends Controller
             return $cycle;
         });
 
-        // Servicios (meal_type) de cada programación: se derivan de sus items, no hay columna propia.
-        $servicesByProgram = WeeklyProgramItem::select('weekly_program_id', 'meal_type')
-            ->distinct()
+        // El servicio al que pertenece cada programación es único. Se guarda en weekly_programs.meal_type;
+        // para programaciones antiguas sin ese dato, se cae al meal_type predominante de sus items.
+        $fallbackService = WeeklyProgramItem::select('weekly_program_id', 'meal_type', DB::raw('COUNT(*) as c'))
+            ->groupBy('weekly_program_id', 'meal_type')
+            ->orderByDesc('c')
             ->get()
-            ->groupBy('weekly_program_id');
+            ->groupBy('weekly_program_id')
+            ->map(fn ($rows) => $rows->first()->meal_type);
 
         $programs = WeeklyProgram::with(['cafe.unit.mine', 'structure'])
             ->orderByDesc('created_at')
             ->get()
-            ->each(function ($program) use ($servicesByProgram) {
-                $program->setAttribute(
-                    'services',
-                    ($servicesByProgram->get($program->id) ?? collect())->pluck('meal_type')->filter()->unique()->values()->all()
-                );
+            ->each(function ($program) use ($fallbackService) {
+                $program->setAttribute('service', $program->meal_type ?: $fallbackService->get($program->id));
             });
 
         return Inertia::render('planning/Index', [
@@ -94,6 +95,7 @@ class PlanningController extends Controller
         $validated = $request->validate([
             'cafe_id' => 'required|exists:cafes,id',
             'structure_id' => 'nullable|exists:structures,id',
+            'meal_type' => 'nullable|string|max:255',
             'start_date' => 'required|date',
             'end_date' => 'required|date',
             'items' => 'required|array',
@@ -101,9 +103,16 @@ class PlanningController extends Controller
             'portions' => 'required|array',
         ]);
 
+        // Una programación pertenece a un único servicio (el activo en la matriz). Si el front no
+        // lo envía, se infiere del meal_type de los items con plato asignado.
+        $mealType = $validated['meal_type']
+            ?? collect($validated['items'])->firstWhere(fn ($i) => !empty($i['dish_id']))['meal_type']
+            ?? null;
+
         $program = WeeklyProgram::create([
             'cafe_id' => $validated['cafe_id'],
             'structure_id' => $validated['structure_id'] ?? null,
+            'meal_type' => $mealType,
             'start_date' => $validated['start_date'],
             'end_date' => $validated['end_date'],
             'user_id' => Auth::id(),

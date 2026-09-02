@@ -42,6 +42,7 @@ const activeTab = ref<'planificar' | 'programaciones'>('planificar');
 const form = useForm({
     cafe_id: '',
     structure_id: null as number | null,
+    meal_type: null as string | null,
     start_date: startDate.value,
     end_date: dayjs(startDate.value).add(6, 'days').format('YYYY-MM-DD'),
     items: [] as any[],
@@ -254,6 +255,7 @@ const submit = async () => {
     form.end_date = dayjs(form.start_date)
         .add(daysCount.value - 1, 'days')
         .format('YYYY-MM-DD');
+    form.meal_type = (activeMealType.value as string | null) ?? null;
     form.portions = [];
     form.items = [];
 
@@ -443,7 +445,7 @@ const programRow = (p: any) => ({
     cafe: p.cafe?.name ?? '—',
     unit: p.cafe?.unit?.name ?? '—',
     mine: p.cafe?.unit?.mine?.name ?? '—',
-    services: (p.services ?? []) as string[],
+    service: (p.service ?? null) as string | null,
     savedAt: p.created_at as string | null,
 });
 
@@ -458,7 +460,7 @@ const programUnitOptions = computed(() =>
         ),
     ].sort(),
 );
-const programServiceOptions = computed(() => [...new Set(props.programs.flatMap((p: any) => (p.services ?? []) as string[]))].sort());
+const programServiceOptions = computed(() => [...new Set(props.programs.map((p: any) => p.service).filter(Boolean))].sort());
 
 const filteredPrograms = computed(() => {
     const f = programFilters.value;
@@ -466,7 +468,7 @@ const filteredPrograms = computed(() => {
         const row = programRow(p);
         if (f.mine && row.mine !== f.mine) return false;
         if (f.unit && row.unit !== f.unit) return false;
-        if (f.service && !row.services.includes(f.service)) return false;
+        if (f.service && row.service !== f.service) return false;
         if (f.savedFrom && (!row.savedAt || dayjs(row.savedAt).isBefore(dayjs(f.savedFrom), 'day'))) return false;
         if (f.savedTo && (!row.savedAt || dayjs(row.savedAt).isAfter(dayjs(f.savedTo), 'day'))) return false;
         return true;
@@ -1542,17 +1544,14 @@ const loadStructure = (structureIdStr: string) => {
                                             />
                                         </TableCell>
                                         <TableCell>
-                                            <div class="flex flex-wrap gap-1">
-                                                <Badge
-                                                    v-for="s in programRow(program).services"
-                                                    :key="s"
-                                                    variant="outline"
-                                                    class="border-[#FF5A1F]/25 bg-orange-50 font-semibold text-[#FF5A1F]"
-                                                >
-                                                    {{ s }}
-                                                </Badge>
-                                                <span v-if="!programRow(program).services.length" class="text-xs text-slate-300">—</span>
-                                            </div>
+                                            <Badge
+                                                v-if="programRow(program).service"
+                                                variant="outline"
+                                                class="border-[#FF5A1F]/25 bg-orange-50 font-semibold text-[#FF5A1F]"
+                                            >
+                                                {{ programRow(program).service }}
+                                            </Badge>
+                                            <span v-else class="text-xs text-slate-300">—</span>
                                         </TableCell>
                                         <TableCell>
                                             <div class="font-semibold text-slate-800">{{ programRow(program).cafe }}</div>

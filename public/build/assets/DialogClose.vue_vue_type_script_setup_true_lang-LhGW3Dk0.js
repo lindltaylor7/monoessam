@@ -1,0 +1,1 @@
+import{D as s}from"./DialogClose-4-y3dtd5.js";import{d as t,h as r,o as l,u as n,O as p,w as c,v as d}from"./app-DHbPrV4f.js";const u=t({__name:"DialogClose",props:{asChild:{type:Boolean},as:{}},setup(o){const e=o;return(a,i)=>(l(),r(n(s),p({"data-slot":"dialog-close"},e),{default:c(()=>[d(a.$slots,"default")]),_:3},16))}});export{u as _};

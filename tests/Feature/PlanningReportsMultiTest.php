@@ -74,17 +74,37 @@ function seedReportBase(): array
 
 test('planning index exposes service, unit, mine and saved date per program', function () {
     [$mine, $unit, $cafe, $user, $level, $category, $dish] = seedReportBase();
-    $program = seedReportProgram($level, $dish, $category, $cafe, $user, '2026-02-02', '2026-02-03', 100);
+    // Sin meal_type explícito: se infiere del meal_type de los items ("Almuerzo").
+    seedReportProgram($level, $dish, $category, $cafe, $user, '2026-02-02', '2026-02-03', 100);
 
     $this->actingAs($user)
         ->get(route('planning.index'))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('planning/Index')
-            ->where('programs.0.services', ['Almuerzo'])
+            ->where('programs.0.service', 'Almuerzo')
             ->where('programs.0.cafe.unit.name', $unit->name)
             ->where('programs.0.cafe.unit.mine.name', $mine->name)
             ->has('programs.0.created_at'));
+});
+
+test('planning store persists the active service on the program', function () {
+    [, , $cafe, $user, , $category, $dish] = seedReportBase();
+
+    $this->actingAs($user)->post(route('planning.store'), [
+        'cafe_id' => $cafe->id,
+        'meal_type' => 'Cena',
+        'start_date' => '2026-03-02',
+        'end_date' => '2026-03-08',
+        'items' => [
+            ['date' => '2026-03-02', 'meal_type' => 'Cena', 'dish_category_id' => $category->id, 'dish_id' => $dish->id, 'percentage' => 100],
+        ],
+        'portions' => [
+            ['date' => '2026-03-02', 'meal_type' => 'Cena', 'portions_count' => 50],
+        ],
+    ])->assertRedirect();
+
+    expect(WeeklyProgram::latest('id')->first()->meal_type)->toBe('Cena');
 });
 
 test('quebrado pdf combines several selected programs', function () {
