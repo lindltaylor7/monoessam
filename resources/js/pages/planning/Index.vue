@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
@@ -16,7 +16,7 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/es';
 import { ChevronDown, FileSpreadsheet } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 
 dayjs.locale('es');
 
@@ -38,6 +38,13 @@ const meals: MealType[] = ['Desayuno', 'Almuerzo', 'Cena', 'Refrigerio'];
 const startDate = ref(dayjs().startOf('week').add(1, 'day').format('YYYY-MM-DD'));
 const daysCount = ref(7);
 const activeTab = ref<'planificar' | 'programaciones'>('planificar');
+
+// El panel de Configuración es retráctil; se colapsa solo en pantallas chicas (tras montar,
+// para no romper la hidratación SSR) y queda abierto en escritorio.
+const configOpen = ref(true);
+onMounted(() => {
+    if (window.innerWidth < 1024) configOpen.value = false;
+});
 
 const form = useForm({
     cafe_id: '',
@@ -877,47 +884,73 @@ const loadStructure = (structureIdStr: string) => {
             </div>
 
             <Tabs v-model="activeTab">
-                <TabsList class="grid w-full grid-cols-2 bg-slate-100 p-1 sm:inline-flex sm:w-auto">
-                    <TabsTrigger value="planificar" class="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                <TabsList class="grid w-full grid-cols-2 bg-orange-50 p-1 sm:inline-flex sm:w-auto">
+                    <TabsTrigger
+                        value="planificar"
+                        class="rounded-lg data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:text-[#FF5A1F] data-[state=active]:shadow-sm"
+                    >
                         Planificar
                     </TabsTrigger>
-                    <TabsTrigger value="programaciones" class="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                    <TabsTrigger
+                        value="programaciones"
+                        class="rounded-lg data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:text-[#FF5A1F] data-[state=active]:shadow-sm"
+                    >
                         <span class="truncate">Programaciones Guardadas</span>
-                        <span class="ml-1.5 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">{{ programs.length }}</span>
+                        <span
+                            class="ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                            :class="activeTab === 'programaciones' ? 'bg-[#FF5A1F]/15 text-[#FF5A1F]' : 'bg-slate-200 text-slate-600'"
+                            >{{ programs.length }}</span
+                        >
                     </TabsTrigger>
                 </TabsList>
             </Tabs>
 
             <div v-if="activeTab === 'planificar'" class="grid grid-cols-1 items-start gap-4 sm:gap-6 lg:grid-cols-4">
-                <!-- Sidebar de Configuración -->
-                <Card class="overflow-hidden rounded-2xl border-none bg-white shadow-sm lg:col-span-1">
-                    <CardHeader class="border-b border-slate-100 pb-4">
-                        <CardTitle class="flex items-center gap-2 text-lg font-bold text-slate-800">
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="20"
-                                height="20"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                class="text-slate-500"
-                            >
-                                <circle cx="12" cy="12" r="3" />
-                                <path
-                                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-                                />
-                            </svg>
-                            <span>Configuración</span>
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent class="grid grid-cols-1 gap-4 p-4 sm:p-5 md:grid-cols-2 lg:grid-cols-1">
+                <!-- Sidebar de Configuración (retráctil) -->
+                <Card
+                    class="gap-0 overflow-hidden rounded-2xl border border-orange-100/70 bg-white py-0 shadow-sm"
+                    :class="configOpen ? 'lg:col-span-1' : 'lg:col-span-4'"
+                >
+                    <button
+                        type="button"
+                        @click="configOpen = !configOpen"
+                        :aria-expanded="configOpen"
+                        class="flex w-full items-center justify-between gap-2 bg-gradient-to-r from-orange-50 to-white px-4 py-3.5 text-left transition-colors hover:from-orange-100/70"
+                    >
+                        <span class="flex items-center gap-2.5">
+                            <span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#FF5A1F] text-white shadow-sm shadow-orange-500/30">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    width="18"
+                                    height="18"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <circle cx="12" cy="12" r="3" />
+                                    <path
+                                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+                                    />
+                                </svg>
+                            </span>
+                            <span class="flex flex-col">
+                                <span class="text-base font-bold text-slate-800">Configuración</span>
+                                <span class="text-[11px] text-slate-400">{{ configOpen ? 'Ocultar panel' : 'Mostrar panel' }}</span>
+                            </span>
+                        </span>
+                        <ChevronDown class="h-5 w-5 shrink-0 text-[#FF5A1F] transition-transform" :class="configOpen ? '' : '-rotate-90'" />
+                    </button>
+                    <CardContent
+                        v-show="configOpen"
+                        class="grid grid-cols-1 gap-4 border-t border-orange-100/70 p-4 sm:p-5 md:grid-cols-2 lg:grid-cols-1"
+                    >
                         <div class="flex flex-col gap-2">
                             <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                                 <svg
-                                    class="h-4 w-4 text-slate-400"
+                                    class="h-4 w-4 text-[#FF5A1F]"
                                     fill="none"
                                     stroke="currentColor"
                                     stroke-width="2"
@@ -943,7 +976,7 @@ const loadStructure = (structureIdStr: string) => {
                         <div class="flex flex-col gap-2">
                             <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                                 <svg
-                                    class="h-4 w-4 text-slate-400"
+                                    class="h-4 w-4 text-[#FF5A1F]"
                                     fill="none"
                                     stroke="currentColor"
                                     stroke-width="2"
@@ -973,7 +1006,7 @@ const loadStructure = (structureIdStr: string) => {
                         <div class="flex flex-col gap-2">
                             <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                                 <svg
-                                    class="h-4 w-4 text-slate-400"
+                                    class="h-4 w-4 text-[#FF5A1F]"
                                     fill="none"
                                     stroke="currentColor"
                                     stroke-width="2"
@@ -1003,7 +1036,7 @@ const loadStructure = (structureIdStr: string) => {
                         <div class="flex flex-col gap-2">
                             <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                                 <svg
-                                    class="h-4 w-4 text-slate-400"
+                                    class="h-4 w-4 text-[#FF5A1F]"
                                     fill="none"
                                     stroke="currentColor"
                                     stroke-width="2"
@@ -1033,7 +1066,7 @@ const loadStructure = (structureIdStr: string) => {
                         <div class="flex flex-col gap-2">
                             <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                                 <svg
-                                    class="h-4 w-4 text-slate-400"
+                                    class="h-4 w-4 text-[#FF5A1F]"
                                     fill="none"
                                     stroke="currentColor"
                                     stroke-width="2"
@@ -1059,7 +1092,7 @@ const loadStructure = (structureIdStr: string) => {
                         <div class="flex flex-col gap-2">
                             <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                                 <svg
-                                    class="h-4 w-4 text-slate-400"
+                                    class="h-4 w-4 text-[#FF5A1F]"
                                     fill="none"
                                     stroke="currentColor"
                                     stroke-width="2"
@@ -1103,7 +1136,7 @@ const loadStructure = (structureIdStr: string) => {
                         <div class="flex flex-col gap-2">
                             <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                                 <svg
-                                    class="h-4 w-4 text-slate-400"
+                                    class="h-4 w-4 text-[#FF5A1F]"
                                     fill="none"
                                     stroke="currentColor"
                                     stroke-width="2"
@@ -1129,7 +1162,7 @@ const loadStructure = (structureIdStr: string) => {
                         <div class="flex flex-col gap-2">
                             <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                                 <svg
-                                    class="h-4 w-4 text-slate-400"
+                                    class="h-4 w-4 text-[#FF5A1F]"
                                     fill="none"
                                     stroke="currentColor"
                                     stroke-width="2"
@@ -1162,10 +1195,10 @@ const loadStructure = (structureIdStr: string) => {
                 </Card>
 
                 <!-- Área principal de Planificación -->
-                <div class="flex flex-col gap-6 lg:col-span-3">
+                <div class="flex flex-col gap-4 sm:gap-6" :class="configOpen ? 'lg:col-span-3' : 'lg:col-span-4'">
                     <!-- Cabecera de la Matriz y Acciones de Importación -->
                     <div
-                        class="flex flex-col gap-3 rounded-2xl border border-slate-100/50 bg-white p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-6"
+                        class="flex flex-col gap-3 rounded-2xl border border-l-4 border-slate-100 border-l-[#FF5A1F] bg-white p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-6"
                     >
                         <div class="flex flex-col">
                             <h2 class="text-base font-bold text-slate-800 sm:text-lg">Matriz de Programación</h2>
@@ -1238,26 +1271,26 @@ const loadStructure = (structureIdStr: string) => {
                     >
                         <Table>
                             <TableHeader>
-                                <TableRow class="bg-slate-50/50">
+                                <TableRow class="bg-orange-50 hover:bg-orange-50">
                                     <TableHead
-                                        class="sticky left-0 z-20 w-[120px] bg-slate-50 font-semibold text-slate-700 shadow-[1px_0_0_0_rgb(226,232,240)] sm:w-[150px]"
+                                        class="sticky left-0 z-20 w-[120px] bg-orange-50 font-semibold text-slate-700 shadow-[1px_0_0_0_rgb(254,215,170)] sm:w-[150px]"
                                         >Comida / Día</TableHead
                                     >
                                     <TableHead
                                         v-for="date in dates"
                                         :key="date"
-                                        class="min-w-[140px] border-l border-slate-100 text-center font-semibold text-slate-700 sm:min-w-[160px]"
+                                        class="min-w-[140px] border-l border-orange-100/70 text-center font-semibold text-slate-700 sm:min-w-[160px]"
                                     >
                                         <div class="text-xs font-bold text-slate-800 capitalize">{{ dayjs(date).format('dddd') }}</div>
-                                        <div class="mt-0.5 text-[10px] text-slate-400">{{ dayjs(date).format('DD/MM') }}</div>
+                                        <div class="mt-0.5 text-[10px] font-semibold text-[#FF5A1F]/80">{{ dayjs(date).format('DD/MM') }}</div>
                                     </TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 <template v-for="meal in [activeMealType].filter(Boolean)" :key="meal">
-                                    <TableRow class="bg-slate-50/30">
+                                    <TableRow class="bg-orange-50/50 hover:bg-orange-50/50">
                                         <TableCell
-                                            class="sticky left-0 z-10 bg-slate-50 font-bold text-slate-700 shadow-[1px_0_0_0_rgb(226,232,240)]"
+                                            class="sticky left-0 z-10 bg-[#fef2ec] font-bold text-slate-700 shadow-[1px_0_0_0_rgb(254,215,170)]"
                                         >
                                             <div class="flex flex-col gap-1">
                                                 <span class="text-xs sm:text-sm">Raciones del Servicio</span>
@@ -1401,9 +1434,11 @@ const loadStructure = (structureIdStr: string) => {
 
                 <template v-else>
                     <!-- Filtros -->
-                    <div class="grid grid-cols-2 items-end gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:flex sm:flex-wrap">
+                    <div
+                        class="grid grid-cols-2 items-end gap-3 rounded-2xl border border-l-4 border-slate-100 border-l-[#FF5A1F] bg-white p-4 shadow-sm sm:flex sm:flex-wrap"
+                    >
                         <div class="flex flex-col gap-1 sm:min-w-[140px]">
-                            <label class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Mina</label>
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Mina</label>
                             <select
                                 v-model="programFilters.mine"
                                 class="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none sm:w-auto sm:min-w-[150px]"
@@ -1413,7 +1448,7 @@ const loadStructure = (structureIdStr: string) => {
                             </select>
                         </div>
                         <div class="flex flex-col gap-1 sm:min-w-[140px]">
-                            <label class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Unidad</label>
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Unidad</label>
                             <select
                                 v-model="programFilters.unit"
                                 class="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none sm:w-auto sm:min-w-[150px]"
@@ -1423,7 +1458,7 @@ const loadStructure = (structureIdStr: string) => {
                             </select>
                         </div>
                         <div class="flex flex-col gap-1 sm:min-w-[140px]">
-                            <label class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Servicio</label>
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Servicio</label>
                             <select
                                 v-model="programFilters.service"
                                 class="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none sm:w-auto sm:min-w-[140px]"
@@ -1433,7 +1468,7 @@ const loadStructure = (structureIdStr: string) => {
                             </select>
                         </div>
                         <div class="flex flex-col gap-1">
-                            <label class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Guardado desde</label>
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Guardado desde</label>
                             <Input
                                 type="date"
                                 v-model="programFilters.savedFrom"
@@ -1441,7 +1476,7 @@ const loadStructure = (structureIdStr: string) => {
                             />
                         </div>
                         <div class="flex flex-col gap-1">
-                            <label class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Guardado hasta</label>
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Guardado hasta</label>
                             <Input
                                 type="date"
                                 v-model="programFilters.savedTo"
@@ -1523,11 +1558,11 @@ const loadStructure = (structureIdStr: string) => {
                         </div>
                     </div>
 
-                    <div class="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+                    <div class="overflow-hidden rounded-2xl border border-l-4 border-slate-100 border-l-[#FF5A1F] bg-white shadow-sm">
                         <div class="overflow-x-auto">
                             <Table>
                                 <TableHeader>
-                                    <TableRow class="bg-slate-50/80 hover:bg-slate-50/80">
+                                    <TableRow class="bg-orange-50 hover:bg-orange-50">
                                         <TableHead class="w-[44px]">
                                             <Checkbox
                                                 :model-value="allVisibleSelected"
