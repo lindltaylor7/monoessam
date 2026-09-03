@@ -1391,10 +1391,10 @@ const loadStructure = (structureIdStr: string) => {
                                                                 )
                                                             "
                                                             title="Porcentaje de comensales que toma este plato"
-                                                            class="h-6 w-[52px] rounded-md border border-slate-200 bg-slate-50 pr-3.5 pl-1.5 text-right text-[11px] font-semibold text-slate-600 tabular-nums transition-colors focus:border-[#FF5A1F] focus:bg-white focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none"
+                                                            class="h-6 w-[60px] [appearance:textfield] rounded-md border border-slate-200 bg-slate-50 pr-4 pl-1.5 text-right text-[11px] font-semibold text-slate-600 tabular-nums transition-colors focus:border-[#FF5A1F] focus:bg-white focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none [&::-webkit-inner-spin-button]:[appearance:none] [&::-webkit-outer-spin-button]:[appearance:none]"
                                                         />
                                                         <span
-                                                            class="pointer-events-none absolute top-1/2 right-1.5 -translate-y-1/2 text-[10px] text-slate-400"
+                                                            class="pointer-events-none absolute top-1/2 right-1 -translate-y-1/2 text-[10px] text-slate-400"
                                                             >%</span
                                                         >
                                                     </div>
