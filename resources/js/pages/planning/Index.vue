@@ -856,20 +856,20 @@ const loadStructure = (structureIdStr: string) => {
 <template>
     <Head title="Planificación Semanal" />
     <AppLayout>
-        <div class="flex flex-col gap-6 p-6">
-            <div class="flex flex-wrap items-center justify-between gap-4">
+        <div class="flex flex-col gap-4 p-4 sm:gap-6 sm:p-6">
+            <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                 <div>
-                    <h1 class="text-2xl font-bold text-slate-900">Planificación Semanal</h1>
+                    <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">Planificación Semanal</h1>
                     <p class="mt-0.5 text-xs text-slate-500">Gestione y programe platos para múltiples días con total flexibilidad.</p>
                 </div>
-                <div class="flex items-center gap-2">
-                    <Link :href="route('purchase_orders.index')">
-                        <Button variant="outline" class="rounded-xl">Ver Órdenes de Compra</Button>
+                <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                    <Link :href="route('purchase_orders.index')" class="w-full sm:w-auto">
+                        <Button variant="outline" class="w-full rounded-xl sm:w-auto">Ver Órdenes de Compra</Button>
                     </Link>
                     <Button
                         @click="submit"
                         :disabled="form.processing"
-                        class="rounded-xl bg-[#FF5A1F] text-white shadow-sm shadow-orange-500/20 hover:bg-[#e04a17]"
+                        class="w-full rounded-xl bg-[#FF5A1F] text-white shadow-sm shadow-orange-500/20 hover:bg-[#e04a17] sm:w-auto"
                     >
                         {{ form.processing ? 'Guardando...' : 'Guardar Planificación' }}
                     </Button>
@@ -877,18 +877,18 @@ const loadStructure = (structureIdStr: string) => {
             </div>
 
             <Tabs v-model="activeTab">
-                <TabsList class="bg-slate-100 p-1">
+                <TabsList class="grid w-full grid-cols-2 bg-slate-100 p-1 sm:inline-flex sm:w-auto">
                     <TabsTrigger value="planificar" class="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
                         Planificar
                     </TabsTrigger>
                     <TabsTrigger value="programaciones" class="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                        Programaciones Guardadas
+                        <span class="truncate">Programaciones Guardadas</span>
                         <span class="ml-1.5 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">{{ programs.length }}</span>
                     </TabsTrigger>
                 </TabsList>
             </Tabs>
 
-            <div v-if="activeTab === 'planificar'" class="grid grid-cols-1 items-start gap-6 lg:grid-cols-4">
+            <div v-if="activeTab === 'planificar'" class="grid grid-cols-1 items-start gap-4 sm:gap-6 lg:grid-cols-4">
                 <!-- Sidebar de Configuración -->
                 <Card class="overflow-hidden rounded-2xl border-none bg-white shadow-sm lg:col-span-1">
                     <CardHeader class="border-b border-slate-100 pb-4">
@@ -913,7 +913,7 @@ const loadStructure = (structureIdStr: string) => {
                             <span>Configuración</span>
                         </CardTitle>
                     </CardHeader>
-                    <CardContent class="flex flex-col gap-4 p-5">
+                    <CardContent class="grid grid-cols-1 gap-4 p-4 sm:p-5 md:grid-cols-2 lg:grid-cols-1">
                         <div class="flex flex-col gap-2">
                             <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                                 <svg
@@ -1164,12 +1164,14 @@ const loadStructure = (structureIdStr: string) => {
                 <!-- Área principal de Planificación -->
                 <div class="flex flex-col gap-6 lg:col-span-3">
                     <!-- Cabecera de la Matriz y Acciones de Importación -->
-                    <div class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-100/50 bg-white p-4 px-6 shadow-sm">
+                    <div
+                        class="flex flex-col gap-3 rounded-2xl border border-slate-100/50 bg-white p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-6"
+                    >
                         <div class="flex flex-col">
-                            <h2 class="text-lg font-bold text-slate-800">Matriz de Programación</h2>
+                            <h2 class="text-base font-bold text-slate-800 sm:text-lg">Matriz de Programación</h2>
                             <p class="text-xs text-slate-500">Asigne platos, ajuste el % de comensales y defina raciones por día</p>
                         </div>
-                        <div class="flex items-center gap-2">
+                        <div class="flex flex-wrap items-center gap-2">
                             <input type="file" ref="fileInput" class="hidden" accept=".xlsx,.xls,.csv" @change="handleFileImport" />
                             <Button
                                 type="button"
@@ -1177,7 +1179,7 @@ const loadStructure = (structureIdStr: string) => {
                                 size="sm"
                                 @click="triggerImport"
                                 :disabled="importForm.processing"
-                                class="h-9 rounded-xl border-dashed border-slate-200 text-xs text-slate-600 hover:bg-slate-50"
+                                class="h-9 flex-1 rounded-xl border-dashed border-slate-200 text-xs text-slate-600 hover:bg-slate-50 sm:flex-none"
                                 title="Importar Categorías de Platos"
                             >
                                 <svg
@@ -1206,7 +1208,7 @@ const loadStructure = (structureIdStr: string) => {
                                 size="sm"
                                 @click="triggerRelImport"
                                 :disabled="relForm.processing"
-                                class="h-9 rounded-xl border-dashed border-slate-200 text-xs text-slate-600 hover:bg-slate-50"
+                                class="h-9 flex-1 rounded-xl border-dashed border-slate-200 text-xs text-slate-600 hover:bg-slate-50 sm:flex-none"
                                 title="Importar Relación Platos-Categorías"
                             >
                                 <svg
@@ -1237,11 +1239,14 @@ const loadStructure = (structureIdStr: string) => {
                         <Table>
                             <TableHeader>
                                 <TableRow class="bg-slate-50/50">
-                                    <TableHead class="w-[150px] font-semibold text-slate-700">Comida / Día</TableHead>
+                                    <TableHead
+                                        class="sticky left-0 z-20 w-[120px] bg-slate-50 font-semibold text-slate-700 shadow-[1px_0_0_0_rgb(226,232,240)] sm:w-[150px]"
+                                        >Comida / Día</TableHead
+                                    >
                                     <TableHead
                                         v-for="date in dates"
                                         :key="date"
-                                        class="min-w-[160px] border-l border-slate-100 text-center font-semibold text-slate-700"
+                                        class="min-w-[140px] border-l border-slate-100 text-center font-semibold text-slate-700 sm:min-w-[160px]"
                                     >
                                         <div class="text-xs font-bold text-slate-800 capitalize">{{ dayjs(date).format('dddd') }}</div>
                                         <div class="mt-0.5 text-[10px] text-slate-400">{{ dayjs(date).format('DD/MM') }}</div>
@@ -1251,9 +1256,11 @@ const loadStructure = (structureIdStr: string) => {
                             <TableBody>
                                 <template v-for="meal in [activeMealType].filter(Boolean)" :key="meal">
                                     <TableRow class="bg-slate-50/30">
-                                        <TableCell class="font-bold text-slate-700">
+                                        <TableCell
+                                            class="sticky left-0 z-10 bg-slate-50 font-bold text-slate-700 shadow-[1px_0_0_0_rgb(226,232,240)]"
+                                        >
                                             <div class="flex flex-col gap-1">
-                                                <span>Raciones del Servicio</span>
+                                                <span class="text-xs sm:text-sm">Raciones del Servicio</span>
                                                 <button
                                                     type="button"
                                                     @click="replicatePortions(meal)"
@@ -1264,7 +1271,11 @@ const loadStructure = (structureIdStr: string) => {
                                                 </button>
                                             </div>
                                         </TableCell>
-                                        <TableCell v-for="date in dates" :key="date" class="min-w-[160px] border-l border-slate-100/55 p-2">
+                                        <TableCell
+                                            v-for="date in dates"
+                                            :key="date"
+                                            class="min-w-[140px] border-l border-slate-100/55 p-2 sm:min-w-[160px]"
+                                        >
                                             <div class="mx-auto flex max-w-[140px] flex-col gap-1">
                                                 <label class="text-center text-[9px] font-bold tracking-wider text-slate-400 uppercase"
                                                     >Raciones</label
@@ -1282,7 +1293,9 @@ const loadStructure = (structureIdStr: string) => {
                                         :key="struct.id"
                                         class="hover:bg-slate-50/40"
                                     >
-                                        <TableCell class="pl-6 text-xs font-medium text-slate-600">
+                                        <TableCell
+                                            class="sticky left-0 z-10 bg-white pl-3 text-xs font-medium text-slate-600 shadow-[1px_0_0_0_rgb(226,232,240)] sm:pl-6"
+                                        >
                                             <Select v-model="struct.dish_category_id">
                                                 <SelectTrigger
                                                     class="h-8 border-none bg-transparent p-0 text-xs font-bold text-slate-500 shadow-none focus:ring-0"
@@ -1308,7 +1321,11 @@ const loadStructure = (structureIdStr: string) => {
                                                 Replicar % 1er día →
                                             </button>
                                         </TableCell>
-                                        <TableCell v-for="date in dates" :key="date" class="min-w-[184px] border-l border-slate-100/55 p-2 align-top">
+                                        <TableCell
+                                            v-for="date in dates"
+                                            :key="date"
+                                            class="min-w-[150px] border-l border-slate-100/55 p-2 align-top sm:min-w-[184px]"
+                                        >
                                             <div class="flex flex-col gap-1.5">
                                                 <Select v-model="itemsGrid[`${date}_${meal}_${struct.id}`]">
                                                     <SelectTrigger class="h-9 rounded-xl border-slate-200 text-xs focus:ring-[#FF5A1F]">
@@ -1384,32 +1401,32 @@ const loadStructure = (structureIdStr: string) => {
 
                 <template v-else>
                     <!-- Filtros -->
-                    <div class="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm">
-                        <div class="flex flex-col gap-1">
+                    <div class="grid grid-cols-2 items-end gap-3 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm sm:flex sm:flex-wrap">
+                        <div class="flex flex-col gap-1 sm:min-w-[140px]">
                             <label class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Mina</label>
                             <select
                                 v-model="programFilters.mine"
-                                class="h-9 min-w-[150px] rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none"
+                                class="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none sm:w-auto sm:min-w-[150px]"
                             >
                                 <option value="">Todas</option>
                                 <option v-for="m in programMineOptions" :key="m" :value="m">{{ m }}</option>
                             </select>
                         </div>
-                        <div class="flex flex-col gap-1">
+                        <div class="flex flex-col gap-1 sm:min-w-[140px]">
                             <label class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Unidad</label>
                             <select
                                 v-model="programFilters.unit"
-                                class="h-9 min-w-[150px] rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none"
+                                class="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none sm:w-auto sm:min-w-[150px]"
                             >
                                 <option value="">Todas</option>
                                 <option v-for="u in programUnitOptions" :key="u" :value="u">{{ u }}</option>
                             </select>
                         </div>
-                        <div class="flex flex-col gap-1">
+                        <div class="flex flex-col gap-1 sm:min-w-[140px]">
                             <label class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">Servicio</label>
                             <select
                                 v-model="programFilters.service"
-                                class="h-9 min-w-[140px] rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none"
+                                class="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none sm:w-auto sm:min-w-[140px]"
                             >
                                 <option value="">Todos</option>
                                 <option v-for="s in programServiceOptions" :key="s" :value="s">{{ s }}</option>
@@ -1420,7 +1437,7 @@ const loadStructure = (structureIdStr: string) => {
                             <Input
                                 type="date"
                                 v-model="programFilters.savedFrom"
-                                class="h-9 w-[150px] rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F]"
+                                class="h-9 w-full rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F] sm:w-[150px]"
                             />
                         </div>
                         <div class="flex flex-col gap-1">
@@ -1428,18 +1445,20 @@ const loadStructure = (structureIdStr: string) => {
                             <Input
                                 type="date"
                                 v-model="programFilters.savedTo"
-                                class="h-9 w-[150px] rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F]"
+                                class="h-9 w-full rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F] sm:w-[150px]"
                             />
                         </div>
                         <button
                             v-if="hasProgramFilters"
                             type="button"
                             @click="clearProgramFilters"
-                            class="h-9 rounded-lg px-2.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+                            class="col-span-2 h-9 rounded-lg px-2.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700 sm:col-auto"
                         >
                             Limpiar filtros
                         </button>
-                        <span class="ml-auto self-center text-xs text-slate-400"> {{ filteredPrograms.length }} de {{ programs.length }} </span>
+                        <span class="col-span-2 self-center text-xs text-slate-400 sm:col-auto sm:ml-auto">
+                            {{ filteredPrograms.length }} de {{ programs.length }}
+                        </span>
                     </div>
 
                     <!-- Barra de acciones sobre la selección -->
@@ -1461,22 +1480,22 @@ const loadStructure = (structureIdStr: string) => {
                         >
                             Quitar selección
                         </button>
-                        <div class="ml-auto flex items-center gap-2">
+                        <div class="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
                             <Button
                                 size="sm"
                                 :disabled="!selectedProgramIds.length"
                                 @click="generateWeeklyMenuExcel"
-                                class="flex items-center gap-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40"
+                                class="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40 sm:flex-none"
                             >
-                                <FileSpreadsheet class="h-4 w-4" />
-                                Menú Semanal (Excel)
+                                <FileSpreadsheet class="h-4 w-4 shrink-0" />
+                                <span class="truncate">Menú Semanal (Excel)</span>
                             </Button>
                             <DropdownMenu>
                                 <DropdownMenuTrigger as-child>
                                     <Button
                                         size="sm"
                                         :disabled="!selectedProgramIds.length"
-                                        class="flex items-center gap-1 rounded-lg bg-[#FF5A1F] text-white hover:bg-[#e04a17] disabled:opacity-40"
+                                        class="flex flex-1 items-center justify-center gap-1 rounded-lg bg-[#FF5A1F] text-white hover:bg-[#e04a17] disabled:opacity-40 sm:flex-none"
                                     >
                                         Reportes
                                         <ChevronDown class="h-3.5 w-3.5" />
@@ -1516,12 +1535,12 @@ const loadStructure = (structureIdStr: string) => {
                                                 aria-label="Seleccionar todas"
                                             />
                                         </TableHead>
-                                        <TableHead class="font-semibold text-slate-600">Servicio</TableHead>
+                                        <TableHead class="hidden font-semibold text-slate-600 sm:table-cell">Servicio</TableHead>
                                         <TableHead class="font-semibold text-slate-600">Comedor</TableHead>
-                                        <TableHead class="font-semibold text-slate-600">Periodo</TableHead>
-                                        <TableHead class="font-semibold text-slate-600">Guardado</TableHead>
-                                        <TableHead class="font-semibold text-slate-600">Estructura</TableHead>
-                                        <TableHead class="font-semibold text-slate-600">Estado</TableHead>
+                                        <TableHead class="hidden font-semibold text-slate-600 md:table-cell">Periodo</TableHead>
+                                        <TableHead class="hidden font-semibold text-slate-600 lg:table-cell">Guardado</TableHead>
+                                        <TableHead class="hidden font-semibold text-slate-600 xl:table-cell">Estructura</TableHead>
+                                        <TableHead class="hidden font-semibold text-slate-600 md:table-cell">Estado</TableHead>
                                         <TableHead class="text-right font-semibold text-slate-600">Acciones</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -1539,7 +1558,7 @@ const loadStructure = (structureIdStr: string) => {
                                                 :aria-label="`Seleccionar programación ${program.id}`"
                                             />
                                         </TableCell>
-                                        <TableCell>
+                                        <TableCell class="hidden sm:table-cell">
                                             <Badge
                                                 v-if="programRow(program).service"
                                                 variant="outline"
@@ -1549,23 +1568,41 @@ const loadStructure = (structureIdStr: string) => {
                                             </Badge>
                                             <span v-else class="text-xs text-slate-300">—</span>
                                         </TableCell>
-                                        <TableCell>
+                                        <TableCell class="whitespace-normal">
                                             <div class="font-semibold text-slate-800">{{ programRow(program).cafe }}</div>
                                             <div class="text-xs text-slate-400">{{ programRow(program).unit }} · {{ programRow(program).mine }}</div>
+                                            <div class="mt-1.5 flex flex-wrap items-center gap-1.5 md:hidden">
+                                                <Badge
+                                                    v-if="programRow(program).service"
+                                                    variant="outline"
+                                                    class="border-[#FF5A1F]/25 bg-orange-50 text-[10px] font-semibold text-[#FF5A1F] sm:hidden"
+                                                >
+                                                    {{ programRow(program).service }}
+                                                </Badge>
+                                                <span class="text-[11px] text-slate-500">
+                                                    {{ dayjs(program.start_date).format('DD/MM') }}–{{ dayjs(program.end_date).format('DD/MM/YY') }}
+                                                </span>
+                                                <Badge
+                                                    variant="outline"
+                                                    class="border-slate-200 bg-slate-50 text-[10px] font-medium text-slate-600 capitalize"
+                                                >
+                                                    {{ program.status }}
+                                                </Badge>
+                                            </div>
                                         </TableCell>
-                                        <TableCell class="text-slate-600">
+                                        <TableCell class="hidden text-slate-600 md:table-cell">
                                             {{ dayjs(program.start_date).format('DD/MM/YYYY') }} –
                                             {{ dayjs(program.end_date).format('DD/MM/YYYY') }}
                                         </TableCell>
-                                        <TableCell class="text-slate-500 tabular-nums">
+                                        <TableCell class="hidden text-slate-500 tabular-nums lg:table-cell">
                                             <template v-if="programRow(program).savedAt">
                                                 {{ dayjs(programRow(program).savedAt).format('DD/MM/YYYY') }}
                                                 <span class="text-xs text-slate-400">{{ dayjs(programRow(program).savedAt).format('HH:mm') }}</span>
                                             </template>
                                             <span v-else class="text-slate-300">—</span>
                                         </TableCell>
-                                        <TableCell class="text-slate-600">{{ program.structure?.name || '—' }}</TableCell>
-                                        <TableCell>
+                                        <TableCell class="hidden text-slate-600 xl:table-cell">{{ program.structure?.name || '—' }}</TableCell>
+                                        <TableCell class="hidden md:table-cell">
                                             <Badge variant="outline" class="border-slate-200 bg-slate-50 font-medium text-slate-600 capitalize">
                                                 {{ program.status }}
                                             </Badge>
