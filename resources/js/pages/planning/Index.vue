@@ -438,7 +438,7 @@ const selectedProgramIds = ref<number[]>([]);
 const programFilters = ref({
     mine: '',
     unit: '',
-    service: '',
+    cafe: '',
     savedFrom: '',
     savedTo: '',
 });
@@ -463,7 +463,17 @@ const programUnitOptions = computed(() =>
         ),
     ].sort(),
 );
-const programServiceOptions = computed(() => [...new Set(props.programs.map((p: any) => p.service).filter(Boolean))].sort());
+const programCafeOptions = computed(() =>
+    [
+        ...new Set(
+            props.programs
+                .filter((p: any) => !programFilters.value.mine || p.cafe?.unit?.mine?.name === programFilters.value.mine)
+                .filter((p: any) => !programFilters.value.unit || p.cafe?.unit?.name === programFilters.value.unit)
+                .map((p: any) => p.cafe?.name)
+                .filter(Boolean),
+        ),
+    ].sort(),
+);
 
 const filteredPrograms = computed(() => {
     const f = programFilters.value;
@@ -471,7 +481,7 @@ const filteredPrograms = computed(() => {
         const row = programRow(p);
         if (f.mine && row.mine !== f.mine) return false;
         if (f.unit && row.unit !== f.unit) return false;
-        if (f.service && row.service !== f.service) return false;
+        if (f.cafe && row.cafe !== f.cafe) return false;
         if (f.savedFrom && (!row.savedAt || dayjs(row.savedAt).isBefore(dayjs(f.savedFrom), 'day'))) return false;
         if (f.savedTo && (!row.savedAt || dayjs(row.savedAt).isAfter(dayjs(f.savedTo), 'day'))) return false;
         return true;
@@ -480,7 +490,7 @@ const filteredPrograms = computed(() => {
 
 const hasProgramFilters = computed(() => Object.values(programFilters.value).some(Boolean));
 const clearProgramFilters = () => {
-    programFilters.value = { mine: '', unit: '', service: '', savedFrom: '', savedTo: '' };
+    programFilters.value = { mine: '', unit: '', cafe: '', savedFrom: '', savedTo: '' };
 };
 
 const visibleProgramIds = computed<number[]>(() => filteredPrograms.value.map((p: any) => p.id));
@@ -866,7 +876,7 @@ const loadStructure = (structureIdStr: string) => {
         <div class="flex flex-col gap-4 p-4 sm:gap-6 sm:p-6">
             <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                 <div>
-                    <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">Planificación Semanal</h1>
+                    <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">Planificación Semanal y Orden de Servicio</h1>
                     <p class="mt-0.5 text-xs text-slate-500">Gestione y programe platos para múltiples días con total flexibilidad.</p>
                 </div>
                 <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
@@ -1458,13 +1468,13 @@ const loadStructure = (structureIdStr: string) => {
                             </select>
                         </div>
                         <div class="flex flex-col gap-1 sm:min-w-[140px]">
-                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Servicio</label>
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Café / Comedor</label>
                             <select
-                                v-model="programFilters.service"
+                                v-model="programFilters.cafe"
                                 class="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none sm:w-auto sm:min-w-[140px]"
                             >
                                 <option value="">Todos</option>
-                                <option v-for="s in programServiceOptions" :key="s" :value="s">{{ s }}</option>
+                                <option v-for="c in programCafeOptions" :key="c" :value="c">{{ c }}</option>
                             </select>
                         </div>
                         <div class="flex flex-col gap-1">
