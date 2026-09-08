@@ -90,6 +90,7 @@ class IngredientController extends Controller
             'calcium' => 'nullable|numeric',
             'phosphorus' => 'nullable|numeric',
             'iron' => 'nullable|numeric',
+            'carotene' => 'nullable|numeric',
             'retinol' => 'nullable|numeric',
             'thiamine' => 'nullable|numeric',
             'riboflavin' => 'nullable|numeric',

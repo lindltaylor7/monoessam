@@ -74,6 +74,7 @@ interface Dosification {
     calcium: number | null;
     phosphorus: number | null;
     iron: number | null;
+    carotene: number | null;
     retinol: number | null;
     thiamine: number | null;
     riboflavin: number | null;
@@ -197,6 +198,7 @@ const dosificationForm = useForm({
     calcium: null as number | null,
     phosphorus: null as number | null,
     iron: null as number | null,
+    carotene: null as number | null,
     retinol: null as number | null,
     thiamine: null as number | null,
     riboflavin: null as number | null,
@@ -231,6 +233,7 @@ const openDosificationModal = (ingredient: Ingredient) => {
     dosificationForm.calcium = d?.calcium ?? null;
     dosificationForm.phosphorus = d?.phosphorus ?? null;
     dosificationForm.iron = d?.iron ?? null;
+    dosificationForm.carotene = d?.carotene ?? null;
     dosificationForm.retinol = d?.retinol ?? null;
     dosificationForm.thiamine = d?.thiamine ?? null;
     dosificationForm.riboflavin = d?.riboflavin ?? null;
@@ -1184,7 +1187,20 @@ const uploadDosificationFile = () => {
                                 <div class="space-y-3">
                                     <div class="space-y-1.5">
                                         <Label class="flex items-center gap-2 text-[11px] font-bold text-zinc-500 uppercase">
-                                            <FlaskConical class="h-3 w-3" /> Retinol (µg)
+                                            <FlaskConical class="h-3 w-3" /> β Caroteno eq. totales (µg)
+                                        </Label>
+                                        <Input
+                                            :model-value="dosificationForm.carotene ?? undefined"
+                                            @update:model-value="(val) => (dosificationForm.carotene = val ? Number(val) : null)"
+                                            type="number"
+                                            step="0.01"
+                                            class="h-9 border-zinc-200"
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <Label class="flex items-center gap-2 text-[11px] font-bold text-zinc-500 uppercase">
+                                            <FlaskConical class="h-3 w-3" /> Vitamina A eq. totales (µg)
                                         </Label>
                                         <Input
                                             :model-value="dosificationForm.retinol ?? undefined"

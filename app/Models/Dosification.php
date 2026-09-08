@@ -23,6 +23,7 @@ class Dosification extends Model
         'calcium',
         'phosphorus',
         'iron',
+        'carotene',
         'retinol',
         'thiamine',
         'riboflavin',

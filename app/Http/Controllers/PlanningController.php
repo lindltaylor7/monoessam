@@ -408,7 +408,8 @@ class PlanningController extends Controller
     /**
      * Builds the "Dosificación Nutricional" PDF: one page per date + servicio, and within it a
      * block per plato listing every insumo of its receta with the nutritional breakdown per
-     * ración (17 nutrientes) plus a totals row for the plato.
+     * ración (21 nutrientes, en el orden de la Tabla Peruana de Composición de Alimentos) más
+     * una fila de totales por plato.
      *
      * Cada valor nutricional del insumo = valor por 100 g (tabla `dosifications`) escalado por
      * el peso neto por ración del quebrado (`dish_recipe_ingredients.net_weight` / 100), igual
@@ -433,26 +434,32 @@ class PlanningController extends Controller
             ['ingredients.dosification']
         );
 
-        // Columnas nutricionales del reporte, en el orden de la plantilla, mapeadas a la columna
-        // de `dosifications`. "CARB" cae a carbohydrate_available cuando no hay carbohydrate.
+        // Columnas nutricionales del reporte, en el orden y con los tagnames INFOODS de la Tabla
+        // Peruana de Composición de Alimentos, mapeadas a la columna de `dosifications`.
+        // `retinol` se reutiliza como "Vitamina A equivalentes totales" (VITA); `a_asc` es
+        // Vitamina C (VITC); `a_folic` es ácido fólico (FOLFD).
         $nutrients = [
-            'ENERG' => 'energy',
-            'AGUA'  => 'water',
-            'PROT'  => 'protein',
-            'LIPID' => 'lipid',
-            'CARB'  => 'carbohydrate',
-            'FIBRA' => 'fiber',
-            'CENIZ' => 'ash',
-            'CALC'  => 'calcium',
-            'FOSF'  => 'phosphorus',
-            'HIERR' => 'iron',
-            'RETIN' => 'retinol',
-            'TIAMI' => 'thiamine',
-            'RIBOF' => 'riboflavin',
-            'NIACI' => 'niacin',
-            'A ASC' => 'a_asc',
-            'Na'    => 'sodium',
-            'K'     => 'potassium',
+            'ENERC'  => 'energy',
+            'WATER'  => 'water',
+            'PROCNT' => 'protein',
+            'FAT'    => 'lipid',
+            'CHOCDF' => 'carbohydrate',
+            'CHOAVL' => 'carbohydrate_available',
+            'FIBTG'  => 'fiber',
+            'ASH'    => 'ash',
+            'CA'     => 'calcium',
+            'P'      => 'phosphorus',
+            'ZN'     => 'zinc',
+            'FE'     => 'iron',
+            'CARTBQ' => 'carotene',
+            'VITA'   => 'retinol',
+            'THIA'   => 'thiamine',
+            'RIBF'   => 'riboflavin',
+            'NIA'    => 'niacin',
+            'VITC'   => 'a_asc',
+            'FOLFD'  => 'a_folic',
+            'NA'     => 'sodium',
+            'K'      => 'potassium',
         ];
 
         $pages = collect();
@@ -494,6 +501,7 @@ class PlanningController extends Controller
                                     $per100 = 0.0;
                                     if ($dosification) {
                                         $raw = $dosification->{$column};
+                                        // CHOCDF (carbohidratos totales) cae a los disponibles cuando el total no está cargado.
                                         if (($raw === null || $raw === '') && $column === 'carbohydrate') {
                                             $raw = $dosification->carbohydrate_available;
                                         }
