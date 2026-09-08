@@ -40,7 +40,8 @@ class Dosification extends Model
         'v_b12',
         'v_b9',
         'iodine',
-        'cholesterol'
+        'cholesterol',
+        'alcohol'
     ];
     public function ingredient(): BelongsTo
     {

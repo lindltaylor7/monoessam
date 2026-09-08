@@ -203,6 +203,7 @@ export interface Dosification {
     v_b9?: number;
     iodine?: number;
     cholesterol?: number;
+    alcohol?: number;
 }
 
 export interface Ingredient {

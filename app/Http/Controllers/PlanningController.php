@@ -408,7 +408,7 @@ class PlanningController extends Controller
     /**
      * Builds the "Dosificación Nutricional" PDF: one page per date + servicio, and within it a
      * block per plato listing every insumo of its receta with the nutritional breakdown per
-     * ración (21 nutrientes, en el orden de la Tabla Peruana de Composición de Alimentos) más
+     * ración (22 columnas, en el orden de la Tabla Peruana de Composición de Alimentos) más
      * una fila de totales por plato.
      *
      * Cada valor nutricional del insumo = valor por 100 g (tabla `dosifications`) escalado por
@@ -434,32 +434,33 @@ class PlanningController extends Controller
             ['ingredients.dosification']
         );
 
-        // Columnas nutricionales del reporte, en el orden y con los tagnames INFOODS de la Tabla
-        // Peruana de Composición de Alimentos, mapeadas a la columna de `dosifications`.
-        // `retinol` se reutiliza como "Vitamina A equivalentes totales" (VITA); `a_asc` es
-        // Vitamina C (VITC); `a_folic` es ácido fólico (FOLFD).
+        // Columnas nutricionales del reporte, en el orden de la Tabla Peruana de Composición de
+        // Alimentos: nombre en español (encabezado), tagname INFOODS y la columna de
+        // `dosifications` de la que sale el valor. `retinol` se reutiliza como "Vitamina A
+        // equivalentes totales" (VITA); `a_asc` es Vitamina C (VITC); `a_folic` es ácido fólico.
         $nutrients = [
-            'ENERC'  => 'energy',
-            'WATER'  => 'water',
-            'PROCNT' => 'protein',
-            'FAT'    => 'lipid',
-            'CHOCDF' => 'carbohydrate',
-            'CHOAVL' => 'carbohydrate_available',
-            'FIBTG'  => 'fiber',
-            'ASH'    => 'ash',
-            'CA'     => 'calcium',
-            'P'      => 'phosphorus',
-            'ZN'     => 'zinc',
-            'FE'     => 'iron',
-            'CARTBQ' => 'carotene',
-            'VITA'   => 'retinol',
-            'THIA'   => 'thiamine',
-            'RIBF'   => 'riboflavin',
-            'NIA'    => 'niacin',
-            'VITC'   => 'a_asc',
-            'FOLFD'  => 'a_folic',
-            'NA'     => 'sodium',
-            'K'      => 'potassium',
+            ['name' => 'Energía',                         'tag' => 'ENERC',  'column' => 'energy'],
+            ['name' => 'Agua',                            'tag' => 'WATER',  'column' => 'water'],
+            ['name' => 'Proteínas',                       'tag' => 'PROCNT', 'column' => 'protein'],
+            ['name' => 'Grasa total',                     'tag' => 'FAT',    'column' => 'lipid'],
+            ['name' => 'Carbohidratos totales',           'tag' => 'CHOCDF', 'column' => 'carbohydrate'],
+            ['name' => 'Carbohidratos disponibles',       'tag' => 'CHOAVL', 'column' => 'carbohydrate_available'],
+            ['name' => 'Fibra dietaria',                  'tag' => 'FIBTG',  'column' => 'fiber'],
+            ['name' => 'Cenizas',                         'tag' => 'ASH',    'column' => 'ash'],
+            ['name' => 'Calcio',                          'tag' => 'CA',     'column' => 'calcium'],
+            ['name' => 'Fósforo',                         'tag' => 'P',      'column' => 'phosphorus'],
+            ['name' => 'Zinc',                            'tag' => 'ZN',     'column' => 'zinc'],
+            ['name' => 'Hierro',                          'tag' => 'FE',     'column' => 'iron'],
+            ['name' => 'β caroteno equivalentes totales', 'tag' => 'CARTBQ', 'column' => 'carotene'],
+            ['name' => 'Vitamina A equivalentes totales', 'tag' => 'VITA',   'column' => 'retinol'],
+            ['name' => 'Tiamina',                         'tag' => 'THIA',   'column' => 'thiamine'],
+            ['name' => 'Riboflavina',                     'tag' => 'RIBF',   'column' => 'riboflavin'],
+            ['name' => 'Niacina',                         'tag' => 'NIA',    'column' => 'niacin'],
+            ['name' => 'Vitamina C',                      'tag' => 'VITC',   'column' => 'a_asc'],
+            ['name' => 'Ácido fólico',                    'tag' => 'FOLFD',  'column' => 'a_folic'],
+            ['name' => 'Sodio',                           'tag' => 'NA',     'column' => 'sodium'],
+            ['name' => 'Potasio',                         'tag' => 'K',      'column' => 'potassium'],
+            ['name' => '% Alcohol',                       'tag' => 'ALC',    'column' => 'alcohol'],
         ];
 
         $pages = collect();
@@ -483,7 +484,7 @@ class PlanningController extends Controller
                         $categoryName = $item->dish_category->name ?? 'Sin categoría';
                         $categoryCounters[$categoryName] = ($categoryCounters[$categoryName] ?? 0) + 1;
 
-                        $totals = array_fill_keys(array_keys($nutrients), 0.0);
+                        $totals = array_fill_keys(array_column($nutrients, 'column'), 0.0);
 
                         $ingredients = $recipe
                             ? $recipe->ingredients->map(function ($ingredient) use ($nutrients, &$totals) {
@@ -497,7 +498,8 @@ class PlanningController extends Controller
                                 $factor = $netWeight / 100;
 
                                 $values = [];
-                                foreach ($nutrients as $label => $column) {
+                                foreach ($nutrients as $nutrient) {
+                                    $column = $nutrient['column'];
                                     $per100 = 0.0;
                                     if ($dosification) {
                                         $raw = $dosification->{$column};
@@ -508,8 +510,8 @@ class PlanningController extends Controller
                                         $per100 = (float) ($raw ?? 0);
                                     }
                                     $amount = $per100 * $factor;
-                                    $values[$label] = $amount;
-                                    $totals[$label] += $amount;
+                                    $values[$column] = $amount;
+                                    $totals[$column] += $amount;
                                 }
 
                                 return [

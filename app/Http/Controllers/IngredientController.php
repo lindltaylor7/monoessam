@@ -108,6 +108,7 @@ class IngredientController extends Controller
             'v_b9' => 'nullable|numeric',
             'iodine' => 'nullable|numeric',
             'cholesterol' => 'nullable|numeric',
+            'alcohol' => 'nullable|numeric',
         ]);
 
         $ingredient = Ingredient::findOrFail($id);

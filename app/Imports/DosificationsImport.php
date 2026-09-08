@@ -68,6 +68,7 @@ class DosificationsImport implements OnEachRow, WithHeadingRow
                 'v_b9'         => $parseNum($rowData['v_b9'] ?? null),
                 'iodine'       => $parseNum($rowData['yodo'] ?? null),
                 'cholesterol'  => $parseNum($rowData['colesterol'] ?? null),
+                'alcohol'      => $parseNum($rowData['alcohol'] ?? $rowData['etanol'] ?? null),
             ]
         );
     }

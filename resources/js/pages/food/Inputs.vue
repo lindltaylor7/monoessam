@@ -92,6 +92,7 @@ interface Dosification {
     v_b9: number | null;
     iodine: number | null;
     cholesterol: number | null;
+    alcohol: number | null;
 }
 
 interface Category {
@@ -216,6 +217,7 @@ const dosificationForm = useForm({
     v_b9: null as number | null,
     iodine: null as number | null,
     cholesterol: null as number | null,
+    alcohol: null as number | null,
 });
 
 const openDosificationModal = (ingredient: Ingredient) => {
@@ -251,6 +253,7 @@ const openDosificationModal = (ingredient: Ingredient) => {
     dosificationForm.v_b9 = d?.v_b9 ?? null;
     dosificationForm.iodine = d?.iodine ?? null;
     dosificationForm.cholesterol = d?.cholesterol ?? null;
+    dosificationForm.alcohol = d?.alcohol ?? null;
 
     isDosificationModalOpen.value = true;
 };
@@ -988,7 +991,7 @@ const uploadDosificationFile = () => {
                                     </div>
                                     <div class="space-y-1.5">
                                         <Label class="flex items-center gap-2 text-[11px] font-bold text-zinc-500 uppercase">
-                                            <Beef class="h-3 w-3" /> Proteína (g)
+                                            <Beef class="h-3 w-3" /> Proteínas (g)
                                         </Label>
                                         <Input
                                             :model-value="dosificationForm.protein ?? undefined"
@@ -1001,7 +1004,7 @@ const uploadDosificationFile = () => {
                                     </div>
                                     <div class="space-y-1.5">
                                         <Label class="flex items-center gap-2 text-[11px] font-bold text-zinc-500 uppercase">
-                                            <Droplets class="h-3 w-3" /> Lípidos (g)
+                                            <Droplets class="h-3 w-3" /> Grasa total (g)
                                         </Label>
                                         <Input
                                             :model-value="dosificationForm.lipid ?? undefined"
@@ -1014,7 +1017,7 @@ const uploadDosificationFile = () => {
                                     </div>
                                     <div class="space-y-1.5">
                                         <Label class="flex items-center gap-2 text-[11px] font-bold text-zinc-500 uppercase">
-                                            <Cookie class="h-3 w-3" /> Carbohidratos Totales (g)
+                                            <Cookie class="h-3 w-3" /> Carbohidratos totales (g)
                                         </Label>
                                         <Input
                                             :model-value="dosificationForm.carbohydrate ?? undefined"
@@ -1027,7 +1030,7 @@ const uploadDosificationFile = () => {
                                     </div>
                                     <div class="space-y-1.5">
                                         <Label class="flex items-center gap-2 text-[11px] font-bold text-zinc-500 uppercase">
-                                            <Cookie class="h-3 w-3" /> Carbohidratos Disponibles (g)
+                                            <Cookie class="h-3 w-3" /> Carbohidratos disponibles (g)
                                         </Label>
                                         <Input
                                             :model-value="dosificationForm.carbohydrate_available ?? undefined"
@@ -1040,11 +1043,24 @@ const uploadDosificationFile = () => {
                                     </div>
                                     <div class="space-y-1.5">
                                         <Label class="flex items-center gap-2 text-[11px] font-bold text-zinc-500 uppercase">
-                                            <Wheat class="h-3 w-3" /> Fibra (g)
+                                            <Wheat class="h-3 w-3" /> Fibra dietaria (g)
                                         </Label>
                                         <Input
                                             :model-value="dosificationForm.fiber ?? undefined"
                                             @update:model-value="(val) => (dosificationForm.fiber = val ? Number(val) : null)"
+                                            type="number"
+                                            step="0.01"
+                                            class="h-9 border-zinc-200"
+                                            placeholder="0.00"
+                                        />
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <Label class="flex items-center gap-2 text-[11px] font-bold text-zinc-500 uppercase">
+                                            <FlaskConical class="h-3 w-3" /> % Alcohol
+                                        </Label>
+                                        <Input
+                                            :model-value="dosificationForm.alcohol ?? undefined"
+                                            @update:model-value="(val) => (dosificationForm.alcohol = val ? Number(val) : null)"
                                             type="number"
                                             step="0.01"
                                             class="h-9 border-zinc-200"
@@ -1187,7 +1203,7 @@ const uploadDosificationFile = () => {
                                 <div class="space-y-3">
                                     <div class="space-y-1.5">
                                         <Label class="flex items-center gap-2 text-[11px] font-bold text-zinc-500 uppercase">
-                                            <FlaskConical class="h-3 w-3" /> β Caroteno eq. totales (µg)
+                                            <FlaskConical class="h-3 w-3" /> β caroteno equivalentes totales (µg)
                                         </Label>
                                         <Input
                                             :model-value="dosificationForm.carotene ?? undefined"
@@ -1200,7 +1216,7 @@ const uploadDosificationFile = () => {
                                     </div>
                                     <div class="space-y-1.5">
                                         <Label class="flex items-center gap-2 text-[11px] font-bold text-zinc-500 uppercase">
-                                            <FlaskConical class="h-3 w-3" /> Vitamina A eq. totales (µg)
+                                            <FlaskConical class="h-3 w-3" /> Vitamina A equivalentes totales (µg)
                                         </Label>
                                         <Input
                                             :model-value="dosificationForm.retinol ?? undefined"
@@ -1296,7 +1312,7 @@ const uploadDosificationFile = () => {
                                     </div>
                                     <div class="space-y-1.5">
                                         <Label class="flex items-center gap-2 text-[11px] font-bold text-zinc-500 uppercase">
-                                            Ácido Fólico (µg)
+                                            Ácido fólico (µg)
                                         </Label>
                                         <Input
                                             :model-value="dosificationForm.a_folic ?? undefined"

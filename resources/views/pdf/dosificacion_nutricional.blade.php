@@ -63,6 +63,10 @@
             text-transform: uppercase; color: #4a5568; text-align: right;
         }
         table.ingredients th.c-cod, table.ingredients th.c-prod { text-align: left; }
+        table.ingredients th .tag {
+            display: block; margin-top: 1px; font-size: 5px; font-weight: 700;
+            color: #94a3b8; letter-spacing: 0;
+        }
         table.ingredients td {
             border: 1px solid #cbd5e0; padding: 2px 3px; font-size: 6.5px; text-align: right;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -136,8 +140,8 @@
                                     <th class="c-prod" style="width:16%">Producto</th>
                                     <th style="width:6%">Gramaje x Rac</th>
                                     <th style="width:4%">IC</th>
-                                    @foreach($nutrients as $label => $column)
-                                        <th>{{ $label }}</th>
+                                    @foreach($nutrients as $nutrient)
+                                        <th>{{ $nutrient['name'] }}<span class="tag">&lt;{{ $nutrient['tag'] }}&gt;</span></th>
                                     @endforeach
                                 </tr>
                             </thead>
@@ -148,8 +152,8 @@
                                         <td class="c-prod">{{ $ingredient['name'] }}</td>
                                         <td>{{ number_format($ingredient['gramaje'], 2) }}</td>
                                         <td>{{ $ingredient['ic'] }}</td>
-                                        @foreach($nutrients as $label => $column)
-                                            <td>{{ number_format($ingredient['values'][$label], 2) }}</td>
+                                        @foreach($nutrients as $nutrient)
+                                            <td>{{ number_format($ingredient['values'][$nutrient['column']], 2) }}</td>
                                         @endforeach
                                     </tr>
                                 @endforeach
@@ -158,8 +162,8 @@
                                     <td class="c-prod">TOTAL</td>
                                     <td></td>
                                     <td></td>
-                                    @foreach($nutrients as $label => $column)
-                                        <td>{{ number_format($dish['totals'][$label], 2) }}</td>
+                                    @foreach($nutrients as $nutrient)
+                                        <td>{{ number_format($dish['totals'][$nutrient['column']], 2) }}</td>
                                     @endforeach
                                 </tr>
                             </tbody>
