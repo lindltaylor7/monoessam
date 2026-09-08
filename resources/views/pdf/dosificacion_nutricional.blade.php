@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>Dosificación Nutricional</title>
     <style>
-        @page { margin: 1cm; }
+        @page { margin: 0.6cm; }
         body {
             font-family: 'Helvetica', 'Arial', sans-serif;
             font-size: 8px;
@@ -59,16 +59,17 @@
         table.ingredients { width: 100%; border-collapse: collapse; table-layout: fixed; }
         table.ingredients th {
             background: #f1f5f9; border: 1px solid #cbd5e0;
-            padding: 3px 2px; font-size: 6px; font-weight: 800;
-            text-transform: uppercase; color: #4a5568; text-align: right;
+            padding: 2px 1px; font-size: 4.5px; font-weight: 800; line-height: 1.15;
+            text-transform: uppercase; color: #4a5568; text-align: center;
+            overflow: hidden; word-break: break-all; overflow-wrap: break-word;
         }
         table.ingredients th.c-cod, table.ingredients th.c-prod { text-align: left; }
         table.ingredients th .tag {
-            display: block; margin-top: 1px; font-size: 5px; font-weight: 700;
+            display: block; margin-top: 1px; font-size: 4px; font-weight: 700;
             color: #94a3b8; letter-spacing: 0;
         }
         table.ingredients td {
-            border: 1px solid #cbd5e0; padding: 2px 3px; font-size: 6.5px; text-align: right;
+            border: 1px solid #cbd5e0; padding: 1px 2px; font-size: 5px; text-align: right;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         table.ingredients td.c-cod { text-align: left; font-family: 'Courier New', monospace; }
@@ -136,12 +137,12 @@
                         <table class="ingredients">
                             <thead>
                                 <tr>
-                                    <th class="c-cod" style="width:5%">Cod</th>
-                                    <th class="c-prod" style="width:16%">Producto</th>
-                                    <th style="width:6%">Gramaje x Rac</th>
-                                    <th style="width:4%">IC</th>
+                                    <th class="c-cod" style="width:3.5%">Cod</th>
+                                    <th class="c-prod" style="width:11%">Producto</th>
+                                    <th style="width:4.5%">Gramaje x Rac</th>
+                                    <th style="width:3%">IC</th>
                                     @foreach($nutrients as $nutrient)
-                                        <th>{{ $nutrient['name'] }}<span class="tag">&lt;{{ $nutrient['tag'] }}&gt;</span></th>
+                                        <th style="width:{{ 78 / count($nutrients) }}%">{{ $nutrient['name'] }}<span class="tag">&lt;{{ $nutrient['tag'] }}&gt;</span></th>
                                     @endforeach
                                 </tr>
                             </thead>
