@@ -68,7 +68,7 @@ class PlanningController extends Controller
             ->orderByDesc('c')
             ->get()
             ->groupBy('weekly_program_id')
-            ->map(fn ($rows) => $rows->first()->meal_type);
+            ->map(fn($rows) => $rows->first()->meal_type);
 
         $programs = WeeklyProgram::with(['cafe.unit.mine', 'structure'])
             ->orderByDesc('created_at')
@@ -106,7 +106,7 @@ class PlanningController extends Controller
         // Una programación pertenece a un único servicio (el activo en la matriz). Si el front no
         // lo envía, se infiere del meal_type de los items con plato asignado.
         $mealType = $validated['meal_type']
-            ?? collect($validated['items'])->firstWhere(fn ($i) => !empty($i['dish_id']))['meal_type']
+            ?? collect($validated['items'])->firstWhere(fn($i) => !empty($i['dish_id']))['meal_type']
             ?? null;
 
         $program = WeeklyProgram::create([
@@ -235,7 +235,7 @@ class PlanningController extends Controller
         $pages = collect();
 
         foreach ($programs as $program) {
-            $portions = $program->portions->keyBy(fn ($p) => $p->date . '_' . $p->meal_type);
+            $portions = $program->portions->keyBy(fn($p) => $p->date . '_' . $p->meal_type);
             $baseChain = $this->baseChainFor($program);
             $unitName = strtoupper($program->cafe->unit->name ?? '—');
             $items = $itemsByProgram->get($program->id) ?? collect();
@@ -325,7 +325,7 @@ class PlanningController extends Controller
         $hasAnyPortions = false;
 
         foreach ($programs as $program) {
-            $portions = $program->portions->keyBy(fn ($p) => $p->date . '_' . $p->meal_type);
+            $portions = $program->portions->keyBy(fn($p) => $p->date . '_' . $p->meal_type);
 
             foreach ($itemsByProgram->get($program->id) ?? collect() as $item) {
                 $recipe = $recipes->get($item->dish_id);
@@ -386,8 +386,8 @@ class PlanningController extends Controller
 
         $first = $programs->first();
         $meta = [
-            'unit' => $programs->map(fn ($p) => $p->cafe->unit->name ?? null)->filter()->unique()->implode(' / ') ?: '—',
-            'base' => $programs->map(fn ($p) => $this->baseChainFor($p))->filter()->unique()->implode('  ·  ') ?: '—',
+            'unit' => $programs->map(fn($p) => $p->cafe->unit->name ?? null)->filter()->unique()->implode(' / ') ?: '—',
+            'base' => $programs->map(fn($p) => $this->baseChainFor($p))->filter()->unique()->implode('  ·  ') ?: '—',
             'year' => $first ? \Carbon\Carbon::parse($first->start_date)->year : now()->year,
             'month' => $first ? ucfirst(\Carbon\Carbon::parse($first->start_date)->locale('es')->translatedFormat('F')) : '',
             'week' => $first ? \Carbon\Carbon::parse($first->start_date)->isoWeek() : '',
@@ -451,7 +451,7 @@ class PlanningController extends Controller
             ['name' => 'Fósforo',                         'tag' => 'P',      'column' => 'phosphorus'],
             ['name' => 'Zinc',                            'tag' => 'ZN',     'column' => 'zinc'],
             ['name' => 'Hierro',                          'tag' => 'FE',     'column' => 'iron'],
-            ['name' => 'β caroteno equivalentes totales', 'tag' => 'CARTBQ', 'column' => 'carotene'],
+            ['name' => 'B caroteno equivalentes totales', 'tag' => 'CARTBQ', 'column' => 'carotene'],
             ['name' => 'Vitamina A equivalentes totales', 'tag' => 'VITA',   'column' => 'retinol'],
             ['name' => 'Tiamina',                         'tag' => 'THIA',   'column' => 'thiamine'],
             ['name' => 'Riboflavina',                     'tag' => 'RIBF',   'column' => 'riboflavin'],
@@ -466,7 +466,7 @@ class PlanningController extends Controller
         $pages = collect();
 
         foreach ($programs as $program) {
-            $portions = $program->portions->keyBy(fn ($p) => $p->date . '_' . $p->meal_type);
+            $portions = $program->portions->keyBy(fn($p) => $p->date . '_' . $p->meal_type);
             $baseChain = $this->baseChainFor($program);
             $unitName = strtoupper($program->cafe->unit->name ?? '—');
 
@@ -575,12 +575,12 @@ class PlanningController extends Controller
         ]);
 
         $programs = WeeklyProgram::with([
-                'cafe.unit.mine',
-                'structure.costs',
-                'items.dish',
-                'items.dish_category',
-                'portions',
-            ])
+            'cafe.unit.mine',
+            'structure.costs',
+            'items.dish',
+            'items.dish_category',
+            'portions',
+        ])
             ->whereIn('id', $validated['program_ids'])
             ->orderBy('start_date')
             ->orderBy('id')
@@ -624,7 +624,7 @@ class PlanningController extends Controller
         $totals = collect();
 
         foreach ($programs as $program) {
-            $portions = $program->portions->keyBy(fn ($p) => $p->date . '_' . $p->meal_type);
+            $portions = $program->portions->keyBy(fn($p) => $p->date . '_' . $p->meal_type);
 
             foreach ($itemsByProgram->get($program->id) ?? collect() as $item) {
                 $recipe = $recipes->get($item->dish_id);
@@ -668,7 +668,7 @@ class PlanningController extends Controller
             ->whereIn('ingredient_id', $totals->keys())
             ->get()
             ->groupBy('ingredient_id')
-            ->map(fn ($rows) => (float) $rows->min('cost_price'));
+            ->map(fn($rows) => (float) $rows->min('cost_price'));
 
         $rows = $totals->map(function ($row) use ($prices) {
             $quantityKg = $row['grams'] / 1000;
