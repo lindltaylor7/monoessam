@@ -74,6 +74,27 @@ test('can delete an input', function () {
     $this->assertDatabaseMissing('inputs', ['id' => $input->id]);
 });
 
+test('can import inputs from a spreadsheet, skipping the header row', function () {
+    $user = makeInputUser();
+
+    $csv = "\"\",\"\",u de medida,unidad,costo,total\n"
+        . "010000002,ACELGA X 1 KG.,KGM,0,0,0\n"
+        . "010000003,AJI CHUNCHO BLANCO/LIMO,KGM,1.5,2,3\n";
+
+    $path = tempnam(sys_get_temp_dir(), 'inputs') . '.csv';
+    file_put_contents($path, $csv);
+    $file = new \Illuminate\Http\UploadedFile($path, 'inputs.csv', 'text/csv', null, true);
+
+    $this->actingAs($user)
+        ->post(route('inputs.import'), ['excel_file' => $file])
+        ->assertRedirect();
+
+    expect(Input::count())->toBe(2);
+    $this->assertDatabaseHas('inputs', ['code' => '010000003', 'name' => 'AJI CHUNCHO BLANCO/LIMO', 'cost' => 2]);
+
+    @unlink($path);
+});
+
 test('code must be unique', function () {
     $user = makeInputUser();
     Input::create(['code' => 'DUP', 'name' => 'A']);

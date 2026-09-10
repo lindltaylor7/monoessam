@@ -4,7 +4,6 @@ namespace App\Imports;
 
 use App\Models\Input;
 use Maatwebsite\Excel\Concerns\ToCollection;
-use Maatwebsite\Excel\Concerns\WithoutHeadingRow;
 use Illuminate\Support\Collection;
 
 /**
@@ -16,11 +15,13 @@ use Illuminate\Support\Collection;
  *
  * Si la fila trae código, se hace upsert por `code`; si no, se crea siempre una fila nueva.
  */
-class InputsImport implements ToCollection, WithoutHeadingRow
+class InputsImport implements ToCollection
 {
     public function collection(Collection $rows): void
     {
-        foreach ($rows as $index => $row) {
+        foreach ($rows as $row) {
+            $row = $row->values();
+
             // Salta la fila de encabezados y las filas sin descripción.
             $name = trim((string) ($row[1] ?? ''));
             if ($name === '' || strtolower($name) === 'descripcion') {
