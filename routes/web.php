@@ -22,6 +22,7 @@ use App\Http\Controllers\IngredientCategoryController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\LaboralController;
 use App\Http\Controllers\IngredientController;
+use App\Http\Controllers\InputController;
 use App\Http\Controllers\NutritionalFactorController;
 use App\Http\Controllers\LogisticController;
 use App\Http\Controllers\ManagementController;
@@ -335,6 +336,17 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::put('{id}',   [ProductController::class, 'update'])->name('update');
         Route::patch('{id}/stock', [ProductController::class, 'updateStock'])->name('stock');
         Route::delete('{id}',[ProductController::class, 'destroy'])->name('destroy');
+    });
+
+    // ========================================================================
+    // MAESTRO DE INSUMOS (Inputs)
+    // ========================================================================
+    Route::prefix('inputs')->name('inputs.')->group(function () {
+        Route::get('/', [InputController::class, 'index'])->name('index');
+        Route::post('/', [InputController::class, 'store'])->name('store');
+        Route::post('import', [InputController::class, 'import'])->name('import');
+        Route::put('{id}', [InputController::class, 'update'])->name('update');
+        Route::delete('{id}', [InputController::class, 'destroy'])->name('destroy');
     });
 
     Route::prefix('mercantiles')->name('mercantiles.')->group(function () {
