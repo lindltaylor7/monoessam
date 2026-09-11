@@ -524,6 +524,63 @@ class InventoryController extends Controller
         return back()->with('success', 'Imagen de factura actualizada correctamente');
     }
 
+    public function updateInvoiceItem(Request $request, $invoiceId, $itemId)
+    {
+        $validated = $request->validate([
+            'color_id' => 'nullable|exists:colors,id',
+            'size' => 'nullable|string',
+            'quantity' => 'required|numeric|min:1',
+        ]);
+
+        $invoice = ClothInvoice::findOrFail($invoiceId);
+        $item = $invoice->items()->findOrFail($itemId);
+
+        DB::transaction(function () use ($validated, $invoice, $item) {
+            $stockableType = $item->cloth_id ? Cloth::class : ($item->epp_id ? Epp::class : null);
+            $stockableId = $item->cloth_id ?: $item->epp_id;
+
+            if ($stockableType && $stockableId) {
+                $oldStock = InventoryStock::where([
+                    'stockable_id' => $stockableId,
+                    'stockable_type' => $stockableType,
+                    'cafe_id' => null,
+                    'headquarter_id' => $invoice->headquarter_id,
+                    'size' => $item->size,
+                    'color_id' => $item->color_id,
+                    'condition' => 'Nuevo',
+                ])->first();
+
+                if ($oldStock) {
+                    $oldStock->quantity -= $item->quantity;
+                    $oldStock->save();
+                }
+
+                $newStock = InventoryStock::firstOrNew([
+                    'stockable_id' => $stockableId,
+                    'stockable_type' => $stockableType,
+                    'cafe_id' => null,
+                    'headquarter_id' => $invoice->headquarter_id,
+                    'size' => $validated['size'] ?? null,
+                    'color_id' => $validated['color_id'] ?? null,
+                    'condition' => 'Nuevo',
+                ]);
+                $newStock->quantity += $validated['quantity'];
+                $newStock->save();
+            }
+
+            $item->update([
+                'size' => $validated['size'] ?? null,
+                'color_id' => $validated['color_id'] ?? null,
+                'quantity' => $validated['quantity'],
+                'total_price' => $validated['quantity'] * $item->unit_price,
+            ]);
+
+            $invoice->update(['total_amount' => $invoice->items()->sum('total_price')]);
+        });
+
+        return back()->with('success', 'Ítem de factura actualizado correctamente');
+    }
+
     public function invoicesIndex()
     {
         $invoices = ClothInvoice::with(['business', 'headquarter', 'provider', 'items.cloth', 'items.epp', 'items.color', 'user'])->latest()->get();

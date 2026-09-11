@@ -797,6 +797,52 @@ const handleInvoiceImageUpdate = (e: Event) => {
     );
 };
 
+// --- Edit Invoice Item (Talla/Color/Cantidad) ---
+const editingInvoiceItemId = ref<number | null>(null);
+const editItemForm = ref({ size: '', color_id: 'none', quantity: 1 });
+const isSavingInvoiceItem = ref(false);
+
+const startEditInvoiceItem = (item: any) => {
+    editingInvoiceItemId.value = item.id;
+    editItemForm.value = {
+        size: item.size || '',
+        color_id: item.color_id ? String(item.color_id) : 'none',
+        quantity: Number(item.quantity) || 1,
+    };
+};
+
+const cancelEditInvoiceItem = () => {
+    editingInvoiceItemId.value = null;
+};
+
+const saveEditInvoiceItem = (item: any) => {
+    if (!selectedInvoice.value || editItemForm.value.quantity < 1) return;
+
+    isSavingInvoiceItem.value = true;
+    router.put(
+        route('inventory.invoice.item.update', { invoiceId: selectedInvoice.value.id, itemId: item.id }),
+        {
+            size: editItemForm.value.size || null,
+            color_id: editItemForm.value.color_id === 'none' ? null : editItemForm.value.color_id,
+            quantity: editItemForm.value.quantity,
+        },
+        {
+            preserveScroll: true,
+            onSuccess: (page) => {
+                const updatedInvoice = (page.props as any).invoices.find((i: any) => i.id === selectedInvoice.value.id);
+                if (updatedInvoice) {
+                    selectedInvoice.value = updatedInvoice;
+                }
+                editingInvoiceItemId.value = null;
+            },
+            onError: showValidationErrors,
+            onFinish: () => {
+                isSavingInvoiceItem.value = false;
+            },
+        },
+    );
+};
+
 // --- EPP Size Logic ---
 const isSizeModalOpen = ref(false);
 const selectedEppForSizes = ref<any>(null);
@@ -2586,6 +2632,7 @@ const saveInlinePrice = (cp: any) => {
                                             <TableHead class="text-center text-[10px] font-black text-slate-500 uppercase">Cant.</TableHead>
                                             <TableHead class="text-right text-[10px] font-black text-slate-500 uppercase">P. Unit</TableHead>
                                             <TableHead class="text-right text-[10px] font-black text-slate-500 uppercase">Total</TableHead>
+                                            <TableHead class="w-10 text-right text-[10px] font-black text-slate-500 uppercase"></TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -2598,28 +2645,99 @@ const saveInlinePrice = (cp: any) => {
                                                     </span>
                                                 </div>
                                             </TableCell>
-                                            <TableCell class="py-2 text-xs text-slate-600">{{ item.size || '-' }}</TableCell>
-                                            <TableCell class="py-2">
-                                                <div v-if="item.color" class="flex items-center gap-1.5">
-                                                    <div
-                                                        class="h-2.5 w-2.5 rounded-full border border-slate-200"
-                                                        :style="{ backgroundColor: item.color.hex_code }"
-                                                    ></div>
-                                                    <span class="text-[10px] font-medium text-slate-500">{{ item.color.name }}</span>
-                                                </div>
-                                                <span v-else class="text-[10px] text-slate-400">-</span>
-                                            </TableCell>
-                                            <TableCell class="py-2 text-center text-xs font-black text-slate-700">{{ item.quantity }}</TableCell>
-                                            <TableCell class="py-2 text-right text-[10px] font-medium text-slate-500"
-                                                >S/.{{ Number(item.unit_price).toFixed(2) }}</TableCell
-                                            >
-                                            <TableCell class="py-2 text-right text-xs font-black text-indigo-600"
-                                                >S/.{{ Number(item.total_price).toFixed(2) }}</TableCell
-                                            >
+                                            <template v-if="editingInvoiceItemId === item.id">
+                                                <TableCell class="py-2">
+                                                    <Input v-model="editItemForm.size" placeholder="Talla..." class="h-8 w-20 text-xs" />
+                                                </TableCell>
+                                                <TableCell class="py-2">
+                                                    <Select v-model="editItemForm.color_id">
+                                                        <SelectTrigger class="h-8 w-32 text-xs"><SelectValue placeholder="Ninguno" /></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="none">Ninguno</SelectItem>
+                                                            <SelectItem v-for="color in colors" :key="color.id" :value="String(color.id)">
+                                                                <div class="flex items-center gap-2">
+                                                                    <div
+                                                                        class="h-3 w-3 rounded-full border border-slate-200"
+                                                                        :style="{ backgroundColor: color.hex_code }"
+                                                                    ></div>
+                                                                    {{ color.name }}
+                                                                </div>
+                                                            </SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </TableCell>
+                                                <TableCell class="py-2 text-center">
+                                                    <Input
+                                                        type="number"
+                                                        v-model.number="editItemForm.quantity"
+                                                        min="1"
+                                                        class="h-8 w-16 text-center text-xs font-bold"
+                                                    />
+                                                </TableCell>
+                                                <TableCell class="py-2 text-right text-[10px] font-medium text-slate-500"
+                                                    >S/.{{ Number(item.unit_price).toFixed(2) }}</TableCell
+                                                >
+                                                <TableCell class="py-2 text-right text-xs font-black text-indigo-600"
+                                                    >S/.{{ (editItemForm.quantity * Number(item.unit_price)).toFixed(2) }}</TableCell
+                                                >
+                                                <TableCell class="py-2 text-right">
+                                                    <div class="flex items-center justify-end gap-1">
+                                                        <Button
+                                                            @click="saveEditInvoiceItem(item)"
+                                                            :disabled="isSavingInvoiceItem || editItemForm.quantity < 1"
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            class="h-7 w-7 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
+                                                        >
+                                                            <Loader2 v-if="isSavingInvoiceItem" class="h-3.5 w-3.5 animate-spin" />
+                                                            <CheckCircle2 v-else class="h-3.5 w-3.5" />
+                                                        </Button>
+                                                        <Button
+                                                            @click="cancelEditInvoiceItem"
+                                                            :disabled="isSavingInvoiceItem"
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            class="h-7 w-7 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                                                        >
+                                                            <X class="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+                                            </template>
+                                            <template v-else>
+                                                <TableCell class="py-2 text-xs text-slate-600">{{ item.size || '-' }}</TableCell>
+                                                <TableCell class="py-2">
+                                                    <div v-if="item.color" class="flex items-center gap-1.5">
+                                                        <div
+                                                            class="h-2.5 w-2.5 rounded-full border border-slate-200"
+                                                            :style="{ backgroundColor: item.color.hex_code }"
+                                                        ></div>
+                                                        <span class="text-[10px] font-medium text-slate-500">{{ item.color.name }}</span>
+                                                    </div>
+                                                    <span v-else class="text-[10px] text-slate-400">-</span>
+                                                </TableCell>
+                                                <TableCell class="py-2 text-center text-xs font-black text-slate-700">{{ item.quantity }}</TableCell>
+                                                <TableCell class="py-2 text-right text-[10px] font-medium text-slate-500"
+                                                    >S/.{{ Number(item.unit_price).toFixed(2) }}</TableCell
+                                                >
+                                                <TableCell class="py-2 text-right text-xs font-black text-indigo-600"
+                                                    >S/.{{ Number(item.total_price).toFixed(2) }}</TableCell
+                                                >
+                                                <TableCell class="py-2 text-right">
+                                                    <Button
+                                                        @click="startEditInvoiceItem(item)"
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        class="h-7 w-7 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
+                                                    >
+                                                        <Edit2 class="h-3.5 w-3.5" />
+                                                    </Button>
+                                                </TableCell>
+                                            </template>
                                         </TableRow>
                                         <TableRow class="bg-slate-50/30">
                                             <TableCell colspan="4" class="rounded-bl-xl border-t border-slate-100"></TableCell>
-                                            <TableCell colspan="2" class="rounded-br-xl border-t border-slate-100 p-0">
+                                            <TableCell colspan="3" class="rounded-br-xl border-t border-slate-100 p-0">
                                                 <div class="space-y-3 p-4">
                                                     <div class="flex items-center justify-between px-2">
                                                         <span class="text-[10px] font-black tracking-widest text-slate-400 uppercase">IGV (18%)</span>
