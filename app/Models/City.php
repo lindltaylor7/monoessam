@@ -14,10 +14,10 @@ class City extends Model
 
     public function providers(): BelongsToMany
     {
-        return $this->belongsToMany(Provider::class, 'ingredient_city_provider', 'city_id', 'provider_id');
+        return $this->belongsToMany(Provider::class, 'ingredient_city_providers', 'city_id', 'provider_id');
     }
     public function ingredients(): BelongsToMany
     {
-        return $this->belongsToMany(Ingredient::class, 'ingredient_city_provider', 'city_id', 'ingredient_id');
+        return $this->belongsToMany(Ingredient::class, 'ingredient_city_providers', 'city_id', 'ingredient_id');
     } 
 }

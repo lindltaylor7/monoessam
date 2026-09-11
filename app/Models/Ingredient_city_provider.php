@@ -7,11 +7,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Ingredient_city_provider extends Model
 {
-    // Eloquent's default pluralization would resolve this to "ingredient_city_providers", but the
-    // migration (2025_07_08_104003_create_ingredient_city_provider_table.php) created the table
-    // singular — without this override every query against this model 500s with "table not found".
-    protected $table = 'ingredient_city_provider';
-
+    // The real table (in production/beta and local dev, with live pricing data) is named
+    // "ingredient_city_providers" — Eloquent's default pluralization already resolves to that, so
+    // no override is needed. The migration that creates the table singular
+    // (2025_07_08_104003_create_ingredient_city_provider_table.php) predates the actual table:
+    // at some point it was manually renamed to plural without a tracked migration, leaving that
+    // singular table empty/unused. Don't "fix" this back to singular — see
+    // 2026_09_11_114519_create_ingredient_city_providers_table_if_missing.php.
     protected $fillable = [
         'ingredient_id',
         'provider_id',

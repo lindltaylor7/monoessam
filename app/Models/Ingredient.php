@@ -39,11 +39,11 @@ class Ingredient extends Model
     }
     public function providers(): BelongsToMany
     {
-        return $this->belongsToMany(Provider::class, 'ingredient_city_provider', 'ingredient_id', 'provider_id')->withPivot('cost_price');
+        return $this->belongsToMany(Provider::class, 'ingredient_city_providers', 'ingredient_id', 'provider_id')->withPivot('cost_price');
     }
     public function cities(): BelongsToMany
     {
-        return $this->belongsToMany(City::class, 'ingredient_city_provider', 'ingredient_id', 'city_id');
+        return $this->belongsToMany(City::class, 'ingredient_city_providers', 'ingredient_id', 'city_id');
     }
     public function stocks(): MorphMany
     {
