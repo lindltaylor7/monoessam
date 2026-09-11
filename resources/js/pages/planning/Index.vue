@@ -605,6 +605,48 @@ const generateWeeklyPurchaseOrderExcel = async () => {
     }
 };
 
+// Mismo cálculo que la Orden de Pedido, pero abierto como página interactiva: desglosado por
+// comedor de destino y con todos los proveedores registrados (no solo el más barato).
+const generatePurchaseReport = async () => {
+    const ids = requireSelection();
+    if (!ids) return;
+    if (!props.levels?.length || !props.cities?.length) {
+        Swal.fire('Atención', 'Faltan niveles o ciudades configuradas en el sistema.', 'warning');
+        return;
+    }
+
+    const { value: formValues } = await Swal.fire({
+        title: 'Reporte de Compras Semanales',
+        html:
+            `<p class="mb-3 text-left text-sm text-gray-600">Se consolidará el requerimiento de ${ids.length} programación/es por comedor de destino, con los precios de todos los proveedores disponibles. Seleccione el nivel de receta y la ciudad de precios.</p>` +
+            '<label class="mb-1 block text-left text-xs font-semibold text-gray-500">Nivel de receta</label>' +
+            '<select id="swal-report-level" class="swal2-select" style="display:block;width:100%;margin-bottom:12px;">' +
+            props.levels.map((l: any) => `<option value="${l.id}">${l.name}</option>`).join('') +
+            '</select>' +
+            '<label class="mb-1 block text-left text-xs font-semibold text-gray-500">Ciudad (precios)</label>' +
+            '<select id="swal-report-city" class="swal2-select" style="display:block;width:100%;">' +
+            props.cities.map((c: any) => `<option value="${c.id}">${c.name}</option>`).join('') +
+            '</select>',
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Generar Reporte',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#FF5A1F',
+        preConfirm: () => ({
+            levelId: (document.getElementById('swal-report-level') as HTMLSelectElement)?.value,
+            cityId: (document.getElementById('swal-report-city') as HTMLSelectElement)?.value,
+        }),
+    });
+
+    if (formValues?.levelId && formValues?.cityId) {
+        router.get(route('planning.reporte-compras'), {
+            program_ids: ids,
+            level_id: formValues.levelId,
+            city_id: formValues.cityId,
+        });
+    }
+};
+
 // Dishes are fetched on demand per category (instead of shipping the entire catalog on page
 // load) and cached here, keyed by dish_category_id.
 const dishesByCategory = ref<Record<number, { id: number; name: string }[]>>({});
@@ -1562,6 +1604,10 @@ const loadStructure = (structureIdStr: string) => {
                                     <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyPurchaseOrderExcel">
                                         <span class="flex-1">Orden de Pedido Semanal</span>
                                         <span class="text-[10px] font-semibold text-slate-400">Excel · consolidado</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem class="cursor-pointer" @select="generatePurchaseReport">
+                                        <span class="flex-1">Reporte de Compras Semanales</span>
+                                        <span class="text-[10px] font-semibold text-slate-400">Interactivo · por comedor</span>
                                     </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>

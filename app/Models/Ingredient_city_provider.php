@@ -7,6 +7,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Ingredient_city_provider extends Model
 {
+    // Eloquent's default pluralization would resolve this to "ingredient_city_providers", but the
+    // migration (2025_07_08_104003_create_ingredient_city_provider_table.php) created the table
+    // singular — without this override every query against this model 500s with "table not found".
+    protected $table = 'ingredient_city_provider';
 
     protected $fillable = [
         'ingredient_id',

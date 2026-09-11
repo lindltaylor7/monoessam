@@ -501,6 +501,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('dosificacion-pdf', [PlanningController::class, 'dosificacionPdf'])->name('dosificacion-pdf');
         Route::get('menu-excel', [PlanningController::class, 'menuExcel'])->name('menu-excel');
         Route::get('orden-pedido-excel', [PlanningController::class, 'purchaseOrderExcel'])->name('orden-pedido-excel');
+        Route::get('reporte-compras', [PlanningController::class, 'purchaseReport'])->name('reporte-compras');
     });
 
     Route::prefix('purchase-orders')->name('purchase_orders.')->group(function () {

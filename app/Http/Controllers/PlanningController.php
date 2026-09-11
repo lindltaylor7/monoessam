@@ -9,7 +9,9 @@ use App\Models\Cafe;
 use App\Models\City;
 use App\Models\Dish_category;
 use App\Models\DishRecipe;
+use App\Models\Ingredient;
 use App\Models\Ingredient_city_provider;
+use App\Models\InventoryStock;
 use App\Models\Level;
 use App\Models\MenuStructure;
 use App\Models\Serviceable;
@@ -698,5 +700,143 @@ class PlanningController extends Controller
         $export = new WeeklyPurchaseOrderExport($programs, $level, $city, $categories, $grandTotal, $missingPriceCount);
 
         return Excel::download($export, 'Orden_Pedido_Semanal_' . now()->format('Ymd_His') . '.xlsx');
+    }
+
+    /**
+     * Interactive "Reporte de Compras Semanales": same recipe-explosion requirement as
+     * purchaseOrderExcel, but pivoted by comedor de destino (one column per Cafe involved in the
+     * selected programs) and priced against every registered provider for the chosen city
+     * (cheapest first) instead of only the minimum. Mirrors the multi-proveedor Excel sheet the
+     * mines use today, computed live instead of by hand.
+     *
+     * Same city caveat as purchaseOrderExcel: there's no Mina/Unidad/Comedor -> City relation, so
+     * the city used to price is chosen manually by the user generating the report.
+     */
+    public function purchaseReport(Request $request)
+    {
+        $validated = $request->validate([
+            'program_ids' => 'required|array|min:1',
+            'program_ids.*' => 'integer|exists:weekly_programs,id',
+            'level_id' => 'required|exists:levels,id',
+            'city_id' => 'required|exists:cities,id',
+        ]);
+
+        $level = Level::findOrFail($validated['level_id']);
+        $city = City::findOrFail($validated['city_id']);
+        [$programs, $itemsByProgram, $recipes] = $this->loadReportData(
+            $validated['program_ids'],
+            $level,
+            ['ingredients.ingredient_category']
+        );
+
+        $destinations = $programs->pluck('cafe')->filter()->unique('id')->values();
+
+        // grams[ingredient_id]['meta'] + grams[ingredient_id]['by_cafe'][cafe_id]
+        $totals = collect();
+
+        foreach ($programs as $program) {
+            $cafeId = $program->cafe_id;
+            $portions = $program->portions->keyBy(fn($p) => $p->date . '_' . $p->meal_type);
+
+            foreach ($itemsByProgram->get($program->id) ?? collect() as $item) {
+                $recipe = $recipes->get($item->dish_id);
+                if (!$recipe) {
+                    continue;
+                }
+
+                $servicePortions = optional($portions->get($item->date . '_' . $item->meal_type))->portions_count ?? 0;
+                $portionsCount = $item->effectivePortions($servicePortions);
+                if ($portionsCount <= 0) {
+                    continue;
+                }
+
+                foreach ($recipe->ingredients as $ingredient) {
+                    $qtyPerRation = (float) $ingredient->pivot->gross_weight;
+                    if ($qtyPerRation <= 0) {
+                        continue;
+                    }
+
+                    if (!$totals->has($ingredient->id)) {
+                        $totals->put($ingredient->id, [
+                            'id' => $ingredient->id,
+                            'name' => $ingredient->name,
+                            'category' => optional($ingredient->ingredient_category)->name ?? 'Sin Categoría',
+                            'by_cafe' => [],
+                        ]);
+                    }
+
+                    $row = $totals->get($ingredient->id);
+                    $row['by_cafe'][$cafeId] = ($row['by_cafe'][$cafeId] ?? 0) + $qtyPerRation * $portionsCount;
+                    $totals->put($ingredient->id, $row);
+                }
+            }
+        }
+
+        // Todos los proveedores registrados para cada insumo en la ciudad elegida, más barato primero.
+        $providersByIngredient = Ingredient_city_provider::where('city_id', $city->id)
+            ->whereIn('ingredient_id', $totals->keys()->all())
+            ->with('provider:id,name')
+            ->get()
+            ->groupBy('ingredient_id')
+            ->map(fn($rows) => $rows->sortBy('cost_price')->values()->map(fn($r) => [
+                'provider_id' => $r->provider_id,
+                'provider_name' => optional($r->provider)->name ?? 'N/A',
+                'price' => (float) $r->cost_price,
+            ])->values());
+
+        // Stock actual del insumo en los comedores destino (cuando se registra vía InventoryStock).
+        $stockByIngredient = InventoryStock::where('stockable_type', Ingredient::class)
+            ->whereIn('stockable_id', $totals->keys()->all())
+            ->whereIn('cafe_id', $destinations->pluck('id'))
+            ->get()
+            ->groupBy('stockable_id')
+            ->map(fn($rows) => (float) $rows->sum('quantity'));
+
+        $rows = $totals->map(function ($row) use ($providersByIngredient, $stockByIngredient, $destinations) {
+            $totalGrams = array_sum($row['by_cafe']);
+            $totalKg = $totalGrams / 1000;
+            $providers = $providersByIngredient->get($row['id'], collect());
+            $bestPrice = $providers->first()['price'] ?? null;
+
+            return [
+                'id' => $row['id'],
+                'name' => $row['name'],
+                'category' => $row['category'],
+                'unit' => 'Kg.',
+                'by_cafe' => $destinations->mapWithKeys(fn($cafe) => [
+                    $cafe->id => round(($row['by_cafe'][$cafe->id] ?? 0) / 1000, 3),
+                ]),
+                'total_kg' => round($totalKg, 3),
+                'stock_kg' => round($stockByIngredient->get($row['id'], 0), 3),
+                'providers' => $providers,
+                'best_price' => $bestPrice,
+                'subtotal' => $bestPrice !== null ? round($totalKg * $bestPrice, 2) : null,
+            ];
+        });
+
+        $categories = $rows->groupBy('category')->sortKeys()->map(function ($group, $categoryName) {
+            return [
+                'name' => $categoryName,
+                'rows' => $group->sortBy('name')->values(),
+            ];
+        })->values();
+
+        return Inertia::render('planning/PurchaseReport', [
+            'programs' => $programs->map(fn($p) => [
+                'id' => $p->id,
+                'cafe' => optional($p->cafe)->name,
+                'chain' => $this->baseChainFor($p),
+                'start_date' => $p->start_date,
+                'end_date' => $p->end_date,
+            ])->values(),
+            'destinations' => $destinations->map(fn($c) => ['id' => $c->id, 'name' => $c->name])->values(),
+            'level' => ['id' => $level->id, 'name' => $level->name],
+            'city' => ['id' => $city->id, 'name' => $city->name],
+            'categories' => $categories,
+            'max_providers' => (int) ($rows->map(fn($r) => $r['providers']->count())->max() ?? 0),
+            'grand_total' => round((float) $rows->sum('subtotal'), 2),
+            'missing_price_count' => $rows->whereNull('subtotal')->count(),
+            'generated_at' => now()->toDateTimeString(),
+        ]);
     }
 }
