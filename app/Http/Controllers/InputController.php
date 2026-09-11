@@ -14,7 +14,7 @@ class InputController extends Controller
     public function index()
     {
         return Inertia::render('inputs/Index', [
-            'inputs' => Input::orderBy('name')->get(),
+            'inputs' => Input::orderBy('code')->get(),
         ]);
     }
 

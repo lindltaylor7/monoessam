@@ -55,8 +55,8 @@ Uses `spatie/laravel-permission`. Route-level authorization is _not_ done with p
 - If a new top-level route prefix should be gated, a matching `permissions.route_name` row must exist (or it's implicitly open, like `dashboard`/`settings`/`profile`).
 - Because gating is keyed off the first segment, routes that should be reachable by a role that doesn't own that segment are deliberately placed under a _different_ segment they do have (see the `pos/find-dinner-by-dni` comment in `routes/web.php` for a real example — don't "fix" that by moving it back under `dinners`).
 - Both reads and writes are checked. Two maps in the middleware handle segments that don't line up 1:1 with a permission:
-  - `SEGMENT_PERMISSION_ALIASES` — segments with **no** `permissions` row of their own (`dishes`, `mines`, `cafes`, `equipment-dispatches`, …). Applies to reads and writes. Without it these are open to any authenticated user.
-  - `WRITE_PERMISSION_ALIASES` — segments that **do** own a permission but are written to from other modules' screens (POS registering a diner under `dinners`, Headcount managing `roles`/`staff`, …). Write-only **on purpose**: applying it to GET would hand a `pos` user the whole Comensales padrón. Keep that separation when adding entries.
+    - `SEGMENT_PERMISSION_ALIASES` — segments with **no** `permissions` row of their own (`dishes`, `mines`, `cafes`, `equipment-dispatches`, …). Applies to reads and writes. Without it these are open to any authenticated user.
+    - `WRITE_PERMISSION_ALIASES` — segments that **do** own a permission but are written to from other modules' screens (POS registering a diner under `dinners`, Headcount managing `roles`/`staff`, …). Write-only **on purpose**: applying it to GET would hand a `pos` user the whole Comensales padrón. Keep that separation when adding entries.
 - A segment with no permission row and no alias entry is still **fail-open** (any authenticated user). That's deliberate for loose endpoints, not an oversight — but it means adding a prefix without a permission row leaves it public-to-authenticated.
 - There are **no policies/gates**: nothing in the codebase calls `authorize()`, `Gate::`, or `->can()`. The nine `App\Policies\*` stubs that used to live here were `make:policy` scaffolding whose 63 methods all returned `false`; they were never wired up and were removed. Authorization is module-level via the middleware — there is currently no per-record check anywhere.
 
@@ -83,4 +83,4 @@ Pest is configured (`tests/Pest.php`) but most existing test files are plain PHP
 
 ### Git workflow
 
-After completing the update, commit the changes with a descriptive message and push them to the remote repository with a git push origin dev.
+After completing the update, if the update includes vue components run `npm run build`, commit the changes with a descriptive message and push them to the remote repository with a git push origin dev.
