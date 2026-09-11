@@ -50,7 +50,8 @@ class DosificationsImport implements OnEachRow, WithHeadingRow
                 'calcium'      => $parseNum($rowData['calc'] ?? null),
                 'phosphorus'   => $parseNum($rowData['fosfo'] ?? null),
                 'iron'         => $parseNum($rowData['hierro'] ?? null),
-                'retinol'      => $parseNum($rowData['retinol'] ?? null),
+                'carotene'     => $parseNum($rowData['betacaro'] ?? $rowData['caroteno'] ?? $rowData['cartbq'] ?? null),
+                'retinol'      => $parseNum($rowData['retinol'] ?? $rowData['vita'] ?? null),
                 'thiamine'     => $parseNum($rowData['tiamina'] ?? null),
                 'riboflavin'   => $parseNum($rowData['riboflav'] ?? null),
                 'niacin'       => $parseNum($rowData['niacin'] ?? null),
@@ -67,6 +68,7 @@ class DosificationsImport implements OnEachRow, WithHeadingRow
                 'v_b9'         => $parseNum($rowData['v_b9'] ?? null),
                 'iodine'       => $parseNum($rowData['yodo'] ?? null),
                 'cholesterol'  => $parseNum($rowData['colesterol'] ?? null),
+                'alcohol'      => $parseNum($rowData['alcohol'] ?? $rowData['etanol'] ?? null),
             ]
         );
     }

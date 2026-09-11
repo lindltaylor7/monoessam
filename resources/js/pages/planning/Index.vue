@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -13,9 +14,9 @@ import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import dayjs from 'dayjs';
 import 'dayjs/locale/es';
-import { ChevronDown } from 'lucide-vue-next';
+import { ChevronDown, FileSpreadsheet } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 
 dayjs.locale('es');
 
@@ -38,9 +39,17 @@ const startDate = ref(dayjs().startOf('week').add(1, 'day').format('YYYY-MM-DD')
 const daysCount = ref(7);
 const activeTab = ref<'planificar' | 'programaciones'>('planificar');
 
+// El panel de Configuración es retráctil; se colapsa solo en pantallas chicas (tras montar,
+// para no romper la hidratación SSR) y queda abierto en escritorio.
+const configOpen = ref(true);
+onMounted(() => {
+    if (window.innerWidth < 1024) configOpen.value = false;
+});
+
 const form = useForm({
     cafe_id: '',
     structure_id: null as number | null,
+    meal_type: null as string | null,
     start_date: startDate.value,
     end_date: dayjs(startDate.value).add(6, 'days').format('YYYY-MM-DD'),
     items: [] as any[],
@@ -150,6 +159,31 @@ watch(
 // Local reactive state for the grid to avoid find() in template
 const portionsGrid = ref<Record<string, number>>({});
 const itemsGrid = ref<Record<string, string>>({});
+// Percentage of diners that take each dish (per date + meal + structure row). 100 = every
+// diner of that day's service. Effective rations of a dish = portions * percentage / 100.
+const percentagesGrid = ref<Record<string, number>>({});
+
+const clampPct = (val: unknown): number => {
+    const n = Number(val);
+    if (!Number.isFinite(n)) return 100;
+    return Math.min(100, Math.max(0, Math.round(n * 100) / 100));
+};
+
+const effectiveRations = (date: string, meal: string, structId: number | string): number => {
+    const base = Number(portionsGrid.value[`${date}_${meal}`]) || 0;
+    const pct = clampPct(percentagesGrid.value[`${date}_${meal}_${structId}`] ?? 100);
+    return Math.round((base * pct) / 100);
+};
+
+// Copy the first day's percentage of a dish row to every day of the active service
+const replicatePercentages = (meal: string, structId: number | string) => {
+    if (dates.value.length === 0) return;
+    const firstKey = `${dates.value[0]}_${meal}_${structId}`;
+    const firstVal = clampPct(percentagesGrid.value[firstKey] ?? 100);
+    dates.value.forEach((date) => {
+        percentagesGrid.value[`${date}_${meal}_${structId}`] = firstVal;
+    });
+};
 const localMenuStructure = ref<MenuStructure[]>(JSON.parse(JSON.stringify(props.menu_structure)));
 
 const dates = computed(() => {
@@ -160,8 +194,10 @@ const dates = computed(() => {
 const initializeGrid = () => {
     const oldPortions = { ...portionsGrid.value };
     const oldItems = { ...itemsGrid.value };
+    const oldPercentages = { ...percentagesGrid.value };
     portionsGrid.value = {};
     itemsGrid.value = {};
+    percentagesGrid.value = {};
 
     dates.value.forEach((date) => {
         meals.forEach((meal) => {
@@ -172,6 +208,7 @@ const initializeGrid = () => {
             structureForMeal.forEach((s) => {
                 const itemKey = `${date}_${meal}_${s.id}`;
                 itemsGrid.value[itemKey] = oldItems[itemKey] || '';
+                percentagesGrid.value[itemKey] = oldPercentages[itemKey] !== undefined ? oldPercentages[itemKey] : 100;
             });
         });
     });
@@ -225,6 +262,7 @@ const submit = async () => {
     form.end_date = dayjs(form.start_date)
         .add(daysCount.value - 1, 'days')
         .format('YYYY-MM-DD');
+    form.meal_type = (activeMealType.value as string | null) ?? null;
     form.portions = [];
     form.items = [];
 
@@ -246,6 +284,7 @@ const submit = async () => {
             meal_type: meal as MealType,
             dish_category_id: struct ? struct.dish_category_id : null,
             dish_id: val || null,
+            percentage: clampPct(percentagesGrid.value[key] ?? 100),
         });
     }
 
@@ -352,20 +391,16 @@ const handleRelFileImport = (event: Event) => {
     }
 };
 
-const generatePO = (program: WeeklyProgram) => {
-    Swal.fire({
-        title: '¿Generar Quebrado (PO)?',
-        text: `Se generará la orden de compra para "${program.cafe?.name}" del ${dayjs(program.start_date).format('DD/MM')} al ${dayjs(program.end_date).format('DD/MM')}.`,
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Sí, generar',
-        cancelButtonText: 'Cancelar',
-        confirmButtonColor: '#FF5A1F',
-    }).then((result) => {
-        if (result.isConfirmed) {
-            router.post(route('planning.generate-po', program.id));
-        }
-    });
+const generatePO = async (program: WeeklyProgram) => {
+    // El quebrado resuelve la receta de cada plato por nivel (igual que los PDF del módulo),
+    // así que se pide el nivel antes de generar la orden.
+    const levelId = await promptForLevel(
+        '¿Generar Quebrado (PO)?',
+        `Se generará la orden de compra para "${program.cafe?.name}" del ${dayjs(program.start_date).format('DD/MM')} al ${dayjs(program.end_date).format('DD/MM')}. Elija el nivel de receta:`,
+    );
+    if (!levelId) return;
+
+    router.post(route('planning.generate-po', program.id), { level_id: levelId });
 };
 
 // The planning grid never records which recipe "nivel" (Master/Staff/Empleado/Obrero) a dish
@@ -395,30 +430,148 @@ const promptForLevel = async (title: string, prompt: string): Promise<string | n
     return levelId || null;
 };
 
-const generateWeeklyQuebradoPdf = async (program: WeeklyProgram) => {
-    const levelId = await promptForLevel(
-        'Quebrado Semanal (PDF)',
-        'Seleccione el nivel de receta a usar para calcular los ingredientes de cada plato de esta semana.',
-    );
-    if (levelId) {
-        window.open(route('planning.quebrado-pdf', { id: program.id, level_id: levelId }), '_blank');
+// ── Programaciones guardadas: selección múltiple + filtros ───────────────────────────────
+// Todos los reportes (no solo el Menú Semanal) se generan sobre las programaciones marcadas
+// en la tabla, enviando program_ids[] al backend.
+const selectedProgramIds = ref<number[]>([]);
+
+const programFilters = ref({
+    mine: '',
+    unit: '',
+    cafe: '',
+    savedFrom: '',
+    savedTo: '',
+});
+
+const programRow = (p: any) => ({
+    id: p.id as number,
+    cafe: p.cafe?.name ?? '—',
+    unit: p.cafe?.unit?.name ?? '—',
+    mine: p.cafe?.unit?.mine?.name ?? '—',
+    service: (p.service ?? null) as string | null,
+    savedAt: p.created_at as string | null,
+});
+
+const programMineOptions = computed(() => [...new Set(props.programs.map((p: any) => p.cafe?.unit?.mine?.name).filter(Boolean))].sort());
+const programUnitOptions = computed(() =>
+    [
+        ...new Set(
+            props.programs
+                .filter((p: any) => !programFilters.value.mine || p.cafe?.unit?.mine?.name === programFilters.value.mine)
+                .map((p: any) => p.cafe?.unit?.name)
+                .filter(Boolean),
+        ),
+    ].sort(),
+);
+const programCafeOptions = computed(() =>
+    [
+        ...new Set(
+            props.programs
+                .filter((p: any) => !programFilters.value.mine || p.cafe?.unit?.mine?.name === programFilters.value.mine)
+                .filter((p: any) => !programFilters.value.unit || p.cafe?.unit?.name === programFilters.value.unit)
+                .map((p: any) => p.cafe?.name)
+                .filter(Boolean),
+        ),
+    ].sort(),
+);
+
+const filteredPrograms = computed(() => {
+    const f = programFilters.value;
+    return props.programs.filter((p: any) => {
+        const row = programRow(p);
+        if (f.mine && row.mine !== f.mine) return false;
+        if (f.unit && row.unit !== f.unit) return false;
+        if (f.cafe && row.cafe !== f.cafe) return false;
+        if (f.savedFrom && (!row.savedAt || dayjs(row.savedAt).isBefore(dayjs(f.savedFrom), 'day'))) return false;
+        if (f.savedTo && (!row.savedAt || dayjs(row.savedAt).isAfter(dayjs(f.savedTo), 'day'))) return false;
+        return true;
+    });
+});
+
+const hasProgramFilters = computed(() => Object.values(programFilters.value).some(Boolean));
+const clearProgramFilters = () => {
+    programFilters.value = { mine: '', unit: '', cafe: '', savedFrom: '', savedTo: '' };
+};
+
+const visibleProgramIds = computed<number[]>(() => filteredPrograms.value.map((p: any) => p.id));
+const allVisibleSelected = computed(
+    () => visibleProgramIds.value.length > 0 && visibleProgramIds.value.every((id) => selectedProgramIds.value.includes(id)),
+);
+const toggleSelectAllVisible = (checked: boolean) => {
+    if (checked) {
+        selectedProgramIds.value = [...new Set([...selectedProgramIds.value, ...visibleProgramIds.value])];
+    } else {
+        selectedProgramIds.value = selectedProgramIds.value.filter((id) => !visibleProgramIds.value.includes(id));
+    }
+};
+const toggleProgram = (id: number, checked: boolean) => {
+    if (checked) {
+        if (!selectedProgramIds.value.includes(id)) selectedProgramIds.value = [...selectedProgramIds.value, id];
+    } else {
+        selectedProgramIds.value = selectedProgramIds.value.filter((x) => x !== id);
     }
 };
 
-const generateWeeklyRequirementPdf = async (program: WeeklyProgram) => {
+// Drop selections that are filtered out of view so the action bar count always matches what's checked on screen.
+watch(filteredPrograms, () => {
+    selectedProgramIds.value = selectedProgramIds.value.filter((id) => visibleProgramIds.value.includes(id));
+});
+
+const requireSelection = (): number[] | null => {
+    if (!selectedProgramIds.value.length) {
+        Swal.fire('Sin selección', 'Marque al menos una programación en la tabla para generar el reporte.', 'info');
+        return null;
+    }
+    return [...selectedProgramIds.value];
+};
+
+const openReport = (routeName: string, params: Record<string, unknown>) => {
+    window.open(route(routeName, params), '_blank');
+};
+
+const generateWeeklyQuebradoPdf = async () => {
+    const ids = requireSelection();
+    if (!ids) return;
+    const levelId = await promptForLevel(
+        'Quebrado Semanal (PDF)',
+        `Seleccione el nivel de receta a usar para calcular los ingredientes de cada plato (${ids.length} programación/es).`,
+    );
+    if (levelId) openReport('planning.quebrado-pdf', { program_ids: ids, level_id: levelId });
+};
+
+const generateWeeklyRequirementPdf = async () => {
+    const ids = requireSelection();
+    if (!ids) return;
     const levelId = await promptForLevel(
         'Requerimiento x Producto (PDF)',
-        'Seleccione el nivel de receta a usar para calcular cuánto de cada insumo se necesita esta semana.',
+        `Seleccione el nivel de receta a usar para consolidar cuánto de cada insumo se necesita (${ids.length} programación/es).`,
     );
-    if (levelId) {
-        window.open(route('planning.requerimiento-pdf', { id: program.id, level_id: levelId }), '_blank');
-    }
+    if (levelId) openReport('planning.requerimiento-pdf', { program_ids: ids, level_id: levelId });
+};
+
+const generateWeeklyDosificacionPdf = async () => {
+    const ids = requireSelection();
+    if (!ids) return;
+    const levelId = await promptForLevel(
+        'Dosificación Nutricional (PDF)',
+        `Seleccione el nivel de receta a usar para calcular los valores nutricionales de cada plato (${ids.length} programación/es).`,
+    );
+    if (levelId) openReport('planning.dosificacion-pdf', { program_ids: ids, level_id: levelId });
+};
+
+// Una hoja por programación seleccionada.
+const generateWeeklyMenuExcel = () => {
+    const ids = requireSelection();
+    if (!ids) return;
+    openReport('planning.menu-excel', { program_ids: ids });
 };
 
 // Prices only exist per (insumo, ciudad, proveedor) — there's no relation from
 // Mina/Unidad/Comedor to Ciudad in the system — so the city used to price this order is also
 // chosen manually here, same reasoning as the recipe nivel above.
-const generateWeeklyPurchaseOrderExcel = async (program: WeeklyProgram) => {
+const generateWeeklyPurchaseOrderExcel = async () => {
+    const ids = requireSelection();
+    if (!ids) return;
     if (!props.levels?.length || !props.cities?.length) {
         Swal.fire('Atención', 'Faltan niveles o ciudades configuradas en el sistema.', 'warning');
         return;
@@ -427,7 +580,7 @@ const generateWeeklyPurchaseOrderExcel = async (program: WeeklyProgram) => {
     const { value: formValues } = await Swal.fire({
         title: 'Orden de Pedido Semanal (Excel)',
         html:
-            '<p class="mb-3 text-left text-sm text-gray-600">Seleccione el nivel de receta y la ciudad de precios a usar para esta orden.</p>' +
+            `<p class="mb-3 text-left text-sm text-gray-600">Se consolidará el pedido de ${ids.length} programación/es. Seleccione el nivel de receta y la ciudad de precios.</p>` +
             '<label class="mb-1 block text-left text-xs font-semibold text-gray-500">Nivel de receta</label>' +
             '<select id="swal-level" class="swal2-select" style="display:block;width:100%;margin-bottom:12px;">' +
             props.levels.map((l: any) => `<option value="${l.id}">${l.name}</option>`).join('') +
@@ -448,10 +601,7 @@ const generateWeeklyPurchaseOrderExcel = async (program: WeeklyProgram) => {
     });
 
     if (formValues?.levelId && formValues?.cityId) {
-        window.open(
-            route('planning.orden-pedido-excel', { id: program.id, level_id: formValues.levelId, city_id: formValues.cityId }),
-            '_blank',
-        );
+        openReport('planning.orden-pedido-excel', { program_ids: ids, level_id: formValues.levelId, city_id: formValues.cityId });
     }
 };
 
@@ -566,9 +716,11 @@ const loadMenuCycle = (cycleIdStr: string) => {
             // 2. Inicializar la cuadrícula local preservando valores de otras comidas
             const oldPortions = { ...portionsGrid.value };
             const oldItems = { ...itemsGrid.value };
+            const oldPercentages = { ...percentagesGrid.value };
 
             portionsGrid.value = {};
             itemsGrid.value = {};
+            percentagesGrid.value = {};
 
             dates.value.forEach((date) => {
                 meals.forEach((meal) => {
@@ -580,8 +732,10 @@ const loadMenuCycle = (cycleIdStr: string) => {
                         const itemKey = `${date}_${meal}_${s.id}`;
                         if (meal === mealType) {
                             itemsGrid.value[itemKey] = '';
+                            percentagesGrid.value[itemKey] = 100;
                         } else {
                             itemsGrid.value[itemKey] = oldItems[itemKey] || '';
+                            percentagesGrid.value[itemKey] = oldPercentages[itemKey] !== undefined ? oldPercentages[itemKey] : 100;
                         }
                     });
                 });
@@ -645,6 +799,7 @@ const loadStructure = (structureIdStr: string) => {
         // 1. Capturar asignaciones actuales del servicio activo, indexadas por categoría (no por id de
         //    fila, que va a cambiar) para poder preservarlas si la nueva categoría coincide.
         const oldByCategory: Record<string, string> = {};
+        const oldPctByCategory: Record<string, number> = {};
         localMenuStructure.value
             .filter((s) => s.meal_type === mealType)
             .forEach((s) => {
@@ -653,6 +808,7 @@ const loadStructure = (structureIdStr: string) => {
                     const val = itemsGrid.value[oldKey];
                     if (val) {
                         oldByCategory[`${date}_${s.dish_category_id}`] = val;
+                        oldPctByCategory[`${date}_${s.dish_category_id}`] = percentagesGrid.value[oldKey] ?? 100;
                     }
                 });
             });
@@ -678,8 +834,10 @@ const loadStructure = (structureIdStr: string) => {
         //    servicio activo (en vez de vaciarlo, como hace loadMenuCycle).
         const oldPortions = { ...portionsGrid.value };
         const oldItems = { ...itemsGrid.value };
+        const oldPercentages = { ...percentagesGrid.value };
         portionsGrid.value = {};
         itemsGrid.value = {};
+        percentagesGrid.value = {};
 
         dates.value.forEach((date) => {
             meals.forEach((meal) => {
@@ -690,9 +848,12 @@ const loadStructure = (structureIdStr: string) => {
                 structureForMeal.forEach((s) => {
                     const itemKey = `${date}_${meal}_${s.id}`;
                     if (meal === mealType) {
-                        itemsGrid.value[itemKey] = oldByCategory[`${date}_${s.dish_category_id}`] || '';
+                        const catKey = `${date}_${s.dish_category_id}`;
+                        itemsGrid.value[itemKey] = oldByCategory[catKey] || '';
+                        percentagesGrid.value[itemKey] = oldPctByCategory[catKey] ?? 100;
                     } else {
                         itemsGrid.value[itemKey] = oldItems[itemKey] || '';
+                        percentagesGrid.value[itemKey] = oldPercentages[itemKey] !== undefined ? oldPercentages[itemKey] : 100;
                     }
                 });
             });
@@ -712,20 +873,20 @@ const loadStructure = (structureIdStr: string) => {
 <template>
     <Head title="Planificación Semanal" />
     <AppLayout>
-        <div class="flex flex-col gap-6 p-6">
-            <div class="flex flex-wrap items-center justify-between gap-4">
+        <div class="flex flex-col gap-4 p-4 sm:gap-6 sm:p-6">
+            <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                 <div>
-                    <h1 class="text-2xl font-bold text-slate-900">Planificación Semanal</h1>
+                    <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">Planificación Semanal y Orden de Servicio</h1>
                     <p class="mt-0.5 text-xs text-slate-500">Gestione y programe platos para múltiples días con total flexibilidad.</p>
                 </div>
-                <div class="flex items-center gap-2">
-                    <Link :href="route('purchase_orders.index')">
-                        <Button variant="outline" class="rounded-xl">Ver Órdenes de Compra</Button>
+                <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                    <Link :href="route('purchase_orders.index')" class="w-full sm:w-auto">
+                        <Button variant="outline" class="w-full rounded-xl sm:w-auto">Ver Órdenes de Compra</Button>
                     </Link>
                     <Button
                         @click="submit"
                         :disabled="form.processing"
-                        class="rounded-xl bg-[#FF5A1F] text-white shadow-sm shadow-orange-500/20 hover:bg-[#e04a17]"
+                        class="w-full rounded-xl bg-[#FF5A1F] text-white shadow-sm shadow-orange-500/20 hover:bg-[#e04a17] sm:w-auto"
                     >
                         {{ form.processing ? 'Guardando...' : 'Guardar Planificación' }}
                     </Button>
@@ -733,47 +894,73 @@ const loadStructure = (structureIdStr: string) => {
             </div>
 
             <Tabs v-model="activeTab">
-                <TabsList class="bg-slate-100 p-1">
-                    <TabsTrigger value="planificar" class="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
+                <TabsList class="grid w-full grid-cols-2 bg-orange-50 p-1 sm:inline-flex sm:w-auto">
+                    <TabsTrigger
+                        value="planificar"
+                        class="rounded-lg data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:text-[#FF5A1F] data-[state=active]:shadow-sm"
+                    >
                         Planificar
                     </TabsTrigger>
-                    <TabsTrigger value="programaciones" class="rounded-lg data-[state=active]:bg-white data-[state=active]:shadow-sm">
-                        Programaciones Guardadas
-                        <span class="ml-1.5 rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">{{ programs.length }}</span>
+                    <TabsTrigger
+                        value="programaciones"
+                        class="rounded-lg data-[state=active]:bg-white data-[state=active]:font-semibold data-[state=active]:text-[#FF5A1F] data-[state=active]:shadow-sm"
+                    >
+                        <span class="truncate">Programaciones Guardadas</span>
+                        <span
+                            class="ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
+                            :class="activeTab === 'programaciones' ? 'bg-[#FF5A1F]/15 text-[#FF5A1F]' : 'bg-slate-200 text-slate-600'"
+                            >{{ programs.length }}</span
+                        >
                     </TabsTrigger>
                 </TabsList>
             </Tabs>
 
-            <div v-if="activeTab === 'planificar'" class="grid grid-cols-1 items-start gap-6 lg:grid-cols-4">
-                <!-- Sidebar de Configuración -->
-                <Card class="overflow-hidden rounded-2xl border-none bg-white shadow-sm lg:col-span-1">
-                    <CardHeader class="border-b border-slate-100 pb-4">
-                        <CardTitle class="flex items-center gap-2 text-lg font-bold text-slate-800">
-                            <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                width="20"
-                                height="20"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                stroke-width="2"
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                class="text-slate-500"
-                            >
-                                <circle cx="12" cy="12" r="3" />
-                                <path
-                                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-                                />
-                            </svg>
-                            <span>Configuración</span>
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent class="flex flex-col gap-4 p-5">
+            <div v-if="activeTab === 'planificar'" class="grid grid-cols-1 items-start gap-4 sm:gap-6 lg:grid-cols-4">
+                <!-- Sidebar de Configuración (retráctil) -->
+                <Card
+                    class="gap-0 overflow-hidden rounded-2xl border border-orange-100/70 bg-white py-0 shadow-sm"
+                    :class="configOpen ? 'lg:col-span-1' : 'lg:col-span-4'"
+                >
+                    <button
+                        type="button"
+                        @click="configOpen = !configOpen"
+                        :aria-expanded="configOpen"
+                        class="flex w-full items-center justify-between gap-2 bg-gradient-to-r from-orange-50 to-white px-4 py-3.5 text-left transition-colors hover:from-orange-100/70"
+                    >
+                        <span class="flex items-center gap-2.5">
+                            <span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#FF5A1F] text-white shadow-sm shadow-orange-500/30">
+                                <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    width="18"
+                                    height="18"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                >
+                                    <circle cx="12" cy="12" r="3" />
+                                    <path
+                                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
+                                    />
+                                </svg>
+                            </span>
+                            <span class="flex flex-col">
+                                <span class="text-base font-bold text-slate-800">Configuración</span>
+                                <span class="text-[11px] text-slate-400">{{ configOpen ? 'Ocultar panel' : 'Mostrar panel' }}</span>
+                            </span>
+                        </span>
+                        <ChevronDown class="h-5 w-5 shrink-0 text-[#FF5A1F] transition-transform" :class="configOpen ? '' : '-rotate-90'" />
+                    </button>
+                    <CardContent
+                        v-show="configOpen"
+                        class="grid grid-cols-1 gap-4 border-t border-orange-100/70 p-4 sm:p-5 md:grid-cols-2 lg:grid-cols-1"
+                    >
                         <div class="flex flex-col gap-2">
                             <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                                 <svg
-                                    class="h-4 w-4 text-slate-400"
+                                    class="h-4 w-4 text-[#FF5A1F]"
                                     fill="none"
                                     stroke="currentColor"
                                     stroke-width="2"
@@ -799,7 +986,7 @@ const loadStructure = (structureIdStr: string) => {
                         <div class="flex flex-col gap-2">
                             <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                                 <svg
-                                    class="h-4 w-4 text-slate-400"
+                                    class="h-4 w-4 text-[#FF5A1F]"
                                     fill="none"
                                     stroke="currentColor"
                                     stroke-width="2"
@@ -829,7 +1016,7 @@ const loadStructure = (structureIdStr: string) => {
                         <div class="flex flex-col gap-2">
                             <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                                 <svg
-                                    class="h-4 w-4 text-slate-400"
+                                    class="h-4 w-4 text-[#FF5A1F]"
                                     fill="none"
                                     stroke="currentColor"
                                     stroke-width="2"
@@ -859,7 +1046,7 @@ const loadStructure = (structureIdStr: string) => {
                         <div class="flex flex-col gap-2">
                             <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                                 <svg
-                                    class="h-4 w-4 text-slate-400"
+                                    class="h-4 w-4 text-[#FF5A1F]"
                                     fill="none"
                                     stroke="currentColor"
                                     stroke-width="2"
@@ -889,7 +1076,7 @@ const loadStructure = (structureIdStr: string) => {
                         <div class="flex flex-col gap-2">
                             <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                                 <svg
-                                    class="h-4 w-4 text-slate-400"
+                                    class="h-4 w-4 text-[#FF5A1F]"
                                     fill="none"
                                     stroke="currentColor"
                                     stroke-width="2"
@@ -915,7 +1102,7 @@ const loadStructure = (structureIdStr: string) => {
                         <div class="flex flex-col gap-2">
                             <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                                 <svg
-                                    class="h-4 w-4 text-slate-400"
+                                    class="h-4 w-4 text-[#FF5A1F]"
                                     fill="none"
                                     stroke="currentColor"
                                     stroke-width="2"
@@ -959,7 +1146,7 @@ const loadStructure = (structureIdStr: string) => {
                         <div class="flex flex-col gap-2">
                             <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                                 <svg
-                                    class="h-4 w-4 text-slate-400"
+                                    class="h-4 w-4 text-[#FF5A1F]"
                                     fill="none"
                                     stroke="currentColor"
                                     stroke-width="2"
@@ -985,7 +1172,7 @@ const loadStructure = (structureIdStr: string) => {
                         <div class="flex flex-col gap-2">
                             <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
                                 <svg
-                                    class="h-4 w-4 text-slate-400"
+                                    class="h-4 w-4 text-[#FF5A1F]"
                                     fill="none"
                                     stroke="currentColor"
                                     stroke-width="2"
@@ -1018,14 +1205,16 @@ const loadStructure = (structureIdStr: string) => {
                 </Card>
 
                 <!-- Área principal de Planificación -->
-                <div class="flex flex-col gap-6 lg:col-span-3">
+                <div class="flex flex-col gap-4 sm:gap-6" :class="configOpen ? 'lg:col-span-3' : 'lg:col-span-4'">
                     <!-- Cabecera de la Matriz y Acciones de Importación -->
-                    <div class="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-100/50 bg-white p-4 px-6 shadow-sm">
+                    <div
+                        class="flex flex-col gap-3 rounded-2xl border border-l-4 border-slate-100 border-l-[#FF5A1F] bg-white p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-6"
+                    >
                         <div class="flex flex-col">
-                            <h2 class="text-lg font-bold text-slate-800">Matriz de Programación</h2>
-                            <p class="text-xs text-slate-500">Asigne platos y defina raciones por día</p>
+                            <h2 class="text-base font-bold text-slate-800 sm:text-lg">Matriz de Programación</h2>
+                            <p class="text-xs text-slate-500">Asigne platos, ajuste el % de comensales y defina raciones por día</p>
                         </div>
-                        <div class="flex items-center gap-2">
+                        <div class="flex flex-wrap items-center gap-2">
                             <input type="file" ref="fileInput" class="hidden" accept=".xlsx,.xls,.csv" @change="handleFileImport" />
                             <Button
                                 type="button"
@@ -1033,7 +1222,7 @@ const loadStructure = (structureIdStr: string) => {
                                 size="sm"
                                 @click="triggerImport"
                                 :disabled="importForm.processing"
-                                class="h-9 rounded-xl border-dashed border-slate-200 text-xs text-slate-600 hover:bg-slate-50"
+                                class="h-9 flex-1 rounded-xl border-dashed border-slate-200 text-xs text-slate-600 hover:bg-slate-50 sm:flex-none"
                                 title="Importar Categorías de Platos"
                             >
                                 <svg
@@ -1062,7 +1251,7 @@ const loadStructure = (structureIdStr: string) => {
                                 size="sm"
                                 @click="triggerRelImport"
                                 :disabled="relForm.processing"
-                                class="h-9 rounded-xl border-dashed border-slate-200 text-xs text-slate-600 hover:bg-slate-50"
+                                class="h-9 flex-1 rounded-xl border-dashed border-slate-200 text-xs text-slate-600 hover:bg-slate-50 sm:flex-none"
                                 title="Importar Relación Platos-Categorías"
                             >
                                 <svg
@@ -1092,24 +1281,29 @@ const loadStructure = (structureIdStr: string) => {
                     >
                         <Table>
                             <TableHeader>
-                                <TableRow class="bg-slate-50/50">
-                                    <TableHead class="w-[150px] font-semibold text-slate-700">Comida / Día</TableHead>
+                                <TableRow class="bg-orange-50 hover:bg-orange-50">
+                                    <TableHead
+                                        class="sticky left-0 z-20 w-[120px] bg-orange-50 font-semibold text-slate-700 shadow-[1px_0_0_0_rgb(254,215,170)] sm:w-[150px]"
+                                        >Comida / Día</TableHead
+                                    >
                                     <TableHead
                                         v-for="date in dates"
                                         :key="date"
-                                        class="min-w-[160px] border-l border-slate-100 text-center font-semibold text-slate-700"
+                                        class="min-w-[140px] border-l border-orange-100/70 text-center font-semibold text-slate-700 sm:min-w-[160px]"
                                     >
                                         <div class="text-xs font-bold text-slate-800 capitalize">{{ dayjs(date).format('dddd') }}</div>
-                                        <div class="mt-0.5 text-[10px] text-slate-400">{{ dayjs(date).format('DD/MM') }}</div>
+                                        <div class="mt-0.5 text-[10px] font-semibold text-[#FF5A1F]/80">{{ dayjs(date).format('DD/MM') }}</div>
                                     </TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 <template v-for="meal in [activeMealType].filter(Boolean)" :key="meal">
-                                    <TableRow class="bg-slate-50/30">
-                                        <TableCell class="font-bold text-slate-700">
+                                    <TableRow class="bg-orange-50/50 hover:bg-orange-50/50">
+                                        <TableCell
+                                            class="sticky left-0 z-10 bg-[#fef2ec] font-bold text-slate-700 shadow-[1px_0_0_0_rgb(254,215,170)]"
+                                        >
                                             <div class="flex flex-col gap-1">
-                                                <span>Raciones del Servicio</span>
+                                                <span class="text-xs sm:text-sm">Raciones del Servicio</span>
                                                 <button
                                                     type="button"
                                                     @click="replicatePortions(meal)"
@@ -1120,7 +1314,11 @@ const loadStructure = (structureIdStr: string) => {
                                                 </button>
                                             </div>
                                         </TableCell>
-                                        <TableCell v-for="date in dates" :key="date" class="min-w-[160px] border-l border-slate-100/55 p-2">
+                                        <TableCell
+                                            v-for="date in dates"
+                                            :key="date"
+                                            class="min-w-[140px] border-l border-slate-100/55 p-2 sm:min-w-[160px]"
+                                        >
                                             <div class="mx-auto flex max-w-[140px] flex-col gap-1">
                                                 <label class="text-center text-[9px] font-bold tracking-wider text-slate-400 uppercase"
                                                     >Raciones</label
@@ -1138,7 +1336,9 @@ const loadStructure = (structureIdStr: string) => {
                                         :key="struct.id"
                                         class="hover:bg-slate-50/40"
                                     >
-                                        <TableCell class="pl-6 text-xs font-medium text-slate-600">
+                                        <TableCell
+                                            class="sticky left-0 z-10 bg-white pl-3 text-xs font-medium text-slate-600 shadow-[1px_0_0_0_rgb(226,232,240)] sm:pl-6"
+                                        >
                                             <Select v-model="struct.dish_category_id">
                                                 <SelectTrigger
                                                     class="h-8 border-none bg-transparent p-0 text-xs font-bold text-slate-500 shadow-none focus:ring-0"
@@ -1155,22 +1355,71 @@ const loadStructure = (structureIdStr: string) => {
                                                 L.Inf S/ {{ Number(struct.total_cost).toFixed(2) }} · L.Sup S/
                                                 {{ Number(struct.total_cost_superior).toFixed(2) }}
                                             </p>
+                                            <button
+                                                type="button"
+                                                @click="replicatePercentages(meal, struct.id)"
+                                                class="mt-1.5 w-fit rounded-md border border-dashed border-slate-300 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-slate-500 uppercase transition-colors hover:border-[#FF5A1F] hover:text-[#FF5A1F]"
+                                                title="Copia el % del primer día a todos los días de esta fila"
+                                            >
+                                                Replicar % 1er día →
+                                            </button>
                                         </TableCell>
-                                        <TableCell v-for="date in dates" :key="date" class="min-w-[160px] border-l border-slate-100/55 p-2">
-                                            <Select v-model="itemsGrid[`${date}_${meal}_${struct.id}`]">
-                                                <SelectTrigger class="h-9 rounded-xl border-slate-200 text-xs focus:ring-[#FF5A1F]">
-                                                    <SelectValue placeholder="Elegir plato" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem
-                                                        v-for="dish in getDishesForCell(date, meal, struct)"
-                                                        :key="dish.id"
-                                                        :value="dish.id.toString()"
+                                        <TableCell
+                                            v-for="date in dates"
+                                            :key="date"
+                                            class="min-w-[150px] border-l border-slate-100/55 p-2 align-top sm:min-w-[184px]"
+                                        >
+                                            <div class="flex flex-col gap-1.5">
+                                                <Select v-model="itemsGrid[`${date}_${meal}_${struct.id}`]">
+                                                    <SelectTrigger class="h-9 rounded-xl border-slate-200 text-xs focus:ring-[#FF5A1F]">
+                                                        <SelectValue placeholder="Elegir plato" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem
+                                                            v-for="dish in getDishesForCell(date, meal, struct)"
+                                                            :key="dish.id"
+                                                            :value="dish.id.toString()"
+                                                        >
+                                                            {{ dish.name }}
+                                                        </SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                <div
+                                                    v-if="itemsGrid[`${date}_${meal}_${struct.id}`]"
+                                                    class="flex items-center justify-between gap-1.5 pl-0.5"
+                                                >
+                                                    <div class="relative">
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            max="100"
+                                                            step="1"
+                                                            v-model.number="percentagesGrid[`${date}_${meal}_${struct.id}`]"
+                                                            @blur="
+                                                                percentagesGrid[`${date}_${meal}_${struct.id}`] = clampPct(
+                                                                    percentagesGrid[`${date}_${meal}_${struct.id}`],
+                                                                )
+                                                            "
+                                                            title="Porcentaje de comensales que toma este plato"
+                                                            class="h-6 w-[60px] [appearance:textfield] rounded-md border border-slate-200 bg-slate-50 pr-4 pl-1.5 text-right text-[11px] font-semibold text-slate-600 tabular-nums transition-colors focus:border-[#FF5A1F] focus:bg-white focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none [&::-webkit-inner-spin-button]:[appearance:none] [&::-webkit-outer-spin-button]:[appearance:none]"
+                                                        />
+                                                        <span
+                                                            class="pointer-events-none absolute top-1/2 right-1 -translate-y-1/2 text-[10px] text-slate-400"
+                                                            >%</span
+                                                        >
+                                                    </div>
+                                                    <span
+                                                        class="text-[10px] font-semibold tracking-tight tabular-nums"
+                                                        :class="
+                                                            Number(percentagesGrid[`${date}_${meal}_${struct.id}`]) < 100
+                                                                ? 'text-[#FF5A1F]'
+                                                                : 'text-slate-400'
+                                                        "
                                                     >
-                                                        {{ dish.name }}
-                                                    </SelectItem>
-                                                </SelectContent>
-                                            </Select>
+                                                        {{ effectiveRations(date, meal, struct.id).toLocaleString('es-PE') }} rac.
+                                                    </span>
+                                                </div>
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 </template>
@@ -1185,79 +1434,247 @@ const loadStructure = (structureIdStr: string) => {
                 </div>
             </div>
 
-            <div v-if="activeTab === 'programaciones'">
+            <div v-if="activeTab === 'programaciones'" class="flex flex-col gap-4">
                 <div
                     v-if="programs.length === 0"
                     class="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400"
                 >
                     Aún no hay programaciones guardadas. Complete la matriz en la pestaña "Planificar" y presione "Guardar Planificación".
                 </div>
-                <div v-else class="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-                    <div class="overflow-x-auto">
-                        <Table>
-                            <TableHeader>
-                                <TableRow class="bg-slate-50/80 hover:bg-slate-50/80">
-                                    <TableHead class="font-semibold text-slate-600">Comedor</TableHead>
-                                    <TableHead class="font-semibold text-slate-600">Periodo</TableHead>
-                                    <TableHead class="font-semibold text-slate-600">Estructura</TableHead>
-                                    <TableHead class="font-semibold text-slate-600">Estado</TableHead>
-                                    <TableHead class="text-right font-semibold text-slate-600">Acciones</TableHead>
-                                </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                <TableRow v-for="program in programs" :key="program.id" class="hover:bg-slate-50/50">
-                                    <TableCell>
-                                        <div class="font-semibold text-slate-800">{{ program.cafe?.name || '—' }}</div>
-                                        <div v-if="program.cafe?.unit?.name" class="text-xs text-slate-400">{{ program.cafe.unit.name }}</div>
-                                    </TableCell>
-                                    <TableCell class="text-slate-600">
-                                        {{ dayjs(program.start_date).format('DD/MM/YYYY') }} - {{ dayjs(program.end_date).format('DD/MM/YYYY') }}
-                                    </TableCell>
-                                    <TableCell class="text-slate-600">{{ program.structure?.name || '—' }}</TableCell>
-                                    <TableCell>
-                                        <Badge variant="outline" class="border-slate-200 bg-slate-50 font-medium text-slate-600 capitalize">
-                                            {{ program.status }}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell>
-                                        <div class="flex items-center justify-end gap-2">
-                                            <Button
-                                                size="sm"
-                                                @click="generatePO(program)"
-                                                variant="outline"
-                                                class="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50"
-                                            >
-                                                Quebrado (PO)
-                                            </Button>
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger as-child>
-                                                    <Button
-                                                        size="sm"
-                                                        class="flex items-center gap-1 rounded-lg bg-[#FF5A1F] text-white hover:bg-[#e04a17]"
-                                                    >
-                                                        Reportes
-                                                        <ChevronDown class="h-3.5 w-3.5" />
-                                                    </Button>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end" class="w-64">
-                                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyQuebradoPdf(program)">
-                                                        Quebrado Semanal (PDF)
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyRequirementPdf(program)">
-                                                        Requerimiento x Producto (PDF)
-                                                    </DropdownMenuItem>
-                                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyPurchaseOrderExcel(program)">
-                                                        Orden de Pedido Semanal (Excel)
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
-                                        </div>
-                                    </TableCell>
-                                </TableRow>
-                            </TableBody>
-                        </Table>
+
+                <template v-else>
+                    <!-- Filtros -->
+                    <div
+                        class="grid grid-cols-2 items-end gap-3 rounded-2xl border border-l-4 border-slate-100 border-l-[#FF5A1F] bg-white p-4 shadow-sm sm:flex sm:flex-wrap"
+                    >
+                        <div class="flex flex-col gap-1 sm:min-w-[140px]">
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Mina</label>
+                            <select
+                                v-model="programFilters.mine"
+                                class="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none sm:w-auto sm:min-w-[150px]"
+                            >
+                                <option value="">Todas</option>
+                                <option v-for="m in programMineOptions" :key="m" :value="m">{{ m }}</option>
+                            </select>
+                        </div>
+                        <div class="flex flex-col gap-1 sm:min-w-[140px]">
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Unidad</label>
+                            <select
+                                v-model="programFilters.unit"
+                                class="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none sm:w-auto sm:min-w-[150px]"
+                            >
+                                <option value="">Todas</option>
+                                <option v-for="u in programUnitOptions" :key="u" :value="u">{{ u }}</option>
+                            </select>
+                        </div>
+                        <div class="flex flex-col gap-1 sm:min-w-[140px]">
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Café / Comedor</label>
+                            <select
+                                v-model="programFilters.cafe"
+                                class="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none sm:w-auto sm:min-w-[140px]"
+                            >
+                                <option value="">Todos</option>
+                                <option v-for="c in programCafeOptions" :key="c" :value="c">{{ c }}</option>
+                            </select>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Guardado desde</label>
+                            <Input
+                                type="date"
+                                v-model="programFilters.savedFrom"
+                                class="h-9 w-full rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F] sm:w-[150px]"
+                            />
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Guardado hasta</label>
+                            <Input
+                                type="date"
+                                v-model="programFilters.savedTo"
+                                class="h-9 w-full rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F] sm:w-[150px]"
+                            />
+                        </div>
+                        <button
+                            v-if="hasProgramFilters"
+                            type="button"
+                            @click="clearProgramFilters"
+                            class="col-span-2 h-9 rounded-lg px-2.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700 sm:col-auto"
+                        >
+                            Limpiar filtros
+                        </button>
+                        <span class="col-span-2 self-center text-xs text-slate-400 sm:col-auto sm:ml-auto">
+                            {{ filteredPrograms.length }} de {{ programs.length }}
+                        </span>
                     </div>
-                </div>
+
+                    <!-- Barra de acciones sobre la selección -->
+                    <div
+                        class="flex flex-wrap items-center gap-3 rounded-2xl border p-3 px-4 transition-colors"
+                        :class="selectedProgramIds.length ? 'border-[#FF5A1F]/30 bg-orange-50/60' : 'border-slate-100 bg-white'"
+                    >
+                        <span class="text-sm font-semibold" :class="selectedProgramIds.length ? 'text-[#FF5A1F]' : 'text-slate-400'">
+                            {{ selectedProgramIds.length }} seleccionada{{ selectedProgramIds.length === 1 ? '' : 's' }}
+                        </span>
+                        <span v-if="!selectedProgramIds.length" class="text-xs text-slate-400">
+                            — marque programaciones para generar reportes combinados
+                        </span>
+                        <button
+                            v-if="selectedProgramIds.length"
+                            type="button"
+                            @click="selectedProgramIds = []"
+                            class="text-xs font-medium text-slate-500 underline-offset-2 hover:underline"
+                        >
+                            Quitar selección
+                        </button>
+                        <div class="flex w-full items-center gap-2 sm:ml-auto sm:w-auto">
+                            <Button
+                                size="sm"
+                                :disabled="!selectedProgramIds.length"
+                                @click="generateWeeklyMenuExcel"
+                                class="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40 sm:flex-none"
+                            >
+                                <FileSpreadsheet class="h-4 w-4 shrink-0" />
+                                <span class="truncate">Menú Semanal (Excel)</span>
+                            </Button>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger as-child>
+                                    <Button
+                                        size="sm"
+                                        :disabled="!selectedProgramIds.length"
+                                        class="flex flex-1 items-center justify-center gap-1 rounded-lg bg-[#FF5A1F] text-white hover:bg-[#e04a17] disabled:opacity-40 sm:flex-none"
+                                    >
+                                        Reportes
+                                        <ChevronDown class="h-3.5 w-3.5" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" class="w-72">
+                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyQuebradoPdf">
+                                        <span class="flex-1">Quebrado Semanal</span>
+                                        <span class="text-[10px] font-semibold text-slate-400">PDF</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyRequirementPdf">
+                                        <span class="flex-1">Requerimiento x Producto</span>
+                                        <span class="text-[10px] font-semibold text-slate-400">PDF · consolidado</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyDosificacionPdf">
+                                        <span class="flex-1">Dosificación Nutricional</span>
+                                        <span class="text-[10px] font-semibold text-slate-400">PDF</span>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem class="cursor-pointer" @select="generateWeeklyPurchaseOrderExcel">
+                                        <span class="flex-1">Orden de Pedido Semanal</span>
+                                        <span class="text-[10px] font-semibold text-slate-400">Excel · consolidado</span>
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
+                    </div>
+
+                    <div class="overflow-hidden rounded-2xl border border-l-4 border-slate-100 border-l-[#FF5A1F] bg-white shadow-sm">
+                        <div class="overflow-x-auto">
+                            <Table>
+                                <TableHeader>
+                                    <TableRow class="bg-orange-50 hover:bg-orange-50">
+                                        <TableHead class="w-[44px]">
+                                            <Checkbox
+                                                :model-value="allVisibleSelected"
+                                                @update:model-value="toggleSelectAllVisible(Boolean($event))"
+                                                aria-label="Seleccionar todas"
+                                            />
+                                        </TableHead>
+                                        <TableHead class="hidden font-semibold text-slate-600 sm:table-cell">Servicio</TableHead>
+                                        <TableHead class="font-semibold text-slate-600">Comedor</TableHead>
+                                        <TableHead class="hidden font-semibold text-slate-600 md:table-cell">Periodo</TableHead>
+                                        <TableHead class="hidden font-semibold text-slate-600 lg:table-cell">Guardado</TableHead>
+                                        <TableHead class="hidden font-semibold text-slate-600 xl:table-cell">Estructura</TableHead>
+                                        <TableHead class="hidden font-semibold text-slate-600 md:table-cell">Estado</TableHead>
+                                        <TableHead class="text-right font-semibold text-slate-600">Acciones</TableHead>
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    <TableRow
+                                        v-for="program in filteredPrograms"
+                                        :key="program.id"
+                                        class="transition-colors hover:bg-slate-50/50"
+                                        :class="selectedProgramIds.includes(program.id) ? 'bg-orange-50/50' : ''"
+                                    >
+                                        <TableCell>
+                                            <Checkbox
+                                                :model-value="selectedProgramIds.includes(program.id)"
+                                                @update:model-value="toggleProgram(program.id, Boolean($event))"
+                                                :aria-label="`Seleccionar programación ${program.id}`"
+                                            />
+                                        </TableCell>
+                                        <TableCell class="hidden sm:table-cell">
+                                            <Badge
+                                                v-if="programRow(program).service"
+                                                variant="outline"
+                                                class="border-[#FF5A1F]/25 bg-orange-50 font-semibold text-[#FF5A1F]"
+                                            >
+                                                {{ programRow(program).service }}
+                                            </Badge>
+                                            <span v-else class="text-xs text-slate-300">—</span>
+                                        </TableCell>
+                                        <TableCell class="whitespace-normal">
+                                            <div class="font-semibold text-slate-800">{{ programRow(program).cafe }}</div>
+                                            <div class="text-xs text-slate-400">{{ programRow(program).unit }} · {{ programRow(program).mine }}</div>
+                                            <div class="mt-1.5 flex flex-wrap items-center gap-1.5 md:hidden">
+                                                <Badge
+                                                    v-if="programRow(program).service"
+                                                    variant="outline"
+                                                    class="border-[#FF5A1F]/25 bg-orange-50 text-[10px] font-semibold text-[#FF5A1F] sm:hidden"
+                                                >
+                                                    {{ programRow(program).service }}
+                                                </Badge>
+                                                <span class="text-[11px] text-slate-500">
+                                                    {{ dayjs(program.start_date).format('DD/MM') }}–{{ dayjs(program.end_date).format('DD/MM/YY') }}
+                                                </span>
+                                                <Badge
+                                                    variant="outline"
+                                                    class="border-slate-200 bg-slate-50 text-[10px] font-medium text-slate-600 capitalize"
+                                                >
+                                                    {{ program.status }}
+                                                </Badge>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell class="hidden text-slate-600 md:table-cell">
+                                            {{ dayjs(program.start_date).format('DD/MM/YYYY') }} –
+                                            {{ dayjs(program.end_date).format('DD/MM/YYYY') }}
+                                        </TableCell>
+                                        <TableCell class="hidden text-slate-500 tabular-nums lg:table-cell">
+                                            <template v-if="programRow(program).savedAt">
+                                                {{ dayjs(programRow(program).savedAt).format('DD/MM/YYYY') }}
+                                                <span class="text-xs text-slate-400">{{ dayjs(programRow(program).savedAt).format('HH:mm') }}</span>
+                                            </template>
+                                            <span v-else class="text-slate-300">—</span>
+                                        </TableCell>
+                                        <TableCell class="hidden text-slate-600 xl:table-cell">{{ program.structure?.name || '—' }}</TableCell>
+                                        <TableCell class="hidden md:table-cell">
+                                            <Badge variant="outline" class="border-slate-200 bg-slate-50 font-medium text-slate-600 capitalize">
+                                                {{ program.status }}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            <div class="flex items-center justify-end">
+                                                <Button
+                                                    size="sm"
+                                                    @click="generatePO(program)"
+                                                    variant="outline"
+                                                    class="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50"
+                                                >
+                                                    Quebrado (PO)
+                                                </Button>
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                    <tr v-if="filteredPrograms.length === 0">
+                                        <td colspan="8" class="py-10 text-center text-sm text-slate-400">
+                                            Ninguna programación coincide con los filtros.
+                                        </td>
+                                    </tr>
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </div>
+                </template>
             </div>
         </div>
     </AppLayout>

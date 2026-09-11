@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Quebrado Semanal {{ $program->id }}</title>
+    <title>Quebrado Semanal</title>
     <style>
         @page { margin: 1.2cm; }
         body {
@@ -91,9 +91,9 @@
                 <table class="unidad-base-table">
                     <tr>
                         <td class="ub-label">Unidad:</td>
-                        <td class="ub-value">{{ strtoupper($program->cafe->unit->name ?? '—') }}</td>
+                        <td class="ub-value">{{ $page['unit'] ?: '—' }}</td>
                         <td class="ub-label">Base:</td>
-                        <td class="ub-value">{{ strtoupper($baseChain ?: '—') }}</td>
+                        <td class="ub-value">{{ strtoupper($page['base'] ?: '—') }}</td>
                     </tr>
                 </table>
 
@@ -101,7 +101,7 @@
                     <span class="meta-item"><span class="meta-label">Período:</span> {{ \Carbon\Carbon::parse($page['date'])->year }}</span>
                     <span class="meta-item"><span class="meta-label">Mes:</span> {{ ucfirst(\Carbon\Carbon::parse($page['date'])->locale('es')->translatedFormat('F')) }}</span>
                     <span class="meta-item"><span class="meta-label">Semana:</span> {{ \Carbon\Carbon::parse($page['date'])->isoWeek() }}</span>
-                    <span class="meta-item"><span class="meta-label">Programación:</span> {{ $program->id }}</span>
+                    <span class="meta-item"><span class="meta-label">Programación:</span> {{ $page['program_id'] }}</span>
                     <span class="meta-item"><span class="meta-label">Nivel:</span> {{ $level->name }}</span>
                 </div>
 
@@ -115,7 +115,7 @@
                             <td class="dh-code">{{ $dish['category_id'] }}</td>
                             <td class="dh-category">{{ strtoupper($dish['category']) }}</td>
                             <td class="dh-name">{{ $dish['dish_id'] }} {{ $dish['dish_name'] }}</td>
-                            <td class="dh-portions">N° Raciones: {{ $page['portions'] }}</td>
+                            <td class="dh-portions">N° Raciones: {{ $dish['portions'] }}@if(($dish['percentage'] ?? 100) < 100) <span style="color:#a0aec0;">({{ rtrim(rtrim(number_format($dish['percentage'], 2), '0'), '.') }}% de {{ $page['portions'] }})</span>@endif</td>
                         </tr>
                     </table>
 

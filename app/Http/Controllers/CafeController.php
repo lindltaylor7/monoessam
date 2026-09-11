@@ -133,11 +133,13 @@ class CafeController extends Controller
 
     public function cafeServiceables(Request $request)
     {
-        $cafe = Cafe::find($request->placeId);
+        $cafe = Cafe::findOrFail($request->placeId);
 
-        $selectedIds = array_map('intval', array_keys(array_filter($request->services)));
+        $selectedIds = array_map('intval', array_keys(array_filter($request->services ?? [])));
 
-        $serviceables = $cafe->services()->sync($selectedIds);
+        // syncWithoutDetaching + detach manual conservaría el pivote price; el front que
+        // consume esto gestiona el precio por separado (services.update-prices).
+        $cafe->services()->sync($selectedIds);
 
         return to_route('management');
     }
@@ -163,52 +165,42 @@ class CafeController extends Controller
 
     public function exportHeadcount($id)
     {
-        $cafe = Cafe::with(['users', 'guards.assignedRoles.role'])->find($id);
+        // Antes usaba $cafe->staff (relación inexistente: es staffs()) y $role->user
+        // (guard_roles tiene staff_id, no user), y escribía cabeceras con header()+exit
+        // saltándose Laravel. Todo corregido: se cruza el personal del comedor con los
+        // staff_id asignados a alguna guardia.
+        $cafe = Cafe::with(['staffs', 'guards.assignedRoles'])->findOrFail($id);
 
-        if (!$cafe) {
-            return response()->json(['message' => 'Café no encontrado'], 404);
-        }
-
-        $assignedRoles = $cafe->guards->flatMap(function ($guard) {
-            return $guard->assignedRoles;
-        });
-
-        $assignedUserIds = $assignedRoles
-            ->filter(fn($role) => $role->user)
-            ->pluck('user.id')
+        $assignedStaffIds = $cafe->guards
+            ->flatMap(fn($guard) => $guard->assignedRoles)
+            ->pluck('staff_id')
+            ->filter()
             ->unique()
-            ->toArray();
+            ->all();
 
-        $allUsers = $cafe->staff;
+        $assignedStaff = $cafe->staffs->whereIn('id', $assignedStaffIds)->values();
 
-        $assignedUsers = $allUsers->whereIn('id', $assignedUserIds)->values();
-
-        // Generar el archivo Excel
         $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
         $sheet = $spreadsheet->getActiveSheet();
-
-        // Encabezados
         $sheet->setCellValue('A1', 'ID');
         $sheet->setCellValue('B1', 'Nombre');
         $sheet->setCellValue('C1', 'DNI');
 
-        // Datos de usuarios asignados
         $row = 2;
-        foreach ($assignedUsers as $user) {
-            $sheet->setCellValue("A{$row}", $user->id);
-            $sheet->setCellValue("B{$row}", $user->name);
-            $sheet->setCellValue("C{$row}", $user->dni);
+        foreach ($assignedStaff as $staff) {
+            $sheet->setCellValue("A{$row}", $staff->id);
+            $sheet->setCellValue("B{$row}", $staff->name);
+            $sheet->setCellValue("C{$row}", $staff->dni);
             $row++;
         }
 
-        // Configurar la respuesta para descargar el archivo
-        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet);
-        $fileName = "headcount_cafe_{$cafe->name}.xlsx";
+        $fileName = 'headcount_' . \Illuminate\Support\Str::slug($cafe->name) . '.xlsx';
 
-        header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        header("Content-Disposition: attachment; filename=\"{$fileName}\"");
-        $writer->save('php://output');
-        exit;
+        return response()->streamDownload(function () use ($spreadsheet) {
+            (new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($spreadsheet))->save('php://output');
+        }, $fileName, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
     }
 
     public function search($unitId, $word = null)

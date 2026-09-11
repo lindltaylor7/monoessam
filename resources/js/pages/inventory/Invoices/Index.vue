@@ -11,14 +11,17 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router } from '@inertiajs/vue3';
 import {
+    AlertCircle,
     Box,
     Building,
+    CheckCircle2,
     ChefHat,
     Edit2,
     ExternalLink,
     FileText,
     Filter,
     Laptop,
+    LayoutGrid,
     Loader2,
     MoreHorizontal,
     Package,
@@ -28,6 +31,7 @@ import {
     Tags,
     Trash2,
     Truck,
+    Wand2,
     X,
 } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
@@ -106,7 +110,7 @@ const invoiceForm = ref({
     date: new Date().toISOString().split('T')[0],
     notes: '',
     invoice_image: null as File | null,
-    items: [{ cloth_id: '', epp_id: '', color_id: '', size: '', quantity: 1, unit_price: 0 }],
+    items: [{ cloth_id: '', epp_id: '', color_id: '', size: '', quantity: 1, unit_price: 0, _group: '' }],
 });
 
 const filteredHeadquarters = computed(() => {
@@ -156,6 +160,7 @@ const onItemSelect = (uniqueId: string, index: number) => {
             item.unit_price = 0;
         }
         item.size = ''; // Reset size on item change
+        item._group = ''; // Changing the product invalidates any previous size/color distribution
     }
 };
 
@@ -182,7 +187,7 @@ const getAvailablePrices = (eppId: string | number, providerId: string | number)
 };
 
 const addInvoiceItem = () => {
-    invoiceForm.value.items.push({ cloth_id: '', epp_id: '', color_id: '', size: '', quantity: 1, unit_price: 0 });
+    invoiceForm.value.items.push({ cloth_id: '', epp_id: '', color_id: '', size: '', quantity: 1, unit_price: 0, _group: '' });
 };
 
 const removeInvoiceItem = (index: number) => {
@@ -239,10 +244,12 @@ const handleInvoiceSubmit = () => {
     const submitData = {
         ...invoiceForm.value,
         headquarter_id: invoiceForm.value.headquarter_id === '' ? null : invoiceForm.value.headquarter_id,
-        items: invoiceForm.value.items.map((item) => ({
-            ...item,
-            color_id: item.color_id === 'none' || item.color_id === '' ? null : item.color_id,
-        })),
+        items: invoiceForm.value.items.map((item) => {
+            const clean: Record<string, any> = { ...item };
+            delete clean._group;
+            clean.color_id = item.color_id === 'none' || item.color_id === '' ? null : item.color_id;
+            return clean;
+        }),
     };
 
     router.post(route('inventory.invoice.store'), submitData, {
@@ -269,8 +276,150 @@ const resetInvoiceForm = () => {
         date: new Date().toISOString().split('T')[0],
         notes: '',
         invoice_image: null as File | null,
-        items: [{ cloth_id: '', epp_id: '', color_id: '', size: '', quantity: 1, unit_price: 0 }],
+        items: [{ cloth_id: '', epp_id: '', color_id: '', size: '', quantity: 1, unit_price: 0, _group: '' }],
     };
+};
+
+// --- Talla/Color Distribution Panel ---
+// Lets the user enter one total quantity for an item and then split it across several
+// size/color variants instead of manually re-adding a row (re-picking item + price) per variant.
+interface DistributionRow {
+    id: number;
+    size: string;
+    color_id: string;
+    quantity: number;
+}
+
+const isDistributionModalOpen = ref(false);
+const distributionEditingIndices = ref<number[]>([]);
+const distributionItemUniqueId = ref('');
+const distributionUnitPrice = ref(0);
+const distributionTargetQty = ref(0);
+const distributionRows = ref<DistributionRow[]>([]);
+let distributionRowSeq = 0;
+
+const distributionIsEpp = computed(() => distributionItemUniqueId.value.startsWith('epp_'));
+
+const distributionAvailableSizes = computed(() => getSizesForItem(distributionItemUniqueId.value));
+
+const distributionItemName = computed(() => {
+    const available = getAvailableClothes(invoiceForm.value.cloth_provider_id);
+    return available.find((a) => a.unique_id === distributionItemUniqueId.value)?.name ?? '';
+});
+
+const distributionAllocated = computed(() => distributionRows.value.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0));
+
+const distributionDiff = computed(() => Number(distributionTargetQty.value || 0) - distributionAllocated.value);
+
+const distributionIsValid = computed(
+    () =>
+        distributionRows.value.length > 0 &&
+        distributionDiff.value === 0 &&
+        distributionRows.value.every((r) => r.size.trim() !== '' && Number(r.quantity) > 0),
+);
+
+const itemDisplayName = (item: any) => {
+    if (item.cloth_id) return props.clothes.find((c: any) => String(c.id) === String(item.cloth_id))?.name ?? '—';
+    if (item.epp_id) return props.epps.find((e: any) => String(e.id) === String(item.epp_id))?.name ?? '—';
+    return '—';
+};
+
+const groupTotalQty = (groupId: string) =>
+    invoiceForm.value.items.filter((it) => it._group === groupId).reduce((sum, it) => sum + (Number(it.quantity) || 0), 0);
+
+// Precomputes, per row index, whether it starts a visual group and how many rows that group spans,
+// so the table can merge the Item column with a rowspan for multi-variant items.
+const groupedRowMeta = computed(() => {
+    const items = invoiceForm.value.items;
+    const groupSize = new Map<string, number>();
+    items.forEach((it) => {
+        if (it._group) groupSize.set(it._group, (groupSize.get(it._group) || 0) + 1);
+    });
+
+    const seen = new Set<string>();
+    return items.map((it) => {
+        if (!it._group) return { isGroupStart: true, groupSpan: 1, groupCount: 1 };
+        const isFirst = !seen.has(it._group);
+        seen.add(it._group);
+        return { isGroupStart: isFirst, groupSpan: groupSize.get(it._group) ?? 1, groupCount: groupSize.get(it._group) ?? 1 };
+    });
+});
+
+const openDistributionPanel = (anchorIndex: number) => {
+    const anchor = invoiceForm.value.items[anchorIndex];
+    const uniqueId = getItemUniqueId(anchor);
+    if (!uniqueId) return;
+
+    distributionItemUniqueId.value = uniqueId;
+    distributionUnitPrice.value = Number(anchor.unit_price) || 0;
+
+    const groupId = anchor._group;
+    const groupEntries = groupId
+        ? invoiceForm.value.items.map((item, index) => ({ item, index })).filter(({ item }) => item._group === groupId)
+        : [{ item: anchor, index: anchorIndex }];
+
+    distributionEditingIndices.value = groupEntries.map((g) => g.index);
+    distributionTargetQty.value = groupEntries.reduce((sum, g) => sum + (Number(g.item.quantity) || 0), 0) || 1;
+    distributionRows.value = groupEntries.map((g) => ({
+        id: ++distributionRowSeq,
+        size: g.item.size || '',
+        color_id: g.item.color_id && g.item.color_id !== '' ? g.item.color_id : 'none',
+        quantity: Number(g.item.quantity) || 0,
+    }));
+
+    isDistributionModalOpen.value = true;
+};
+
+const addDistributionRow = () => {
+    distributionRows.value.push({ id: ++distributionRowSeq, size: '', color_id: 'none', quantity: 0 });
+};
+
+const removeDistributionRow = (id: number) => {
+    distributionRows.value = distributionRows.value.filter((r) => r.id !== id);
+};
+
+const addAllSizesToDistribution = () => {
+    distributionAvailableSizes.value.forEach((s: any) => {
+        if (!distributionRows.value.some((r) => r.size === s.size && r.color_id === 'none')) {
+            distributionRows.value.push({ id: ++distributionRowSeq, size: s.size, color_id: 'none', quantity: 0 });
+        }
+    });
+};
+
+const distributeEvenly = () => {
+    const rows = distributionRows.value;
+    if (rows.length === 0) return;
+    const target = Number(distributionTargetQty.value) || 0;
+    const base = Math.floor(target / rows.length);
+    let remainder = target - base * rows.length;
+    rows.forEach((r) => {
+        r.quantity = base + (remainder > 0 ? 1 : 0);
+        if (remainder > 0) remainder--;
+    });
+};
+
+const saveDistribution = () => {
+    if (!distributionIsValid.value) return;
+
+    const groupId = `grp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const anchor = invoiceForm.value.items[distributionEditingIndices.value[0]];
+    const newItems = distributionRows.value.map((r) => ({
+        cloth_id: anchor.cloth_id,
+        epp_id: anchor.epp_id,
+        color_id: r.color_id,
+        size: r.size,
+        quantity: Number(r.quantity),
+        unit_price: distributionUnitPrice.value,
+        _group: groupId,
+    }));
+
+    const insertAt = Math.min(...distributionEditingIndices.value);
+    [...distributionEditingIndices.value]
+        .sort((a, b) => b - a)
+        .forEach((idx) => invoiceForm.value.items.splice(idx, 1));
+    invoiceForm.value.items.splice(insertAt, 0, ...newItems);
+
+    isDistributionModalOpen.value = false;
 };
 
 // --- Equipment Invoice Modal ---
@@ -648,6 +797,52 @@ const handleInvoiceImageUpdate = (e: Event) => {
     );
 };
 
+// --- Edit Invoice Item (Talla/Color/Cantidad) ---
+const editingInvoiceItemId = ref<number | null>(null);
+const editItemForm = ref({ size: '', color_id: 'none', quantity: 1 });
+const isSavingInvoiceItem = ref(false);
+
+const startEditInvoiceItem = (item: any) => {
+    editingInvoiceItemId.value = item.id;
+    editItemForm.value = {
+        size: item.size || '',
+        color_id: item.color_id ? String(item.color_id) : 'none',
+        quantity: Number(item.quantity) || 1,
+    };
+};
+
+const cancelEditInvoiceItem = () => {
+    editingInvoiceItemId.value = null;
+};
+
+const saveEditInvoiceItem = (item: any) => {
+    if (!selectedInvoice.value || editItemForm.value.quantity < 1) return;
+
+    isSavingInvoiceItem.value = true;
+    router.put(
+        route('inventory.invoice.item.update', { invoiceId: selectedInvoice.value.id, itemId: item.id }),
+        {
+            size: editItemForm.value.size || null,
+            color_id: editItemForm.value.color_id === 'none' ? null : editItemForm.value.color_id,
+            quantity: editItemForm.value.quantity,
+        },
+        {
+            preserveScroll: true,
+            onSuccess: (page) => {
+                const updatedInvoice = (page.props as any).invoices.find((i: any) => i.id === selectedInvoice.value.id);
+                if (updatedInvoice) {
+                    selectedInvoice.value = updatedInvoice;
+                }
+                editingInvoiceItemId.value = null;
+            },
+            onError: showValidationErrors,
+            onFinish: () => {
+                isSavingInvoiceItem.value = false;
+            },
+        },
+    );
+};
+
 // --- EPP Size Logic ---
 const isSizeModalOpen = ref(false);
 const selectedEppForSizes = ref<any>(null);
@@ -939,33 +1134,66 @@ const saveInlinePrice = (cp: any) => {
                                                                     :key="index"
                                                                     class="group transition-colors hover:bg-slate-50/50"
                                                                 >
-                                                                    <td class="p-3">
-                                                                        <Select
-                                                                            :model-value="getItemUniqueId(item)"
-                                                                            @update:model-value="onItemSelect($event as string, index)"
-                                                                        >
-                                                                            <SelectTrigger
-                                                                                class="h-9 w-[200px] justify-start border-none shadow-none focus:ring-1"
-                                                                            >
-                                                                                <SelectValue placeholder="Elegir..." class="truncate" />
-                                                                            </SelectTrigger>
-
-                                                                            <SelectContent>
-                                                                                <SelectItem
-                                                                                    v-for="c in getAvailableClothes(invoiceForm.cloth_provider_id)"
-                                                                                    :key="c.unique_id"
-                                                                                    :value="c.unique_id"
+                                                                    <td v-if="groupedRowMeta[index].isGroupStart" :rowspan="groupedRowMeta[index].groupSpan" class="p-3 align-top">
+                                                                        <template v-if="groupedRowMeta[index].groupCount > 1">
+                                                                            <div class="flex items-center gap-2 pt-1.5">
+                                                                                <component
+                                                                                    :is="item.cloth_id ? Shirt : Box"
+                                                                                    class="h-3.5 w-3.5 shrink-0 text-slate-400"
+                                                                                />
+                                                                                <span class="truncate text-sm font-bold text-slate-800">{{ itemDisplayName(item) }}</span>
+                                                                            </div>
+                                                                            <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                                                                                <Badge variant="outline" class="border-indigo-200 bg-indigo-50 text-[10px] font-bold text-indigo-700">
+                                                                                    {{ groupedRowMeta[index].groupCount }} variantes · {{ groupTotalQty(item._group) }} uds
+                                                                                </Badge>
+                                                                                <Button
+                                                                                    @click="openDistributionPanel(index)"
+                                                                                    variant="ghost"
+                                                                                    size="sm"
+                                                                                    class="h-6 gap-1 p-0 text-[10px] font-bold text-indigo-600 hover:bg-transparent hover:text-indigo-700"
                                                                                 >
-                                                                                    <div class="flex items-center gap-2">
-                                                                                        <component
-                                                                                            :is="c.type === 'cloth' ? Shirt : Box"
-                                                                                            class="h-3.5 w-3.5 text-slate-400"
-                                                                                        />
-                                                                                        <span class="truncate">{{ c.name }}</span>
-                                                                                    </div>
-                                                                                </SelectItem>
-                                                                            </SelectContent>
-                                                                        </Select>
+                                                                                    <Edit2 class="h-3 w-3" /> Editar distribución
+                                                                                </Button>
+                                                                            </div>
+                                                                        </template>
+                                                                        <template v-else>
+                                                                            <Select
+                                                                                :model-value="getItemUniqueId(item)"
+                                                                                @update:model-value="onItemSelect($event as string, index)"
+                                                                            >
+                                                                                <SelectTrigger
+                                                                                    class="h-9 w-[200px] justify-start border-none shadow-none focus:ring-1"
+                                                                                >
+                                                                                    <SelectValue placeholder="Elegir..." class="truncate" />
+                                                                                </SelectTrigger>
+
+                                                                                <SelectContent>
+                                                                                    <SelectItem
+                                                                                        v-for="c in getAvailableClothes(invoiceForm.cloth_provider_id)"
+                                                                                        :key="c.unique_id"
+                                                                                        :value="c.unique_id"
+                                                                                    >
+                                                                                        <div class="flex items-center gap-2">
+                                                                                            <component
+                                                                                                :is="c.type === 'cloth' ? Shirt : Box"
+                                                                                                class="h-3.5 w-3.5 text-slate-400"
+                                                                                            />
+                                                                                            <span class="truncate">{{ c.name }}</span>
+                                                                                        </div>
+                                                                                    </SelectItem>
+                                                                                </SelectContent>
+                                                                            </Select>
+                                                                            <Button
+                                                                                v-if="getItemUniqueId(item)"
+                                                                                @click="openDistributionPanel(index)"
+                                                                                variant="ghost"
+                                                                                size="sm"
+                                                                                class="mt-1 h-6 gap-1 rounded-md border border-dashed border-indigo-200 px-1.5 text-[10px] font-bold text-indigo-600 hover:bg-indigo-50"
+                                                                            >
+                                                                                <LayoutGrid class="h-3 w-3" /> Distribuir talla/color
+                                                                            </Button>
+                                                                        </template>
                                                                     </td>
                                                                     <td class="p-3">
                                                                         <div v-if="getSizesForItem(getItemUniqueId(item)).length > 0">
@@ -1197,6 +1425,179 @@ const saveInlinePrice = (cp: any) => {
                                                     class="bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700"
                                                 >
                                                     Guardar e Ingresar Stock
+                                                </Button>
+                                            </DialogFooter>
+                                        </DialogContent>
+                                    </Dialog>
+
+                                    <!-- Talla/Color Distribution Dialog -->
+                                    <Dialog v-model:open="isDistributionModalOpen">
+                                        <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-[720px]">
+                                            <DialogHeader>
+                                                <DialogTitle class="flex items-center gap-2">
+                                                    <LayoutGrid class="h-5 w-5 text-indigo-600" />
+                                                    Distribuir por Talla y Color
+                                                </DialogTitle>
+                                                <DialogDescription>
+                                                    Reparta la cantidad total de <strong>{{ distributionItemName }}</strong> entre las tallas y
+                                                    colores que ingresan a stock, en lugar de repetir el item en cada fila.
+                                                </DialogDescription>
+                                            </DialogHeader>
+
+                                            <div class="space-y-4 py-2">
+                                                <div class="grid grid-cols-1 gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4 sm:grid-cols-3">
+                                                    <div class="space-y-1.5">
+                                                        <Label class="text-[10px] font-bold text-slate-500 uppercase">Cantidad Objetivo</Label>
+                                                        <Input
+                                                            type="number"
+                                                            v-model.number="distributionTargetQty"
+                                                            min="1"
+                                                            class="h-9 bg-white text-center font-bold"
+                                                        />
+                                                    </div>
+                                                    <div class="space-y-1.5">
+                                                        <Label class="text-[10px] font-bold text-slate-500 uppercase">Precio Unitario</Label>
+                                                        <div
+                                                            class="flex h-9 items-center rounded-md border border-slate-200 bg-white px-3 text-sm font-bold text-indigo-600"
+                                                        >
+                                                            S/.{{ Number(distributionUnitPrice).toFixed(2) }}
+                                                        </div>
+                                                    </div>
+                                                    <div class="space-y-1.5">
+                                                        <Label class="text-[10px] font-bold text-slate-500 uppercase">Distribuido</Label>
+                                                        <div
+                                                            class="flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm font-bold"
+                                                            :class="
+                                                                distributionDiff === 0
+                                                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                                                                    : 'border-amber-200 bg-amber-50 text-amber-700'
+                                                            "
+                                                        >
+                                                            <component :is="distributionDiff === 0 ? CheckCircle2 : AlertCircle" class="h-4 w-4 shrink-0" />
+                                                            <span class="truncate"
+                                                                >{{ distributionAllocated }} / {{ distributionTargetQty || 0 }}
+                                                                <template v-if="distributionDiff !== 0"
+                                                                    >({{ distributionDiff > 0 ? `faltan ${distributionDiff}` : `sobran ${-distributionDiff}` }})</template
+                                                                ></span
+                                                            >
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div class="flex flex-wrap items-center gap-2">
+                                                    <Button
+                                                        v-if="distributionIsEpp && distributionAvailableSizes.length"
+                                                        @click="addAllSizesToDistribution"
+                                                        size="sm"
+                                                        variant="outline"
+                                                        class="h-8 gap-1.5 text-xs font-bold"
+                                                    >
+                                                        <Plus class="h-3.5 w-3.5" /> Agregar todas las tallas
+                                                    </Button>
+                                                    <Button @click="addDistributionRow" size="sm" variant="outline" class="h-8 gap-1.5 text-xs font-bold">
+                                                        <Plus class="h-3.5 w-3.5" /> Agregar variante
+                                                    </Button>
+                                                    <Button
+                                                        @click="distributeEvenly"
+                                                        :disabled="distributionRows.length === 0"
+                                                        size="sm"
+                                                        variant="outline"
+                                                        class="h-8 gap-1.5 border-indigo-200 text-xs font-bold text-indigo-600 hover:bg-indigo-50"
+                                                    >
+                                                        <Wand2 class="h-3.5 w-3.5" /> Distribuir equitativamente
+                                                    </Button>
+                                                </div>
+
+                                                <div class="overflow-hidden rounded-2xl border shadow-sm">
+                                                    <table class="w-full text-sm">
+                                                        <thead class="border-b bg-slate-50">
+                                                            <tr class="text-left text-[10px] font-black text-slate-400 uppercase">
+                                                                <th class="px-4 py-2">Talla</th>
+                                                                <th class="px-4 py-2">Color</th>
+                                                                <th class="w-28 px-4 py-2">Cantidad</th>
+                                                                <th class="w-10 px-4 py-2"></th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody class="divide-y">
+                                                            <tr v-if="distributionRows.length === 0">
+                                                                <td colspan="4" class="px-4 py-6 text-center text-xs text-slate-400">
+                                                                    Sin variantes aún. Use "Agregar variante" o "Agregar todas las tallas".
+                                                                </td>
+                                                            </tr>
+                                                            <tr v-for="row in distributionRows" :key="row.id" class="group hover:bg-slate-50/50">
+                                                                <td class="p-2">
+                                                                    <Select v-if="distributionIsEpp" v-model="row.size">
+                                                                        <SelectTrigger class="h-9 border-none shadow-none focus:ring-1"
+                                                                            ><SelectValue placeholder="Talla"
+                                                                        /></SelectTrigger>
+                                                                        <SelectContent>
+                                                                            <SelectItem
+                                                                                v-for="s in distributionAvailableSizes"
+                                                                                :key="s.id"
+                                                                                :value="s.size"
+                                                                            >
+                                                                                {{ s.size }}
+                                                                            </SelectItem>
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                    <Input
+                                                                        v-else
+                                                                        v-model="row.size"
+                                                                        placeholder="Talla..."
+                                                                        class="h-9 border-none shadow-none focus:ring-1"
+                                                                    />
+                                                                </td>
+                                                                <td class="p-2">
+                                                                    <Select v-model="row.color_id">
+                                                                        <SelectTrigger class="h-9 border-none shadow-none focus:ring-1"
+                                                                            ><SelectValue placeholder="Ninguno"
+                                                                        /></SelectTrigger>
+                                                                        <SelectContent>
+                                                                            <SelectItem value="none">Ninguno</SelectItem>
+                                                                            <SelectItem v-for="color in colors" :key="color.id" :value="String(color.id)">
+                                                                                <div class="flex items-center gap-2">
+                                                                                    <div
+                                                                                        class="h-3 w-3 rounded-full border border-slate-200"
+                                                                                        :style="{ backgroundColor: color.hex_code }"
+                                                                                    ></div>
+                                                                                    {{ color.name }}
+                                                                                </div>
+                                                                            </SelectItem>
+                                                                        </SelectContent>
+                                                                    </Select>
+                                                                </td>
+                                                                <td class="p-2">
+                                                                    <Input
+                                                                        type="number"
+                                                                        v-model.number="row.quantity"
+                                                                        min="0"
+                                                                        class="h-9 border-none text-center font-bold shadow-none focus:ring-1"
+                                                                    />
+                                                                </td>
+                                                                <td class="p-2 text-center">
+                                                                    <Button
+                                                                        @click="removeDistributionRow(row.id)"
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        class="h-8 w-8 rounded-full p-0 text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-rose-50 hover:text-rose-600"
+                                                                    >
+                                                                        <Trash2 class="h-4 w-4" />
+                                                                    </Button>
+                                                                </td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+
+                                            <DialogFooter>
+                                                <Button variant="ghost" @click="isDistributionModalOpen = false" class="font-bold">Cancelar</Button>
+                                                <Button
+                                                    @click="saveDistribution"
+                                                    :disabled="!distributionIsValid"
+                                                    class="bg-indigo-600 font-bold text-white shadow-lg shadow-indigo-200 hover:bg-indigo-700"
+                                                >
+                                                    Guardar Distribución
                                                 </Button>
                                             </DialogFooter>
                                         </DialogContent>
@@ -2231,6 +2632,7 @@ const saveInlinePrice = (cp: any) => {
                                             <TableHead class="text-center text-[10px] font-black text-slate-500 uppercase">Cant.</TableHead>
                                             <TableHead class="text-right text-[10px] font-black text-slate-500 uppercase">P. Unit</TableHead>
                                             <TableHead class="text-right text-[10px] font-black text-slate-500 uppercase">Total</TableHead>
+                                            <TableHead class="w-10 text-right text-[10px] font-black text-slate-500 uppercase"></TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -2243,28 +2645,99 @@ const saveInlinePrice = (cp: any) => {
                                                     </span>
                                                 </div>
                                             </TableCell>
-                                            <TableCell class="py-2 text-xs text-slate-600">{{ item.size || '-' }}</TableCell>
-                                            <TableCell class="py-2">
-                                                <div v-if="item.color" class="flex items-center gap-1.5">
-                                                    <div
-                                                        class="h-2.5 w-2.5 rounded-full border border-slate-200"
-                                                        :style="{ backgroundColor: item.color.hex_code }"
-                                                    ></div>
-                                                    <span class="text-[10px] font-medium text-slate-500">{{ item.color.name }}</span>
-                                                </div>
-                                                <span v-else class="text-[10px] text-slate-400">-</span>
-                                            </TableCell>
-                                            <TableCell class="py-2 text-center text-xs font-black text-slate-700">{{ item.quantity }}</TableCell>
-                                            <TableCell class="py-2 text-right text-[10px] font-medium text-slate-500"
-                                                >S/.{{ Number(item.unit_price).toFixed(2) }}</TableCell
-                                            >
-                                            <TableCell class="py-2 text-right text-xs font-black text-indigo-600"
-                                                >S/.{{ Number(item.total_price).toFixed(2) }}</TableCell
-                                            >
+                                            <template v-if="editingInvoiceItemId === item.id">
+                                                <TableCell class="py-2">
+                                                    <Input v-model="editItemForm.size" placeholder="Talla..." class="h-8 w-20 text-xs" />
+                                                </TableCell>
+                                                <TableCell class="py-2">
+                                                    <Select v-model="editItemForm.color_id">
+                                                        <SelectTrigger class="h-8 w-32 text-xs"><SelectValue placeholder="Ninguno" /></SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="none">Ninguno</SelectItem>
+                                                            <SelectItem v-for="color in colors" :key="color.id" :value="String(color.id)">
+                                                                <div class="flex items-center gap-2">
+                                                                    <div
+                                                                        class="h-3 w-3 rounded-full border border-slate-200"
+                                                                        :style="{ backgroundColor: color.hex_code }"
+                                                                    ></div>
+                                                                    {{ color.name }}
+                                                                </div>
+                                                            </SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </TableCell>
+                                                <TableCell class="py-2 text-center">
+                                                    <Input
+                                                        type="number"
+                                                        v-model.number="editItemForm.quantity"
+                                                        min="1"
+                                                        class="h-8 w-16 text-center text-xs font-bold"
+                                                    />
+                                                </TableCell>
+                                                <TableCell class="py-2 text-right text-[10px] font-medium text-slate-500"
+                                                    >S/.{{ Number(item.unit_price).toFixed(2) }}</TableCell
+                                                >
+                                                <TableCell class="py-2 text-right text-xs font-black text-indigo-600"
+                                                    >S/.{{ (editItemForm.quantity * Number(item.unit_price)).toFixed(2) }}</TableCell
+                                                >
+                                                <TableCell class="py-2 text-right">
+                                                    <div class="flex items-center justify-end gap-1">
+                                                        <Button
+                                                            @click="saveEditInvoiceItem(item)"
+                                                            :disabled="isSavingInvoiceItem || editItemForm.quantity < 1"
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            class="h-7 w-7 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
+                                                        >
+                                                            <Loader2 v-if="isSavingInvoiceItem" class="h-3.5 w-3.5 animate-spin" />
+                                                            <CheckCircle2 v-else class="h-3.5 w-3.5" />
+                                                        </Button>
+                                                        <Button
+                                                            @click="cancelEditInvoiceItem"
+                                                            :disabled="isSavingInvoiceItem"
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            class="h-7 w-7 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                                                        >
+                                                            <X class="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    </div>
+                                                </TableCell>
+                                            </template>
+                                            <template v-else>
+                                                <TableCell class="py-2 text-xs text-slate-600">{{ item.size || '-' }}</TableCell>
+                                                <TableCell class="py-2">
+                                                    <div v-if="item.color" class="flex items-center gap-1.5">
+                                                        <div
+                                                            class="h-2.5 w-2.5 rounded-full border border-slate-200"
+                                                            :style="{ backgroundColor: item.color.hex_code }"
+                                                        ></div>
+                                                        <span class="text-[10px] font-medium text-slate-500">{{ item.color.name }}</span>
+                                                    </div>
+                                                    <span v-else class="text-[10px] text-slate-400">-</span>
+                                                </TableCell>
+                                                <TableCell class="py-2 text-center text-xs font-black text-slate-700">{{ item.quantity }}</TableCell>
+                                                <TableCell class="py-2 text-right text-[10px] font-medium text-slate-500"
+                                                    >S/.{{ Number(item.unit_price).toFixed(2) }}</TableCell
+                                                >
+                                                <TableCell class="py-2 text-right text-xs font-black text-indigo-600"
+                                                    >S/.{{ Number(item.total_price).toFixed(2) }}</TableCell
+                                                >
+                                                <TableCell class="py-2 text-right">
+                                                    <Button
+                                                        @click="startEditInvoiceItem(item)"
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        class="h-7 w-7 text-slate-400 hover:bg-indigo-50 hover:text-indigo-600"
+                                                    >
+                                                        <Edit2 class="h-3.5 w-3.5" />
+                                                    </Button>
+                                                </TableCell>
+                                            </template>
                                         </TableRow>
                                         <TableRow class="bg-slate-50/30">
                                             <TableCell colspan="4" class="rounded-bl-xl border-t border-slate-100"></TableCell>
-                                            <TableCell colspan="2" class="rounded-br-xl border-t border-slate-100 p-0">
+                                            <TableCell colspan="3" class="rounded-br-xl border-t border-slate-100 p-0">
                                                 <div class="space-y-3 p-4">
                                                     <div class="flex items-center justify-between px-2">
                                                         <span class="text-[10px] font-black tracking-widest text-slate-400 uppercase">IGV (18%)</span>

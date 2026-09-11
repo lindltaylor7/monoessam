@@ -179,11 +179,13 @@ export interface Dosification {
     protein?: number;
     lipid?: number;
     carbohydrate?: number;
+    carbohydrate_available?: number;
     fiber?: number;
     ash?: number;
     calcium?: number;
     phosphorus?: number;
     iron?: number;
+    carotene?: number;
     retinol?: number;
     thiamine?: number;
     riboflavin?: number;
@@ -201,6 +203,7 @@ export interface Dosification {
     v_b9?: number;
     iodine?: number;
     cholesterol?: number;
+    alcohol?: number;
 }
 
 export interface Ingredient {

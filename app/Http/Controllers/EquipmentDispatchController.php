@@ -21,6 +21,8 @@ use Inertia\Inertia;
 
 class EquipmentDispatchController extends Controller
 {
+    use \App\Http\Controllers\Concerns\GeneratesDispatchNumbers;
+
     public function index()
     {
         $dispatches = EquipmentDispatch::with(['equipable', 'origin', 'originCafe', 'staff', 'dispatcher', 'color'])
@@ -115,43 +117,49 @@ class EquipmentDispatchController extends Controller
             }
         }
 
-        // One guide number for the whole batch
-        $guideSeq    = EquipmentDispatch::whereYear('created_at', now()->year)->whereNotNull('guide_number')->distinct('guide_number')->count() + 1;
-        $guideNumber = 'GR-' . now()->year . '-' . str_pad($guideSeq, 4, '0', STR_PAD_LEFT);
+        // Correlativos + inserción bajo lock distribuido y en una sola transacción: antes
+        // el store no era transaccional (un fallo a mitad de lote dejaba stock descontado y
+        // guías a medias) y los números se calculaban con COUNT+1 sin lock.
+        [$guideNumber, $created] = $this->withDispatchNumberLock(function () use ($validated, $modelMap, $decrementEppStock) {
+            return DB::transaction(function () use ($validated, $modelMap, $decrementEppStock) {
+                $guideNumber = $this->nextGuideNumber();
+                $baseSeq     = EquipmentDispatch::whereYear('created_at', now()->year)->count();
 
-        $created = [];
-        foreach ($validated['items'] as $item) {
-            $modelClass = $modelMap[$item['equipable_type']];
+                $created = [];
+                foreach (array_values($validated['items']) as $idx => $item) {
+                    $modelClass     = $modelMap[$item['equipable_type']];
+                    $dispatchNumber = 'DESP-' . now()->year . '-' . str_pad($baseSeq + 1 + $idx, 4, '0', STR_PAD_LEFT);
 
-            $seq = EquipmentDispatch::whereYear('created_at', now()->year)->count() + 1;
-            $dispatchNumber = 'DESP-' . now()->year . '-' . str_pad($seq, 4, '0', STR_PAD_LEFT);
+                    if ($item['equipable_type'] === 'epp') {
+                        $decrementEppStock($item);
+                    } else {
+                        $modelClass::find($item['equipable_id'])->decrement('quantity', $item['quantity']);
+                    }
 
-            if ($item['equipable_type'] === 'epp') {
-                $decrementEppStock($item);
-            } else {
-                $modelClass::find($item['equipable_id'])->decrement('quantity', $item['quantity']);
-            }
+                    EquipmentDispatch::create([
+                        'equipable_type'        => $modelClass,
+                        'equipable_id'          => $item['equipable_id'],
+                        'quantity'              => $item['quantity'],
+                        'size'                  => $item['size'] ?? null,
+                        'color_id'              => $item['color_id'] ?? null,
+                        'origin_headquarter_id' => $validated['origin_headquarter_id'],
+                        'destination_type'      => $validated['destination_type'],
+                        'destination_id'        => $validated['destination_id'],
+                        'staff_id'              => $validated['staff_id'] ?? null,
+                        'description'           => $validated['description'] ?? null,
+                        'dispatch_number'       => $dispatchNumber,
+                        'guide_number'          => $guideNumber,
+                        'status'                => 'active',
+                        'dispatched_at'         => now(),
+                        'dispatched_by'         => Auth::id(),
+                    ]);
 
-            EquipmentDispatch::create([
-                'equipable_type'        => $modelClass,
-                'equipable_id'          => $item['equipable_id'],
-                'quantity'              => $item['quantity'],
-                'size'                  => $item['size'] ?? null,
-                'color_id'              => $item['color_id'] ?? null,
-                'origin_headquarter_id' => $validated['origin_headquarter_id'],
-                'destination_type'      => $validated['destination_type'],
-                'destination_id'        => $validated['destination_id'],
-                'staff_id'              => $validated['staff_id'] ?? null,
-                'description'           => $validated['description'] ?? null,
-                'dispatch_number'       => $dispatchNumber,
-                'guide_number'          => $guideNumber,
-                'status'                => 'active',
-                'dispatched_at'         => now(),
-                'dispatched_by'         => Auth::id(),
-            ]);
+                    $created[] = $dispatchNumber;
+                }
 
-            $created[] = $dispatchNumber;
-        }
+                return [$guideNumber, $created];
+            });
+        });
 
         $count = count($created);
         return back()->with('success', "Guía {$guideNumber} — {$count} ítem(s) registrado(s).");

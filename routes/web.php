@@ -22,6 +22,7 @@ use App\Http\Controllers\IngredientCategoryController;
 use App\Http\Controllers\InventoryController;
 use App\Http\Controllers\LaboralController;
 use App\Http\Controllers\IngredientController;
+use App\Http\Controllers\InputController;
 use App\Http\Controllers\NutritionalFactorController;
 use App\Http\Controllers\LogisticController;
 use App\Http\Controllers\ManagementController;
@@ -119,7 +120,6 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('/', [StaffController::class, 'store'])->name('store');
         Route::put('{id}', [StaffController::class, 'update'])->name('update');
         Route::delete('{id}', [StaffController::class, 'destroy'])->name('destroy');
-        Route::get('ban/{id}', [StaffController::class, 'banStaff'])->name('ban');
         Route::post('/update-status', [StaffController::class, 'updateStatusStaff'])->name('update-status');
         Route::post('/upload-file', [StaffController::class, 'uploadFile'])->name('upload-file');
         Route::post('/upload-filedate', [StaffController::class, 'uploadFileDate'])->name('update-filedate');
@@ -186,7 +186,6 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('/', [SubdealershipController::class, 'store'])->name('store');
         Route::get('/search', [SubdealershipController::class, 'search'])->name('search');
         Route::post('/{subdealership}/attach', [SubdealershipController::class, 'attachToMine'])->name('attach');
-        Route::get('/{subdealership}', [SubdealershipController::class, 'show'])->name('show');
         Route::put('/{subdealership}', [SubdealershipController::class, 'update'])->name('update');
         Route::delete('/{id}', [SubdealershipController::class, 'destroy'])->name('destroy');
     });
@@ -268,10 +267,8 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('/excel', [SaleController::class, 'excel'])->name('excel');
         Route::put('/{dinner}', [DinnerController::class, 'update'])->name('update');
         Route::delete('/{dinner}', [DinnerController::class, 'destroy'])->name('destroy');
-        Route::post('/', [DinnerController::class, 'store'])->name('store');
         Route::get('pagination/{offset}', [DinnerController::class, 'pagination'])->name('pagination');
         Route::get('report/{dateInitial}/{datFinal}', [DinnerController::class, 'report'])->name('report');
-        Route::get('print-ticket/{ticketId}/{businessId}', [DinnerController::class, 'printTest'])->name('print-ticket');
     });
 
     // ========================================================================
@@ -341,6 +338,17 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::delete('{id}',[ProductController::class, 'destroy'])->name('destroy');
     });
 
+    // ========================================================================
+    // MAESTRO DE INSUMOS (Inputs)
+    // ========================================================================
+    Route::prefix('inputs')->name('inputs.')->group(function () {
+        Route::get('/', [InputController::class, 'index'])->name('index');
+        Route::post('/', [InputController::class, 'store'])->name('store');
+        Route::post('import', [InputController::class, 'import'])->name('import');
+        Route::put('{id}', [InputController::class, 'update'])->name('update');
+        Route::delete('{id}', [InputController::class, 'destroy'])->name('destroy');
+    });
+
     Route::prefix('mercantiles')->name('mercantiles.')->group(function () {
         Route::get('/',      [MercantilController::class, 'index'])->name('index');
         Route::get('/admin', [MercantilController::class, 'index'])->name('admin');
@@ -352,8 +360,6 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     Route::prefix('sales')->name('sales.')->group(function () {
         Route::get('/', [SaleController::class, 'index'])->name('index');
         Route::post('/', [SaleController::class, 'store'])->name('store');
-        Route::put('{id}', [SaleController::class, 'update'])->name('update');
-        Route::delete('{id}', [SaleController::class, 'destroy'])->name('destroy');
         Route::post('excel', [SaleController::class, 'excel'])->name('excel');
         Route::get('by-date', [SaleController::class, 'byDate'])->name('byDate');
         Route::post('visitor', [SaleController::class, 'storeVisitor'])->name('storeVisitor');
@@ -393,6 +399,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('/items', [InventoryController::class, 'storeItem'])->name('items.store');
         Route::post('/invoice', [InventoryController::class, 'storeClothInvoice'])->name('invoice.store');
         Route::post('/invoice/{id}/image', [InventoryController::class, 'updateInvoiceImage'])->name('invoice.image.update');
+        Route::put('/invoice/{invoiceId}/item/{itemId}', [InventoryController::class, 'updateInvoiceItem'])->name('invoice.item.update');
 
         // Provider CRUD specialized for clothes
         Route::post('/providers', [InventoryController::class, 'storeProvider'])->name('providers.store');
@@ -487,9 +494,13 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('/', [PlanningController::class, 'index'])->name('index');
         Route::post('/', [PlanningController::class, 'store'])->name('store');
         Route::post('{id}/generate-po', [PlanningController::class, 'generatePurchaseOrder'])->name('generate-po');
-        Route::get('{id}/quebrado-pdf', [PlanningController::class, 'quebradoPdf'])->name('quebrado-pdf');
-        Route::get('{id}/requerimiento-pdf', [PlanningController::class, 'requerimientoPdf'])->name('requerimiento-pdf');
-        Route::get('{id}/orden-pedido-excel', [PlanningController::class, 'purchaseOrderExcel'])->name('orden-pedido-excel');
+        // Todos los reportes operan sobre una o varias programaciones seleccionadas (program_ids[]),
+        // igual que menu-excel.
+        Route::get('quebrado-pdf', [PlanningController::class, 'quebradoPdf'])->name('quebrado-pdf');
+        Route::get('requerimiento-pdf', [PlanningController::class, 'requerimientoPdf'])->name('requerimiento-pdf');
+        Route::get('dosificacion-pdf', [PlanningController::class, 'dosificacionPdf'])->name('dosificacion-pdf');
+        Route::get('menu-excel', [PlanningController::class, 'menuExcel'])->name('menu-excel');
+        Route::get('orden-pedido-excel', [PlanningController::class, 'purchaseOrderExcel'])->name('orden-pedido-excel');
     });
 
     Route::prefix('purchase-orders')->name('purchase_orders.')->group(function () {

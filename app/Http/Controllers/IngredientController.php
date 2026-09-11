@@ -90,6 +90,7 @@ class IngredientController extends Controller
             'calcium' => 'nullable|numeric',
             'phosphorus' => 'nullable|numeric',
             'iron' => 'nullable|numeric',
+            'carotene' => 'nullable|numeric',
             'retinol' => 'nullable|numeric',
             'thiamine' => 'nullable|numeric',
             'riboflavin' => 'nullable|numeric',
@@ -107,6 +108,7 @@ class IngredientController extends Controller
             'v_b9' => 'nullable|numeric',
             'iodine' => 'nullable|numeric',
             'cholesterol' => 'nullable|numeric',
+            'alcohol' => 'nullable|numeric',
         ]);
 
         $ingredient = Ingredient::findOrFail($id);

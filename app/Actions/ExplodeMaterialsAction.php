@@ -40,7 +40,9 @@ class ExplodeMaterialsAction
                     ->where('meal_type', $item->meal_type)
                     ->first();
 
-                $portions = $portionData ? $portionData->portions_count : 0;
+                $servicePortions = $portionData ? $portionData->portions_count : 0;
+                // Raciones del plato = raciones del servicio * % de comensales que lo toman.
+                $portions = $item->effectivePortions($servicePortions);
 
                 if ($portions <= 0 || !$item->dish) continue;
 

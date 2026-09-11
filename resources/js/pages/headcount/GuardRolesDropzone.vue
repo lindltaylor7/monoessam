@@ -124,7 +124,7 @@ const { elementRef: guardRolesDropzoneRef, isOvered } = useDroppable({
 <template>
     <div v-click-outside="closeEditing" ref="guardRolesDropzoneRef" class="relative min-h-[6rem] w-full">
         <div v-if="userDropped && userDropped.id">
-            <Draggable :user="userDropped" @unassignUser="unassignUser" :showButtonDelete="true" />
+            <Draggable :user="userDropped" :guard-role-id="props.role.id" @unassignUser="unassignUser" :showButtonDelete="true" />
         </div>
 
         <div v-else>

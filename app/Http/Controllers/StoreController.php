@@ -21,6 +21,8 @@ use Inertia\Inertia;
 
 class StoreController extends Controller
 {
+    use \App\Http\Controllers\Concerns\GeneratesDispatchNumbers;
+
     private const GUIDES_PER_PAGE = 10;
     private const STOCK_PER_PAGE  = 15;
 
@@ -356,12 +358,15 @@ class StoreController extends Controller
             'color_id'       => $item['color_id'] ?? null,
         ]);
 
-        $guideSeq    = EquipmentDispatch::whereYear('created_at', now()->year)->whereNotNull('guide_number')->distinct('guide_number')->count() + 1;
-        $guideNumber = 'GR-' . now()->year . '-' . str_pad($guideSeq, 4, '0', STR_PAD_LEFT);
+        // Correlativos + transacción bajo lock distribuido: dos envíos simultáneos ya no
+        // obtienen el mismo guide_number (mismo fix que EquipmentDispatchController@store).
+        [$guideNumber, $created] = $this->withDispatchNumberLock(function () use ($validated, $modelMap, $eppStockQuery) {
+        $guideNumber = $this->nextGuideNumber();
 
         $created = DB::transaction(function () use ($validated, $modelMap, $eppStockQuery, $guideNumber) {
+            $baseSeq = EquipmentDispatch::whereYear('created_at', now()->year)->count();
             $created = [];
-            foreach ($validated['items'] as $item) {
+            foreach (array_values($validated['items']) as $idx => $item) {
                 $item['origin_cafe_id'] = $validated['origin_cafe_id'];
                 $modelClass = $modelMap[$item['equipable_type']];
 
@@ -386,8 +391,7 @@ class StoreController extends Controller
 
                 $stock->decrement('quantity', $item['quantity']);
 
-                $seq            = EquipmentDispatch::whereYear('created_at', now()->year)->count() + 1;
-                $dispatchNumber = 'DESP-' . now()->year . '-' . str_pad($seq, 4, '0', STR_PAD_LEFT);
+                $dispatchNumber = 'DESP-' . now()->year . '-' . str_pad($baseSeq + 1 + $idx, 4, '0', STR_PAD_LEFT);
 
                 // La guía se crea con su propio `quantity` fijo — es un documento histórico
                 // independiente, no se ve afectado por lo que pase después con el stock del café.
@@ -413,6 +417,9 @@ class StoreController extends Controller
             }
 
             return $created;
+        });
+
+            return [$guideNumber, $created];
         });
 
         $count = count($created);

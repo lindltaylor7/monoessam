@@ -23,20 +23,26 @@ class DashboardController extends Controller
         $canSeeSales     = count(array_intersect(['sales', 'reportsales', 'dinners'], $routes)) > 0;
         $canSeeHeadcount = in_array('headcount', $routes);
 
+        // Alcance: los comedores de las unidades asignadas al usuario, igual que
+        // SaleController::index(). Un perfil sin unidades (administración) ve todo.
+        $user->loadMissing('units.cafes');
+        $scopedCafeIds = $user->units->flatMap->cafes->pluck('id')->unique()->values();
+        $scopeSales    = fn ($q) => $scopedCafeIds->isNotEmpty() ? $q->whereIn('cafe_id', $scopedCafeIds) : $q;
+
         // ── Sales section ──────────────────────────────────────────────────
         $salesStats  = null;
         $salesChart  = null;
 
         if ($canSeeSales) {
-            $todaySales = Sale::whereDate('date', $today);
+            $todaySales = $scopeSales(Sale::whereDate('date', $today));
 
             $salesStats = [
                 'todayCount'  => (clone $todaySales)->count(),
                 'todayAmount' => round((clone $todaySales)->sum('total'), 2),
             ];
 
-            $weeklySales = Sale::selectRaw('DATE(date) as day, COUNT(*) as count, SUM(total) as amount')
-                ->whereDate('date', '>=', Carbon::today()->subDays(6))
+            $weeklySales = $scopeSales(Sale::selectRaw('DATE(date) as day, COUNT(*) as count, SUM(total) as amount')
+                ->whereDate('date', '>=', Carbon::today()->subDays(6)))
                 ->groupByRaw('DATE(date)')
                 ->orderBy('day')
                 ->get()

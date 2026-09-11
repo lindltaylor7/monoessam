@@ -16,10 +16,12 @@ use App\Models\Serviceable;
 use App\Models\Service;
 use App\Services\QuebradosService;
 use App\Exports\WeeklyPurchaseOrderExport;
+use App\Exports\WeeklyMenuExport;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Facades\Excel;
 
 class PlanningController extends Controller
@@ -59,9 +61,25 @@ class PlanningController extends Controller
             return $cycle;
         });
 
+        // El servicio al que pertenece cada programación es único. Se guarda en weekly_programs.meal_type;
+        // para programaciones antiguas sin ese dato, se cae al meal_type predominante de sus items.
+        $fallbackService = WeeklyProgramItem::select('weekly_program_id', 'meal_type', DB::raw('COUNT(*) as c'))
+            ->groupBy('weekly_program_id', 'meal_type')
+            ->orderByDesc('c')
+            ->get()
+            ->groupBy('weekly_program_id')
+            ->map(fn($rows) => $rows->first()->meal_type);
+
+        $programs = WeeklyProgram::with(['cafe.unit.mine', 'structure'])
+            ->orderByDesc('created_at')
+            ->get()
+            ->each(function ($program) use ($fallbackService) {
+                $program->setAttribute('service', $program->meal_type ?: $fallbackService->get($program->id));
+            });
+
         return Inertia::render('planning/Index', [
             'cafes' => Cafe::all(),
-            'programs' => WeeklyProgram::with(['cafe.unit', 'structure'])->get(),
+            'programs' => $programs,
             'dish_categories' => Dish_category::all(),
             'menu_structure' => MenuStructure::with('dish_category')->get(),
             'structures' => \App\Models\Structure::with('costs')->get(),
@@ -77,15 +95,24 @@ class PlanningController extends Controller
         $validated = $request->validate([
             'cafe_id' => 'required|exists:cafes,id',
             'structure_id' => 'nullable|exists:structures,id',
+            'meal_type' => 'nullable|string|max:255',
             'start_date' => 'required|date',
             'end_date' => 'required|date',
             'items' => 'required|array',
+            'items.*.percentage' => 'nullable|numeric|min:0|max:100',
             'portions' => 'required|array',
         ]);
+
+        // Una programación pertenece a un único servicio (el activo en la matriz). Si el front no
+        // lo envía, se infiere del meal_type de los items con plato asignado.
+        $mealType = $validated['meal_type']
+            ?? collect($validated['items'])->firstWhere(fn($i) => !empty($i['dish_id']))['meal_type']
+            ?? null;
 
         $program = WeeklyProgram::create([
             'cafe_id' => $validated['cafe_id'],
             'structure_id' => $validated['structure_id'] ?? null,
+            'meal_type' => $mealType,
             'start_date' => $validated['start_date'],
             'end_date' => $validated['end_date'],
             'user_id' => Auth::id(),
@@ -106,6 +133,7 @@ class PlanningController extends Controller
                 'meal_type' => $item['meal_type'],
                 'dish_category_id' => $item['dish_category_id'],
                 'dish_id' => $item['dish_id'],
+                'percentage' => $item['percentage'] ?? 100,
             ]);
         }
 
@@ -121,168 +149,222 @@ class PlanningController extends Controller
         return redirect()->route('planning.index')->with('success', 'Plan guardado correctamente');
     }
 
-    public function generatePurchaseOrder($id)
+    public function generatePurchaseOrder(Request $request, $id)
     {
-        $program = WeeklyProgram::findOrFail($id);
-        $order = $this->quebradosService->generatePurchaseOrder($program);
+        $validated = $request->validate([
+            'level_id' => 'required|exists:levels,id',
+        ]);
+
+        $program = WeeklyProgram::with('portions')->findOrFail($id);
+        $level   = Level::findOrFail($validated['level_id']);
+        $order   = $this->quebradosService->generatePurchaseOrder($program, $level);
+
+        if ($order->items()->count() === 0) {
+            return redirect()->route('purchase_orders.show', $order->id)
+                ->with('error', 'La orden se creó sin ítems: los platos de esta programación no tienen receta en el nivel elegido, o no hay raciones cargadas.');
+        }
 
         return redirect()->route('purchase_orders.show', $order->id)->with('success', 'Pedido (Quebrado) generado con éxito');
     }
 
     /**
-     * Builds the "Quebrado Semanal" PDF: for every dish assigned in the week, its ingredient
-     * breakdown (scaled by that date+meal's portions_count) grouped by day.
+     * Todos los reportes de este módulo se generan sobre una o varias programaciones marcadas en
+     * la pestaña "Programaciones Guardadas" (program_ids[]), igual que el Menú Semanal. Este helper
+     * resuelve esas programaciones y precarga en un solo golpe sus items y las recetas del nivel
+     * elegido para todos los platos involucrados.
      *
-     * The planning grid never records which recipe "nivel" (Master/Staff/Empleado/Obrero) a
-     * dish was assigned under — only dish_id — so the level is chosen by the user when they
-     * request this PDF, and used to resolve every dish's DishRecipe uniformly across the week.
+     * @return array{0: \Illuminate\Database\Eloquent\Collection, 1: \Illuminate\Support\Collection, 2: \Illuminate\Support\Collection}
      */
-    public function quebradoPdf(Request $request, string $id)
+    private function loadReportData(array $programIds, Level $level, array $recipeWith): array
     {
-        $validated = $request->validate([
-            'level_id' => 'required|exists:levels,id',
-        ]);
+        $programs = WeeklyProgram::with(['cafe.unit.mine', 'portions'])
+            ->whereIn('id', $programIds)
+            ->orderBy('start_date')
+            ->orderBy('id')
+            ->get();
 
-        $program = WeeklyProgram::with(['cafe.unit.mine'])->findOrFail($id);
-        $level = Level::findOrFail($validated['level_id']);
+        $items = WeeklyProgramItem::whereIn('weekly_program_id', $programs->pluck('id'))
+            ->with(['dish', 'dish_category'])
+            ->orderBy('date')
+            ->orderBy('meal_type')
+            ->get();
 
-        $items = $program->items()->with('dish', 'dish_category')->orderBy('date')->orderBy('meal_type')->get();
-        $portions = $program->portions->keyBy(fn ($p) => $p->date . '_' . $p->meal_type);
-
-        $dishIds = $items->pluck('dish_id')->unique()->values();
         $recipes = DishRecipe::where('level_id', $level->id)
-            ->whereIn('dish_id', $dishIds)
-            ->with('ingredients')
+            ->whereIn('dish_id', $items->pluck('dish_id')->unique()->values())
+            ->with($recipeWith)
             ->get()
             ->keyBy('dish_id');
 
-        // The original paper "Quebrado" is printed one sheet per date+servicio, so that's the
-        // page unit here too — a flat list rather than nested days→meals, so each page carries
-        // its own full masthead (Unidad/Base/Período/Fecha), matching the real document.
-        $pages = collect();
+        return [$programs, $items->groupBy('weekly_program_id'), $recipes];
+    }
 
-        foreach ($items->groupBy('date') as $date => $dayItems) {
-            foreach ($dayItems->groupBy('meal_type') as $mealType => $mealItems) {
-                $portionsCount = optional($portions->get($date . '_' . $mealType))->portions_count ?? 0;
-
-                $dishes = $mealItems->values()->map(function ($item) use ($portionsCount, $recipes) {
-                    $recipe = $recipes->get($item->dish_id);
-
-                    $ingredients = $recipe
-                        ? $recipe->ingredients->map(function ($ingredient) use ($portionsCount) {
-                            $qtyPerRation = (float) $ingredient->pivot->gross_weight;
-                            $totalRequired = $qtyPerRation * $portionsCount;
-                            return [
-                                'code' => $ingredient->id,
-                                'name' => $ingredient->name,
-                                'qty_per_ration' => $qtyPerRation,
-                                'total_required' => $totalRequired,
-                                'total_rounded' => ceil($totalRequired),
-                            ];
-                        })->values()
-                        : collect();
-
-                    return [
-                        'category_id' => $item->dish_category_id,
-                        'category' => $item->dish_category->name ?? 'Sin categoría',
-                        'dish_id' => $item->dish_id,
-                        'dish_name' => $item->dish->name ?? 'Plato eliminado',
-                        'ingredients' => $ingredients,
-                        'has_recipe' => (bool) $recipe,
-                    ];
-                });
-
-                $pages->push([
-                    'date' => $date,
-                    'meal_type' => $mealType,
-                    'portions' => $portionsCount,
-                    'dishes' => $dishes,
-                ]);
-            }
-        }
-
-        // "Base" mirrors the mine/unit/cafe chain shown elsewhere in the app (see MenuDisplay's
-        // service labels): it doesn't change per page, so it's built once here.
-        $baseChain = collect([
+    /** Cadena "Mina - Unidad - Comedor" de una programación, como se muestra en el resto de la app. */
+    private function baseChainFor(WeeklyProgram $program): string
+    {
+        return collect([
             optional(optional($program->cafe->unit)->mine)->name,
             optional($program->cafe->unit)->name,
             optional($program->cafe)->name,
         ])->filter()->implode(' - ');
+    }
 
-        $pdf = Pdf::loadView('pdf.weekly_quebrado', [
-            'program' => $program,
-            'level' => $level,
-            'pages' => $pages,
-            'baseChain' => $baseChain,
+    /**
+     * Builds the "Quebrado Semanal" PDF: for every dish assigned across the selected programs, its
+     * ingredient breakdown (scaled by that date+meal's effective rations) grouped by day. Each
+     * program contributes its own set of day/servicio pages, each with its own masthead
+     * (Unidad/Base/Período/Fecha), so several programs simply flow one after another.
+     *
+     * The planning grid never records which recipe "nivel" (Master/Staff/Empleado/Obrero) a
+     * dish was assigned under — only dish_id — so the level is chosen by the user when they
+     * request this PDF, and used to resolve every dish's DishRecipe uniformly.
+     */
+    public function quebradoPdf(Request $request)
+    {
+        $validated = $request->validate([
+            'program_ids' => 'required|array|min:1',
+            'program_ids.*' => 'integer|exists:weekly_programs,id',
+            'level_id' => 'required|exists:levels,id',
         ]);
 
-        return $pdf->setPaper('a4', 'portrait')->stream("Quebrado_Semanal_{$program->id}.pdf");
+        $level = Level::findOrFail($validated['level_id']);
+        [$programs, $itemsByProgram, $recipes] = $this->loadReportData($validated['program_ids'], $level, ['ingredients']);
+
+        // The original paper "Quebrado" is printed one sheet per date+servicio, so that's the
+        // page unit here too — a flat list rather than nested days→meals, so each page carries
+        // its own full masthead, matching the real document.
+        $pages = collect();
+
+        foreach ($programs as $program) {
+            $portions = $program->portions->keyBy(fn($p) => $p->date . '_' . $p->meal_type);
+            $baseChain = $this->baseChainFor($program);
+            $unitName = strtoupper($program->cafe->unit->name ?? '—');
+            $items = $itemsByProgram->get($program->id) ?? collect();
+
+            foreach ($items->groupBy('date') as $date => $dayItems) {
+                foreach ($dayItems->groupBy('meal_type') as $mealType => $mealItems) {
+                    $portionsCount = optional($portions->get($date . '_' . $mealType))->portions_count ?? 0;
+
+                    $dishes = $mealItems->values()->map(function ($item) use ($portionsCount, $recipes) {
+                        $recipe = $recipes->get($item->dish_id);
+                        // Raciones del plato = raciones del servicio * % de comensales que lo toman.
+                        $dishPortions = $item->effectivePortions($portionsCount);
+
+                        $ingredients = $recipe
+                            ? $recipe->ingredients->map(function ($ingredient) use ($dishPortions) {
+                                $qtyPerRation = (float) $ingredient->pivot->gross_weight;
+                                $totalRequired = $qtyPerRation * $dishPortions;
+                                return [
+                                    'code' => $ingredient->id,
+                                    'name' => $ingredient->name,
+                                    'qty_per_ration' => $qtyPerRation,
+                                    'total_required' => $totalRequired,
+                                    'total_rounded' => ceil($totalRequired),
+                                ];
+                            })->values()
+                            : collect();
+
+                        return [
+                            'category_id' => $item->dish_category_id,
+                            'category' => $item->dish_category->name ?? 'Sin categoría',
+                            'dish_id' => $item->dish_id,
+                            'dish_name' => $item->dish->name ?? 'Plato eliminado',
+                            'portions' => $dishPortions,
+                            'percentage' => (float) ($item->percentage ?? 100),
+                            'ingredients' => $ingredients,
+                            'has_recipe' => (bool) $recipe,
+                        ];
+                    });
+
+                    $pages->push([
+                        'date' => $date,
+                        'meal_type' => $mealType,
+                        'portions' => $portionsCount,
+                        'program_id' => $program->id,
+                        'unit' => $unitName,
+                        'base' => $baseChain,
+                        'dishes' => $dishes,
+                    ]);
+                }
+            }
+        }
+
+        $pdf = Pdf::loadView('pdf.weekly_quebrado', [
+            'level' => $level,
+            'pages' => $pages,
+            'programCount' => $programs->count(),
+        ]);
+
+        return $pdf->setPaper('a4', 'portrait')->stream('Quebrado_Semanal_' . now()->format('Ymd_His') . '.pdf');
     }
 
     /**
      * Builds the "Requerimiento x Producto" PDF: the inverse view of quebradoPdf() — instead of
      * grouping by day/servicio/plato, it groups by ingredient_category → insumo, listing every
-     * date/servicio/plato across the whole week that insumo is needed for, with quantities.
+     * date/servicio/plato across the selected programs that insumo is needed for, with quantities.
+     * Con varias programaciones el listado es consolidado: los insumos se suman entre todas.
      * Same per-level caveat as quebradoPdf(): the planning grid doesn't record a recipe nivel
-     * per dish, so it's chosen once here and applied to every dish in the week.
+     * per dish, so it's chosen once here and applied to every dish.
      */
-    public function requerimientoPdf(Request $request, string $id)
+    public function requerimientoPdf(Request $request)
     {
         $validated = $request->validate([
+            'program_ids' => 'required|array|min:1',
+            'program_ids.*' => 'integer|exists:weekly_programs,id',
             'level_id' => 'required|exists:levels,id',
         ]);
 
-        $program = WeeklyProgram::with(['cafe.unit.mine'])->findOrFail($id);
         $level = Level::findOrFail($validated['level_id']);
-
-        $items = $program->items()->with('dish')->orderBy('date')->orderBy('meal_type')->get();
-        $portions = $program->portions->keyBy(fn ($p) => $p->date . '_' . $p->meal_type);
-
-        $dishIds = $items->pluck('dish_id')->unique()->values();
-        $recipes = DishRecipe::where('level_id', $level->id)
-            ->whereIn('dish_id', $dishIds)
-            ->with('ingredients.ingredient_category')
-            ->get()
-            ->keyBy('dish_id');
+        [$programs, $itemsByProgram, $recipes] = $this->loadReportData(
+            $validated['program_ids'],
+            $level,
+            ['ingredients.ingredient_category']
+        );
 
         $flat = collect();
         $hasMatchingRecipes = false;
         $hasAnyPortions = false;
 
-        foreach ($items as $item) {
-            $recipe = $recipes->get($item->dish_id);
-            if ($recipe) {
-                $hasMatchingRecipes = true;
-            }
+        foreach ($programs as $program) {
+            $portions = $program->portions->keyBy(fn($p) => $p->date . '_' . $p->meal_type);
 
-            $portionsCount = optional($portions->get($item->date . '_' . $item->meal_type))->portions_count ?? 0;
-            if ($portionsCount > 0) {
-                $hasAnyPortions = true;
-            }
+            foreach ($itemsByProgram->get($program->id) ?? collect() as $item) {
+                $recipe = $recipes->get($item->dish_id);
+                if ($recipe) {
+                    $hasMatchingRecipes = true;
+                }
 
-            if (!$recipe || $portionsCount <= 0) {
-                continue;
-            }
+                $servicePortions = optional($portions->get($item->date . '_' . $item->meal_type))->portions_count ?? 0;
+                if ($servicePortions > 0) {
+                    $hasAnyPortions = true;
+                }
 
-            foreach ($recipe->ingredients as $ingredient) {
-                $qtyPerRation = (float) $ingredient->pivot->gross_weight;
-                if ($qtyPerRation <= 0) {
+                // Raciones del plato = raciones del servicio * % de comensales que lo toman.
+                $portionsCount = $item->effectivePortions($servicePortions);
+
+                if (!$recipe || $portionsCount <= 0) {
                     continue;
                 }
-                $totalRequired = $qtyPerRation * $portionsCount;
 
-                $flat->push([
-                    'category_name' => optional($ingredient->ingredient_category)->name ?? 'Sin Categoría',
-                    'ingredient_name' => $ingredient->name,
-                    'date' => $item->date,
-                    'meal_type' => $item->meal_type,
-                    'dish_id' => $item->dish_id,
-                    'dish_name' => $item->dish->name ?? 'Plato eliminado',
-                    'qty_per_ration' => $qtyPerRation,
-                    'portions' => $portionsCount,
-                    'total_required' => $totalRequired,
-                    'total_kg' => $totalRequired / 1000,
-                ]);
+                foreach ($recipe->ingredients as $ingredient) {
+                    $qtyPerRation = (float) $ingredient->pivot->gross_weight;
+                    if ($qtyPerRation <= 0) {
+                        continue;
+                    }
+                    $totalRequired = $qtyPerRation * $portionsCount;
+
+                    $flat->push([
+                        'category_name' => optional($ingredient->ingredient_category)->name ?? 'Sin Categoría',
+                        'ingredient_name' => $ingredient->name,
+                        'date' => $item->date,
+                        'meal_type' => $item->meal_type,
+                        'dish_id' => $item->dish_id,
+                        'dish_name' => $item->dish->name ?? 'Plato eliminado',
+                        'qty_per_ration' => $qtyPerRation,
+                        'portions' => $portionsCount,
+                        'total_required' => $totalRequired,
+                        'total_kg' => $totalRequired / 1000,
+                    ]);
+                }
             }
         }
 
@@ -302,22 +384,213 @@ class PlanningController extends Controller
             ];
         })->values();
 
-        $baseChain = collect([
-            optional(optional($program->cafe->unit)->mine)->name,
-            optional($program->cafe->unit)->name,
-            optional($program->cafe)->name,
-        ])->filter()->implode(' - ');
+        $first = $programs->first();
+        $meta = [
+            'unit' => $programs->map(fn($p) => $p->cafe->unit->name ?? null)->filter()->unique()->implode(' / ') ?: '—',
+            'base' => $programs->map(fn($p) => $this->baseChainFor($p))->filter()->unique()->implode('  ·  ') ?: '—',
+            'year' => $first ? \Carbon\Carbon::parse($first->start_date)->year : now()->year,
+            'month' => $first ? ucfirst(\Carbon\Carbon::parse($first->start_date)->locale('es')->translatedFormat('F')) : '',
+            'week' => $first ? \Carbon\Carbon::parse($first->start_date)->isoWeek() : '',
+            'orden' => $programs->pluck('id')->implode(', '),
+        ];
 
         $pdf = Pdf::loadView('pdf.weekly_requirement', [
-            'program' => $program,
             'level' => $level,
             'categories' => $categories,
-            'baseChain' => $baseChain,
+            'meta' => $meta,
             'hasMatchingRecipes' => $hasMatchingRecipes,
             'hasAnyPortions' => $hasAnyPortions,
         ]);
 
-        return $pdf->setPaper('a4', 'portrait')->stream("Requerimiento_x_Producto_{$program->id}.pdf");
+        return $pdf->setPaper('a4', 'portrait')->stream('Requerimiento_x_Producto_' . now()->format('Ymd_His') . '.pdf');
+    }
+
+    /**
+     * Builds the "Dosificación Nutricional" PDF: one page per date + servicio, and within it a
+     * block per plato listing every insumo of its receta with the nutritional breakdown per
+     * ración (22 columnas, en el orden de la Tabla Peruana de Composición de Alimentos) más
+     * una fila de totales por plato.
+     *
+     * Cada valor nutricional del insumo = valor por 100 g (tabla `dosifications`) escalado por
+     * el peso neto por ración del quebrado (`dish_recipe_ingredients.net_weight` / 100), igual
+     * que el cálculo de calorías por insumo en el editor de quebrados (CalcPopover.vue). La
+     * columna "IC" es el id del registro de dosificación usado (0 si el insumo no tiene una).
+     *
+     * Mismo caveat de nivel que quebradoPdf()/requerimientoPdf(): el grid de planificación no
+     * guarda el nivel de receta por plato, así que se elige aquí y se aplica a toda la semana.
+     */
+    public function dosificacionPdf(Request $request)
+    {
+        $validated = $request->validate([
+            'program_ids' => 'required|array|min:1',
+            'program_ids.*' => 'integer|exists:weekly_programs,id',
+            'level_id' => 'required|exists:levels,id',
+        ]);
+
+        $level = Level::findOrFail($validated['level_id']);
+        [$programs, $itemsByProgram, $recipes] = $this->loadReportData(
+            $validated['program_ids'],
+            $level,
+            ['ingredients.dosification']
+        );
+
+        // Columnas nutricionales del reporte, en el orden de la Tabla Peruana de Composición de
+        // Alimentos: nombre en español (encabezado), tagname INFOODS y la columna de
+        // `dosifications` de la que sale el valor. `retinol` se reutiliza como "Vitamina A
+        // equivalentes totales" (VITA); `a_asc` es Vitamina C (VITC); `a_folic` es ácido fólico.
+        $nutrients = [
+            ['name' => 'Energía',                         'tag' => 'ENERC',  'column' => 'energy'],
+            ['name' => 'Agua',                            'tag' => 'WATER',  'column' => 'water'],
+            ['name' => 'Proteínas',                       'tag' => 'PROCNT', 'column' => 'protein'],
+            ['name' => 'Grasa total',                     'tag' => 'FAT',    'column' => 'lipid'],
+            ['name' => 'Carbohidratos totales',           'tag' => 'CHOCDF', 'column' => 'carbohydrate'],
+            ['name' => 'Carbohidratos disponibles',       'tag' => 'CHOAVL', 'column' => 'carbohydrate_available'],
+            ['name' => 'Fibra dietaria',                  'tag' => 'FIBTG',  'column' => 'fiber'],
+            ['name' => 'Cenizas',                         'tag' => 'ASH',    'column' => 'ash'],
+            ['name' => 'Calcio',                          'tag' => 'CA',     'column' => 'calcium'],
+            ['name' => 'Fósforo',                         'tag' => 'P',      'column' => 'phosphorus'],
+            ['name' => 'Zinc',                            'tag' => 'ZN',     'column' => 'zinc'],
+            ['name' => 'Hierro',                          'tag' => 'FE',     'column' => 'iron'],
+            ['name' => 'B caroteno equivalentes totales', 'tag' => 'CARTBQ', 'column' => 'carotene'],
+            ['name' => 'Vitamina A equivalentes totales', 'tag' => 'VITA',   'column' => 'retinol'],
+            ['name' => 'Tiamina',                         'tag' => 'THIA',   'column' => 'thiamine'],
+            ['name' => 'Riboflavina',                     'tag' => 'RIBF',   'column' => 'riboflavin'],
+            ['name' => 'Niacina',                         'tag' => 'NIA',    'column' => 'niacin'],
+            ['name' => 'Vitamina C',                      'tag' => 'VITC',   'column' => 'a_asc'],
+            ['name' => 'Ácido fólico',                    'tag' => 'FOLFD',  'column' => 'a_folic'],
+            ['name' => 'Sodio',                           'tag' => 'NA',     'column' => 'sodium'],
+            ['name' => 'Potasio',                         'tag' => 'K',      'column' => 'potassium'],
+            ['name' => '% Alcohol',                       'tag' => 'ALC',    'column' => 'alcohol'],
+        ];
+
+        $pages = collect();
+
+        foreach ($programs as $program) {
+            $portions = $program->portions->keyBy(fn($p) => $p->date . '_' . $p->meal_type);
+            $baseChain = $this->baseChainFor($program);
+            $unitName = strtoupper($program->cafe->unit->name ?? '—');
+
+            foreach (($itemsByProgram->get($program->id) ?? collect())->groupBy('date') as $date => $dayItems) {
+                foreach ($dayItems->groupBy('meal_type') as $mealType => $mealItems) {
+                    $portionsCount = optional($portions->get($date . '_' . $mealType))->portions_count ?? 0;
+
+                    $categoryCounters = [];
+
+                    $dishes = $mealItems->values()->map(function ($item, $idx) use ($portionsCount, $recipes, $nutrients, &$categoryCounters) {
+                        $recipe = $recipes->get($item->dish_id);
+                        // Raciones del plato = raciones del servicio * % de comensales que lo toman.
+                        $dishPortions = $item->effectivePortions($portionsCount);
+
+                        $categoryName = $item->dish_category->name ?? 'Sin categoría';
+                        $categoryCounters[$categoryName] = ($categoryCounters[$categoryName] ?? 0) + 1;
+
+                        $totals = array_fill_keys(array_column($nutrients, 'column'), 0.0);
+
+                        $ingredients = $recipe
+                            ? $recipe->ingredients->map(function ($ingredient) use ($nutrients, &$totals) {
+                                $dosification = $ingredient->dosification;
+
+                                $grossWeight = (float) $ingredient->pivot->gross_weight;
+                                $netWeight   = (float) $ingredient->pivot->net_weight;
+                                if ($netWeight <= 0) {
+                                    $netWeight = $grossWeight;
+                                }
+                                $factor = $netWeight / 100;
+
+                                $values = [];
+                                foreach ($nutrients as $nutrient) {
+                                    $column = $nutrient['column'];
+                                    $per100 = 0.0;
+                                    if ($dosification) {
+                                        $raw = $dosification->{$column};
+                                        // CHOCDF (carbohidratos totales) cae a los disponibles cuando el total no está cargado.
+                                        if (($raw === null || $raw === '') && $column === 'carbohydrate') {
+                                            $raw = $dosification->carbohydrate_available;
+                                        }
+                                        $per100 = (float) ($raw ?? 0);
+                                    }
+                                    $amount = $per100 * $factor;
+                                    $values[$column] = $amount;
+                                    $totals[$column] += $amount;
+                                }
+
+                                return [
+                                    'code'    => $ingredient->id,
+                                    'name'    => $ingredient->name,
+                                    'gramaje' => $grossWeight,
+                                    'ic'      => $dosification?->id ?? 0,
+                                    'values'  => $values,
+                                ];
+                            })->values()
+                            : collect();
+
+                        return [
+                            'index'          => $idx + 1,
+                            'category'       => $categoryName,
+                            'category_index' => $categoryCounters[$categoryName],
+                            'dish_code'      => $item->dish_id,
+                            'dish_name'      => $item->dish->name ?? 'Plato eliminado',
+                            'portions'       => $dishPortions,
+                            'percentage'     => (float) ($item->percentage ?? 100),
+                            'ingredients'    => $ingredients,
+                            'totals'         => $totals,
+                            'has_recipe'     => (bool) $recipe,
+                        ];
+                    });
+
+                    $pages->push([
+                        'date'       => $date,
+                        'meal_type'  => $mealType,
+                        'portions'   => $portionsCount,
+                        'program_id' => $program->id,
+                        'unit'       => $unitName,
+                        'base'       => $baseChain,
+                        'dishes'     => $dishes,
+                    ]);
+                }
+            }
+        }
+
+        $pdf = Pdf::loadView('pdf.dosificacion_nutricional', [
+            'level'        => $level,
+            'pages'        => $pages,
+            'nutrients'    => $nutrients,
+            'programCount' => $programs->count(),
+        ]);
+
+        return $pdf->setPaper('a4', 'landscape')->stream('Dosificacion_Nutricional_' . now()->format('Ymd_His') . '.pdf');
+    }
+
+    /**
+     * Builds the "Menú Semanal" Excel: one sheet per programación seleccionada, con la grilla
+     * de menú de la semana (opciones/categorías en filas, días en columnas). A diferencia del
+     * resto de reportes de este módulo, se dispara sin un programa fijo: el usuario elige en el
+     * front qué programaciones incluir y sus ids llegan en `program_ids[]`.
+     */
+    public function menuExcel(Request $request)
+    {
+        $validated = $request->validate([
+            'program_ids'   => 'required|array|min:1',
+            'program_ids.*' => 'integer|exists:weekly_programs,id',
+        ]);
+
+        $programs = WeeklyProgram::with([
+            'cafe.unit.mine',
+            'structure.costs',
+            'items.dish',
+            'items.dish_category',
+            'portions',
+        ])
+            ->whereIn('id', $validated['program_ids'])
+            ->orderBy('start_date')
+            ->orderBy('id')
+            ->get();
+
+        $menuStructure = MenuStructure::orderBy('sort_order')->get();
+
+        $filename = 'Menu_Semanal_' . now()->format('Ymd_His') . '.xlsx';
+
+        return Excel::download(new WeeklyMenuExport($programs, $menuStructure), $filename);
     }
 
     /**
@@ -330,61 +603,63 @@ class PlanningController extends Controller
      * manually here. When an ingredient has no registered price for the chosen city, its row is
      * flagged instead of silently counted as zero, and the grand total excludes it.
      */
-    public function purchaseOrderExcel(Request $request, string $id)
+    public function purchaseOrderExcel(Request $request)
     {
         $validated = $request->validate([
+            'program_ids' => 'required|array|min:1',
+            'program_ids.*' => 'integer|exists:weekly_programs,id',
             'level_id' => 'required|exists:levels,id',
             'city_id' => 'required|exists:cities,id',
         ]);
 
-        $program = WeeklyProgram::with(['cafe.unit.mine'])->findOrFail($id);
         $level = Level::findOrFail($validated['level_id']);
         $city = City::findOrFail($validated['city_id']);
+        [$programs, $itemsByProgram, $recipes] = $this->loadReportData(
+            $validated['program_ids'],
+            $level,
+            ['ingredients.ingredient_category']
+        );
 
-        $items = $program->items()->with('dish')->get();
-        $portions = $program->portions->keyBy(fn ($p) => $p->date . '_' . $p->meal_type);
-
-        $dishIds = $items->pluck('dish_id')->unique()->values();
-        $recipes = DishRecipe::where('level_id', $level->id)
-            ->whereIn('dish_id', $dishIds)
-            ->with('ingredients.ingredient_category')
-            ->get()
-            ->keyBy('dish_id');
-
-        // Aggregate total grams needed per insumo across every date/servicio of the week.
+        // Aggregate total grams needed per insumo across every date/servicio of every selected program.
         $totals = collect();
 
-        foreach ($items as $item) {
-            $recipe = $recipes->get($item->dish_id);
-            if (!$recipe) {
-                continue;
-            }
+        foreach ($programs as $program) {
+            $portions = $program->portions->keyBy(fn($p) => $p->date . '_' . $p->meal_type);
 
-            $portionsCount = optional($portions->get($item->date . '_' . $item->meal_type))->portions_count ?? 0;
-            if ($portionsCount <= 0) {
-                continue;
-            }
-
-            foreach ($recipe->ingredients as $ingredient) {
-                $qtyPerRation = (float) $ingredient->pivot->gross_weight;
-                if ($qtyPerRation <= 0) {
+            foreach ($itemsByProgram->get($program->id) ?? collect() as $item) {
+                $recipe = $recipes->get($item->dish_id);
+                if (!$recipe) {
                     continue;
                 }
 
-                if (!$totals->has($ingredient->id)) {
-                    $totals->put($ingredient->id, [
-                        'id' => $ingredient->id,
-                        'name' => $ingredient->name,
-                        'category' => optional($ingredient->ingredient_category)->name ?? 'Sin Categoría',
-                        'grams' => 0.0,
-                    ]);
+                $servicePortions = optional($portions->get($item->date . '_' . $item->meal_type))->portions_count ?? 0;
+                // Raciones del plato = raciones del servicio * % de comensales que lo toman.
+                $portionsCount = $item->effectivePortions($servicePortions);
+                if ($portionsCount <= 0) {
+                    continue;
                 }
 
-                // $totals[$id]['grams'] += ... no persiste: offsetGet() de Collection devuelve el
-                // array por valor, así que hay que leer, mutar y volver a guardar explícitamente.
-                $row = $totals->get($ingredient->id);
-                $row['grams'] += $qtyPerRation * $portionsCount;
-                $totals->put($ingredient->id, $row);
+                foreach ($recipe->ingredients as $ingredient) {
+                    $qtyPerRation = (float) $ingredient->pivot->gross_weight;
+                    if ($qtyPerRation <= 0) {
+                        continue;
+                    }
+
+                    if (!$totals->has($ingredient->id)) {
+                        $totals->put($ingredient->id, [
+                            'id' => $ingredient->id,
+                            'name' => $ingredient->name,
+                            'category' => optional($ingredient->ingredient_category)->name ?? 'Sin Categoría',
+                            'grams' => 0.0,
+                        ]);
+                    }
+
+                    // $totals[$id]['grams'] += ... no persiste: offsetGet() de Collection devuelve el
+                    // array por valor, así que hay que leer, mutar y volver a guardar explícitamente.
+                    $row = $totals->get($ingredient->id);
+                    $row['grams'] += $qtyPerRation * $portionsCount;
+                    $totals->put($ingredient->id, $row);
+                }
             }
         }
 
@@ -393,7 +668,7 @@ class PlanningController extends Controller
             ->whereIn('ingredient_id', $totals->keys())
             ->get()
             ->groupBy('ingredient_id')
-            ->map(fn ($rows) => (float) $rows->min('cost_price'));
+            ->map(fn($rows) => (float) $rows->min('cost_price'));
 
         $rows = $totals->map(function ($row) use ($prices) {
             $quantityKg = $row['grams'] / 1000;
@@ -420,8 +695,8 @@ class PlanningController extends Controller
         $grandTotal = $rows->sum('subtotal');
         $missingPriceCount = $rows->whereNull('subtotal')->count();
 
-        $export = new WeeklyPurchaseOrderExport($program, $level, $city, $categories, $grandTotal, $missingPriceCount);
+        $export = new WeeklyPurchaseOrderExport($programs, $level, $city, $categories, $grandTotal, $missingPriceCount);
 
-        return Excel::download($export, "Orden_Pedido_Semanal_{$program->id}.xlsx");
+        return Excel::download($export, 'Orden_Pedido_Semanal_' . now()->format('Ymd_His') . '.xlsx');
     }
 }

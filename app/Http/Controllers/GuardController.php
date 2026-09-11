@@ -89,7 +89,9 @@ class GuardController extends Controller
     {
         $guard = Guard::find($request->guard_id);
 
-        $guard->roles()->attach($request->roles_ids);
+        // syncWithoutDetaching en vez de attach: reenviar el mismo role_id ya no crea
+        // puestos duplicados en el turno.
+        $guard->roles()->syncWithoutDetaching($request->roles_ids);
 
         return redirect()->back();
     }
@@ -103,17 +105,25 @@ class GuardController extends Controller
 
     public function insertGuardRolesUser(Request $request)
     {
+        DB::table('guard_roles')
+            ->where('id', $request->guard_role_id)
+            ->update(['staff_id' => $request->user_id]);
 
-        $guardRole =  DB::table('guard_roles')->where('id', $request->guard_role_id)->update(['staff_id' => $request->user_id]);
-
-        if ($guardRole) {
-            return response()->json(['message' => 'Rol de guardia actualizado correctamente.'], 200);
-        }
+        // Siempre se responde JSON: DB::update() devuelve 0 cuando el valor ya era ese
+        // staff_id, y antes el método caía en un return null -> 200 con cuerpo vacío que
+        // el front no sabía interpretar.
+        return response()->json(['message' => 'Rol de guardia actualizado correctamente.'], 200);
     }
 
+    /**
+     * $id es el id de la fila guard_roles (el puesto concreto), NO el staff_id: antes se
+     * filtraba por staff_id y quitar a alguien de un turno lo quitaba de TODOS sus turnos.
+     */
     public function deleteGuardRolesUser($id)
     {
-        DB::table('guard_roles')->where('staff_id', $id)->update(['staff_id' => null]);
+        DB::table('guard_roles')->where('id', $id)->update(['staff_id' => null]);
+
+        return response()->json(['message' => 'Personal retirado del puesto.'], 200);
     }
 
     public function updateObservation(Request $request)

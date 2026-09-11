@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class WeeklyProgram extends Model
 {
-    protected $fillable = ['cafe_id', 'structure_id', 'start_date', 'end_date', 'status', 'user_id'];
+    protected $fillable = ['cafe_id', 'structure_id', 'meal_type', 'start_date', 'end_date', 'status', 'user_id'];
 
     public function cafe()
     {
