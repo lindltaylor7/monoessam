@@ -670,7 +670,7 @@ class PlanningController extends Controller
             ->whereIn('ingredient_id', $totals->keys())
             ->get()
             ->groupBy('ingredient_id')
-            ->map(fn($rows) => (float) $rows->min('cost_price'));
+            ->map(fn($rows) => $rows->pluck('cost_price')->filter(fn($price) => $price !== null)->map(fn($price) => (float) $price)->min());
 
         $rows = $totals->map(function ($row) use ($prices) {
             $quantityKg = $row['grams'] / 1000;
@@ -778,10 +778,10 @@ class PlanningController extends Controller
             ->with('provider:id,name')
             ->get()
             ->groupBy('ingredient_id')
-            ->map(fn($rows) => $rows->sortBy('cost_price')->values()->map(fn($r) => [
+            ->map(fn($rows) => $rows->sortBy(fn($r) => $r->cost_price ?? INF)->values()->map(fn($r) => [
                 'provider_id' => $r->provider_id,
                 'provider_name' => optional($r->provider)->name ?? 'N/A',
-                'price' => (float) $r->cost_price,
+                'price' => $r->cost_price !== null ? (float) $r->cost_price : null,
             ])->values());
 
         // Stock actual del insumo en los comedores destino (cuando se registra vía InventoryStock).
@@ -796,7 +796,8 @@ class PlanningController extends Controller
             $totalGrams = array_sum($row['by_cafe']);
             $totalKg = $totalGrams / 1000;
             $providers = $providersByIngredient->get($row['id'], collect());
-            $bestPrice = $providers->first()['price'] ?? null;
+            $bestProvider = $providers->first(fn($p) => $p['price'] !== null);
+            $bestPrice = $bestProvider['price'] ?? null;
 
             return [
                 'id' => $row['id'],

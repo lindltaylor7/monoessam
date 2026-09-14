@@ -7,9 +7,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import { Building2, ChevronLeft, ChevronRight, Filter, Loader2, MapPin, PackagePlus, Pencil, Plus, Search, Trash2, Upload } from 'lucide-vue-next';
 import { computed, inject, ref, watch } from 'vue';
@@ -86,26 +87,41 @@ const currentPage = ref(1);
 const itemsPerPage = 15;
 
 const filteredAssignments = computed(() => {
-    return props.ingredient_city_providers.filter((item) => {
-        if (!item.ingredient || !item.provider || !item.city) return false;
+    return props.ingredient_city_providers
+        .filter((item) => {
+            if (!item.ingredient || !item.provider || !item.city) return false;
 
-        const matchesSearch = `${item.ingredient.name} ${item.provider.name} ${item.city.name}`
-            .toLowerCase()
-            .includes(globalSearch.value.toLowerCase());
+            const matchesSearch = `${item.ingredient.name} ${item.provider.name} ${item.city.name}`
+                .toLowerCase()
+                .includes(globalSearch.value.toLowerCase());
 
-        const matchesCity = selectedCityId.value === 'all' || item.city_id.toString() === selectedCityId.value;
-        const matchesProvider = selectedProviderId.value === 'all' || item.provider_id.toString() === selectedProviderId.value;
+            const matchesCity = selectedCityId.value === 'all' || item.city_id.toString() === selectedCityId.value;
+            const matchesProvider = selectedProviderId.value === 'all' || item.provider_id.toString() === selectedProviderId.value;
 
-        return matchesSearch && matchesCity && matchesProvider;
-    });
+            return matchesSearch && matchesCity && matchesProvider;
+        })
+        .sort((a, b) => a.ingredient.name.localeCompare(b.ingredient.name));
 });
 
 const totalPages = computed(() => Math.ceil(filteredAssignments.value.length / itemsPerPage));
 
+// Same ingredient can have several providers; group consecutive rows so the ingredient name/description
+// is only rendered once (via rowspan) instead of repeated per provider.
 const paginatedAssignments = computed(() => {
     const start = (currentPage.value - 1) * itemsPerPage;
     const end = start + itemsPerPage;
-    return filteredAssignments.value.slice(start, end);
+    const slice = filteredAssignments.value.slice(start, end);
+
+    return slice.map((item, idx) => {
+        const isGroupStart = idx === 0 || slice[idx - 1].ingredient_id !== item.ingredient_id;
+        let groupSpan = 1;
+        if (isGroupStart) {
+            while (slice[idx + groupSpan] && slice[idx + groupSpan].ingredient_id === item.ingredient_id) {
+                groupSpan++;
+            }
+        }
+        return { ...item, isGroupStart, groupSpan };
+    });
 });
 
 watch([globalSearch, selectedCityId, selectedProviderId], () => {
@@ -185,7 +201,7 @@ const openEditAssignmentModal = (assignment: any, providerId: number, cityId: nu
     assignmentForm.ingredient_id = assignment.id.toString();
     assignmentForm.provider_id = providerId.toString();
     assignmentForm.city_id = cityId.toString();
-    assignmentForm.cost_price = assignment.cost_price.toString();
+    assignmentForm.cost_price = (assignment.cost_price ?? '').toString();
     assignmentForm.measurement_unit_id = (assignment.measurement_unit_id || '').toString();
     selectedIngredientName.value = assignment.name;
     ingredientSearch.value = assignment.name;
@@ -263,6 +279,25 @@ const deleteAssignment = (id: number) => {
             });
         }
     });
+};
+
+const togglingAssignmentId = ref<number | null>(null);
+const toggleActive = (item: any, isActive: boolean) => {
+    togglingAssignmentId.value = item.id;
+    router.patch(
+        route('providers.assign.toggle-active', item.id),
+        { is_active: isActive },
+        {
+            preserveScroll: true,
+            preserveState: true,
+            onFinish: () => {
+                togglingAssignmentId.value = null;
+            },
+            onError: () => {
+                swal.fire('Error', 'No se pudo actualizar el proveedor activo.', 'error');
+            },
+        },
+    );
 };
 
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -450,12 +485,13 @@ const onFileIdsChange = (e: any) => {
                                 <TableHead class="font-bold text-gray-700">Ciudad</TableHead>
                                 <TableHead class="text-center font-bold text-gray-700">UM</TableHead>
                                 <TableHead class="text-right font-bold text-gray-700">Precio Costo</TableHead>
+                                <TableHead class="text-center font-bold text-gray-700">Activo</TableHead>
                                 <TableHead class="text-right font-bold text-gray-700">Acciones</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             <TableRow v-for="item in paginatedAssignments" :key="item.id" class="group transition-colors hover:bg-blue-50/30">
-                                <TableCell>
+                                <TableCell v-if="item.isGroupStart" :rowspan="item.groupSpan" class="align-top border-r border-gray-100">
                                     <div class="flex flex-col">
                                         <span class="font-bold text-gray-900">{{ item.ingredient.name }}</span>
                                         <span class="max-w-[200px] truncate text-xs text-gray-500">{{ item.ingredient.description }}</span>
@@ -480,7 +516,16 @@ const onFileIdsChange = (e: any) => {
                                     </Badge>
                                 </TableCell>
                                 <TableCell class="text-right">
-                                    <span class="text-lg font-black text-blue-600">S/ {{ parseFloat(item.cost_price).toFixed(2) }}</span>
+                                    <span v-if="item.cost_price !== null" class="text-lg font-black text-blue-600">S/ {{ parseFloat(item.cost_price).toFixed(2) }}</span>
+                                    <span v-else class="text-sm font-medium text-gray-400">Sin precio</span>
+                                </TableCell>
+                                <TableCell class="text-center">
+                                    <Switch
+                                        :model-value="item.is_active"
+                                        :disabled="togglingAssignmentId === item.id"
+                                        @update:model-value="(value: boolean) => toggleActive(item, value)"
+                                        class="data-[state=checked]:bg-green-600"
+                                    />
                                 </TableCell>
                                 <TableCell class="text-right">
                                     <div class="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
@@ -504,7 +549,7 @@ const onFileIdsChange = (e: any) => {
                                 </TableCell>
                             </TableRow>
                             <TableRow v-if="filteredAssignments.length === 0">
-                                <TableCell colspan="6" class="h-64 text-center">
+                                <TableCell colspan="7" class="h-64 text-center">
                                     <div class="flex flex-col items-center justify-center text-gray-400">
                                         <Search class="mb-2 h-12 w-12 opacity-20" />
                                         <p class="text-lg font-medium">No se encontraron resultados</p>

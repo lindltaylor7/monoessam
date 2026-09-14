@@ -12,7 +12,7 @@ import { computed } from 'vue';
 interface ProviderPrice {
     provider_id: number;
     provider_name: string;
-    price: number;
+    price: number | null;
 }
 
 interface ReportRow {

@@ -18,7 +18,13 @@ class Ingredient_city_provider extends Model
         'ingredient_id',
         'provider_id',
         'city_id',
-        'cost_price'
+        'cost_price',
+        'measurement_unit_id',
+        'is_active'
+    ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
     ];
 
     public function ingredient(): BelongsTo
