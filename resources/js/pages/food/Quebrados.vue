@@ -555,7 +555,7 @@ const loadRecipesIntoForm = (dish: Dish) => {
                         final_product: parseFloat(ing.final_product) || 0,
                         unit_price: parseFloat(ing.unit_price) || 0,
                         selected_unit: 'g',
-                        input_quantity: (parseFloat(ing.gross_weight) || 0).toFixed(2),
+                        input_quantity: (parseFloat(ing.gross_weight) || 0).toFixed(4),
                         originalValues: {
                             waste: ing.waste || fullIng?.waste || 0,
                             calories: calculateIngredientCalories(fullIng || ing),
@@ -565,6 +565,13 @@ const loadRecipesIntoForm = (dish: Dish) => {
                     return newIng;
                 }),
             };
+
+            // Los totales guardados están redondeados a 2 decimales; se recalculan desde
+            // las cantidades con precisión completa.
+            const loaded = form.recipes[levelId];
+            loaded.total_gross_weight = loaded.ingredients.reduce((sum: number, i: any) => sum + i.gross_weight, 0);
+            loaded.total_waste_weight = loaded.ingredients.reduce((sum: number, i: any) => sum + i.solid_waste, 0);
+            loaded.total_net_weight = loaded.ingredients.reduce((sum: number, i: any) => sum + i.final_product, 0);
         });
         activeLevelTab.value = form.mesearument_unit[0];
     } else {
@@ -1337,17 +1344,17 @@ onUnmounted(() => {
 
                                                 <!-- Materia Prima -->
                                                 <TableCell class="py-1.5 text-center font-mono text-zinc-700 dark:text-zinc-300">
-                                                    {{ Number(ingredient.gross_weight).toFixed(2) }} g
+                                                    {{ Number(ingredient.gross_weight).toFixed(4) }} g
                                                 </TableCell>
 
                                                 <!-- Desecho -->
                                                 <TableCell class="py-1.5 text-center font-mono text-orange-600 dark:text-orange-400">
-                                                    {{ Number(ingredient.solid_waste).toFixed(2) }} g
+                                                    {{ Number(ingredient.solid_waste).toFixed(4) }} g
                                                 </TableCell>
 
                                                 <!-- Producto Final -->
                                                 <TableCell class="py-1.5 text-center font-mono font-extrabold text-indigo-600 dark:text-indigo-400">
-                                                    {{ Number(ingredient.final_product).toFixed(2) }} g
+                                                    {{ Number(ingredient.final_product).toFixed(4) }} g
                                                 </TableCell>
 
                                                 <!-- Calorías -->
@@ -1424,7 +1431,7 @@ onUnmounted(() => {
                                 <div class="rounded-xl border border-zinc-200/80 bg-white p-2 text-center dark:border-zinc-800 dark:bg-zinc-900 shadow-2xs">
                                     <div class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Peso Bruto</div>
                                     <div class="mt-0.5 font-mono text-sm font-extrabold text-zinc-900 dark:text-zinc-100">
-                                        {{ Number(form.recipes[activeLevelTab].total_gross_weight).toFixed(2) }} <span class="text-[10px] font-normal text-zinc-400">g</span>
+                                        {{ Number(form.recipes[activeLevelTab].total_gross_weight).toFixed(4) }} <span class="text-[10px] font-normal text-zinc-400">g</span>
                                     </div>
                                 </div>
 
@@ -1432,7 +1439,7 @@ onUnmounted(() => {
                                 <div class="rounded-xl border border-amber-200/80 bg-amber-50/50 p-2 text-center dark:border-amber-900/40 dark:bg-amber-950/30 shadow-2xs">
                                     <div class="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">Mermas Totales</div>
                                     <div class="mt-0.5 font-mono text-sm font-extrabold text-amber-700 dark:text-amber-300">
-                                        {{ Number(form.recipes[activeLevelTab].total_waste_weight).toFixed(2) }} <span class="text-[10px] font-normal text-amber-600">g</span>
+                                        {{ Number(form.recipes[activeLevelTab].total_waste_weight).toFixed(4) }} <span class="text-[10px] font-normal text-amber-600">g</span>
                                     </div>
                                 </div>
 
@@ -1456,7 +1463,7 @@ onUnmounted(() => {
                                 <div class="rounded-xl border border-indigo-200/80 bg-indigo-50/50 p-2 text-center dark:border-indigo-900/40 dark:bg-indigo-950/30 shadow-2xs">
                                     <div class="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">Prod. Final</div>
                                     <div class="mt-0.5 font-mono text-sm font-extrabold text-indigo-700 dark:text-indigo-300">
-                                        {{ Number(form.recipes[activeLevelTab].total_net_weight).toFixed(2) }} <span class="text-[10px] font-normal text-indigo-600">g</span>
+                                        {{ Number(form.recipes[activeLevelTab].total_net_weight).toFixed(4) }} <span class="text-[10px] font-normal text-indigo-600">g</span>
                                     </div>
                                 </div>
                             </div>

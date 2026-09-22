@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Dish;
+use App\Models\Recipe;
 use App\Models\DishRecipe;
 use App\Models\Level;
 use Illuminate\Http\Request;
@@ -338,6 +339,8 @@ class DishController extends Controller
                 });
             }
         }
+
+        Recipe::applyPreciseQuantities($dishes);
 
         return $dishes;
     }
