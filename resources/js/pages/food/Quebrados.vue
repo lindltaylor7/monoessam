@@ -1321,7 +1321,7 @@ onUnmounted(() => {
                                                         v-model="ingredient.input_quantity"
                                                         @input="onWeightInput(ingredient)"
                                                         step="any"
-                                                        class="h-7 w-18 mx-auto rounded-lg border-zinc-200 text-center text-xs font-bold text-indigo-900 dark:text-indigo-200 dark:border-zinc-700 dark:bg-zinc-900 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
+                                                        class="h-7 w-24 px-1.5 mx-auto rounded-lg tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none border-zinc-200 text-center text-xs font-bold text-indigo-900 dark:text-indigo-200 dark:border-zinc-700 dark:bg-zinc-900 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
                                                     />
                                                 </TableCell>
 
