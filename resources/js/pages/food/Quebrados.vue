@@ -374,7 +374,12 @@ const calculateIngredientCalories = (ingredient: any) => {
         const fatFactor = parseFloat(atwaterFactor.fat_kcal) || 0;
         const carbFactor = parseFloat(atwaterFactor.carb_kcal) || 0;
 
-        return protein * proteinFactor + lipid * fatFactor + carbohydrate * carbFactor;
+        const atwaterCalories = protein * proteinFactor + lipid * fatFactor + carbohydrate * carbFactor;
+        // Un ingrediente con factor asignado pero sin macronutrientes cargados daría 0 kcal;
+        // en ese caso es preferible la energía de la tabla de composición.
+        if (atwaterCalories > 0) {
+            return atwaterCalories;
+        }
     }
 
     // Ingrediente sin factor Atwater asignado todavía: se conserva el cálculo anterior.
@@ -387,6 +392,15 @@ const calculateIngredientCalories = (ingredient: any) => {
         }, 0);
     }
     return ingredient?.dosification?.energy || ingredient?.energy || 0;
+};
+
+// Las calorías de la fila se derivan del valor por 100 g del ingrediente
+// (`originalValues.calories`) aplicado al producto final, porque las tablas de composición
+// expresan la energía por 100 g de parte comestible: la merma no aporta calorías.
+const caloriesFor = (ingredient: any) => {
+    const netWeight = parseFloat(ingredient?.final_product) || 0;
+    const caloriesPer100g = parseFloat(ingredient?.originalValues?.calories) || 0;
+    return (netWeight * caloriesPer100g) / 100;
 };
 
 // Modal de "Valores Nutricionales" accesible desde la fila del ingrediente, para editar sus
@@ -440,7 +454,7 @@ const submitRecipeDosification = async () => {
             const ing = recipe.ingredients[ingredientIndex];
             ing.dosification = response.data.dosification;
             ing.originalValues.calories = calculateIngredientCalories(ing);
-            ing.calories = (ing.gross_weight * ing.originalValues.calories) / 100;
+            ing.calories = caloriesFor(ing);
             recalculateTotals();
         }
 
@@ -545,33 +559,35 @@ const loadRecipesIntoForm = (dish: Dish) => {
                 total_net_weight: recipe.total_net_weight || 0,
                 ingredients: (recipe.ingredients || []).map((ing: any) => {
                     const fullIng = props.ingredients?.find((i) => i.id === ing.id);
+                    const grossWeight = parseFloat(ing.gross_weight) || 0;
+                    // Las recetas migradas guardan la cantidad en Kg (Recipe::applyPreciseQuantities
+                    // ya entrega los pesos en gramos y devuelve aquí el valor original con su unidad),
+                    // así que el input sigue mostrando el mismo número que está en la BD.
+                    const sourceQuantity = ing.source_quantity !== undefined && ing.source_quantity !== null ? parseFloat(ing.source_quantity) : null;
                     const newIng = {
                         ...ing,
-                        gross_weight: parseFloat(ing.gross_weight) || 0,
+                        gross_weight: grossWeight,
                         solid_waste: parseFloat(ing.solid_waste) || 0,
                         liquid_waste: parseFloat(ing.liquid_waste) || 0,
                         calories: parseFloat(ing.calories) || 0,
                         cost: parseFloat(ing.cost) || 0,
                         final_product: parseFloat(ing.final_product) || 0,
                         unit_price: parseFloat(ing.unit_price) || 0,
-                        selected_unit: 'g',
-                        input_quantity: (parseFloat(ing.gross_weight) || 0).toFixed(4),
+                        selected_unit: sourceQuantity !== null ? ing.source_unit || 'Kg' : 'g',
+                        input_quantity: (sourceQuantity !== null ? sourceQuantity : grossWeight).toFixed(4),
                         originalValues: {
                             waste: ing.waste || fullIng?.waste || 0,
                             calories: calculateIngredientCalories(fullIng || ing),
                         },
                     };
-                    newIng.calories = (newIng.gross_weight * newIng.originalValues.calories) / 100;
+                    newIng.calories = caloriesFor(newIng);
                     return newIng;
                 }),
             };
 
-            // Los totales guardados están redondeados a 2 decimales; se recalculan desde
-            // las cantidades con precisión completa.
-            const loaded = form.recipes[levelId];
-            loaded.total_gross_weight = loaded.ingredients.reduce((sum: number, i: any) => sum + i.gross_weight, 0);
-            loaded.total_waste_weight = loaded.ingredients.reduce((sum: number, i: any) => sum + i.solid_waste, 0);
-            loaded.total_net_weight = loaded.ingredients.reduce((sum: number, i: any) => sum + i.final_product, 0);
+            // Los totales guardados están redondeados a 2 decimales (y las calorías quedaron en 0
+            // en las recetas migradas); se recalculan desde las cantidades con precisión completa.
+            sumRecipeTotals(form.recipes[levelId]);
         });
         activeLevelTab.value = form.mesearument_unit[0];
     } else {
@@ -642,16 +658,20 @@ const deleteDish = (id: number) => {
     });
 };
 
+const sumRecipeTotals = (recipe: any) => {
+    if (!recipe) return;
+    const sum = (field: string) => recipe.ingredients.reduce((acc: number, i: any) => acc + (parseFloat(i[field]) || 0), 0);
+
+    recipe.total_gross_weight = sum('gross_weight');
+    recipe.total_waste_weight = sum('solid_waste');
+    recipe.total_calories = sum('calories');
+    recipe.total_cost = sum('cost');
+    recipe.total_net_weight = sum('final_product');
+};
+
 const recalculateTotals = () => {
     if (!activeLevelTab.value) return;
-    const recipe = form.recipes[activeLevelTab.value];
-    if (!recipe) return;
-
-    recipe.total_gross_weight = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.gross_weight) || 0), 0);
-    recipe.total_waste_weight = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.solid_waste) || 0), 0);
-    recipe.total_calories = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.calories) || 0), 0);
-    recipe.total_cost = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.cost) || 0), 0);
-    recipe.total_net_weight = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.final_product) || 0), 0);
+    sumRecipeTotals(form.recipes[activeLevelTab.value]);
 };
 
 let ingredientSearchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -753,11 +773,10 @@ const onWeightInput = (ingredient: any) => {
     ingredient.gross_weight = weightInGrams;
 
     const origWaste = parseFloat(ingredient.originalValues?.waste) || 0;
-    const origCalories = parseFloat(ingredient.originalValues?.calories) || 0;
 
     ingredient.solid_waste = (weightInGrams * origWaste) / 100;
     ingredient.final_product = weightInGrams - ingredient.solid_waste;
-    ingredient.calories = (ingredient.gross_weight * origCalories) / 100;
+    ingredient.calories = caloriesFor(ingredient);
 
     if (ingredient.unit_price) {
         ingredient.cost =
