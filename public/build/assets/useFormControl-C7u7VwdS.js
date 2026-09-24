@@ -1,0 +1,1 @@
+import{g as t}from"./useForwardExpose-C7xwWK3p.js";import{c as e,bC as m}from"./app-BnEWurei.js";function s(o){return e(()=>{var r;return m(o)?!!((r=t(o))!=null&&r.closest("form")):!0})}export{s as u};
