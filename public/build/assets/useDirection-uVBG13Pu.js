@@ -1,1 +1,0 @@
-import{i as r}from"./Teleport-B3sUToOO.js";import{l as n,c}from"./app-BagA2Lh8.js";function a(t){const e=r({dir:n("ltr")});return c(()=>{var o;return(t==null?void 0:t.value)||((o=e.dir)==null?void 0:o.value)||"ltr"})}export{a as u};
