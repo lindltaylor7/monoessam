@@ -321,6 +321,10 @@ class DishController extends Controller
 
         $dishes = $query->with([
                 'dish_categories',
+                // Con filtro de nivel, solo se devuelve la receta de ese nivel: el whereHas de arriba
+                // elige los platos, pero sin esto se listaban también sus recetas de los demás niveles.
+                // Va antes de las relaciones anidadas para que Eloquent use esta restricción.
+                'recipes' => fn ($q) => $levelId ? $q->where('level_id', $levelId) : $q,
                 'recipes.ingredients.assignments.provider',
                 'recipes.ingredients.assignments.city',
                 'recipes.ingredients.nutritionalFactors',

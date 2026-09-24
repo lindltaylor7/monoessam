@@ -1129,7 +1129,7 @@ const resetToNew = () => {
                                             <p class="mt-1 text-[11px] text-slate-600">
                                                 Categoría:
                                                 <span class="font-medium text-slate-800">{{
-                                                    dish.dish_categories?.[0]?.name || 'Sin Categoría'
+                                                    (searchCategory && dish.dish_categories?.find((c: any) => String(c.id) === String(searchCategory))?.name) || dish.dish_categories?.[0]?.name || 'Sin Categoría'
                                                 }}</span>
                                                 &bull; Nivel: <span class="font-medium text-slate-800">{{ recipe.level?.name || 'Sin Nivel' }}</span>
                                             </p>
@@ -1166,7 +1166,7 @@ const resetToNew = () => {
                                             <p class="mt-1 text-xs text-slate-600">
                                                 Categoría:
                                                 <span class="font-medium text-slate-800">{{
-                                                    dish.dish_categories?.[0]?.name || 'Sin Categoría'
+                                                    (searchCategory && dish.dish_categories?.find((c: any) => String(c.id) === String(searchCategory))?.name) || dish.dish_categories?.[0]?.name || 'Sin Categoría'
                                                 }}</span>
                                                 &bull; Nivel: <span class="font-medium text-slate-400">Sin Nivel</span>
                                             </p>
