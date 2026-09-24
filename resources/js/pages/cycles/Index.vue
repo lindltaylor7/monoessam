@@ -134,12 +134,26 @@ const isRepeated = (rowId: any, dayIndex: number) => {
     return repeatedDishes.value.some((r) => r.rowId === rowId && r.dayIndex === dayIndex);
 };
 
+// PHP devuelve un `days` vacío como `[]` (array JSON, no objeto). Si luego se asignan platos a esa
+// fila, JS los guarda en un array con huecos y al guardarse viajan como `[null, {...}, ...]`; al
+// recargar esos `null` rompían el render de la fila (desaparecía de la tabla). Se normaliza siempre
+// a un objeto { día: plato } sin entradas vacías.
+const normalizeDays = (days: any): Record<string, any> => {
+    const result: Record<string, any> = {};
+    Object.entries(days || {}).forEach(([key, value]) => {
+        if (value) result[key] = value;
+    });
+    return result;
+};
+
+const normalizeCycleRows = (rows: any[]) => (rows || []).map((row: any) => ({ ...row, days: normalizeDays(row.days) }));
+
 const copyCycle = (cycle: any) => {
     activeCycleId.value = cycle.id;
     activeCycleName.value = cycle.name || '';
     inputDays.value = cycle.days;
     generatedDays.value = cycle.days;
-    menuStructureData.value = JSON.parse(JSON.stringify(cycle.cycle_data));
+    menuStructureData.value = normalizeCycleRows(JSON.parse(JSON.stringify(cycle.cycle_data)));
     repeatedDishes.value = [];
     isSavedCyclesModalOpen.value = false;
     isServiceCyclesModalOpen.value = false;
@@ -160,7 +174,7 @@ const compareCycle = (cycle: any) => {
         if (currentRow) {
             Object.keys(currentRow.days).forEach((dayKey) => {
                 const currentDay = currentRow.days[dayKey];
-                const compareDay = compareRow.days[dayKey];
+                const compareDay = compareRow.days?.[dayKey];
                 if (currentDay && compareDay && currentDay.dish_id === compareDay.dish_id) {
                     repeatedDishes.value.push({ rowId: currentRow.id, dayIndex: parseInt(dayKey) });
                     matchCount++;
@@ -204,7 +218,7 @@ const applyStructure = (structure: any, newId: string) => {
                 dishCategoryId: cost.dish_category_id,
                 costValue: parseFloat(cost.total_cost || 0),
                 costValueMax: parseFloat(cost.total_cost_superior || 0),
-                days: savedRow?.days || {},
+                days: normalizeDays(savedRow?.days),
             };
         });
         return;
@@ -407,7 +421,7 @@ const getRowStatus = (row: any) => {
 
     let totalAssignedCost = 0;
     days.forEach((day) => {
-        totalAssignedCost += parseFloat(day.price || 0);
+        totalAssignedCost += parseFloat(day?.price || 0);
     });
 
     const averageCost = totalAssignedCost / days.length;
@@ -467,7 +481,7 @@ const chartStats = computed(() => {
         value = day ? parseFloat(day.price || 0) : 0;
     } else {
         const days = Object.values(chartRow.value.days || {}) as any[];
-        const total = days.reduce((sum: number, d: any) => sum + parseFloat(d.price || 0), 0);
+        const total = days.reduce((sum: number, d: any) => sum + parseFloat(d?.price || 0), 0);
         value = days.length ? total / days.length : 0;
     }
 
@@ -753,7 +767,7 @@ const saveCycle = async () => {
                 serviceable_id: selectedServiceableId.value,
                 name: name,
                 days: generatedDays.value,
-                cycle_data: menuStructureData.value,
+                cycle_data: normalizeCycleRows(menuStructureData.value),
             },
             {
                 preserveScroll: true,
