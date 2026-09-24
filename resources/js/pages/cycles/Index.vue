@@ -47,6 +47,53 @@ const serviceCyclesToSelect = ref<any[]>([]);
 const isStructureSelectModalOpen = ref(false);
 const structuresToSelect = ref<any[]>([]);
 
+// Filtros y paginación del modal "Seleccionar Ciclo" (un servicio puede acumular muchos ciclos).
+const CYCLES_PER_PAGE = 5;
+const cycleSearch = ref('');
+const cycleDateFrom = ref('');
+const cycleDateTo = ref('');
+const cyclePage = ref(1);
+
+// Fecha local YYYY-MM-DD, comparable con el valor de los <input type="date">.
+const toLocalDate = (value: string) => {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '';
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const filteredServiceCycles = computed(() => {
+    const term = cycleSearch.value.trim().toLowerCase();
+    return serviceCyclesToSelect.value.filter((cycle) => {
+        if (term && !(cycle.name || 'Ciclo sin nombre').toLowerCase().includes(term)) return false;
+        const date = toLocalDate(cycle.updated_at);
+        if (cycleDateFrom.value && date < cycleDateFrom.value) return false;
+        if (cycleDateTo.value && date > cycleDateTo.value) return false;
+        return true;
+    });
+});
+
+const cycleTotalPages = computed(() => Math.max(1, Math.ceil(filteredServiceCycles.value.length / CYCLES_PER_PAGE)));
+
+const paginatedServiceCycles = computed(() => {
+    const start = (cyclePage.value - 1) * CYCLES_PER_PAGE;
+    return filteredServiceCycles.value.slice(start, start + CYCLES_PER_PAGE);
+});
+
+watch([cycleSearch, cycleDateFrom, cycleDateTo], () => {
+    cyclePage.value = 1;
+});
+
+const clearCycleFilters = () => {
+    cycleSearch.value = '';
+    cycleDateFrom.value = '';
+    cycleDateTo.value = '';
+};
+
+watch(serviceCyclesToSelect, () => {
+    clearCycleFilters();
+    cyclePage.value = 1;
+});
+
 // Table configuration state
 const inputDays = ref<number>(7);
 const generatedDays = ref<number>(7);
@@ -1217,10 +1264,39 @@ const resetToNew = () => {
                         Se han encontrado múltiples ciclos para este servicio. Por favor, seleccione cuál desea cargar.
                     </p>
                 </DialogHeader>
+                <div class="flex flex-col gap-2 border-b border-slate-100 bg-white px-6 py-3 sm:flex-row sm:items-end">
+                    <div class="relative flex-1">
+                        <Search class="absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <Input v-model="cycleSearch" placeholder="Buscar por nombre..." class="h-9 pl-8 text-sm" />
+                    </div>
+                    <div class="flex items-end gap-2">
+                        <div class="flex flex-col gap-0.5">
+                            <span class="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Desde</span>
+                            <Input v-model="cycleDateFrom" type="date" class="h-9 w-[140px] text-sm" />
+                        </div>
+                        <div class="flex flex-col gap-0.5">
+                            <span class="text-[10px] font-semibold tracking-wider text-slate-400 uppercase">Hasta</span>
+                            <Input v-model="cycleDateTo" type="date" class="h-9 w-[140px] text-sm" />
+                        </div>
+                        <Button
+                            v-if="cycleSearch || cycleDateFrom || cycleDateTo"
+                            size="icon"
+                            variant="ghost"
+                            class="h-9 w-9 shrink-0 text-slate-400 hover:text-slate-700"
+                            title="Limpiar filtros"
+                            @click="clearCycleFilters"
+                        >
+                            <X class="h-4 w-4" />
+                        </Button>
+                    </div>
+                </div>
                 <div class="max-h-[400px] overflow-y-auto bg-slate-50/30 p-6">
+                    <p v-if="filteredServiceCycles.length === 0" class="py-8 text-center text-sm text-slate-400">
+                        No se encontraron ciclos con esos filtros.
+                    </p>
                     <ul class="divide-y divide-slate-200/60">
                         <li
-                            v-for="cycle in serviceCyclesToSelect"
+                            v-for="cycle in paginatedServiceCycles"
                             :key="cycle.id"
                             class="mb-2 flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-transparent bg-white/50 px-4 py-4 transition-all hover:border-blue-100 hover:bg-white hover:shadow-sm"
                             @click="copyCycle(cycle)"
@@ -1247,6 +1323,22 @@ const resetToNew = () => {
                             </Button>
                         </li>
                     </ul>
+                </div>
+                <div
+                    v-if="filteredServiceCycles.length > 0"
+                    class="flex items-center justify-between gap-2 border-t border-slate-100 bg-white px-6 py-3 text-xs text-slate-500"
+                >
+                    <span>
+                        {{ (cyclePage - 1) * CYCLES_PER_PAGE + 1 }}–{{ Math.min(cyclePage * CYCLES_PER_PAGE, filteredServiceCycles.length) }} de
+                        {{ filteredServiceCycles.length }} ciclos
+                    </span>
+                    <div class="flex items-center gap-2">
+                        <Button size="sm" variant="outline" class="h-8" :disabled="cyclePage <= 1" @click="cyclePage--">Anterior</Button>
+                        <span class="font-medium text-slate-700">{{ cyclePage }} / {{ cycleTotalPages }}</span>
+                        <Button size="sm" variant="outline" class="h-8" :disabled="cyclePage >= cycleTotalPages" @click="cyclePage++">
+                            Siguiente
+                        </Button>
+                    </div>
                 </div>
             </DialogContent>
         </Dialog>
