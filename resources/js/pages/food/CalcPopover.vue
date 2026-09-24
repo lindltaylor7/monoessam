@@ -24,10 +24,16 @@ const props = defineProps<{
 const emits = defineEmits(['calcMassiveProperties']);
 
 const ingredientSelected = ref(props.ingredient);
-const providerSelected = ref<string | number>(0);
-const priceSelected = ref(0.0);
-const priceUeGr = ref(0.0);
-const baseCost = ref(0.0);
+// Arranca con el precio que ya tiene la fila (por defecto el del proveedor activo) y preselecciona
+// la asignación que lo origina, para que recalcular aquí no deje el costo base en 0.
+const initialPrice = parseFloat(props.ingredient?.unit_price) || 0;
+const initialAssignment =
+    props.ingredient?.assignments?.find((a: any) => a.is_active && parseFloat(a.cost_price) === initialPrice) ??
+    props.ingredient?.assignments?.find((a: any) => parseFloat(a.cost_price) === initialPrice);
+const providerSelected = ref<string | number>(initialPrice && initialAssignment ? initialAssignment.id : 0);
+const priceSelected = ref(initialPrice);
+const priceUeGr = ref(initialPrice / 1000);
+const baseCost = ref(parseFloat(props.ingredient?.cost) || 0);
 const baseCostPercentage = ref(0.0);
 const finalProduct = ref(0.0);
 const finalProductPercentage = ref(0.0);

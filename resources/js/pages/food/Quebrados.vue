@@ -397,6 +397,13 @@ const calculateIngredientCalories = (ingredient: any) => {
 // Las calorías de la fila se derivan del valor por 100 g del ingrediente
 // (`originalValues.calories`) aplicado al producto final, porque las tablas de composición
 // expresan la energía por 100 g de parte comestible: la merma no aporta calorías.
+// Precio por defecto del insumo: el costo del proveedor marcado como activo en la asignación
+// ingrediente-ciudad-proveedor (se expresa por Kg, igual que `unit_price`).
+const activeProviderPrice = (ingredient: any) => {
+    const active = ingredient?.assignments?.find((a: any) => a.is_active && parseFloat(a.cost_price) > 0);
+    return active ? parseFloat(active.cost_price) : 0;
+};
+
 const caloriesFor = (ingredient: any) => {
     const netWeight = parseFloat(ingredient?.final_product) || 0;
     const caloriesPer100g = parseFloat(ingredient?.originalValues?.calories) || 0;
@@ -580,6 +587,11 @@ const loadRecipesIntoForm = (dish: Dish) => {
                             calories: calculateIngredientCalories(fullIng || ing),
                         },
                     };
+                    // Sin precio guardado, el costo base toma el del proveedor activo.
+                    if (!newIng.unit_price) {
+                        newIng.unit_price = activeProviderPrice(fullIng || ing);
+                        newIng.cost = (grossWeight / 1000) * newIng.unit_price;
+                    }
                     newIng.calories = caloriesFor(newIng);
                     return newIng;
                 }),
@@ -734,7 +746,7 @@ const selectIngredient = (ingredient: Ingredient) => {
         calories: 0,
         cost: 0,
         final_product: 0,
-        unit_price: 0,
+        unit_price: activeProviderPrice(ingredient),
     };
     recipe.ingredients.push(newIng);
     ingredientsFounded.value = [];
