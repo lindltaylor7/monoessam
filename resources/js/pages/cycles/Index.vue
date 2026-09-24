@@ -1231,6 +1231,7 @@ const resetToNew = () => {
                                 </div>
                                 <div>
                                     <p class="text-sm font-bold text-slate-800">{{ cycle.name || 'Ciclo sin nombre' }}</p>
+                                    <p class="mt-0.5 text-[11px] font-medium text-slate-600">{{ getServiceName(cycle.serviceable_id) }}</p>
                                     <p class="mt-0.5 text-[11px] text-slate-500">
                                         ID: {{ cycle.id }} &bull; {{ cycle.days }} días &bull; Actualizado:
                                         {{ new Date(cycle.updated_at).toLocaleDateString() }}
