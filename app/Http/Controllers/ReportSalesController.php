@@ -106,15 +106,19 @@ class ReportSalesController extends Controller
         // Paginar resultados
         $sales = $salesQuery->paginate(15)->withQueryString();
 
-        // Calcular estadísticas
-        $statsBase = Sale::query()
-            ->whereIn('cafe_id', $cafeIds)
-            ->whereBetween('date', [$startDate, $endDate])
-            ->when(!empty($selectedCafeIds), fn($q) => $q->whereIn('cafe_id', $selectedCafeIds))
-            ->when($subdealershipFilter, $applySubdealershipFilter);
+        // Calcular estadísticas optimizadas reutilizando el total del paginador
+        $totalSales  = $sales->total();
+        $totalAmount = 0.0;
 
-        $totalAmount = (clone $statsBase)->sum('total');
-        $totalSales  = (clone $statsBase)->count();
+        if ($totalSales > 0) {
+            $statsBase = Sale::query()
+                ->whereIn('cafe_id', $cafeIds)
+                ->whereBetween('date', [$startDate, $endDate])
+                ->when(!empty($selectedCafeIds), fn($q) => $q->whereIn('cafe_id', $selectedCafeIds))
+                ->when($subdealershipFilter, $applySubdealershipFilter);
+
+            $totalAmount = (float) $statsBase->sum('total');
+        }
 
         return Inertia::render('reportsales/Index', [
             'sales'           => $sales,
