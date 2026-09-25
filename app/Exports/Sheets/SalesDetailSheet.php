@@ -155,27 +155,4 @@ class SalesDetailSheet implements FromQuery, WithHeadings, WithMapping, WithStyl
         $sheet->getColumnDimension('H')->setWidth(8);
         $sheet->getColumnDimension('I')->setWidth(12);
     }
-
-    public function sheets(): array
-    {
-        $targetCafeIds = !empty($this->selectedCafeIds) ? $this->selectedCafeIds : $this->cafeIds;
-
-        return [
-            new SalesDetailSheet(
-                $targetCafeIds,
-                $this->startDate,
-                $this->endDate,
-                $this->cafeName,
-                $this->subdealershipId
-            ),
-            new SalesPivotSheet(
-                $this->rows,
-                $this->startDate,
-                $this->endDate,
-                $this->cafeName,
-                $this->subdealershipId,
-                $this->mineId
-            ),
-        ];
-    }
 }
