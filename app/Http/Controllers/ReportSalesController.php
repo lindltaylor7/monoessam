@@ -411,7 +411,7 @@ class ReportSalesController extends Controller
             $cafeIds,
             $cafeName,
             $user->mine_id
-        ))->store($fileName);
+        ))->queue($fileName);
 
         return response()->json([
             'message' => 'El reporte se está procesando. Estará listo en un momento.',

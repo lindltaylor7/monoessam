@@ -2,8 +2,9 @@
 
 namespace App\Exports\Sheets;
 
+use App\Models\Subdealership;
 use Carbon\Carbon;
-use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\WithChunkReading;
 use Maatwebsite\Excel\Concerns\WithCustomStartCell;
@@ -21,10 +22,11 @@ class SalesDetailSheet implements FromQuery, WithHeadings, WithMapping, WithStyl
     private int $rowNumber = 0;
 
     public function __construct(
-        private readonly Builder $query,
+        private readonly array   $targetCafeIds,
         private readonly string  $startDate,
         private readonly string  $endDate,
         private readonly string  $cafeName,
+        private readonly ?int    $subdealershipId = null,
     ) {}
 
     public function startCell(): string
@@ -34,7 +36,36 @@ class SalesDetailSheet implements FromQuery, WithHeadings, WithMapping, WithStyl
 
     public function query()
     {
-        return $this->query;
+        $sdName = null;
+        if ($this->subdealershipId) {
+            $sdName = Subdealership::where('id', $this->subdealershipId)->value('name');
+        }
+
+        $query = DB::table('sales')
+            ->join('tickets', 'tickets.sale_id', '=', 'sales.id')
+            ->join('ticket_details', 'ticket_details.ticket_id', '=', 'tickets.id')
+            ->whereIn('sales.cafe_id', $this->targetCafeIds)
+            ->whereBetween('sales.date', [$this->startDate, $this->endDate])
+            ->select([
+                'tickets.subdealership_name',
+                'tickets.dinner_name',
+                'tickets.dni',
+                'sales.date as sale_date',
+                'sales.created_at as sale_created_at',
+                'ticket_details.service_name',
+                'ticket_details.code',
+                'ticket_details.service_type',
+                'ticket_details.amount',
+                'ticket_details.unit_price',
+            ])
+            ->orderBy('sales.date')
+            ->orderBy('sales.created_at');
+
+        if ($sdName) {
+            $query->where('tickets.subdealership_name', $sdName);
+        }
+
+        return $query;
     }
 
     public function chunkSize(): int
@@ -88,7 +119,6 @@ class SalesDetailSheet implements FromQuery, WithHeadings, WithMapping, WithStyl
         $fmt = fn(string $d) => Carbon::parse($d)->translatedFormat('d \d\e F \d\e Y');
         $lastCol = 'I';
 
-        // Títulos superiores en filas 1 y 2
         $sheet->setCellValue('A1', 'CAFETERÍA: ' . strtoupper($this->cafeName));
         $sheet->setCellValue('A2', 'Período: ' . $fmt($this->startDate) . ' — ' . $fmt($this->endDate));
 
@@ -107,7 +137,6 @@ class SalesDetailSheet implements FromQuery, WithHeadings, WithMapping, WithStyl
         ]);
         $sheet->getRowDimension(2)->setRowHeight(16);
 
-        // Cabecera en fila 4
         $sheet->getStyle("A4:{$lastCol}4")->applyFromArray([
             'font'      => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 10],
             'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '1E3A5F']],
@@ -116,7 +145,6 @@ class SalesDetailSheet implements FromQuery, WithHeadings, WithMapping, WithStyl
         ]);
         $sheet->getRowDimension(4)->setRowHeight(22);
 
-        // Anchos de columna
         $sheet->getColumnDimension('A')->setWidth(6);
         $sheet->getColumnDimension('B')->setWidth(24);
         $sheet->getColumnDimension('C')->setWidth(32);
@@ -126,5 +154,28 @@ class SalesDetailSheet implements FromQuery, WithHeadings, WithMapping, WithStyl
         $sheet->getColumnDimension('G')->setWidth(26);
         $sheet->getColumnDimension('H')->setWidth(8);
         $sheet->getColumnDimension('I')->setWidth(12);
+    }
+
+    public function sheets(): array
+    {
+        $targetCafeIds = !empty($this->selectedCafeIds) ? $this->selectedCafeIds : $this->cafeIds;
+
+        return [
+            new SalesDetailSheet(
+                $targetCafeIds,
+                $this->startDate,
+                $this->endDate,
+                $this->cafeName,
+                $this->subdealershipId
+            ),
+            new SalesPivotSheet(
+                $this->rows,
+                $this->startDate,
+                $this->endDate,
+                $this->cafeName,
+                $this->subdealershipId,
+                $this->mineId
+            ),
+        ];
     }
 }
