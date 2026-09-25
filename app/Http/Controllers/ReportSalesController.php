@@ -401,12 +401,22 @@ class ReportSalesController extends Controller
         }
 
         // Standaard Excel-export (bevat enkel de werkende samenvatting of geoptimaliseerde export)
-        $fileName = 'detalle-consumo-' . $startDate . '-a-' . $endDate . '.xlsx';
+        $fileName = 'exports/detalle-' . time() . '.xlsx';
 
-        return Excel::download(
-            new SalesDetailExport($startDate, $endDate, $selectedCafeIds, $sdId, $cafeIds, $cafeName, $user->mine_id),
-            $fileName,
-        );
+        (new SalesDetailExport(
+            $startDate,
+            $endDate,
+            $selectedCafeIds,
+            $sdId,
+            $cafeIds,
+            $cafeName,
+            $user->mine_id
+        ))->store($fileName);
+
+        return response()->json([
+            'message' => 'El reporte se está procesando. Estará listo en un momento.',
+            'file' => $fileName
+        ]);
     }
 
     /**
