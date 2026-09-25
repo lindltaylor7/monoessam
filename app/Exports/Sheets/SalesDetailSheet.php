@@ -4,7 +4,6 @@ namespace App\Exports\Sheets;
 
 use Carbon\Carbon;
 use Maatwebsite\Excel\Concerns\FromArray;
-use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -12,7 +11,7 @@ use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class SalesDetailSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitle
+class SalesDetailSheet implements FromArray, WithStyles, WithTitle
 {
     private array $dataRows  = [];
     private const DATA_START = 5;
@@ -43,9 +42,9 @@ class SalesDetailSheet implements FromArray, ShouldAutoSize, WithStyles, WithTit
     public function array(): array
     {
         $fmt        = fn(string $d) => Carbon::parse($d)->translatedFormat('d \d\e F \d\e Y');
-        $totalQty   = array_sum(array_column($this->dataRows, 6));
+        $totalQty   = array_sum(array_column($this->dataRows, 7));
         $totalPrice = array_sum(
-            array_map(fn($r) => (float) str_replace(',', '', $r[7] ?? '0'), $this->dataRows)
+            array_map(fn($r) => (float) str_replace(',', '', $r[8] ?? '0'), $this->dataRows)
         );
 
         return array_merge(
@@ -69,6 +68,7 @@ class SalesDetailSheet implements FromArray, ShouldAutoSize, WithStyles, WithTit
         $totalsRow   = $lastDataRow + 1;
         $lastCol     = 'I';
 
+        // Títulos y encabezados
         $sheet->mergeCells("A1:{$lastCol}1");
         $sheet->mergeCells("A2:{$lastCol}2");
         $sheet->mergeCells("A3:{$lastCol}3");
@@ -85,6 +85,7 @@ class SalesDetailSheet implements FromArray, ShouldAutoSize, WithStyles, WithTit
         ]);
         $sheet->getRowDimension(2)->setRowHeight(16);
 
+        // Cabecera de la tabla
         $sheet->getStyle("A4:{$lastCol}4")->applyFromArray([
             'font'      => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 10],
             'fill'      => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '1E3A5F']],
@@ -93,34 +94,30 @@ class SalesDetailSheet implements FromArray, ShouldAutoSize, WithStyles, WithTit
         ]);
         $sheet->getRowDimension(4)->setRowHeight(22);
 
+        // Filas de datos en una sola operación por rangos (sin bucles individuales)
         if ($lastDataRow >= self::DATA_START) {
             $sheet->getStyle("A" . self::DATA_START . ":{$lastCol}{$lastDataRow}")->applyFromArray([
                 'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'E2E8F0']]],
                 'font'    => ['size' => 9],
             ]);
-            for ($r = self::DATA_START; $r <= $lastDataRow; $r++) {
-                if ($r % 2 === 0) {
-                    $sheet->getStyle("A{$r}:{$lastCol}{$r}")->getFill()
-                        ->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('F8FAFC');
-                }
-                // A=N°, D=DNI, E=FECHA, F=HORA, H=CANT. → centrados
-                foreach (['A', 'D', 'E', 'F', 'H'] as $col) {
-                    $sheet->getStyle("{$col}{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                }
-                $sheet->getStyle("I{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
-            }
+
+            // Alineación por columnas enteras
+            $sheet->getStyle("A" . self::DATA_START . ":A{$lastDataRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle("D" . self::DATA_START . ":F{$lastDataRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle("H" . self::DATA_START . ":H{$lastDataRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+            $sheet->getStyle("I" . self::DATA_START . ":I{$lastDataRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
         }
 
+        // Fila de totales
         $sheet->getStyle("A{$totalsRow}:{$lastCol}{$totalsRow}")->applyFromArray([
             'font'    => ['bold' => true, 'size' => 10],
             'fill'    => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'DBEAFE']],
             'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'BFDBFE']]],
         ]);
-        $sheet->getStyle("G{$totalsRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle("H{$totalsRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("G{$totalsRow}:H{$totalsRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
         $sheet->getStyle("I{$totalsRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
 
-        // A=N°, B=SUBCONCESIONARIA, C=APELLIDOS Y NOMBRES, D=DNI, E=FECHA, F=HORA, G=SERVICIO, H=CANT., I=PRECIO
+        // Anchos de columna fijos (reemplaza ShouldAutoSize)
         $sheet->getColumnDimension('A')->setWidth(6);
         $sheet->getColumnDimension('B')->setWidth(24);
         $sheet->getColumnDimension('C')->setWidth(32);
