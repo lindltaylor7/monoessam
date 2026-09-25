@@ -318,6 +318,12 @@ class ReportSalesController extends Controller
      */
     public function exportDetail(Request $request)
     {
+        // Un rango amplio genera una hoja de detalle de decenas de miles de filas más
+        // la matriz cruzada de comensales; el límite por defecto de PHP corta a mitad
+        // de la escritura y el navegador recibe un archivo truncado.
+        ini_set('max_execution_time', 0);
+        ini_set('memory_limit', '1G');
+
         /** @var \App\Models\User $user */
         $user = Auth::user();
         $user->load(['units.cafes', 'mine']);
