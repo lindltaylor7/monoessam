@@ -29,6 +29,10 @@ export function useHeadcountSelection(mines: Mine[]) {
             } else {
                 selectedUnits.value = [];
             }
+            // Al cambiar de mina, una unidad que no le pertenece deja de estar seleccionada.
+            if (newVal.unit && !selectedUnits.value.some((unit) => String(unit.id) === String(newVal.unit))) {
+                newVal.unit = null;
+            }
 
             // Cambió la unidad
             if (newVal.unit) {
@@ -38,6 +42,10 @@ export function useHeadcountSelection(mines: Mine[]) {
             } else {
                 selectedCafes.value = [];
             }
+            // Un comedor de otra unidad ya no es válido: se limpia para no arrastrar su servicio.
+            if (newVal.cafe && !selectedCafes.value.some((cafe) => String(cafe.id) === String(newVal.cafe))) {
+                newVal.cafe = null;
+            }
 
             // Cambió el comedor
             if (newVal.cafe) {
@@ -46,6 +54,11 @@ export function useHeadcountSelection(mines: Mine[]) {
                 selectedServices.value = cafeSelected ? (cafeSelected as any).services || [] : [];
             } else {
                 selectedServices.value = [];
+            }
+            // El servicio se identifica por el id del pivote comedor-servicio: si no es de este comedor,
+            // se limpia (si no, seguiría cargando/guardando ciclos y estructuras del comedor anterior).
+            if (newVal.service && !selectedServices.value.some((service) => String(service.pivot?.id) === String(newVal.service))) {
+                newVal.service = null;
             }
         },
         { deep: true },

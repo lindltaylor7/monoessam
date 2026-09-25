@@ -137,6 +137,28 @@ class ProviderController extends Controller
         return to_route('providers.index');
     }
 
+    public function toggleActiveAssignment(Request $request, $id)
+    {
+        $request->validate([
+            'is_active' => 'required|boolean',
+        ]);
+
+        $assignment = Ingredient_city_provider::findOrFail($id);
+
+        DB::transaction(function () use ($assignment, $request) {
+            if ($request->boolean('is_active')) {
+                Ingredient_city_provider::where('ingredient_id', $assignment->ingredient_id)
+                    ->where('city_id', $assignment->city_id)
+                    ->where('id', '!=', $assignment->id)
+                    ->update(['is_active' => false]);
+            }
+
+            $assignment->update(['is_active' => $request->boolean('is_active')]);
+        });
+
+        return redirect()->back();
+    }
+
     public function importAssignment(Request $request)
     {
         $request->validate([

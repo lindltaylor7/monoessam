@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Dish;
+use App\Models\Recipe;
 use App\Models\DishRecipe;
 use App\Models\Level;
 use Illuminate\Http\Request;
@@ -57,12 +58,23 @@ class DishController extends Controller
             if (!is_array($levelIds)) {
                 $levelIds = [$levelIds];
             }
+            // Un nivel repetido en la petición chocaría con dish_recipes_dish_level_unique.
+            $levelIds = array_values(array_unique(array_filter($levelIds, fn ($id) => $id !== null && $id !== ''), SORT_NUMERIC));
 
             $recipesData = $request->input('recipes', []);
 
+            // El plato es nuevo, así que cualquier receta que ya apunte a su id es huérfana: quedó de un
+            // plato borrado sin cascada y cuyo id se reutilizó. Si no se limpia, el insert falla con
+            // "Duplicate entry '<dish>-<level>' for key dish_recipes_dish_level_unique".
+            DishRecipe::where('dish_id', $dish->id)->get()->each(function (DishRecipe $orphan) {
+                $orphan->ingredients()->detach();
+                DB::table('dish_recipe_levels')->where('dish_recipe_id', $orphan->id)->delete();
+                $orphan->delete();
+            });
+
             foreach ($levelIds as $levelId) {
                 $levelRecipe = $recipesData[$levelId] ?? [];
-                
+
                 $recipe = DishRecipe::create([
                     'dish_id' => $dish->id,
                     'level_id' => $levelId,
@@ -309,6 +321,10 @@ class DishController extends Controller
 
         $dishes = $query->with([
                 'dish_categories',
+                // Con filtro de nivel, solo se devuelve la receta de ese nivel: el whereHas de arriba
+                // elige los platos, pero sin esto se listaban también sus recetas de los demás niveles.
+                // Va antes de las relaciones anidadas para que Eloquent use esta restricción.
+                'recipes' => fn ($q) => $levelId ? $q->where('level_id', $levelId) : $q,
                 'recipes.ingredients.assignments.provider',
                 'recipes.ingredients.assignments.city',
                 'recipes.ingredients.nutritionalFactors',
@@ -338,6 +354,8 @@ class DishController extends Controller
                 });
             }
         }
+
+        Recipe::applyPreciseQuantities($dishes);
 
         return $dishes;
     }

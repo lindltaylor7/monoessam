@@ -34,6 +34,15 @@ class MenuCycleController extends Controller
             'cycle_data' => 'required|array',
         ]);
 
+        // Quita los días vacíos (null) de cada fila conservando el número de día como clave, para que
+        // `days` no se guarde como lista [null, {...}] que luego rompe la tabla al cargar el ciclo.
+        $validated['cycle_data'] = array_map(function ($row) {
+            if (is_array($row) && isset($row['days']) && is_array($row['days'])) {
+                $row['days'] = array_filter($row['days'], fn ($day) => !empty($day));
+            }
+            return $row;
+        }, $validated['cycle_data']);
+
         try {
             DB::beginTransaction();
 

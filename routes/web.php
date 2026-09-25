@@ -295,6 +295,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::delete('{id}', [ProviderController::class, 'destroy'])->name('destroy');
         Route::post('assign', [ProviderController::class, 'assign'])->name('assign');
         Route::put('assign/{id}', [ProviderController::class, 'updateAssignment'])->name('assign.update');
+        Route::patch('assign/{id}/active', [ProviderController::class, 'toggleActiveAssignment'])->name('assign.toggle-active');
         Route::delete('assign/{id}', [ProviderController::class, 'deleteAssignment'])->name('assign.destroy');
         Route::post('import', [ProviderController::class, 'importAssignment'])->name('import');
         Route::post('import-ids', [ProviderController::class, 'importWithIds'])->name('import-ids');
@@ -501,6 +502,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('dosificacion-pdf', [PlanningController::class, 'dosificacionPdf'])->name('dosificacion-pdf');
         Route::get('menu-excel', [PlanningController::class, 'menuExcel'])->name('menu-excel');
         Route::get('orden-pedido-excel', [PlanningController::class, 'purchaseOrderExcel'])->name('orden-pedido-excel');
+        Route::get('reporte-compras', [PlanningController::class, 'purchaseReport'])->name('reporte-compras');
     });
 
     Route::prefix('purchase-orders')->name('purchase_orders.')->group(function () {

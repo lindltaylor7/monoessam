@@ -374,7 +374,12 @@ const calculateIngredientCalories = (ingredient: any) => {
         const fatFactor = parseFloat(atwaterFactor.fat_kcal) || 0;
         const carbFactor = parseFloat(atwaterFactor.carb_kcal) || 0;
 
-        return protein * proteinFactor + lipid * fatFactor + carbohydrate * carbFactor;
+        const atwaterCalories = protein * proteinFactor + lipid * fatFactor + carbohydrate * carbFactor;
+        // Un ingrediente con factor asignado pero sin macronutrientes cargados daría 0 kcal;
+        // en ese caso es preferible la energía de la tabla de composición.
+        if (atwaterCalories > 0) {
+            return atwaterCalories;
+        }
     }
 
     // Ingrediente sin factor Atwater asignado todavía: se conserva el cálculo anterior.
@@ -387,6 +392,22 @@ const calculateIngredientCalories = (ingredient: any) => {
         }, 0);
     }
     return ingredient?.dosification?.energy || ingredient?.energy || 0;
+};
+
+// Las calorías de la fila se derivan del valor por 100 g del ingrediente
+// (`originalValues.calories`) aplicado al producto final, porque las tablas de composición
+// expresan la energía por 100 g de parte comestible: la merma no aporta calorías.
+// Precio por defecto del insumo: el costo del proveedor marcado como activo en la asignación
+// ingrediente-ciudad-proveedor (se expresa por Kg, igual que `unit_price`).
+const activeProviderPrice = (ingredient: any) => {
+    const active = ingredient?.assignments?.find((a: any) => a.is_active && parseFloat(a.cost_price) > 0);
+    return active ? parseFloat(active.cost_price) : 0;
+};
+
+const caloriesFor = (ingredient: any) => {
+    const netWeight = parseFloat(ingredient?.final_product) || 0;
+    const caloriesPer100g = parseFloat(ingredient?.originalValues?.calories) || 0;
+    return (netWeight * caloriesPer100g) / 100;
 };
 
 // Modal de "Valores Nutricionales" accesible desde la fila del ingrediente, para editar sus
@@ -440,7 +461,7 @@ const submitRecipeDosification = async () => {
             const ing = recipe.ingredients[ingredientIndex];
             ing.dosification = response.data.dosification;
             ing.originalValues.calories = calculateIngredientCalories(ing);
-            ing.calories = (ing.gross_weight * ing.originalValues.calories) / 100;
+            ing.calories = caloriesFor(ing);
             recalculateTotals();
         }
 
@@ -545,26 +566,40 @@ const loadRecipesIntoForm = (dish: Dish) => {
                 total_net_weight: recipe.total_net_weight || 0,
                 ingredients: (recipe.ingredients || []).map((ing: any) => {
                     const fullIng = props.ingredients?.find((i) => i.id === ing.id);
+                    const grossWeight = parseFloat(ing.gross_weight) || 0;
+                    // Las recetas migradas guardan la cantidad en Kg (Recipe::applyPreciseQuantities
+                    // ya entrega los pesos en gramos y devuelve aquí el valor original con su unidad),
+                    // así que el input sigue mostrando el mismo número que está en la BD.
+                    const sourceQuantity = ing.source_quantity !== undefined && ing.source_quantity !== null ? parseFloat(ing.source_quantity) : null;
                     const newIng = {
                         ...ing,
-                        gross_weight: parseFloat(ing.gross_weight) || 0,
+                        gross_weight: grossWeight,
                         solid_waste: parseFloat(ing.solid_waste) || 0,
                         liquid_waste: parseFloat(ing.liquid_waste) || 0,
                         calories: parseFloat(ing.calories) || 0,
                         cost: parseFloat(ing.cost) || 0,
                         final_product: parseFloat(ing.final_product) || 0,
                         unit_price: parseFloat(ing.unit_price) || 0,
-                        selected_unit: 'g',
-                        input_quantity: parseFloat(ing.gross_weight) || 0,
+                        selected_unit: sourceQuantity !== null ? ing.source_unit || 'Kg' : 'g',
+                        input_quantity: (sourceQuantity !== null ? sourceQuantity : grossWeight).toFixed(4),
                         originalValues: {
                             waste: ing.waste || fullIng?.waste || 0,
                             calories: calculateIngredientCalories(fullIng || ing),
                         },
                     };
-                    newIng.calories = (newIng.gross_weight * newIng.originalValues.calories) / 100;
+                    // Sin precio guardado, el costo base toma el del proveedor activo.
+                    if (!newIng.unit_price) {
+                        newIng.unit_price = activeProviderPrice(fullIng || ing);
+                        newIng.cost = (grossWeight / 1000) * newIng.unit_price;
+                    }
+                    newIng.calories = caloriesFor(newIng);
                     return newIng;
                 }),
             };
+
+            // Los totales guardados están redondeados a 2 decimales (y las calorías quedaron en 0
+            // en las recetas migradas); se recalculan desde las cantidades con precisión completa.
+            sumRecipeTotals(form.recipes[levelId]);
         });
         activeLevelTab.value = form.mesearument_unit[0];
     } else {
@@ -635,16 +670,20 @@ const deleteDish = (id: number) => {
     });
 };
 
+const sumRecipeTotals = (recipe: any) => {
+    if (!recipe) return;
+    const sum = (field: string) => recipe.ingredients.reduce((acc: number, i: any) => acc + (parseFloat(i[field]) || 0), 0);
+
+    recipe.total_gross_weight = sum('gross_weight');
+    recipe.total_waste_weight = sum('solid_waste');
+    recipe.total_calories = sum('calories');
+    recipe.total_cost = sum('cost');
+    recipe.total_net_weight = sum('final_product');
+};
+
 const recalculateTotals = () => {
     if (!activeLevelTab.value) return;
-    const recipe = form.recipes[activeLevelTab.value];
-    if (!recipe) return;
-
-    recipe.total_gross_weight = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.gross_weight) || 0), 0);
-    recipe.total_waste_weight = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.solid_waste) || 0), 0);
-    recipe.total_calories = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.calories) || 0), 0);
-    recipe.total_cost = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.cost) || 0), 0);
-    recipe.total_net_weight = recipe.ingredients.reduce((sum, i) => sum + (parseFloat(i.final_product) || 0), 0);
+    sumRecipeTotals(form.recipes[activeLevelTab.value]);
 };
 
 let ingredientSearchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -707,7 +746,7 @@ const selectIngredient = (ingredient: Ingredient) => {
         calories: 0,
         cost: 0,
         final_product: 0,
-        unit_price: 0,
+        unit_price: activeProviderPrice(ingredient),
     };
     recipe.ingredients.push(newIng);
     ingredientsFounded.value = [];
@@ -746,11 +785,10 @@ const onWeightInput = (ingredient: any) => {
     ingredient.gross_weight = weightInGrams;
 
     const origWaste = parseFloat(ingredient.originalValues?.waste) || 0;
-    const origCalories = parseFloat(ingredient.originalValues?.calories) || 0;
 
     ingredient.solid_waste = (weightInGrams * origWaste) / 100;
     ingredient.final_product = weightInGrams - ingredient.solid_waste;
-    ingredient.calories = (ingredient.gross_weight * origCalories) / 100;
+    ingredient.calories = caloriesFor(ingredient);
 
     if (ingredient.unit_price) {
         ingredient.cost =
@@ -1314,7 +1352,7 @@ onUnmounted(() => {
                                                         v-model="ingredient.input_quantity"
                                                         @input="onWeightInput(ingredient)"
                                                         step="any"
-                                                        class="h-7 w-18 mx-auto rounded-lg border-zinc-200 text-center text-xs font-bold text-indigo-900 dark:text-indigo-200 dark:border-zinc-700 dark:bg-zinc-900 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
+                                                        class="h-7 w-24 px-1.5 mx-auto rounded-lg tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none border-zinc-200 text-center text-xs font-bold text-indigo-900 dark:text-indigo-200 dark:border-zinc-700 dark:bg-zinc-900 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
                                                     />
                                                 </TableCell>
 
@@ -1337,22 +1375,22 @@ onUnmounted(() => {
 
                                                 <!-- Materia Prima -->
                                                 <TableCell class="py-1.5 text-center font-mono text-zinc-700 dark:text-zinc-300">
-                                                    {{ Number(ingredient.gross_weight).toFixed(1) }} g
+                                                    {{ Number(ingredient.gross_weight).toFixed(4) }} g
                                                 </TableCell>
 
                                                 <!-- Desecho -->
                                                 <TableCell class="py-1.5 text-center font-mono text-orange-600 dark:text-orange-400">
-                                                    {{ Number(ingredient.solid_waste).toFixed(1) }} g
+                                                    {{ Number(ingredient.solid_waste).toFixed(4) }} g
                                                 </TableCell>
 
                                                 <!-- Producto Final -->
                                                 <TableCell class="py-1.5 text-center font-mono font-extrabold text-indigo-600 dark:text-indigo-400">
-                                                    {{ Number(ingredient.final_product).toFixed(1) }} g
+                                                    {{ Number(ingredient.final_product).toFixed(4) }} g
                                                 </TableCell>
 
                                                 <!-- Calorías -->
                                                 <TableCell class="py-1.5 text-center font-mono text-rose-600 dark:text-rose-400">
-                                                    {{ Number(ingredient.calories).toFixed(1) }} kcal
+                                                    {{ Number(ingredient.calories).toFixed(2) }} kcal
                                                 </TableCell>
 
                                                 <!-- Calculadora Popover -->
@@ -1424,7 +1462,7 @@ onUnmounted(() => {
                                 <div class="rounded-xl border border-zinc-200/80 bg-white p-2 text-center dark:border-zinc-800 dark:bg-zinc-900 shadow-2xs">
                                     <div class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Peso Bruto</div>
                                     <div class="mt-0.5 font-mono text-sm font-extrabold text-zinc-900 dark:text-zinc-100">
-                                        {{ Number(form.recipes[activeLevelTab].total_gross_weight).toFixed(1) }} <span class="text-[10px] font-normal text-zinc-400">g</span>
+                                        {{ Number(form.recipes[activeLevelTab].total_gross_weight).toFixed(4) }} <span class="text-[10px] font-normal text-zinc-400">g</span>
                                     </div>
                                 </div>
 
@@ -1432,7 +1470,7 @@ onUnmounted(() => {
                                 <div class="rounded-xl border border-amber-200/80 bg-amber-50/50 p-2 text-center dark:border-amber-900/40 dark:bg-amber-950/30 shadow-2xs">
                                     <div class="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">Mermas Totales</div>
                                     <div class="mt-0.5 font-mono text-sm font-extrabold text-amber-700 dark:text-amber-300">
-                                        {{ Number(form.recipes[activeLevelTab].total_waste_weight).toFixed(1) }} <span class="text-[10px] font-normal text-amber-600">g</span>
+                                        {{ Number(form.recipes[activeLevelTab].total_waste_weight).toFixed(4) }} <span class="text-[10px] font-normal text-amber-600">g</span>
                                     </div>
                                 </div>
 
@@ -1440,7 +1478,7 @@ onUnmounted(() => {
                                 <div class="rounded-xl border border-rose-200/80 bg-rose-50/50 p-2 text-center dark:border-rose-900/40 dark:bg-rose-950/30 shadow-2xs">
                                     <div class="text-[10px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400">Calorías</div>
                                     <div class="mt-0.5 font-mono text-sm font-extrabold text-rose-700 dark:text-rose-300">
-                                        {{ Number(form.recipes[activeLevelTab].total_calories).toFixed(1) }} <span class="text-[10px] font-normal text-rose-600">kcal</span>
+                                        {{ Number(form.recipes[activeLevelTab].total_calories).toFixed(2) }} <span class="text-[10px] font-normal text-rose-600">kcal</span>
                                     </div>
                                 </div>
 
@@ -1456,7 +1494,7 @@ onUnmounted(() => {
                                 <div class="rounded-xl border border-indigo-200/80 bg-indigo-50/50 p-2 text-center dark:border-indigo-900/40 dark:bg-indigo-950/30 shadow-2xs">
                                     <div class="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">Prod. Final</div>
                                     <div class="mt-0.5 font-mono text-sm font-extrabold text-indigo-700 dark:text-indigo-300">
-                                        {{ Number(form.recipes[activeLevelTab].total_net_weight).toFixed(1) }} <span class="text-[10px] font-normal text-indigo-600">g</span>
+                                        {{ Number(form.recipes[activeLevelTab].total_net_weight).toFixed(4) }} <span class="text-[10px] font-normal text-indigo-600">g</span>
                                     </div>
                                 </div>
                             </div>

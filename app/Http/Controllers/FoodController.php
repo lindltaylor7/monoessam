@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Dish;
+use App\Models\Recipe;
 use App\Models\Dish_category;
 use App\Models\Ingredient;
 use App\Models\Ingredient_category;
@@ -42,6 +43,8 @@ class FoodController extends Controller
                 });
             }
         }
+
+        Recipe::applyPreciseQuantities($dishes);
 
         return Inertia::render('food/Index', [
             'dishes' => $dishes,
