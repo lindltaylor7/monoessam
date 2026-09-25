@@ -6,20 +6,24 @@ use App\Models\Dinner;
 use App\Models\Subdealership;
 use Carbon\Carbon;
 use Maatwebsite\Excel\Concerns\FromArray;
-use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Style\Conditional;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
 /**
  * Cross-tab: rows = [EMPRESA > NOMBRE], columns = [DATE > SERVICE (qty)] + [TOTAL DE CONSUMO].
  * Below the matrix: unit-price row, amount row, and TOTAL FACTURAR block.
+ *
+ * Sin ShouldAutoSize a propósito: los anchos se fijan explícitamente al final de
+ * styles(). El autosize recorre cada celda de cada columna y aquí las columnas son
+ * (fechas × servicios) + totales, por lo que era el mayor costo del export.
  */
-class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitle
+class SalesPivotSheet implements FromArray, WithStyles, WithTitle
 {
     private array $dates      = [];
     private array $services   = [];
@@ -460,19 +464,38 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
                 'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'CBD5E1']]],
                 'font'    => ['size' => 9],
             ]);
-            for ($r = self::DATA_START; $r <= $lastDataRow; $r++) {
-                if ($r % 2 === 0) {
-                    $sheet->getStyle("A{$r}:{$lastCol}{$r}")->getFill()
-                        ->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('F8FAFC');
-                }
-                for ($c = self::FIXED_COLS + 1; $c <= $totalCols; $c++) {
-                    $sheet->getStyle(Coordinate::stringFromColumnIndex($c) . $r)
-                        ->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-                }
-                /* Teal background for TOTAL DE CONSUMO data columns */
-                $sheet->getStyle("{$tcFirstLetter}{$r}:{$tcLastLetter}{$r}")->applyFromArray([
+
+            /* Centrado en bloque para todas las columnas de datos. Antes se hacía
+               celda por celda (filas × columnas llamadas a getStyle), que con la
+               matriz completa de comensales era el cuello de botella real. */
+            $firstDataColLetter = Coordinate::stringFromColumnIndex(self::FIXED_COLS + 1);
+            $sheet->getStyle("{$firstDataColLetter}" . self::DATA_START . ":{$lastCol}{$lastDataRow}")
+                ->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+
+            /* Teal background for TOTAL DE CONSUMO data columns (bloque completo) */
+            $sheet->getStyle("{$tcFirstLetter}" . self::DATA_START . ":{$tcLastLetter}{$lastDataRow}")
+                ->applyFromArray([
                     'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F0FDFA']],
                 ]);
+
+            /* Filas alternas vía formato condicional: una entrada por empresa en vez
+               de un getStyle()->getFill() por fila. Se limita a las columnas previas a
+               TOTAL DE CONSUMO (para no tapar su fondo teal) y a las filas de personas
+               —excluyendo la fila de subtotal, que lleva su propio fondo—, respetando
+               las precedencias que daba el orden del bucle anterior. Arranca en B
+               porque la columna EMPRESA va fusionada con su propio relleno; el formato
+               condicional gana sobre el relleno estático y la taparía. */
+            $zebraLastLetter = Coordinate::stringFromColumnIndex(max(1, $tcStart));
+            foreach ($this->sdGroups as $group) {
+                $zebra = new Conditional();
+                $zebra->setConditionType(Conditional::CONDITION_EXPRESSION);
+                $zebra->addCondition('MOD(ROW(),2)=0');
+                $zebra->getStyle()->getFill()
+                    ->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('F8FAFC');
+
+                $groupLastRow = $group['start'] + $group['count'] - 1;
+                $sheet->getStyle("B{$group['start']}:{$zebraLastLetter}{$groupLastRow}")
+                    ->setConditionalStyles([$zebra]);
             }
         }
 
@@ -487,10 +510,8 @@ class SalesPivotSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitl
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'CCFBF1']],
         ]);
         $sheet->getStyle("B{$totalsRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
-        for ($c = self::FIXED_COLS + 1; $c <= $totalCols; $c++) {
-            $sheet->getStyle(Coordinate::stringFromColumnIndex($c) . $totalsRow)
-                ->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        }
+        $sheet->getStyle(Coordinate::stringFromColumnIndex(self::FIXED_COLS + 1) . $totalsRow . ":{$lastCol}{$totalsRow}")
+            ->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
         /* ── Unit-price row ── */
         $sheet->getStyle("{$tcFirstLetter}{$priceRow}:{$tcLastLetter}{$priceRow}")->applyFromArray([
