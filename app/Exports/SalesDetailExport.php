@@ -95,8 +95,40 @@ class SalesDetailExport implements WithMultipleSheets
 
     public function sheets(): array
     {
+        $targetCafeIds = !empty($this->selectedCafeIds) ? $this->selectedCafeIds : $this->cafeIds;
+
+        $sdName = null;
+        if ($this->subdealershipId) {
+            $sdName = \App\Models\Subdealership::where('id', $this->subdealershipId)->value('name');
+        }
+
+        // Construir el Builder para la hoja de detalle
+        $detailQuery = \Illuminate\Support\Facades\DB::table('sales')
+            ->join('tickets', 'tickets.sale_id', '=', 'sales.id')
+            ->join('ticket_details', 'ticket_details.ticket_id', '=', 'tickets.id')
+            ->whereIn('sales.cafe_id', $targetCafeIds)
+            ->whereBetween('sales.date', [$this->startDate, $this->endDate])
+            ->select([
+                'tickets.subdealership_name',
+                'tickets.dinner_name',
+                'tickets.dni',
+                'sales.date as sale_date',
+                'sales.created_at as sale_created_at',
+                'ticket_details.service_name',
+                'ticket_details.code',
+                'ticket_details.service_type',
+                'ticket_details.amount',
+                'ticket_details.unit_price',
+            ])
+            ->orderBy('sales.date')
+            ->orderBy('sales.created_at');
+
+        if ($sdName) {
+            $detailQuery->where('tickets.subdealership_name', $sdName);
+        }
+
         return [
-            new SalesDetailSheet($this->rows, $this->startDate, $this->endDate, $this->cafeName),
+            new SalesDetailSheet($detailQuery, $this->startDate, $this->endDate, $this->cafeName),
             new SalesPivotSheet($this->rows, $this->startDate, $this->endDate, $this->cafeName, $this->subdealershipId, $this->mineId),
         ];
     }
