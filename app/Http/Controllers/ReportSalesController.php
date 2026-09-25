@@ -336,87 +336,12 @@ class ReportSalesController extends Controller
             }
         }
 
-        // Directe CSV-export via streaming (geen geheugenopbouw of time-out)
-        if ($request->input('format') === 'csv') {
-            $fileName = 'detalle-consumo-' . $startDate . '-a-' . $endDate . '.csv';
+        $fileName = 'detalle-consumo-' . $startDate . '-a-' . $endDate . '.xlsx';
 
-            $targetCafeIds = !empty($selectedCafeIds) ? $selectedCafeIds : $cafeIds;
-            $sdName = $sdId ? \App\Models\Subdealership::where('id', $sdId)->value('name') : null;
-
-            $detailQuery = \Illuminate\Support\Facades\DB::table('sales')
-                ->join('tickets', 'tickets.sale_id', '=', 'sales.id')
-                ->join('ticket_details', 'ticket_details.ticket_id', '=', 'tickets.id')
-                ->whereIn('sales.cafe_id', $targetCafeIds)
-                ->whereBetween('sales.date', [$startDate, $endDate])
-                ->select([
-                    'tickets.subdealership_name',
-                    'tickets.dinner_name',
-                    'tickets.dni',
-                    'sales.date as sale_date',
-                    'sales.created_at as sale_created_at',
-                    'ticket_details.service_name',
-                    'ticket_details.code',
-                    'ticket_details.service_type',
-                    'ticket_details.amount',
-                    'ticket_details.unit_price',
-                ])
-                ->orderBy('sales.date')
-                ->orderBy('sales.created_at');
-
-            if ($sdName) {
-                $detailQuery->where('tickets.subdealership_name', $sdName);
-            }
-
-            return response()->streamDownload(function () use ($detailQuery, $cafeName, $startDate, $endDate) {
-                $handle = fopen('php://output', 'w');
-
-                // UTF-8 BOM voor compatibiliteit met Excel
-                fputs($handle, "\xEF\xBB\xBF");
-
-                fputcsv($handle, ['CAFETERÍA: ' . strtoupper($cafeName)], ';');
-                fputcsv($handle, ['Periode: ' . $startDate . ' - ' . $endDate], ';');
-                fputcsv($handle, [], ';');
-                fputcsv($handle, ['N°', 'SUBCONCESIONARIA', 'APELLIDOS Y NOMBRES', 'DNI', 'FECHA', 'HORA', 'SERVICIO', 'CANT.', 'PRECIO'], ';');
-
-                $num = 1;
-                foreach ($detailQuery->cursor() as $row) {
-                    $price = (float) ($row->unit_price ?? 0) * (int) ($row->amount ?? 1);
-                    fputcsv($handle, [
-                        $num++,
-                        strtoupper($row->subdealership_name ?: 'SIN EMPRESA'),
-                        strtoupper($row->dinner_name ?: 'SIN NOMBRE'),
-                        $row->dni ?: '—',
-                        $row->sale_date ? date('d/m/Y', strtotime($row->sale_date)) : '—',
-                        $row->sale_created_at ? date('h:i A', strtotime($row->sale_created_at)) : '—',
-                        strtoupper($row->service_name ?: '—'),
-                        (int) ($row->amount ?? 1),
-                        number_format($price, 2, '.', ''),
-                    ], ';');
-                }
-
-                fclose($handle);
-            }, $fileName, [
-                'Content-Type' => 'text/csv; charset=UTF-8',
-            ]);
-        }
-
-        // Standaard Excel-export (bevat enkel de werkende samenvatting of geoptimaliseerde export)
-        $fileName = 'exports/detalle-' . time() . '.xlsx';
-
-        (new SalesDetailExport(
-            $startDate,
-            $endDate,
-            $selectedCafeIds,
-            $sdId,
-            $cafeIds,
-            $cafeName,
-            $user->mine_id
-        ))->queue($fileName);
-
-        return response()->json([
-            'message' => 'El reporte se está procesando. Estará listo en un momento.',
-            'file' => $fileName
-        ]);
+        return Excel::download(
+            new SalesDetailExport($startDate, $endDate, $selectedCafeIds, $sdId, $cafeIds, $cafeName, $user->mine_id),
+            $fileName,
+        );
     }
 
     /**

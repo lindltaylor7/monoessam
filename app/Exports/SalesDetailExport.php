@@ -2,17 +2,14 @@
 
 namespace App\Exports;
 
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Maatwebsite\Excel\Concerns\Exportable;
 use App\Exports\Sheets\SalesDetailSheet;
 use App\Exports\Sheets\SalesPivotSheet;
 use App\Models\Subdealership;
 use Illuminate\Support\Facades\DB;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 
-class SalesDetailExport implements WithMultipleSheets, ShouldQueue
+class SalesDetailExport implements WithMultipleSheets
 {
-    use Exportable;
     /** Shared flat row data consumed by both sheets */
     private array $rows = [];
     private array $selectedCafeIds = [];
@@ -98,24 +95,9 @@ class SalesDetailExport implements WithMultipleSheets, ShouldQueue
 
     public function sheets(): array
     {
-        $targetCafeIds = !empty($this->selectedCafeIds) ? $this->selectedCafeIds : $this->cafeIds;
-
         return [
-            new SalesDetailSheet(
-                $targetCafeIds,
-                $this->startDate,
-                $this->endDate,
-                $this->cafeName,
-                $this->subdealershipId
-            ),
-            new SalesPivotSheet(
-                $this->rows,
-                $this->startDate,
-                $this->endDate,
-                $this->cafeName,
-                $this->subdealershipId,
-                $this->mineId
-            ),
+            new SalesDetailSheet($this->rows, $this->startDate, $this->endDate, $this->cafeName),
+            new SalesPivotSheet($this->rows, $this->startDate, $this->endDate, $this->cafeName, $this->subdealershipId, $this->mineId),
         ];
     }
 }

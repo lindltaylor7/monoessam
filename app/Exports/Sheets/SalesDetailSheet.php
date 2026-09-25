@@ -2,14 +2,9 @@
 
 namespace App\Exports\Sheets;
 
-use App\Models\Subdealership;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
-use Maatwebsite\Excel\Concerns\FromQuery;
-use Maatwebsite\Excel\Concerns\WithChunkReading;
-use Maatwebsite\Excel\Concerns\WithCustomStartCell;
-use Maatwebsite\Excel\Concerns\WithHeadings;
-use Maatwebsite\Excel\Concerns\WithMapping;
+use Maatwebsite\Excel\Concerns\FromArray;
+use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
@@ -17,96 +12,50 @@ use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class SalesDetailSheet implements FromQuery, WithHeadings, WithMapping, WithStyles, WithTitle, WithChunkReading, WithCustomStartCell
+class SalesDetailSheet implements FromArray, ShouldAutoSize, WithStyles, WithTitle
 {
-    private int $rowNumber = 0;
+    private array $dataRows  = [];
+    private const DATA_START = 5;
 
     public function __construct(
-        private readonly array   $targetCafeIds,
-        private readonly string  $startDate,
-        private readonly string  $endDate,
-        private readonly string  $cafeName,
-        private readonly ?int    $subdealershipId = null,
-    ) {}
-
-    public function startCell(): string
-    {
-        return 'A4';
-    }
-
-    public function query()
-    {
-        $sdName = null;
-        if ($this->subdealershipId) {
-            $sdName = Subdealership::where('id', $this->subdealershipId)->value('name');
+        private readonly array  $rows,
+        private readonly string $startDate,
+        private readonly string $endDate,
+        private readonly string $cafeName,
+    ) {
+        $num = 1;
+        foreach ($this->rows as $row) {
+            $price = (float) ($row['unit_price'] ?? 0) * (int) ($row['amount'] ?? 1);
+            $this->dataRows[] = [
+                $num++,
+                $row['sd_name'],
+                $row['name'],
+                $row['dni'] ?? '—',
+                $row['date'],
+                $row['time'],
+                $row['svc_name'],
+                (int) ($row['amount'] ?? 1),
+                number_format($price, 2),
+            ];
         }
-
-        $query = DB::table('sales')
-            ->join('tickets', 'tickets.sale_id', '=', 'sales.id')
-            ->join('ticket_details', 'ticket_details.ticket_id', '=', 'tickets.id')
-            ->whereIn('sales.cafe_id', $this->targetCafeIds)
-            ->whereBetween('sales.date', [$this->startDate, $this->endDate])
-            ->select([
-                'tickets.subdealership_name',
-                'tickets.dinner_name',
-                'tickets.dni',
-                'sales.date as sale_date',
-                'sales.created_at as sale_created_at',
-                'ticket_details.service_name',
-                'ticket_details.code',
-                'ticket_details.service_type',
-                'ticket_details.amount',
-                'ticket_details.unit_price',
-            ])
-            ->orderBy('sales.date')
-            ->orderBy('sales.created_at');
-
-        if ($sdName) {
-            $query->where('tickets.subdealership_name', $sdName);
-        }
-
-        return $query;
     }
 
-    public function chunkSize(): int
+    public function array(): array
     {
-        return 1000;
-    }
+        $fmt        = fn(string $d) => Carbon::parse($d)->translatedFormat('d \d\e F \d\e Y');
+        $totalQty   = array_sum(array_column($this->dataRows, 6));
+        $totalPrice = array_sum(
+            array_map(fn($r) => (float) str_replace(',', '', $r[7] ?? '0'), $this->dataRows)
+        );
 
-    public function map($row): array
-    {
-        $this->rowNumber++;
-        $price = (float) ($row->unit_price ?? 0) * (int) ($row->amount ?? 1);
-
-        $dateFormatted = $row->sale_date ? date('d/m/Y', strtotime($row->sale_date)) : '—';
-        $timeFormatted = $row->sale_created_at ? date('h:i A', strtotime($row->sale_created_at)) : '—';
-
-        return [
-            $this->rowNumber,
-            strtoupper($row->subdealership_name ?: 'SIN EMPRESA'),
-            strtoupper($row->dinner_name ?: 'SIN NOMBRE'),
-            $row->dni ?: '—',
-            $dateFormatted,
-            $timeFormatted,
-            strtoupper($row->service_name ?: '—'),
-            (int) ($row->amount ?? 1),
-            number_format($price, 2, '.', ''),
-        ];
-    }
-
-    public function headings(): array
-    {
-        return [
-            'N°',
-            'SUBCONCESIONARIA',
-            'APELLIDOS Y NOMBRES',
-            'DNI',
-            'FECHA',
-            'HORA',
-            'SERVICIO',
-            'CANT.',
-            'PRECIO',
-        ];
+        return array_merge(
+            [['CAFETERÍA: ' . strtoupper($this->cafeName), '', '', '', '', '', '', '', '']],
+            [['Período: ' . $fmt($this->startDate) . ' — ' . $fmt($this->endDate), '', '', '', '', '', '', '', '']],
+            [['', '', '', '', '', '', '', '', '']],
+            [['N°', 'SUBCONCESIONARIA', 'APELLIDOS Y NOMBRES', 'DNI', 'FECHA', 'HORA', 'SERVICIO', 'CANT.', 'PRECIO']],
+            $this->dataRows,
+            [['', '', '', '', '', '', 'TOTAL', $totalQty, number_format($totalPrice, 2)]],
+        );
     }
 
     public function title(): string
@@ -116,14 +65,13 @@ class SalesDetailSheet implements FromQuery, WithHeadings, WithMapping, WithStyl
 
     public function styles(Worksheet $sheet): void
     {
-        $fmt = fn(string $d) => Carbon::parse($d)->translatedFormat('d \d\e F \d\e Y');
-        $lastCol = 'I';
-
-        $sheet->setCellValue('A1', 'CAFETERÍA: ' . strtoupper($this->cafeName));
-        $sheet->setCellValue('A2', 'Período: ' . $fmt($this->startDate) . ' — ' . $fmt($this->endDate));
+        $lastDataRow = self::DATA_START + count($this->dataRows) - 1;
+        $totalsRow   = $lastDataRow + 1;
+        $lastCol     = 'I';
 
         $sheet->mergeCells("A1:{$lastCol}1");
         $sheet->mergeCells("A2:{$lastCol}2");
+        $sheet->mergeCells("A3:{$lastCol}3");
 
         $sheet->getStyle('A1')->applyFromArray([
             'font'      => ['bold' => true, 'size' => 13, 'color' => ['rgb' => '1E3A5F']],
@@ -145,6 +93,34 @@ class SalesDetailSheet implements FromQuery, WithHeadings, WithMapping, WithStyl
         ]);
         $sheet->getRowDimension(4)->setRowHeight(22);
 
+        if ($lastDataRow >= self::DATA_START) {
+            $sheet->getStyle("A" . self::DATA_START . ":{$lastCol}{$lastDataRow}")->applyFromArray([
+                'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'E2E8F0']]],
+                'font'    => ['size' => 9],
+            ]);
+            for ($r = self::DATA_START; $r <= $lastDataRow; $r++) {
+                if ($r % 2 === 0) {
+                    $sheet->getStyle("A{$r}:{$lastCol}{$r}")->getFill()
+                        ->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('F8FAFC');
+                }
+                // A=N°, D=DNI, E=FECHA, F=HORA, H=CANT. → centrados
+                foreach (['A', 'D', 'E', 'F', 'H'] as $col) {
+                    $sheet->getStyle("{$col}{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                }
+                $sheet->getStyle("I{$r}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+            }
+        }
+
+        $sheet->getStyle("A{$totalsRow}:{$lastCol}{$totalsRow}")->applyFromArray([
+            'font'    => ['bold' => true, 'size' => 10],
+            'fill'    => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'DBEAFE']],
+            'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'BFDBFE']]],
+        ]);
+        $sheet->getStyle("G{$totalsRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("H{$totalsRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("I{$totalsRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+
+        // A=N°, B=SUBCONCESIONARIA, C=APELLIDOS Y NOMBRES, D=DNI, E=FECHA, F=HORA, G=SERVICIO, H=CANT., I=PRECIO
         $sheet->getColumnDimension('A')->setWidth(6);
         $sheet->getColumnDimension('B')->setWidth(24);
         $sheet->getColumnDimension('C')->setWidth(32);
