@@ -503,6 +503,9 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('menu-excel', [PlanningController::class, 'menuExcel'])->name('menu-excel');
         Route::get('orden-pedido-excel', [PlanningController::class, 'purchaseOrderExcel'])->name('orden-pedido-excel');
         Route::get('reporte-compras', [PlanningController::class, 'purchaseReport'])->name('reporte-compras');
+        // Mismo detalle que cycles.show, pero bajo el segmento 'planning' para que un usuario de
+        // Planificación pueda cargar un ciclo en la matriz sin tener el permiso 'cycles'.
+        Route::get('cycles/{id}', [MenuCycleController::class, 'show'])->name('cycles.show');
     });
 
     Route::prefix('purchase-orders')->name('purchase_orders.')->group(function () {
@@ -531,6 +534,8 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('/', [MenuCycleController::class, 'index'])->name('index');
         Route::post('/', [MenuCycleController::class, 'store'])->name('store');
         Route::get('/export/{serviceable_id}', [MenuCycleController::class, 'export'])->name('export');
+        // El detalle (cycle_data) se pide bajo demanda; el listado del índice ya no lo trae.
+        Route::get('/{id}', [MenuCycleController::class, 'show'])->name('show');
     });
 
     // ========================================================================

@@ -702,6 +702,23 @@ const filteredCycles = computed(() => {
     return props.menu_cycles.filter((c) => !c.cafe_id || String(c.cafe_id) === String(form.cafe_id));
 });
 
+const cycleDataCache = new Map<number, any[]>();
+
+const fetchCycleData = async (cycleId: number): Promise<any[] | null> => {
+    const cached = cycleDataCache.get(cycleId);
+    if (cached) return cached;
+
+    try {
+        const { data } = await axios.get(`/planning/cycles/${cycleId}`);
+        const rows = Array.isArray(data?.cycle_data) ? data.cycle_data : [];
+        cycleDataCache.set(cycleId, rows);
+        return rows;
+    } catch {
+        Swal.fire('Error', 'No se pudo cargar el detalle del ciclo.', 'error');
+        return null;
+    }
+};
+
 const loadMenuCycle = (cycleIdStr: string) => {
     const cycleId = parseInt(cycleIdStr);
     const cycle = props.menu_cycles?.find((c) => c.id === cycleId);
@@ -740,11 +757,16 @@ const loadMenuCycle = (cycleIdStr: string) => {
         confirmButtonText: 'Sí, cargar',
         cancelButtonText: 'Cancelar',
         confirmButtonColor: '#FF5A1F',
-    }).then((result) => {
+    }).then(async (result) => {
         if (result.isConfirmed) {
+            // El listado de ciclos solo trae metadatos (su cycle_data suma ~100 MB entre todos);
+            // el detalle del ciclo elegido se pide aquí.
+            const cycleData = await fetchCycleData(cycle.id);
+            if (!cycleData) return;
+
             // 1. Reconstruir localMenuStructure para este mealType basándose exactamente en el ciclo
             const otherMeals = localMenuStructure.value.filter((s) => s.meal_type !== mealType);
-            const newMealStructure = cycle.cycle_data.map((cycleRow: any, index: number) => {
+            const newMealStructure = cycleData.map((cycleRow: any, index: number) => {
                 const categoryObj = props.dish_categories?.find((c) => c.id === cycleRow.dishCategoryId);
                 return {
                     id: cycleRow.id || 20000 + index, // ID único temporal
@@ -785,7 +807,7 @@ const loadMenuCycle = (cycleIdStr: string) => {
 
             // 3. Poblar la cuadrícula con los platos del ciclo
             let assignedCount = 0;
-            cycle.cycle_data.forEach((cycleRow: any, index: number) => {
+            cycleData.forEach((cycleRow: any, index: number) => {
                 const tempId = cycleRow.id || 20000 + index;
                 for (let dayNum = 1; dayNum <= cycle.days; dayNum++) {
                     const dateIndex = dayNum - 1;

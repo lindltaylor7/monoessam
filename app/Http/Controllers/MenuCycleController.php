@@ -13,14 +13,38 @@ use Inertia\Inertia;
 
 class MenuCycleController extends Controller
 {
+    /**
+     * Columnas del listado de ciclos. Se excluye `cycle_data` a proposito: son ~100 MB de JSON
+     * repartidos en miles de filas y hidratarlo entero reventaba el limite de memoria de PHP al
+     * abrir /cycles. El detalle de un ciclo se pide bajo demanda en show().
+     */
+    public const LIST_COLUMNS = ['id', 'serviceable_id', 'name', 'days', 'created_at', 'updated_at'];
+
     public function index()
     {
         return Inertia::render('cycles/Index', [
             'mines'          => Mine::with(['units', 'units.cafes', 'units.cafes.services'])->get(),
             'structures'     => Structure::with('costs')->get(),
-            'savedCycles'    => MenuCycle::orderBy('id', 'desc')->get(),
+            'savedCycles'    => MenuCycle::select(self::LIST_COLUMNS)->orderBy('id', 'desc')->get(),
             'dishCategories' => Dish_category::all(),
             'levels'         => Level::all(),
+        ]);
+    }
+
+    /**
+     * Devuelve un unico ciclo con su `cycle_data`, para las pantallas que cargan/comparan un ciclo
+     * concreto (Ciclos y Planificacion) sin traerse el resto.
+     */
+    public function show($id)
+    {
+        $cycle = MenuCycle::findOrFail($id);
+
+        return response()->json([
+            'id'             => $cycle->id,
+            'serviceable_id' => $cycle->serviceable_id,
+            'name'           => $cycle->name,
+            'days'           => $cycle->days,
+            'cycle_data'     => $cycle->cycle_data,
         ]);
     }
 
