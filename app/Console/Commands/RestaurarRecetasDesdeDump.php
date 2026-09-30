@@ -84,7 +84,10 @@ class RestaurarRecetasDesdeDump extends Command
     protected $description = 'Restaura recetas y sus ingredientes desde un dump SQL, sin pisar lo que ya existe';
 
     /** Tablas cuyas filas nos interesan del dump. */
-    private const TABLAS = ['dish_recipes', 'dish_recipe_ingredients'];
+    private const TABLAS = ['dishes', 'dish_recipes', 'dish_recipe_ingredients'];
+
+    /** Minimo de nombres que deben coincidir para aceptar que el dump es de esta base. */
+    private const UMBRAL_PROCEDENCIA = 80.0;
 
     public function handle(): int
     {
@@ -106,9 +109,13 @@ class RestaurarRecetasDesdeDump extends Command
         $this->line('');
 
         // ---------------------------------------------------------------- vivo
-        $platosVivos       = $this->idsVivos('dishes');
+        $platosVivos       = $this->nombresVivos('dishes');   // id => nombre normalizado
         $ingredientesVivos = $this->idsVivos('ingredients');
         $nivelesVivos      = $this->idsVivos('levels');
+
+        if (!$this->procedenciaOk($ruta, $platosVivos)) {
+            return self::FAILURE;
+        }
 
         // (dish_id, level_id) -> ['id' => ..., 'ingredientes' => n]
         $recetasVivas = [];
@@ -337,6 +344,106 @@ class RestaurarRecetasDesdeDump extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Comprueba que el dump sea de ESTA base comparando nombres de plato.
+     *
+     * Este es el control que de verdad importa, y va antes que cualquier otro.
+     * Un dump ajeno se parsea sin un solo error y restaura sin una sola
+     * excepcion: las FK cuadran porque los ids existen a ambos lados, solo que
+     * identifican platos distintos. El resultado es que a "Jugo de Maracuya"
+     * (id 92 aqui) se le cuelga la receta de "TRUCHA FRITA" (id 92 alla). Nada
+     * falla, nada avisa, y la base queda en un estado peor que vacia porque el
+     * error ya no se distingue de un dato bueno.
+     *
+     * Contar ids faltantes no alcanza: dos bases distintas con el mismo rango de
+     * ids se solapan casi entero. Lo unico que separa "es mi base" de "es otra"
+     * es que los ids compartidos apunten al MISMO plato, o sea el nombre.
+     *
+     * @param array<int, string> $platosVivos id => nombre normalizado
+     */
+    private function procedenciaOk(string $ruta, array $platosVivos): bool
+    {
+        $comunes = 0;
+        $iguales = 0;
+        $muestra = [];
+
+        foreach ($this->filas($ruta, 'dishes') as $f) {
+            $id = (int) $f[0];
+            if (!isset($platosVivos[$id])) {
+                continue;
+            }
+            $comunes++;
+            if ($this->normalizar($f[1] ?? '') === $platosVivos[$id]) {
+                $iguales++;
+            } elseif (count($muestra) < 3) {
+                $muestra[] = "  id={$id}  dump: " . ($f[1] ?? 'NULL') . "   |   vivo: " . $platosVivos[$id];
+            }
+        }
+
+        if ($comunes === 0) {
+            $this->line('');
+            $this->error('ABORTADO: el dump no comparte ni un solo id de plato con esta base.');
+            $this->line('  No hay nada que casar. Verifique que --dump y la conexion sean del mismo sistema.');
+            return false;
+        }
+
+        $pct = round($iguales * 100 / $comunes, 1);
+        $this->line(sprintf(
+            'Procedencia: %s ids de plato en comun, %s con el mismo nombre (%s%%).',
+            number_format($comunes),
+            number_format($iguales),
+            $pct
+        ));
+
+        if ($pct >= self::UMBRAL_PROCEDENCIA) {
+            return true;
+        }
+
+        if ($this->option('forzar')) {
+            $this->warn("  Solo el {$pct}% de los nombres coincide, pero se paso --forzar. Siguiendo.");
+            return true;
+        }
+
+        $this->line('');
+        $this->error("ABORTADO: solo el {$pct}% de los platos con id compartido tiene el mismo nombre.");
+        $this->line('');
+        $this->line('  El dump NO es de esta base: los ids coinciden por casualidad, pero identifican');
+        $this->line('  platos distintos. Restaurarlo le colgaria a cada plato la receta de otro.');
+        $this->line('');
+        foreach ($muestra as $m) {
+            $this->line($m);
+        }
+        $this->line('');
+        $this->line('  Apunte --dump y la conexion a la misma instancia, o use --forzar si de verdad');
+        $this->line('  sabe lo que esta haciendo.');
+
+        return false;
+    }
+
+    /** Nombres de una tabla como mapa id => nombre normalizado. */
+    private function nombresVivos(string $tabla): array
+    {
+        $out = [];
+        foreach (DB::table($tabla)->select('id', 'name')->cursor() as $r) {
+            $out[(int) $r->id] = $this->normalizar((string) $r->name);
+        }
+        return $out;
+    }
+
+    /** Mayusculas, sin tildes y sin espacios de sobra, para comparar nombres. */
+    private function normalizar(?string $s): string
+    {
+        $s = trim((string) $s);
+        if ($s === '') {
+            return '';
+        }
+        $sinTildes = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
+        if ($sinTildes !== false) {
+            $s = $sinTildes;
+        }
+        return preg_replace('/\s+/', ' ', mb_strtoupper($s, 'UTF-8')) ?? '';
     }
 
     /** ids de una tabla como mapa id => true, para lookup O(1). */
