@@ -64,12 +64,27 @@ use Illuminate\Support\Facades\DB;
  *    id_dump -> id_vivo; la segunda vuelve a leer el archivo y va soltando los
  *    ingredientes en lotes. La memoria queda plana.
  *
- * 5. Por defecto SIMULA. Hay que pasar --ejecutar para que escriba.
+ * 5. Hay dos modos de emparejar el dump con la base, y elegir mal arruina los
+ *    datos en silencio:
+ *
+ *    por id (defecto)  los ids del dump valen tal cual. Se acepta solo si los
+ *                      nombres calzan en >= 80% de los ids compartidos.
+ *
+ *    --por-nombre      el nombre manda y el id del dump se traduce. Es lo que
+ *                      hace falta cuando el catalogo se reimporto y quedo
+ *                      re-keyado: mismos platos e insumos, ids nuevos. Se
+ *                      traducen TANTO dishes COMO ingredients; saltarse los
+ *                      segundos meteria el insumo equivocado en cada linea.
+ *                      Un nombre repetido de cualquiera de los dos lados se
+ *                      descarta: no hay forma de saber cual es cual.
+ *
+ * 6. Por defecto SIMULA. Hay que pasar --ejecutar para que escriba.
  *
  * USO
  *
  *   php artisan recetas:restaurar --dump="C:/ruta/backendlaravel.sql"
- *   php artisan recetas:restaurar --dump="..." --ejecutar
+ *   php artisan recetas:restaurar --dump="..." --por-nombre
+ *   php artisan recetas:restaurar --dump="..." --por-nombre --ejecutar
  *   php artisan recetas:restaurar --dump="..." --plato=17067 --plato=17068
  */
 class RestaurarRecetasDesdeDump extends Command
@@ -79,12 +94,13 @@ class RestaurarRecetasDesdeDump extends Command
         {--ejecutar : Escribe en la base. Sin esta bandera solo simula}
         {--plato=* : Limitar a estos dish_id (repetible)}
         {--lote=500 : Filas por INSERT}
+        {--por-nombre : Emparejar platos por nombre en vez de por id}
         {--forzar : Saltar el control de que el dump corresponda a esta base}';
 
     protected $description = 'Restaura recetas y sus ingredientes desde un dump SQL, sin pisar lo que ya existe';
 
     /** Tablas cuyas filas nos interesan del dump. */
-    private const TABLAS = ['dishes', 'dish_recipes', 'dish_recipe_ingredients'];
+    private const TABLAS = ['dishes', 'ingredients', 'dish_recipes', 'dish_recipe_ingredients'];
 
     /** Minimo de nombres que deben coincidir para aceptar que el dump es de esta base. */
     private const UMBRAL_PROCEDENCIA = 80.0;
@@ -109,11 +125,33 @@ class RestaurarRecetasDesdeDump extends Command
         $this->line('');
 
         // ---------------------------------------------------------------- vivo
-        $platosVivos       = $this->nombresVivos('dishes');   // id => nombre normalizado
-        $ingredientesVivos = $this->idsVivos('ingredients');
+        $platosVivos       = $this->nombresVivos('dishes');        // id => nombre normalizado
+        $ingredientesVivos = $this->nombresVivos('ingredients');
         $nivelesVivos      = $this->idsVivos('levels');
 
-        if (!$this->procedenciaOk($ruta, $platosVivos)) {
+        // Traduccion de ids del dump a ids vivos. En modo id es la identidad
+        // (previa verificacion de que el nombre calce); en modo nombre es la
+        // traduccion que reconstruye la correspondencia perdida.
+        //
+        // Hacen falta LAS DOS tablas, no solo dishes. Si el catalogo se
+        // reimporto, `ingredients` quedo re-keyada igual que `dishes`, y usar
+        // el ingredient_id del dump tal cual mete el insumo equivocado en cada
+        // linea de receta: "Acelga" termina con la cantidad de "Aji Lima".
+        // Eso no rompe ninguna FK ni lanza ningun error, solo deja datos
+        // falsos, que es exactamente el modo de fallo que hay que evitar.
+        $porNombre = (bool) $this->option('por-nombre');
+
+        $mapaPlatos = $porNombre
+            ? $this->mapearPorNombre($ruta, 'dishes', $platosVivos, 'platos')
+            : $this->mapearPorId($ruta, 'dishes', $platosVivos, 'platos');
+        if ($mapaPlatos === null) {
+            return self::FAILURE;
+        }
+
+        $mapaIngredientes = $porNombre
+            ? $this->mapearPorNombre($ruta, 'ingredients', $ingredientesVivos, 'ingredientes')
+            : $this->mapearPorId($ruta, 'ingredients', $ingredientesVivos, 'ingredientes');
+        if ($mapaIngredientes === null) {
             return self::FAILURE;
         }
 
@@ -153,13 +191,17 @@ class RestaurarRecetasDesdeDump extends Command
 
         foreach ($this->filas($ruta, 'dish_recipes') as $f) {
             $conteo['dump']++;
-            $idDump  = (int) $f[0];
-            $dishId  = (int) $f[1];
-            $levelId = $f[2] === null ? null : (int) $f[2];
+            $idDump   = (int) $f[0];
+            $dishDump = (int) $f[1];
+            $levelId  = $f[2] === null ? null : (int) $f[2];
 
-            if ($filtro !== null && !isset($filtro[$dishId])) { $conteo['fuera_filtro']++; continue; }
-            if (!isset($platosVivos[$dishId]))                { $conteo['sin_plato']++;    continue; }
+            // El filtro --plato se expresa en ids del dump, que es lo que el
+            // usuario lee en el archivo; la traduccion viene despues.
+            if ($filtro !== null && !isset($filtro[$dishDump])) { $conteo['fuera_filtro']++; continue; }
+            if (!isset($mapaPlatos[$dishDump]))                 { $conteo['sin_plato']++;    continue; }
             if ($levelId === null || !isset($nivelesVivos[$levelId])) { $conteo['sin_nivel']++; continue; }
+
+            $dishId = $mapaPlatos[$dishDump];
 
             $totales = [
                 'total_gross_weight' => $f[4],
@@ -204,31 +246,16 @@ class RestaurarRecetasDesdeDump extends Command
             return self::SUCCESS;
         }
 
-        // ------------------------------------------ control de procedencia
-        //
-        // Un dump de OTRA instancia se lee sin errores y restaura igual, pero el
-        // resultado es basura: los dish_id que casan lo hacen por coincidencia
-        // numerica, no porque sean el mismo plato, asi que se le cuelgan recetas
-        // ajenas a platos que no les corresponden. El sintoma es un porcentaje
-        // alto de filas descartadas por "sin plato": si el dump fuera de esta
-        // misma base, casi todos sus dish_id existirian aca.
+        // La procedencia ya se valido al armar el mapa de platos, asi que aqui
+        // "sin plato" no es sospecha de dump ajeno: son recetas de platos que el
+        // mapa no cubre (borrados del catalogo, o de nombre ambiguo en modo
+        // --por-nombre). Se informa para que el numero no pase inadvertido.
         $utiles     = $conteo['dump'] - $conteo['fuera_filtro'];
         $porcentaje = $utiles > 0 ? round($conteo['sin_plato'] * 100 / $utiles, 1) : 0.0;
 
-        if ($porcentaje > 20 && !$this->option('forzar')) {
-            $this->line('');
-            $this->error("ABORTADO: el {$porcentaje}% de las recetas del dump apunta a platos que no "
-                . 'existen en esta base.');
-            $this->line('');
-            $this->line('  Eso indica que el dump NO es de esta base. Restaurarlo colgaria recetas');
-            $this->line('  de un plato en otro distinto que casualmente tiene el mismo id.');
-            $this->line('');
-            $this->line('  Revise que --dump y la conexion apunten a la misma instancia. Si de verdad');
-            $this->line('  quiere seguir asi, repita con --forzar.');
-            return self::FAILURE;
-        }
         if ($porcentaje > 5) {
-            $this->warn("  Aviso: el {$porcentaje}% de las recetas se descarta por plato inexistente.");
+            $this->warn("  Aviso: el {$porcentaje}% de las recetas del dump no se restaura porque su "
+                . 'plato no esta en el mapa.');
         }
 
         // --------------------------------------------- insertar las recetas
@@ -297,8 +324,8 @@ class RestaurarRecetasDesdeDump extends Command
             $recetaDump = (int) $f[1];
             if (!isset($mapa[$recetaDump])) { $ajenos++; continue; }
 
-            $ingId = (int) $f[2];
-            if (!isset($ingredientesVivos[$ingId])) { $sinIngrediente++; continue; }
+            $ingId = $mapaIngredientes[(int) $f[2]] ?? null;
+            if ($ingId === null) { $sinIngrediente++; continue; }
 
             $buffer[] = [
                 'dish_recipe_id' => $mapa[$recetaDump],
@@ -338,88 +365,169 @@ class RestaurarRecetasDesdeDump extends Command
 
         if ($sinIngrediente > 0) {
             $this->line('');
-            $this->warn(number_format($sinIngrediente) . ' lineas de ingrediente se descartan porque ese '
-                . 'ingredient_id no existe en esta base. Si el dump viene de otra instancia, restaure '
-                . 'primero la tabla `ingredients` y vuelva a correr esto.');
+            $this->warn(number_format($sinIngrediente) . ' lineas de ingrediente se descartan porque su '
+                . 'insumo no se pudo emparejar con ninguno de esta base (no existe, o su nombre esta '
+                . 'repetido y no hay forma de saber cual es). Esas recetas quedan incompletas.');
         }
 
         return self::SUCCESS;
     }
 
     /**
-     * Comprueba que el dump sea de ESTA base comparando nombres de plato.
+     * Modo por defecto: los ids del dump valen tal cual, y se comprueba que de
+     * verdad apunten al mismo plato comparando el nombre.
      *
-     * Este es el control que de verdad importa, y va antes que cualquier otro.
-     * Un dump ajeno se parsea sin un solo error y restaura sin una sola
-     * excepcion: las FK cuadran porque los ids existen a ambos lados, solo que
-     * identifican platos distintos. El resultado es que a "Jugo de Maracuya"
-     * (id 92 aqui) se le cuelga la receta de "TRUCHA FRITA" (id 92 alla). Nada
-     * falla, nada avisa, y la base queda en un estado peor que vacia porque el
-     * error ya no se distingue de un dato bueno.
+     * Este control va antes que cualquier otro porque un dump ajeno se parsea
+     * sin un solo error y restaura sin una sola excepcion: las FK cuadran
+     * porque los ids existen a ambos lados, solo que identifican platos
+     * distintos. El resultado es que a "Jugo de Maracuya" (id 92 aqui) se le
+     * cuelga la receta de "TRUCHA FRITA" (id 92 alla). Nada falla, nada avisa,
+     * y la base queda peor que vacia porque el error ya no se distingue de un
+     * dato bueno.
      *
      * Contar ids faltantes no alcanza: dos bases distintas con el mismo rango de
      * ids se solapan casi entero. Lo unico que separa "es mi base" de "es otra"
      * es que los ids compartidos apunten al MISMO plato, o sea el nombre.
      *
-     * @param array<int, string> $platosVivos id => nombre normalizado
+     * @param  array<int, string> $vivos id => nombre normalizado
+     * @return array<int, int>|null       id del dump => id vivo
      */
-    private function procedenciaOk(string $ruta, array $platosVivos): bool
+    private function mapearPorId(string $ruta, string $tabla, array $vivos, string $etiqueta): ?array
     {
+        $mapa    = [];
         $comunes = 0;
-        $iguales = 0;
         $muestra = [];
 
-        foreach ($this->filas($ruta, 'dishes') as $f) {
+        foreach ($this->filas($ruta, $tabla) as $f) {
             $id = (int) $f[0];
-            if (!isset($platosVivos[$id])) {
+            if (!isset($vivos[$id])) {
                 continue;
             }
             $comunes++;
-            if ($this->normalizar($f[1] ?? '') === $platosVivos[$id]) {
-                $iguales++;
+            if ($this->normalizar($f[1] ?? '') === $vivos[$id]) {
+                $mapa[$id] = $id;
             } elseif (count($muestra) < 3) {
-                $muestra[] = "  id={$id}  dump: " . ($f[1] ?? 'NULL') . "   |   vivo: " . $platosVivos[$id];
+                $muestra[] = "  id={$id}  dump: " . ($f[1] ?? 'NULL') . "   |   vivo: " . $vivos[$id];
             }
         }
 
         if ($comunes === 0) {
             $this->line('');
-            $this->error('ABORTADO: el dump no comparte ni un solo id de plato con esta base.');
-            $this->line('  No hay nada que casar. Verifique que --dump y la conexion sean del mismo sistema.');
-            return false;
+            $this->error("ABORTADO: el dump no comparte ni un solo id de {$etiqueta} con esta base.");
+            $this->line('  Verifique que --dump y la conexion sean del mismo sistema.');
+            return null;
         }
 
-        $pct = round($iguales * 100 / $comunes, 1);
+        $pct = round(count($mapa) * 100 / $comunes, 1);
         $this->line(sprintf(
-            'Procedencia: %s ids de plato en comun, %s con el mismo nombre (%s%%).',
+            "Procedencia de {$etiqueta} (por id): %s ids en comun, %s con el mismo nombre (%s%%).",
             number_format($comunes),
-            number_format($iguales),
+            number_format(count($mapa)),
             $pct
         ));
 
         if ($pct >= self::UMBRAL_PROCEDENCIA) {
-            return true;
+            return $mapa;
         }
-
         if ($this->option('forzar')) {
-            $this->warn("  Solo el {$pct}% de los nombres coincide, pero se paso --forzar. Siguiendo.");
-            return true;
+            $this->warn("  Solo el {$pct}% coincide, pero se paso --forzar. Siguiendo.");
+            return $mapa;
         }
 
         $this->line('');
-        $this->error("ABORTADO: solo el {$pct}% de los platos con id compartido tiene el mismo nombre.");
+        $this->error("ABORTADO: solo el {$pct}% de {$etiqueta} con id compartido tiene el mismo nombre.");
         $this->line('');
-        $this->line('  El dump NO es de esta base: los ids coinciden por casualidad, pero identifican');
-        $this->line('  platos distintos. Restaurarlo le colgaria a cada plato la receta de otro.');
+        $this->line('  Los ids no estan alineados. Si el catalogo se reimporto, las filas son las');
+        $this->line('  mismas pero con ids nuevos: use --por-nombre para emparejarlas por nombre.');
         $this->line('');
         foreach ($muestra as $m) {
             $this->line($m);
         }
-        $this->line('');
-        $this->line('  Apunte --dump y la conexion a la misma instancia, o use --forzar si de verdad');
-        $this->line('  sabe lo que esta haciendo.');
 
-        return false;
+        return null;
+    }
+
+    /**
+     * Modo --por-nombre: reconstruye la correspondencia usando el nombre del
+     * plato en vez del id.
+     *
+     * Hace falta cuando el catalogo se reimporto y los dishes quedaron con ids
+     * nuevos: el contenido es el mismo pero ningun id del dump sirve ya. El
+     * nombre pasa a ser la unica identidad estable entre las dos versiones.
+     *
+     * Solo se empareja un nombre que aparezca UNA sola vez de cada lado. Si el
+     * mismo nombre esta repetido —y en este catalogo pasa: hay platos que se
+     * llaman igual— no hay forma de saber cual es cual, y elegir uno al azar
+     * le colgaria la receta al plato equivocado. Esos se descartan y se
+     * reportan, que es preferible a restaurarlos mal.
+     *
+     * @param  array<int, string> $vivos id => nombre normalizado
+     * @return array<int, int>|null       id del dump => id vivo
+     */
+    private function mapearPorNombre(string $ruta, string $tabla, array $vivos, string $etiqueta): ?array
+    {
+        // nombre normalizado => ids, de cada lado
+        $porNombreVivo = [];
+        foreach ($vivos as $id => $nombre) {
+            if ($nombre !== '') {
+                $porNombreVivo[$nombre][] = $id;
+            }
+        }
+
+        $porNombreDump = [];
+        foreach ($this->filas($ruta, $tabla) as $f) {
+            $nombre = $this->normalizar($f[1] ?? '');
+            if ($nombre !== '') {
+                $porNombreDump[$nombre][] = (int) $f[0];
+            }
+        }
+
+        $mapa      = [];
+        $ambiguos  = 0;
+        $soloDump  = 0;
+        foreach ($porNombreDump as $nombre => $ids) {
+            if (!isset($porNombreVivo[$nombre])) {
+                $soloDump++;
+                continue;
+            }
+            if (count($ids) > 1 || count($porNombreVivo[$nombre]) > 1) {
+                $ambiguos++;
+                continue;
+            }
+            $mapa[$ids[0]] = $porNombreVivo[$nombre][0];
+        }
+
+        $cobertura = count($porNombreVivo) > 0
+            ? round(count($mapa) * 100 / count($porNombreVivo), 1)
+            : 0.0;
+
+        $this->line(sprintf(
+            "Procedencia de {$etiqueta} (por nombre): %s nombres en el dump, %s vivos, "
+            . '%s emparejados (%s%% de lo vivo).',
+            number_format(count($porNombreDump)),
+            number_format(count($porNombreVivo)),
+            number_format(count($mapa)),
+            $cobertura
+        ));
+        $this->line(sprintf(
+            '  %s nombres repetidos se descartan por ambiguos, %s solo estan en el dump.',
+            number_format($ambiguos),
+            number_format($soloDump)
+        ));
+
+        if (!$mapa) {
+            $this->line('');
+            $this->error("ABORTADO: no se pudo emparejar ni un solo {$etiqueta} por nombre.");
+            return null;
+        }
+        if ($cobertura < 20 && !$this->option('forzar')) {
+            $this->line('');
+            $this->error("ABORTADO: solo se empareja el {$cobertura}% de {$etiqueta} vivos.");
+            $this->line('  Demasiado poco para que el dump sea de este sistema. Use --forzar para seguir.');
+            return null;
+        }
+
+        return $mapa;
     }
 
     /** Nombres de una tabla como mapa id => nombre normalizado. */
