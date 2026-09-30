@@ -165,10 +165,26 @@ const form = useForm({
 
 const localLevels = ref([...props.levels]);
 
+// Un nivel borrado (por este usuario o por otro) arrastra por FK sus recetas. Si siguiera
+// seleccionado, al guardar se intentaría insertar una receta con un level_id inexistente y MySQL
+// devolvería un error de integridad. Se purga de la selección en cuanto deja de existir.
+const pruneMissingLevels = () => {
+    const validIds = new Set(localLevels.value.map((l: any) => l.id));
+    const removed = form.mesearument_unit.filter((id) => !validIds.has(id));
+    if (removed.length === 0) return;
+
+    form.mesearument_unit = form.mesearument_unit.filter((id) => validIds.has(id));
+    removed.forEach((id) => delete form.recipes[id]);
+    if (activeLevelTab.value !== null && !validIds.has(activeLevelTab.value)) {
+        activeLevelTab.value = form.mesearument_unit.length ? form.mesearument_unit[0] : null;
+    }
+};
+
 watch(
     () => props.levels,
     (newLevels) => {
         localLevels.value = [...(newLevels || [])];
+        pruneMissingLevels();
     },
 );
 
@@ -246,10 +262,10 @@ const deleteLevelFromList = (levelId: number) => {
                         }
                     }
                 })
-                .catch(() => {
+                .catch((error: any) => {
                     Swal.fire({
-                        title: 'Error',
-                        text: 'No se pudo eliminar el nivel. Es posible que esté en uso.',
+                        title: 'No se eliminó el nivel',
+                        text: error.response?.data?.message || 'No se pudo eliminar el nivel. Es posible que esté en uso.',
                         icon: 'error',
                     });
                 });
@@ -555,6 +571,8 @@ const loadRecipesIntoForm = (dish: Dish) => {
         sortedRecipes(dish).forEach((recipe: any) => {
             const levelId = recipe.level_id;
             if (!levelId) return;
+            // Receta huérfana: su nivel ya no está en `levels`. Reenviarla al guardar rompería la FK.
+            if (!localLevels.value.some((l: any) => l.id === levelId)) return;
             if (form.mesearument_unit.includes(levelId)) return;
             form.mesearument_unit.push(levelId);
 
