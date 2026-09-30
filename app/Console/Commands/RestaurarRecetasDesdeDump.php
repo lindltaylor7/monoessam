@@ -141,15 +141,17 @@ class RestaurarRecetasDesdeDump extends Command
         // falsos, que es exactamente el modo de fallo que hay que evitar.
         $porNombre = (bool) $this->option('por-nombre');
 
+        $pesos = $porNombre ? $this->pesosDelDump($ruta) : ['platos' => [], 'insumos' => []];
+
         $mapaPlatos = $porNombre
-            ? $this->mapearPorNombre($ruta, 'dishes', $platosVivos, 'platos')
+            ? $this->mapearPorNombre($ruta, 'dishes', $platosVivos, 'platos', $pesos['platos'])
             : $this->mapearPorId($ruta, 'dishes', $platosVivos, 'platos');
         if ($mapaPlatos === null) {
             return self::FAILURE;
         }
 
         $mapaIngredientes = $porNombre
-            ? $this->mapearPorNombre($ruta, 'ingredients', $ingredientesVivos, 'ingredientes')
+            ? $this->mapearPorNombre($ruta, 'ingredients', $ingredientesVivos, 'ingredientes', $pesos['insumos'])
             : $this->mapearPorId($ruta, 'ingredients', $ingredientesVivos, 'ingredientes');
         if ($mapaIngredientes === null) {
             return self::FAILURE;
@@ -464,7 +466,13 @@ class RestaurarRecetasDesdeDump extends Command
      * @param  array<int, string> $vivos id => nombre normalizado
      * @return array<int, int>|null       id del dump => id vivo
      */
-    private function mapearPorNombre(string $ruta, string $tabla, array $vivos, string $etiqueta): ?array
+    private function mapearPorNombre(
+        string $ruta,
+        string $tabla,
+        array $vivos,
+        string $etiqueta,
+        ?array $peso = null
+    ): ?array
     {
         // nombre normalizado => ids, de cada lado
         $porNombreVivo = [];
@@ -482,19 +490,50 @@ class RestaurarRecetasDesdeDump extends Command
             }
         }
 
-        $mapa      = [];
-        $ambiguos  = 0;
-        $soloDump  = 0;
+        $mapa         = [];
+        $ambiguos     = 0;
+        $soloDump     = 0;
+        $desempatados = 0;
+
         foreach ($porNombreDump as $nombre => $ids) {
             if (!isset($porNombreVivo[$nombre])) {
                 $soloDump++;
                 continue;
             }
-            if (count($ids) > 1 || count($porNombreVivo[$nombre]) > 1) {
-                $ambiguos++;
+            $vivosIds = $porNombreVivo[$nombre];
+
+            if (count($ids) === 1 && count($vivosIds) === 1) {
+                $mapa[$ids[0]] = $vivosIds[0];
                 continue;
             }
-            $mapa[$ids[0]] = $porNombreVivo[$nombre][0];
+
+            // Caso "varios en el dump, uno solo vivo": el catalogo local quedo
+            // deduplicado y el respaldo todavia tiene los duplicados. No es
+            // ambiguo de verdad —el destino es unico— solo hay que elegir cual
+            // de las copias aporta la receta. Se toma la mas cargada, medida en
+            // lineas de ingrediente: entre un duplicado con receta completa y
+            // otro vacio, el que tiene el dato es el que sirve.
+            if ($peso !== null && count($vivosIds) === 1) {
+                $mejor = null;
+                $max   = 0;
+                foreach ($ids as $id) {
+                    $p = $peso[$id] ?? 0;
+                    if ($p > $max) {
+                        $max   = $p;
+                        $mejor = $id;
+                    }
+                }
+                if ($mejor !== null) {
+                    $mapa[$mejor] = $vivosIds[0];
+                    $desempatados++;
+                    continue;
+                }
+                // Ninguna copia tiene ingredientes: no hay nada que restaurar.
+                continue;
+            }
+
+            // Varios destinos vivos posibles: elegir seria inventar.
+            $ambiguos++;
         }
 
         $cobertura = count($porNombreVivo) > 0
@@ -510,7 +549,9 @@ class RestaurarRecetasDesdeDump extends Command
             $cobertura
         ));
         $this->line(sprintf(
-            '  %s nombres repetidos se descartan por ambiguos, %s solo estan en el dump.',
+            '  %s resueltos por duplicado en el dump, %s descartados por ambiguos, '
+            . '%s solo estan en el dump.',
+            number_format($desempatados),
             number_format($ambiguos),
             number_format($soloDump)
         ));
@@ -528,6 +569,43 @@ class RestaurarRecetasDesdeDump extends Command
         }
 
         return $mapa;
+    }
+
+    /**
+     * Pesos para desempatar duplicados, contando lineas de ingrediente del dump.
+     *
+     * Cuando el respaldo trae la misma fila repetida y la base local la tiene
+     * una sola vez, hay que decidir cual de las copias aporta el dato. Contar
+     * cuantas lineas de receta cuelgan de cada una separa la copia que de
+     * verdad se usa de las que quedaron vacias, que es casi siempre la
+     * diferencia real entre duplicados.
+     *
+     * Ambos pesos salen de UNA sola lectura de dish_recipe_ingredients: son
+     * 159 mil filas y recorrerlas dos veces para contar dos cosas distintas
+     * del mismo renglon no tiene sentido.
+     *
+     * @return array{platos: array<int, int>, insumos: array<int, int>}
+     */
+    private function pesosDelDump(string $ruta): array
+    {
+        // receta -> plato, para poder atribuirle al plato las lineas de su receta
+        $recetaPlato = [];
+        foreach ($this->filas($ruta, 'dish_recipes') as $f) {
+            $recetaPlato[(int) $f[0]] = (int) $f[1];
+        }
+
+        $platos  = [];
+        $insumos = [];
+        foreach ($this->filas($ruta, 'dish_recipe_ingredients') as $f) {
+            $plato = $recetaPlato[(int) $f[1]] ?? null;
+            if ($plato !== null) {
+                $platos[$plato] = ($platos[$plato] ?? 0) + 1;
+            }
+            $ing = (int) $f[2];
+            $insumos[$ing] = ($insumos[$ing] ?? 0) + 1;
+        }
+
+        return ['platos' => $platos, 'insumos' => $insumos];
     }
 
     /** Nombres de una tabla como mapa id => nombre normalizado. */
