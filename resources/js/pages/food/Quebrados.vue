@@ -236,43 +236,6 @@ const isCategorySelected = (categoryId: number) => {
     return form.dish_categories.some((c) => c.id === categoryId);
 };
 
-const deleteLevelFromList = (levelId: number) => {
-    const level = localLevels.value.find((l) => l.id === levelId);
-    Swal.fire({
-        title: '¿Eliminar nivel?',
-        text: `Se quitará "${level?.name}" de la base de datos. Esta acción puede afectar a otros platos.`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#ef4444',
-        confirmButtonText: 'Sí, eliminar',
-        cancelButtonText: 'Cancelar',
-    }).then((result) => {
-        if (result.isConfirmed) {
-            axios
-                .delete(route('levels.destroy', levelId))
-                .then(() => {
-                    localLevels.value = localLevels.value.filter((l) => l.id !== levelId);
-                    router.reload({ only: ['levels'] });
-                    const index = form.mesearument_unit.indexOf(levelId);
-                    if (index !== -1) {
-                        form.mesearument_unit.splice(index, 1);
-                        delete form.recipes[levelId];
-                        if (activeLevelTab.value === levelId) {
-                            activeLevelTab.value = form.mesearument_unit.length ? form.mesearument_unit[0] : null;
-                        }
-                    }
-                })
-                .catch((error: any) => {
-                    Swal.fire({
-                        title: 'No se eliminó el nivel',
-                        text: error.response?.data?.message || 'No se pudo eliminar el nivel. Es posible que esté en uso.',
-                        icon: 'error',
-                    });
-                });
-        }
-    });
-};
-
 const toggleLevel = async (id: number) => {
     const index = form.mesearument_unit.indexOf(id);
     if (index === -1) {
@@ -1233,10 +1196,6 @@ onUnmounted(() => {
                                         "
                                     >
                                         <span>{{ level.name }}</span>
-                                        <Trash
-                                            @click.stop="deleteLevelFromList(level.id)"
-                                            class="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100 hover:text-rose-400"
-                                        />
                                     </button>
                                 </div>
                             </div>
