@@ -69,7 +69,10 @@ class PlanningController extends Controller
 
         // El servicio al que pertenece cada programación es único. Se guarda en weekly_programs.meal_type;
         // para programaciones antiguas sin ese dato, se cae al meal_type predominante de sus items.
+        // Solo para las que no lo tienen: agrupar toda la tabla de items (600k+ filas
+        // con las programaciones migradas) en cada carga de la pantalla no tiene sentido.
         $fallbackService = WeeklyProgramItem::select('weekly_program_id', 'meal_type', DB::raw('COUNT(*) as c'))
+            ->whereIn('weekly_program_id', WeeklyProgram::whereNull('meal_type')->select('id'))
             ->groupBy('weekly_program_id', 'meal_type')
             ->orderByDesc('c')
             ->get()
