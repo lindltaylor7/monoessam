@@ -95,6 +95,8 @@ class RestaurarRecetasDesdeDump extends Command
         {--plato=* : Limitar a estos dish_id (repetible)}
         {--lote=500 : Filas por INSERT}
         {--por-nombre : Emparejar platos por nombre en vez de por id}
+        {--via-legacy : Interpretar dish_recipes.dish_id como nCodPlato y traducirlo con map_dish}
+        {--mapa=mig_tiburon.map_dish : Tabla nCodPlato -> dish_id para --via-legacy}
         {--forzar : Saltar el control de que el dump corresponda a esta base}';
 
     protected $description = 'Restaura recetas y sus ingredientes desde un dump SQL, sin pisar lo que ya existe';
@@ -141,16 +143,26 @@ class RestaurarRecetasDesdeDump extends Command
         // falsos, que es exactamente el modo de fallo que hay que evitar.
         $porNombre = (bool) $this->option('por-nombre');
 
-        $pesos = $porNombre ? $this->pesosDelDump($ruta) : ['platos' => [], 'insumos' => []];
+        // `ingredients` del respaldo tambien esta re-keyada respecto de la base
+        // local (de los 1,016 ids compartidos, 3 conservan el nombre), asi que
+        // los insumos SIEMPRE se emparejan por nombre salvo en modo id puro.
+        $insumosPorNombre = $porNombre || $this->option('via-legacy');
+        $pesos = $insumosPorNombre
+            ? $this->pesosDelDump($ruta)
+            : ['platos' => [], 'insumos' => [], 'recetas' => []];
 
-        $mapaPlatos = $porNombre
-            ? $this->mapearPorNombre($ruta, 'dishes', $platosVivos, 'platos', $pesos['platos'])
-            : $this->mapearPorId($ruta, 'dishes', $platosVivos, 'platos');
+        if ($this->option('via-legacy')) {
+            $mapaPlatos = $this->mapearPorLegacy($platosVivos);
+        } elseif ($porNombre) {
+            $mapaPlatos = $this->mapearPorNombre($ruta, 'dishes', $platosVivos, 'platos', $pesos['platos']);
+        } else {
+            $mapaPlatos = $this->mapearPorId($ruta, 'dishes', $platosVivos, 'platos');
+        }
         if ($mapaPlatos === null) {
             return self::FAILURE;
         }
 
-        $mapaIngredientes = $porNombre
+        $mapaIngredientes = $insumosPorNombre
             ? $this->mapearPorNombre($ruta, 'ingredients', $ingredientesVivos, 'ingredientes', $pesos['insumos'])
             : $this->mapearPorId($ruta, 'ingredients', $ingredientesVivos, 'ingredientes');
         if ($mapaIngredientes === null) {
@@ -189,7 +201,9 @@ class RestaurarRecetasDesdeDump extends Command
 
         $nuevas = [];   // id_dump => fila a insertar
         $vacias = [];   // id_dump => ['id' => id_vivo, 'totales' => [...]]
-        $conteo = ['intacta' => 0, 'sin_plato' => 0, 'sin_nivel' => 0, 'fuera_filtro' => 0, 'dump' => 0];
+        $conteo = ['intacta' => 0, 'sin_plato' => 0, 'sin_nivel' => 0, 'fuera_filtro' => 0,
+                   'dump' => 0, 'colision' => 0];
+        $ocupado = [];   // "dish:level" => id_dump que se quedo con el puesto
 
         foreach ($this->filas($ruta, 'dish_recipes') as $f) {
             $conteo['dump']++;
@@ -215,6 +229,19 @@ class RestaurarRecetasDesdeDump extends Command
 
             $clave = $dishId . ':' . $levelId;
             if (!isset($recetasVivas[$clave])) {
+                // dish_recipes tiene UNIQUE (dish_id, level_id). map_dish deduplica,
+                // asi que varios nCodPlato caen en el mismo plato local y sus recetas
+                // chocan por ese par. Se queda la que trae mas ingredientes.
+                if (isset($ocupado[$clave])) {
+                    $conteo['colision']++;
+                    $rival = $ocupado[$clave];
+                    if (($pesos['recetas'][$idDump] ?? 0) <= ($pesos['recetas'][$rival] ?? 0)) {
+                        continue;
+                    }
+                    unset($nuevas[$rival]);
+                }
+                $ocupado[$clave] = $idDump;
+
                 $nuevas[$idDump] = array_merge([
                     'dish_id'  => $dishId,
                     'level_id' => $levelId,
@@ -232,13 +259,15 @@ class RestaurarRecetasDesdeDump extends Command
 
         $this->line(sprintf(
             '  %s filas leidas -> %s nuevas, %s a rellenar, %s intactas (se respetan), '
-            . '%s sin plato, %s sin nivel%s.',
+            . '%s sin plato, %s sin nivel, %s descartadas por chocar con otra del mismo '
+            . 'plato y nivel%s.',
             number_format($conteo['dump']),
             number_format(count($nuevas)),
             number_format(count($vacias)),
             number_format($conteo['intacta']),
             number_format($conteo['sin_plato']),
             number_format($conteo['sin_nivel']),
+            number_format($conteo['colision']),
             $filtro !== null ? ', ' . number_format($conteo['fuera_filtro']) . ' fuera del filtro' : ''
         ));
 
@@ -584,7 +613,7 @@ class RestaurarRecetasDesdeDump extends Command
      * 159 mil filas y recorrerlas dos veces para contar dos cosas distintas
      * del mismo renglon no tiene sentido.
      *
-     * @return array{platos: array<int, int>, insumos: array<int, int>}
+     * @return array{platos: array<int, int>, insumos: array<int, int>, recetas: array<int, int>}
      */
     private function pesosDelDump(string $ruta): array
     {
@@ -596,8 +625,12 @@ class RestaurarRecetasDesdeDump extends Command
 
         $platos  = [];
         $insumos = [];
+        $porReceta = [];
         foreach ($this->filas($ruta, 'dish_recipe_ingredients') as $f) {
-            $plato = $recetaPlato[(int) $f[1]] ?? null;
+            $receta = (int) $f[1];
+            $porReceta[$receta] = ($porReceta[$receta] ?? 0) + 1;
+
+            $plato = $recetaPlato[$receta] ?? null;
             if ($plato !== null) {
                 $platos[$plato] = ($platos[$plato] ?? 0) + 1;
             }
@@ -605,7 +638,77 @@ class RestaurarRecetasDesdeDump extends Command
             $insumos[$ing] = ($insumos[$ing] ?? 0) + 1;
         }
 
-        return ['platos' => $platos, 'insumos' => $insumos];
+        return ['platos' => $platos, 'insumos' => $insumos, 'recetas' => $porReceta];
+    }
+
+    /**
+     * Traduce dish_recipes.dish_id leyendolo como nCodPlato del sistema legacy.
+     *
+     * POR QUE ESTE MODO EXISTE
+     *
+     * `dish_recipes.dish_id` NO es un id de la tabla `dishes` del respaldo: es el
+     * nCodPlato del sistema viejo (SQL Server) del que se migro el recetario. Se
+     * cargo tal cual, sin traducir, asi que el numero cuadra con la FK por pura
+     * coincidencia de rango y apunta a un plato que no tiene nada que ver.
+     *
+     * La diferencia no es sutil. Midiendo cuantos platos cuyo nombre menciona un
+     * insumo (POLLO, PAPA, LECHE...) lo tienen de verdad en su receta:
+     *
+     *   leyendo dish_id como id del respaldo   16.7%
+     *   leyendo dish_id como nCodPlato         78.6%
+     *
+     * O sea que el recetario siempre estuvo bien; lo que estaba mal era como se
+     * interpretaba la columna. map_dish es la tabla que la migracion dejo con la
+     * correspondencia nCodPlato -> dish_id, ya deduplicada (nombre_limpio recorta
+     * espacios dobles y el punto final, es_duplicado_de colapsa repetidos), asi
+     * que traducir por ahi no necesita emparejar nombres ni adivinar nada.
+     *
+     * @param  array<int, string> $platosVivos id => nombre, para validar destinos
+     * @return array<int, int>|null            nCodPlato => dish_id vivo
+     */
+    private function mapearPorLegacy(array $platosVivos): ?array
+    {
+        $tabla = (string) $this->option('mapa');
+        if (!preg_match('/^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+)?$/', $tabla)) {
+            $this->error("Nombre de tabla invalido en --mapa: '{$tabla}'.");
+            return null;
+        }
+
+        try {
+            $filas = DB::select("SELECT nCodPlato, dish_id FROM {$tabla} WHERE dish_id IS NOT NULL");
+        } catch (\Throwable $e) {
+            $this->error("No se pudo leer {$tabla}: " . $e->getMessage());
+            $this->line('  Pase --mapa=esquema.tabla si el mapeo vive en otro lado.');
+            return null;
+        }
+
+        $mapa    = [];
+        $muertos = 0;
+        foreach ($filas as $f) {
+            $destino = (int) $f->dish_id;
+            // Un dish_id que ya no existe viene de un plato borrado despues de
+            // la migracion; insertar su receta reventaria la FK.
+            if (!isset($platosVivos[$destino])) {
+                $muertos++;
+                continue;
+            }
+            $mapa[(int) $f->nCodPlato] = $destino;
+        }
+
+        $this->line(sprintf(
+            'Mapeo legacy (%s): %s codigos con destino, %s apuntan a platos que ya no existen.',
+            $tabla,
+            number_format(count($mapa)),
+            number_format($muertos)
+        ));
+
+        if (!$mapa) {
+            $this->line('');
+            $this->error('ABORTADO: el mapeo no dejo ni un solo nCodPlato utilizable.');
+            return null;
+        }
+
+        return $mapa;
     }
 
     /** Nombres de una tabla como mapa id => nombre normalizado. */
