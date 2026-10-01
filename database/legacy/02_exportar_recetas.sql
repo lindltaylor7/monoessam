@@ -1,107 +1,138 @@
 /* ============================================================================
-   FASE 2 - EXTRAER EL RECETARIO PARA REIMPORTARLO EN LARAVEL
+   FASE 2 - EXTRAER EL RECETARIO DESDE SQL SERVER (Tiburon)
 
-   Correr en SSMS contra la base del sistema viejo, DESPUES de haber corrido
-   01_descubrir_esquema.sql y reemplazado los nombres marcados con  <<< >>>.
+   Tablas ya identificadas con la fase 1. No hay nada que reemplazar: correr
+   tal cual en SSMS, con la base del sistema viejo seleccionada.
+
+       PlaDplato        169,767 filas   detalle receta (plato x producto)
+       PlaMPlato         16,951 filas   maestra de platos
+       ComMProductos      2,524 filas   maestra de productos
 
    QUE PRODUCE
 
-   Una fila por cada par plato-insumo, con las columnas que espera
-   App\Imports\DishRecipesImport:
+   Una fila por par plato-insumo con las columnas que lee
+   App\Imports\DishRecipesImport. El importador empareja POR NOMBRE con
+   firstOrCreate, nunca por id, y ahi esta la gracia: es inmune al problema que
+   origino todo esto. En la migracion anterior el nCodPlato se cargo tal cual
+   en dish_recipes.dish_id sin traducirlo, asi que el numero cuadraba con la FK
+   por coincidencia de rango y cada receta quedo colgada de un plato ajeno.
+   Exportando nombres eso no puede repetirse.
 
-       cNomPlato    nombre del plato   -> Dish::firstOrCreate(['name' => ...])
-       cNomProd     nombre del insumo  -> Ingredient::firstOrCreate(['name' => ...])
+   CONTROL DE REFERENCIA
 
-   Los nombres son la clave de todo. El import empareja POR NOMBRE, nunca por
-   id, y por eso es inmune al problema que nos trajo hasta aqui: los ids del
-   sistema viejo (nCodPlato) se cargaron sin traducir en dish_recipes.dish_id y
-   cada receta quedo colgada de un plato ajeno. Exportando nombres eso no puede
-   volver a pasar.
+   El respaldo de beta del 29-09 tiene 159,103 lineas de receta sobre 16,579
+   platos. PlaDplato tiene 169,767 filas, asi que la consulta principal deberia
+   devolver algo entre esos dos numeros. Si da mucho menos, algun JOIN esta
+   descartando filas: correr las verificaciones del final antes de exportar.
 
-   Las columnas de cantidad van al final: hoy el import las ignora y escribe 0,
-   pero conviene traerlas en el mismo archivo para no repetir la extraccion
-   cuando se extienda el importador.
+   COMO SACAR EL ARCHIVO
 
-   COMO SACAR EL ARCHIVO DESDE SSMS
+   Recomendado (respeta tildes):
+     clic derecho en la base > Tasks > Export Data... > destino Microsoft Excel
+     o "Flat File" con Code page = 65001 (UTF-8)
 
-   Opcion recomendada (respeta tildes y comas):
-     clic derecho sobre la base > Tasks > Export Data...
-     Destino: Microsoft Excel, o "Flat File" con Code page = 65001 (UTF-8)
+   Rapido (verificar tildes despues):
+     Query > Results To > Results to File, guardar como .csv
 
-   Opcion rapida (ojo con el encoding):
-     Query > Results To > Results to File, y guardar como .csv
-     Si las tildes salen mal, usar la opcion de arriba.
-
-   El archivo final se sube por la pantalla de Platos y Recetas, boton Importar.
+   Luego se sube por Platos y Recetas > Importar.
    ============================================================================ */
 
 
 /* ----------------------------------------------------------------------------
-   CONSULTA PRINCIPAL
-
-   Reemplazar los  <<< >>>  con lo que haya devuelto la consulta 4 de la fase 1:
-
-     <<<DETALLE>>>        tabla que cruza plato con producto  (ej. GenDPlato)
-     <<<MAESTRA_PLATO>>>  maestra de platos                   (ej. GenTPlato)
-     <<<MAESTRA_PROD>>>   maestra de productos                (ej. GenTProd)
-     <<<COL_COD_PROD>>>   columna de codigo de producto en el detalle y en su
-                          maestra (ej. nCodProd)
-     <<<COL_NOM_PROD>>>   columna con el NOMBRE del producto  (ej. cNomProd)
+   CONSULTA PRINCIPAL - esto es lo que se exporta
    ---------------------------------------------------------------------------- */
-
 SELECT
-    LTRIM(RTRIM(pl.cNomPlato))              AS cNomPlato,
-    LTRIM(RTRIM(pr.<<<COL_NOM_PROD>>>))     AS cNomProd,
+    LTRIM(RTRIM(pl.cNomPlato))      AS cNomPlato,
+    LTRIM(RTRIM(pr.cNomProd))       AS cNomProd,
 
-    -- Cantidades: hoy el importador no las usa, pero vienen para no reextraer.
-    -- Ajustar los nombres a lo que tenga el detalle (nCantidad, nPeso, nMerma...).
-    det.nCantidad                           AS nCantidad,
-    det.nMerma                               AS nMerma,
+    -- Cantidades. nCantBas es la cantidad en unidad base (la que sirve para el
+    -- recetario); nCantReq es la requerida para el numero de raciones del plato.
+    -- Se llevan las dos mas nNumRac para poder derivar la porcion unitaria.
+    det.nCantBas                    AS nCantBas,
+    det.nCantReq                    AS nCantReq,
+    det.nTipUndBas                  AS nTipUndBas,
+    pl.nNumRac                      AS nNumRac,
+    pl.nVolumen                     AS nVolumen,
 
-    -- Trazabilidad: permite auditar despues contra mig_tiburon.map_dish
-    pl.nCodPlato                            AS nCodPlato
-FROM <<<DETALLE>>>              AS det
-JOIN <<<MAESTRA_PLATO>>>        AS pl ON pl.nCodPlato        = det.nCodPlato
-JOIN <<<MAESTRA_PROD>>>         AS pr ON pr.<<<COL_COD_PROD>>> = det.<<<COL_COD_PROD>>>
-WHERE pl.cNomPlato IS NOT NULL
-  AND LTRIM(RTRIM(pl.cNomPlato)) <> ''
-  AND pr.<<<COL_NOM_PROD>>> IS NOT NULL
-  AND LTRIM(RTRIM(pr.<<<COL_NOM_PROD>>>)) <> ''
-  -- Si la maestra marca bajas con cEstado, descomentar para excluirlas.
-  -- Ojo: el catalogo que ya esta migrado incluye platos inactivos, asi que
-  -- filtrar aqui puede dejar sin receta a platos que si existen en Laravel.
+    -- Trazabilidad: permite auditar el resultado contra mig_tiburon.map_dish
+    pl.nCodPlato                    AS nCodPlato,
+    pr.nCodProd                     AS nCodProd
+FROM dbo.PlaDplato      AS det
+JOIN dbo.PlaMPlato      AS pl ON pl.nCodPlato = det.nCodPlato
+JOIN dbo.ComMProductos  AS pr ON pr.nCodProd  = det.nCodProd
+WHERE LTRIM(RTRIM(ISNULL(pl.cNomPlato, ''))) <> ''
+  AND LTRIM(RTRIM(ISNULL(pr.cNomProd,  ''))) <> ''
+  -- NO filtrar por cEstado: el catalogo ya migrado a Laravel incluye platos
+  -- dados de baja, y excluirlos aqui los dejaria sin receta. Si se quiere
+  -- solo lo vigente, descomentar y comparar el conteo con la verificacion (a).
   -- AND pl.cEstado = 'A'
-ORDER BY pl.nCodPlato, pr.<<<COL_NOM_PROD>>>;
+  -- AND det.cEstado = 'A'
+ORDER BY pl.nCodPlato, pr.cNomProd;
 
 
-/* ----------------------------------------------------------------------------
-   VERIFICACIONES PREVIAS
+/* ============================================================================
+   VERIFICACIONES - correr ANTES de exportar
+   ============================================================================ */
 
-   Correr estas tres ANTES de exportar. Si los numeros no se parecen a los de
-   referencia, el detalle identificado no es el correcto.
-   ---------------------------------------------------------------------------- */
+/* (a) Volumen. Esperado: entre 159,103 y 169,767.
+       La columna perdidas dice cuantas filas del detalle se caen por no tener
+       plato o producto en su maestra; si es alta, hay que revisar por que. */
+SELECT
+    (SELECT COUNT(*) FROM dbo.PlaDplato)                        AS detalle_total,
+    (SELECT COUNT(*)
+       FROM dbo.PlaDplato det
+       JOIN dbo.PlaMPlato pl     ON pl.nCodPlato = det.nCodPlato
+       JOIN dbo.ComMProductos pr ON pr.nCodProd  = det.nCodProd) AS filas_a_exportar,
+    (SELECT COUNT(DISTINCT det.nCodPlato) FROM dbo.PlaDplato det) AS platos_con_receta;
 
--- a) Cuantas filas saldrian. Referencia: el respaldo de beta tiene 159,103
---    lineas de receta, asi que esperar ese orden de magnitud.
-SELECT COUNT(*) AS filas_a_exportar
-FROM <<<DETALLE>>> AS det
-JOIN <<<MAESTRA_PLATO>>> AS pl ON pl.nCodPlato = det.nCodPlato;
 
--- b) Cuantos platos distintos tienen receta. Referencia: 16,579.
-SELECT COUNT(DISTINCT det.nCodPlato) AS platos_con_receta
-FROM <<<DETALLE>>> AS det;
+/* (b) Que se pierde en cada JOIN, por separado */
+SELECT 'sin plato en PlaMPlato' AS motivo, COUNT(*) AS filas
+FROM dbo.PlaDplato det
+WHERE NOT EXISTS (SELECT 1 FROM dbo.PlaMPlato pl WHERE pl.nCodPlato = det.nCodPlato)
+UNION ALL
+SELECT 'sin producto en ComMProductos', COUNT(*)
+FROM dbo.PlaDplato det
+WHERE NOT EXISTS (SELECT 1 FROM dbo.ComMProductos pr WHERE pr.nCodProd = det.nCodProd);
 
--- c) Control de sentido: un plato de pollo deberia traer pollo.
---    Si esto sale vacio o con insumos ajenos, la tabla de detalle no es.
-SELECT TOP 20
+
+/* (c) Control de sentido. Esta es la prueba que de verdad importa: si estas
+       recetas salen coherentes, la extraccion es correcta.
+
+       Esperado para nCodPlato 57 (POLLO AL ROMERO), segun el respaldo de beta:
+         Ajos Arequipeño Extra, Romero FRESCOS EXTRAS, Pollo Eviscerado x 1.80,
+         Ajinomoto envasado, Comino molido IRAN, OREGANO seco LIMPIO
+
+       Esperado para nCodPlato 270 (MAZAMORRA DE CALABAZA):
+         Calabaza Madura, Canela entera, Chancaca, Clavo de Olor, Leche GLORIA,
+         Maizena                                                              */
+SELECT
     pl.nCodPlato,
-    pl.cNomPlato,
-    pr.<<<COL_NOM_PROD>>> AS insumo
-FROM <<<DETALLE>>>       AS det
-JOIN <<<MAESTRA_PLATO>>> AS pl ON pl.nCodPlato        = det.nCodPlato
-JOIN <<<MAESTRA_PROD>>>  AS pr ON pr.<<<COL_COD_PROD>>> = det.<<<COL_COD_PROD>>>
-WHERE pl.cNomPlato LIKE '%POLLO AL ROMERO%'
-ORDER BY pl.nCodPlato;
-/*  Esperado, segun el respaldo de beta para nCodPlato 57:
-    Ajos Arequipeño Extra, Romero FRESCOS EXTRAS, Pollo Eviscerado x 1.80,
-    Ajinomoto envasado, Comino molido IRAN, OREGANO seco LIMPIO              */
+    LTRIM(RTRIM(pl.cNomPlato)) AS plato,
+    LTRIM(RTRIM(pr.cNomProd))  AS insumo,
+    det.nCantBas
+FROM dbo.PlaDplato      AS det
+JOIN dbo.PlaMPlato      AS pl ON pl.nCodPlato = det.nCodPlato
+JOIN dbo.ComMProductos  AS pr ON pr.nCodProd  = det.nCodProd
+WHERE pl.nCodPlato IN (57, 270, 1, 12000)
+ORDER BY pl.nCodPlato, pr.cNomProd;
+
+
+/* (d) Cuantos platos quedarian con receta vacia (estan en la maestra pero no
+       tienen ninguna linea en el detalle). Referencia: beta tiene 494 asi. */
+SELECT COUNT(*) AS platos_sin_receta
+FROM dbo.PlaMPlato pl
+WHERE NOT EXISTS (SELECT 1 FROM dbo.PlaDplato det WHERE det.nCodPlato = pl.nCodPlato);
+
+
+/* ============================================================================
+   OPCIONAL - tablas que completan el recetario y que conviene exportar aparte
+   si mas adelante se quieren mermas, calorias y unidades reales:
+
+     BdMerma        1,915   nCodProd, cProducto        merma por insumo
+     BdEquiKal      2,050   nCodProd, cNomProd         equivalencias / kcal
+     BdNutrikal     1,079   cProdKal                   nutricion
+     PlaDFacNutri   1,612   nCodProd                   factores nutricionales
+     GenTUndMed        74                              unidades de medida
+     GenTUsoProd       47                              nTipUsoProd (uso del insumo)
+   ============================================================================ */

@@ -439,9 +439,21 @@ class DishController extends Controller
 
         ini_set('max_execution_time', 0); // Disable time limit for this request
 
-        $file = $request->file('excel_file');
-        \Maatwebsite\Excel\Facades\Excel::import(new \App\Imports\DishRecipesImport, $file);
+        $file   = $request->file('excel_file');
+        $import = new \App\Imports\DishRecipesImport;
+        \Maatwebsite\Excel\Facades\Excel::import($import, $file);
 
-        return redirect()->back()->with('success', 'Platos importados correctamente');
+        // El resumen importa: una importación silenciosa esconde el caso en que
+        // el Excel no traía la columna de cantidad y todas las recetas entraron
+        // en cero, que se ve igual que una importación correcta hasta que
+        // alguien abre un plato.
+        $r = $import->resumen();
+
+        return redirect()->back()->with('success', sprintf(
+            'Importación terminada: %s platos nuevos, %s insumos nuevos, %s líneas con cantidad.',
+            number_format($r['platos_nuevos']),
+            number_format($r['insumos_nuevos']),
+            number_format($r['con_cantidad'])
+        ));
     }
 }
