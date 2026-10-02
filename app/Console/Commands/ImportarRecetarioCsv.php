@@ -100,6 +100,9 @@ use Illuminate\Support\Facades\DB;
  */
 class ImportarRecetarioCsv extends Command
 {
+    /** nCantBas llega en kilos; `dish_recipe_ingredients` se guarda en gramos. */
+    private const GRAMOS_POR_KILO = 1000;
+
     protected $signature = 'recetario:importar-csv
         {archivo : Ruta al CSV exportado de SQL Server}
         {--nivel=MASTER : Nombre del nivel donde cae el recetario}
@@ -338,8 +341,14 @@ class ImportarRecetarioCsv extends Command
 
             $ingredientId = $this->insumos[$this->normalizar($nombreInsumo)];
 
-            // Par repetido dentro del mismo plato: se suma a proposito.
-            $acumulado[$ingredientId] = ($acumulado[$ingredientId] ?? 0) + $cantidad;
+            // nCantBas viene en KILOS por racion (ver aNumero()), pero todo el
+            // modulo de recetas trabaja en GRAMOS: Quebrados.vue rotula la
+            // columna con " g" y calcula el costo como cantidad/1000 * precio
+            // por kilo, igual que PlanningController. Guardar el kilo crudo
+            // dejaba el costo mil veces mas chico -- o sea S/. 0.00 en pantalla
+            // -- y hacia que una racion "pesara" 0.2575 g. Se convierte aca,
+            // que es donde entra el dato, y no en la vista.
+            $acumulado[$ingredientId] = ($acumulado[$ingredientId] ?? 0) + $cantidad * self::GRAMOS_POR_KILO;
 
             if (count($buffer) >= $lote) {
                 $escritas += $this->volcar($buffer);

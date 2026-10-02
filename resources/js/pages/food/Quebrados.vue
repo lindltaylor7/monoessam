@@ -1345,9 +1345,11 @@ onUnmounted(() => {
                                                     </select>
                                                 </TableCell>
 
-                                                <!-- Costo Base -->
+                                                <!-- Costo Base: 4 decimales como "P. x Gr". Con 2 se perdia
+                                                     la fila entera: 2 g de ajos son S/. 0.0218, que a dos
+                                                     decimales se ve como S/. 0.00 y parece que no calcula. -->
                                                 <TableCell class="py-1.5 text-center font-mono font-extrabold text-emerald-600 dark:text-emerald-400">
-                                                    S/. {{ Number(ingredient.cost).toFixed(2) }}
+                                                    S/. {{ Number(ingredient.cost || 0).toFixed(4) }}
                                                 </TableCell>
 
                                                 <!-- Materia Prima -->
