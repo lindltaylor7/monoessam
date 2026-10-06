@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Dish_category;
+use App\Models\DishRecipe;
 use App\Models\Level;
 use App\Models\MenuCycle;
 use App\Models\Mine;
@@ -44,8 +45,61 @@ class MenuCycleController extends Controller
             'serviceable_id' => $cycle->serviceable_id,
             'name'           => $cycle->name,
             'days'           => $cycle->days,
-            'cycle_data'     => $cycle->cycle_data,
+            'cycle_data'     => $this->fillMissingPrices($cycle->cycle_data),
         ]);
+    }
+
+    /**
+     * `cycle_data` es una foto congelada al guardar y no se reescribe, pero el recetario migrado
+     * tenia total_cost en 0, asi que los ciclos guardados antes quedaron con todos los dias en
+     * S/ 0.00. Solo los dias con precio 0 se completan con el costo actual de la receta (mismo
+     * calculo que Quebrados); un precio distinto de 0 se respeta tal cual.
+     */
+    private function fillMissingPrices($cycleData)
+    {
+        if (!is_array($cycleData)) {
+            return $cycleData;
+        }
+
+        $pending = [];
+        foreach ($cycleData as $row) {
+            foreach (($row['days'] ?? []) as $day) {
+                if (is_array($day) && !empty($day['dish_id']) && !empty($day['level_id']) && !(float) ($day['price'] ?? 0)) {
+                    $pending[$day['dish_id'] . '-' . $day['level_id']] = [$day['dish_id'], $day['level_id']];
+                }
+            }
+        }
+
+        if (!$pending) {
+            return $cycleData;
+        }
+
+        $costs = DishRecipe::whereIn('dish_id', array_unique(array_column($pending, 0)))
+            ->whereIn('level_id', array_unique(array_column($pending, 1)))
+            ->with('ingredients.assignments')
+            ->get()
+            ->mapWithKeys(function ($recipe) {
+                foreach ($recipe->ingredients as $ingredient) {
+                    $ingredient->gross_weight = $ingredient->pivot->gross_weight;
+                    $ingredient->cost = $ingredient->pivot->cost;
+                    $ingredient->unit_price = $ingredient->pivot->unit_price;
+                }
+                $recipe->applyLiveCosts();
+
+                return [$recipe->dish_id . '-' . $recipe->level_id => round($recipe->total_cost, 2)];
+            });
+
+        foreach ($cycleData as &$row) {
+            foreach (($row['days'] ?? []) as $dayIndex => $day) {
+                $key = is_array($day) ? ($day['dish_id'] ?? '') . '-' . ($day['level_id'] ?? '') : null;
+                if ($key && isset($costs[$key]) && !(float) ($day['price'] ?? 0)) {
+                    $row['days'][$dayIndex]['price'] = $costs[$key];
+                }
+            }
+        }
+        unset($row);
+
+        return $cycleData;
     }
 
     public function store(Request $request)

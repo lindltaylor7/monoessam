@@ -394,6 +394,13 @@ class DishController extends Controller
 
         Recipe::applyPreciseQuantities($dishes);
 
+        // Después de applyPreciseQuantities, que puede pasar el peso a gramos.
+        foreach ($dishes as $dish) {
+            foreach ($dish->recipes as $recipe) {
+                $recipe->applyLiveCosts();
+            }
+        }
+
         return $dishes;
     }
 
