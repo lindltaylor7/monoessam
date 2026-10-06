@@ -589,7 +589,12 @@ const calculateIngredientCalories = (ingredient: any) => {
         const fatFactor = parseFloat(atwaterFactor.fat_kcal) || 0;
         const carbFactor = parseFloat(atwaterFactor.carb_kcal) || 0;
 
-        return protein * proteinFactor + lipid * fatFactor + carbohydrate * carbFactor;
+        const atwaterCalories = protein * proteinFactor + lipid * fatFactor + carbohydrate * carbFactor;
+        // Igual que food/Quebrados: con factor asignado pero sin macronutrientes daría 0 kcal;
+        // en ese caso se usa el cálculo de respaldo.
+        if (atwaterCalories > 0) {
+            return atwaterCalories;
+        }
     }
 
     const factors = ingredient?.nutritional_factors || ingredient?.nutritionalFactors;
@@ -644,7 +649,9 @@ const openQuebradoModal = async (row: any, dayIndex: number) => {
                         calories: calculateIngredientCalories(ing),
                     },
                 };
-                newIng.calories = (newIng.gross_weight * newIng.originalValues.calories) / 100;
+                // Como en food/Quebrados: las kcal por 100 g van sobre el producto final (la merma
+                // no aporta calorías).
+                newIng.calories = (newIng.final_product * newIng.originalValues.calories) / 100;
                 return newIng;
             }),
         };
@@ -676,7 +683,7 @@ const onQuebradoWeightInput = (ingredient: any) => {
 
     ingredient.solid_waste = (weightInGrams * origWaste) / 100;
     ingredient.final_product = weightInGrams - ingredient.solid_waste;
-    ingredient.calories = (ingredient.gross_weight * origCalories) / 100;
+    ingredient.calories = (ingredient.final_product * origCalories) / 100;
 
     if (ingredient.unit_price) {
         ingredient.cost =
@@ -1078,7 +1085,7 @@ const resetToNew = () => {
                                                     <div
                                                         class="shrink-0 rounded border border-orange-100 bg-orange-50 px-1.5 py-0.5 text-[10px] font-bold text-orange-700 shadow-sm"
                                                     >
-                                                        {{ row.days[dayIndex].calories }} kcal
+                                                        {{ Number(row.days[dayIndex].calories || 0).toFixed(2) }} kcal
                                                     </div>
                                                 </div>
                                                 <span class="line-clamp-2 text-[12px] leading-snug font-semibold text-slate-800">
@@ -1181,7 +1188,7 @@ const resetToNew = () => {
                                             </p>
                                             <p class="mt-1 text-[11px] text-slate-500">
                                                 Costo: S/ {{ Number(recipe.total_cost || 0).toFixed(2) }} &bull; Calorías:
-                                                {{ recipe.total_calories || 0 }} kcal
+                                                {{ Number(recipe.total_calories || 0).toFixed(2) }} kcal
                                             </p>
                                         </div>
                                         <div class="flex shrink-0 items-center gap-2">

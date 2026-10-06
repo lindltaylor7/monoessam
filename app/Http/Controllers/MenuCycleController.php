@@ -45,26 +45,29 @@ class MenuCycleController extends Controller
             'serviceable_id' => $cycle->serviceable_id,
             'name'           => $cycle->name,
             'days'           => $cycle->days,
-            'cycle_data'     => $this->fillMissingPrices($cycle->cycle_data),
+            'cycle_data'     => $this->fillMissingTotals($cycle->cycle_data),
         ]);
     }
 
     /**
      * `cycle_data` es una foto congelada al guardar y no se reescribe, pero el recetario migrado
-     * tenia total_cost en 0, asi que los ciclos guardados antes quedaron con todos los dias en
-     * S/ 0.00. Solo los dias con precio 0 se completan con el costo actual de la receta (mismo
-     * calculo que Quebrados); un precio distinto de 0 se respeta tal cual.
+     * tenia total_cost y total_calories en 0, asi que los ciclos guardados antes quedaron con
+     * todos los dias en S/ 0.00 y 0 kcal. Solo los valores en 0 se completan con los de la receta
+     * actual (mismo calculo que Quebrados); un valor distinto de 0 se respeta tal cual.
      */
-    private function fillMissingPrices($cycleData)
+    private function fillMissingTotals($cycleData)
     {
         if (!is_array($cycleData)) {
             return $cycleData;
         }
 
+        $isMissing = fn ($day, $field) => !(float) ($day[$field] ?? 0);
+
         $pending = [];
         foreach ($cycleData as $row) {
             foreach (($row['days'] ?? []) as $day) {
-                if (is_array($day) && !empty($day['dish_id']) && !empty($day['level_id']) && !(float) ($day['price'] ?? 0)) {
+                if (is_array($day) && !empty($day['dish_id']) && !empty($day['level_id'])
+                    && ($isMissing($day, 'price') || $isMissing($day, 'calories'))) {
                     $pending[$day['dish_id'] . '-' . $day['level_id']] = [$day['dish_id'], $day['level_id']];
                 }
             }
@@ -74,26 +77,40 @@ class MenuCycleController extends Controller
             return $cycleData;
         }
 
-        $costs = DishRecipe::whereIn('dish_id', array_unique(array_column($pending, 0)))
+        $totals = DishRecipe::whereIn('dish_id', array_unique(array_column($pending, 0)))
             ->whereIn('level_id', array_unique(array_column($pending, 1)))
-            ->with('ingredients.assignments')
+            ->with([
+                'ingredients.assignments',
+                'ingredients.dosification',
+                'ingredients.atwaterFactor',
+                'ingredients.nutritionalFactors',
+            ])
             ->get()
             ->mapWithKeys(function ($recipe) {
                 foreach ($recipe->ingredients as $ingredient) {
                     $ingredient->gross_weight = $ingredient->pivot->gross_weight;
+                    $ingredient->final_product = $ingredient->pivot->net_weight;
                     $ingredient->cost = $ingredient->pivot->cost;
                     $ingredient->unit_price = $ingredient->pivot->unit_price;
                 }
-                $recipe->applyLiveCosts();
+                $recipe->applyLiveTotals();
 
-                return [$recipe->dish_id . '-' . $recipe->level_id => round($recipe->total_cost, 2)];
+                return [$recipe->dish_id . '-' . $recipe->level_id => [
+                    'price'    => round($recipe->total_cost, 2),
+                    'calories' => round($recipe->total_calories, 2),
+                ]];
             });
 
         foreach ($cycleData as &$row) {
             foreach (($row['days'] ?? []) as $dayIndex => $day) {
                 $key = is_array($day) ? ($day['dish_id'] ?? '') . '-' . ($day['level_id'] ?? '') : null;
-                if ($key && isset($costs[$key]) && !(float) ($day['price'] ?? 0)) {
-                    $row['days'][$dayIndex]['price'] = $costs[$key];
+                if (!$key || !isset($totals[$key])) {
+                    continue;
+                }
+                foreach (['price', 'calories'] as $field) {
+                    if ($isMissing($day, $field)) {
+                        $row['days'][$dayIndex][$field] = $totals[$key][$field];
+                    }
                 }
             }
         }
