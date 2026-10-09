@@ -90,8 +90,6 @@ const emits = defineEmits<{
                                 </div>
                             </div>
                         </div>
-
-                        <p class="mt-4 text-sm text-slate-500">¿Desea permitir el registro de todas formas?</p>
                     </div>
 
                     <!-- Footer -->

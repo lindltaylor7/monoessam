@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { UserCheck } from 'lucide-vue-next';
-import { ref } from 'vue';
+import { nextTick, ref } from 'vue';
 
 const props = defineProps({
     services: {
@@ -51,9 +51,17 @@ const props = defineProps({
 const emits = defineEmits(['handleShowAlert', 'showDialog', 'updateDni', 'saveSale']);
 
 const dni = ref('');
+const dniInput = ref<HTMLInputElement | null>(null);
+
+const focusInput = async () => {
+    await nextTick();
+    dniInput.value?.focus();
+    dniInput.value?.select();
+};
 
 const cleanInput = () => {
     dni.value = '';
+    focusInput();
 };
 
 const triggerSearch = () => {
@@ -63,6 +71,7 @@ const triggerSearch = () => {
 
 defineExpose({
     cleanInput,
+    focusInput,
 });
 </script>
 
@@ -85,6 +94,7 @@ defineExpose({
                     <div class="relative flex-1">
                         <Icon name="id-card" class="text-primary absolute top-1/2 left-4 h-5 w-5 -translate-y-1/2" />
                         <input
+                            ref="dniInput"
                             v-model="dni"
                             type="text"
                             :disabled="isSubmitting"

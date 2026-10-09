@@ -246,6 +246,12 @@ const saveSale = (dni: string, force = false) => {
         });
 };
 
+const cancelDuplicateSale = () => {
+    showDuplicateModal.value = false;
+    // Limpia el DNI y devuelve el foco al input para no perder ritmo en caja
+    salesCardRef.value?.cleanInput();
+};
+
 const confirmForceSale = () => {
     showDuplicateModal.value = false;
     saveSale(dniDinnerSearched.value, true);
@@ -373,7 +379,7 @@ const todayTotal = computed(() => {
             <DuplicateServiceModal
                 :show="showDuplicateModal"
                 :data="duplicateData"
-                @cancel="showDuplicateModal = false"
+                @cancel="cancelDuplicateSale"
                 @confirm="confirmForceSale"
             />
         </div>
