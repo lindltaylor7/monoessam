@@ -19,18 +19,14 @@ import {
     ChevronDown,
     Cookie,
     Copy,
-    DollarSign,
     Droplets,
     FileUp,
-    Flame,
     FlaskConical,
     Layers,
     ListFilter,
     Loader2,
     Plus,
-    Scale,
     Search,
-    Sparkles,
     Trash,
     Utensils,
     Waves,
@@ -165,10 +161,26 @@ const form = useForm({
 
 const localLevels = ref([...props.levels]);
 
+// Un nivel borrado (por este usuario o por otro) arrastra por FK sus recetas. Si siguiera
+// seleccionado, al guardar se intentaría insertar una receta con un level_id inexistente y MySQL
+// devolvería un error de integridad. Se purga de la selección en cuanto deja de existir.
+const pruneMissingLevels = () => {
+    const validIds = new Set(localLevels.value.map((l: any) => l.id));
+    const removed = form.mesearument_unit.filter((id) => !validIds.has(id));
+    if (removed.length === 0) return;
+
+    form.mesearument_unit = form.mesearument_unit.filter((id) => validIds.has(id));
+    removed.forEach((id) => delete form.recipes[id]);
+    if (activeLevelTab.value !== null && !validIds.has(activeLevelTab.value)) {
+        activeLevelTab.value = form.mesearument_unit.length ? form.mesearument_unit[0] : null;
+    }
+};
+
 watch(
     () => props.levels,
     (newLevels) => {
         localLevels.value = [...(newLevels || [])];
+        pruneMissingLevels();
     },
 );
 
@@ -218,43 +230,6 @@ const toggleCategory = (category: any) => {
 
 const isCategorySelected = (categoryId: number) => {
     return form.dish_categories.some((c) => c.id === categoryId);
-};
-
-const deleteLevelFromList = (levelId: number) => {
-    const level = localLevels.value.find((l) => l.id === levelId);
-    Swal.fire({
-        title: '¿Eliminar nivel?',
-        text: `Se quitará "${level?.name}" de la base de datos. Esta acción puede afectar a otros platos.`,
-        icon: 'warning',
-        showCancelButton: true,
-        confirmButtonColor: '#ef4444',
-        confirmButtonText: 'Sí, eliminar',
-        cancelButtonText: 'Cancelar',
-    }).then((result) => {
-        if (result.isConfirmed) {
-            axios
-                .delete(route('levels.destroy', levelId))
-                .then(() => {
-                    localLevels.value = localLevels.value.filter((l) => l.id !== levelId);
-                    router.reload({ only: ['levels'] });
-                    const index = form.mesearument_unit.indexOf(levelId);
-                    if (index !== -1) {
-                        form.mesearument_unit.splice(index, 1);
-                        delete form.recipes[levelId];
-                        if (activeLevelTab.value === levelId) {
-                            activeLevelTab.value = form.mesearument_unit.length ? form.mesearument_unit[0] : null;
-                        }
-                    }
-                })
-                .catch(() => {
-                    Swal.fire({
-                        title: 'Error',
-                        text: 'No se pudo eliminar el nivel. Es posible que esté en uso.',
-                        icon: 'error',
-                    });
-                });
-        }
-    });
 };
 
 const toggleLevel = async (id: number) => {
@@ -488,8 +463,7 @@ const submitRecipeDosification = async () => {
     }
 };
 
-const sortedRecipes = (dish: any) =>
-    [...(dish.recipes || [])].sort((a: any, b: any) => (b.ingredients?.length || 0) - (a.ingredients?.length || 0));
+const sortedRecipes = (dish: any) => [...(dish.recipes || [])].sort((a: any, b: any) => (b.ingredients?.length || 0) - (a.ingredients?.length || 0));
 
 const getDishIngredientsCount = (dish: any) => {
     if (!dish.recipes || dish.recipes.length === 0) return 0;
@@ -555,6 +529,8 @@ const loadRecipesIntoForm = (dish: Dish) => {
         sortedRecipes(dish).forEach((recipe: any) => {
             const levelId = recipe.level_id;
             if (!levelId) return;
+            // Receta huérfana: su nivel ya no está en `levels`. Reenviarla al guardar rompería la FK.
+            if (!localLevels.value.some((l: any) => l.id === levelId)) return;
             if (form.mesearument_unit.includes(levelId)) return;
             form.mesearument_unit.push(levelId);
 
@@ -870,40 +846,45 @@ onUnmounted(() => {
     <div class="flex h-full w-full overflow-hidden bg-zinc-50/50 dark:bg-zinc-950">
         <!-- LEFT PANEL: Dish List (Sidebar) -->
         <div
-            class="z-10 flex h-full min-h-0 w-full min-w-0 flex-col border-r border-zinc-200/80 bg-white md:w-80 lg:w-[340px] shrink-0 dark:border-zinc-800 dark:bg-zinc-900/90"
+            class="z-10 flex h-full min-h-0 w-full min-w-0 shrink-0 flex-col border-r border-zinc-200/80 bg-white md:w-80 lg:w-[340px] dark:border-zinc-800 dark:bg-zinc-900/90"
             :class="{ 'hidden md:flex': form.id !== null || isCreating }"
         >
             <!-- Header Section -->
-            <div class="space-y-2.5 p-3.5 border-b border-zinc-100 shrink-0 dark:border-zinc-800/80">
+            <div class="shrink-0 space-y-2.5 border-b border-zinc-100 p-3.5 dark:border-zinc-800/80">
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-2.5">
-                        <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-xs">
+                        <div
+                            class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-xs"
+                        >
                             <ChefHat class="h-4.5 w-4.5" />
                         </div>
                         <div>
-                            <h2 class="text-sm font-extrabold text-zinc-900 dark:text-zinc-100 leading-tight">Platos y Recetas</h2>
+                            <h2 class="text-sm leading-tight font-extrabold text-zinc-900 dark:text-zinc-100">Platos y Recetas</h2>
                             <p class="text-[10px] font-medium text-zinc-400">Catálogo de quebrados</p>
                         </div>
                     </div>
-                    <Badge variant="secondary" class="rounded-full bg-indigo-50 border border-indigo-100 px-2.5 py-0.5 text-[10px] font-extrabold text-indigo-600 dark:bg-indigo-950/60 dark:border-indigo-900/60 dark:text-indigo-400">
+                    <Badge
+                        variant="secondary"
+                        class="rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-0.5 text-[10px] font-extrabold text-indigo-600 dark:border-indigo-900/60 dark:bg-indigo-950/60 dark:text-indigo-400"
+                    >
                         {{ filteredDishes.length }}
                     </Badge>
                 </div>
 
                 <!-- Search Input -->
                 <div class="relative">
-                    <Search v-if="!isSearchingDishes" class="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-indigo-500" />
-                    <Loader2 v-else class="absolute left-2.5 top-2.5 h-3.5 w-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
+                    <Search v-if="!isSearchingDishes" class="absolute top-2.5 left-2.5 h-3.5 w-3.5 text-indigo-500" />
+                    <Loader2 v-else class="absolute top-2.5 left-2.5 h-3.5 w-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
                     <Input
                         :model-value="searchQuery"
                         @input="searchDish"
                         placeholder="Buscar plato o receta..."
-                        class="h-8 w-full rounded-xl border-zinc-200 bg-zinc-50/80 pl-8 pr-7 text-xs focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 dark:border-zinc-800 dark:bg-zinc-800/50 dark:focus:bg-zinc-900"
+                        class="h-8 w-full rounded-xl border-zinc-200 bg-zinc-50/80 pr-7 pl-8 text-xs focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-800 dark:bg-zinc-800/50 dark:focus:bg-zinc-900"
                     />
                     <button
                         v-if="searchQuery"
                         @click="clearDishSearch"
-                        class="absolute right-2 top-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                        class="absolute top-2 right-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
                     >
                         <X class="h-3.5 w-3.5" />
                     </button>
@@ -933,7 +914,7 @@ onUnmounted(() => {
                         @click="fileInput?.click()"
                         variant="outline"
                         size="sm"
-                        class="h-8 px-2 rounded-lg border-zinc-200 text-[11px] gap-1 text-zinc-600 hover:bg-zinc-100 shrink-0 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                        class="h-8 shrink-0 gap-1 rounded-lg border-zinc-200 px-2 text-[11px] text-zinc-600 hover:bg-zinc-100 dark:border-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-800"
                         title="Importar Excel"
                     >
                         <FileUp class="h-3 w-3 text-indigo-500" />
@@ -943,7 +924,7 @@ onUnmounted(() => {
                     <Button
                         @click="createDish"
                         size="sm"
-                        class="h-8 px-3 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 font-bold text-[11px] gap-1 shadow-xs shadow-indigo-500/20 shrink-0"
+                        class="h-8 shrink-0 gap-1 rounded-lg bg-indigo-600 px-3 text-[11px] font-bold text-white shadow-xs shadow-indigo-500/20 hover:bg-indigo-700"
                         title="Nuevo plato"
                     >
                         <Plus class="h-3.5 w-3.5" />
@@ -953,7 +934,7 @@ onUnmounted(() => {
             </div>
 
             <!-- Dish List Content -->
-            <div class="min-h-0 flex-1 overflow-y-auto p-2.5 space-y-1.5 scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800">
+            <div class="scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800 min-h-0 flex-1 space-y-1.5 overflow-y-auto p-2.5">
                 <!-- Loading Skeleton -->
                 <div v-if="isSearchingDishes" class="space-y-1.5">
                     <div
@@ -964,89 +945,89 @@ onUnmounted(() => {
                 </div>
 
                 <template v-else>
-                <div
-                    v-if="filteredDishes.length === 0"
-                    class="flex h-48 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-200 text-center p-4 text-xs text-zinc-400 dark:border-zinc-800"
-                >
-                    <div class="rounded-full bg-indigo-50 p-2.5 text-indigo-500 dark:bg-indigo-950/60">
-                        <Utensils class="h-5 w-5" />
-                    </div>
-                    <span v-if="searchQuery || categoryFilter !== 'all'">No se encontraron platos con estos filtros.</span>
-                    <span v-else>Aún no hay platos. Cree el primero con el botón Nuevo.</span>
-                </div>
-
-                <div
-                    v-for="dish in filteredDishes"
-                    :key="dish.id"
-                    @click="editDish(dish)"
-                    class="group relative cursor-pointer rounded-xl border p-3 transition-all duration-150 hover:border-indigo-200 hover:bg-indigo-50/30 dark:hover:border-indigo-900/50 dark:hover:bg-indigo-950/20"
-                    :class="
-                        form.id === dish.id
-                            ? 'border-indigo-500 bg-indigo-50/70 ring-1 ring-indigo-500/20 dark:border-indigo-500 dark:bg-indigo-950/40'
-                            : 'border-zinc-200/70 bg-white dark:border-zinc-800/70 dark:bg-zinc-900/40'
-                    "
-                >
-                    <!-- Left Accent Bar for selected dish -->
                     <div
-                        v-if="form.id === dish.id"
-                        class="absolute left-0 top-2.5 bottom-2.5 w-1 rounded-r-full bg-indigo-600 dark:bg-indigo-400"
-                    ></div>
-
-                    <div class="flex items-start justify-between gap-2">
-                        <h3 class="text-xs font-extrabold text-zinc-900 dark:text-zinc-100 leading-snug line-clamp-1 pr-12">
-                            {{ dish.name }}
-                        </h3>
+                        v-if="filteredDishes.length === 0"
+                        class="flex h-48 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-zinc-200 p-4 text-center text-xs text-zinc-400 dark:border-zinc-800"
+                    >
+                        <div class="rounded-full bg-indigo-50 p-2.5 text-indigo-500 dark:bg-indigo-950/60">
+                            <Utensils class="h-5 w-5" />
+                        </div>
+                        <span v-if="searchQuery || categoryFilter !== 'all'">No se encontraron platos con estos filtros.</span>
+                        <span v-else>Aún no hay platos. Cree el primero con el botón Nuevo.</span>
                     </div>
 
-                    <p v-if="dish.description" class="mt-0.5 line-clamp-1 text-[11px] text-zinc-500 dark:text-zinc-400 leading-normal">
-                        {{ dish.description }}
-                    </p>
+                    <div
+                        v-for="dish in filteredDishes"
+                        :key="dish.id"
+                        @click="editDish(dish)"
+                        class="group relative cursor-pointer rounded-xl border p-3 transition-all duration-150 hover:border-indigo-200 hover:bg-indigo-50/30 dark:hover:border-indigo-900/50 dark:hover:bg-indigo-950/20"
+                        :class="
+                            form.id === dish.id
+                                ? 'border-indigo-500 bg-indigo-50/70 ring-1 ring-indigo-500/20 dark:border-indigo-500 dark:bg-indigo-950/40'
+                                : 'border-zinc-200/70 bg-white dark:border-zinc-800/70 dark:bg-zinc-900/40'
+                        "
+                    >
+                        <!-- Left Accent Bar for selected dish -->
+                        <div
+                            v-if="form.id === dish.id"
+                            class="absolute top-2.5 bottom-2.5 left-0 w-1 rounded-r-full bg-indigo-600 dark:bg-indigo-400"
+                        ></div>
 
-                    <!-- Tags Footer -->
-                    <div class="mt-2 flex flex-wrap items-center gap-1">
-                        <span class="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[9px] font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-                            {{ getDishIngredientsCount(dish) }} ing.
-                        </span>
+                        <div class="flex items-start justify-between gap-2">
+                            <h3 class="line-clamp-1 pr-12 text-xs leading-snug font-extrabold text-zinc-900 dark:text-zinc-100">
+                                {{ dish.name }}
+                            </h3>
+                        </div>
 
-                        <span
-                            v-for="cat in dish.dish_categories"
-                            :key="cat.id"
-                            class="rounded-md border border-indigo-100 bg-indigo-50/80 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600 dark:border-indigo-900/40 dark:bg-indigo-950/60 dark:text-indigo-400 max-w-full truncate"
-                        >
-                            {{ formatCategoryName(cat.name) }}
-                        </span>
+                        <p v-if="dish.description" class="mt-0.5 line-clamp-1 text-[11px] leading-normal text-zinc-500 dark:text-zinc-400">
+                            {{ dish.description }}
+                        </p>
 
-                        <span
-                            v-for="recipe in dish.recipes"
-                            :key="recipe.id"
-                            class="rounded-md border border-sky-100 bg-sky-50/80 px-1.5 py-0.5 text-[9px] font-bold text-sky-600 dark:border-sky-900/40 dark:bg-sky-950/60 dark:text-sky-400"
-                        >
-                            {{ recipe.level?.name }}
-                        </span>
+                        <!-- Tags Footer -->
+                        <div class="mt-2 flex flex-wrap items-center gap-1">
+                            <span class="rounded-md bg-zinc-100 px-1.5 py-0.5 text-[9px] font-bold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                                {{ getDishIngredientsCount(dish) }} ing.
+                            </span>
+
+                            <span
+                                v-for="cat in dish.dish_categories"
+                                :key="cat.id"
+                                class="max-w-full truncate rounded-md border border-indigo-100 bg-indigo-50/80 px-1.5 py-0.5 text-[9px] font-bold text-indigo-600 dark:border-indigo-900/40 dark:bg-indigo-950/60 dark:text-indigo-400"
+                            >
+                                {{ formatCategoryName(cat.name) }}
+                            </span>
+
+                            <span
+                                v-for="recipe in dish.recipes"
+                                :key="recipe.id"
+                                class="rounded-md border border-sky-100 bg-sky-50/80 px-1.5 py-0.5 text-[9px] font-bold text-sky-600 dark:border-sky-900/40 dark:bg-sky-950/60 dark:text-sky-400"
+                            >
+                                {{ recipe.level?.name }}
+                            </span>
+                        </div>
+
+                        <!-- Quick Action Buttons -->
+                        <div class="absolute top-2 right-2 flex items-center gap-0.5 opacity-80 group-hover:opacity-100">
+                            <Button
+                                @click.stop="duplicateDish(dish)"
+                                variant="ghost"
+                                size="icon"
+                                class="h-6 w-6 rounded-md text-zinc-400 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950 dark:hover:text-indigo-400"
+                                title="Duplicar plato"
+                            >
+                                <Copy class="h-3 w-3" />
+                            </Button>
+                            <Button
+                                @click.stop="deleteDish(dish.id)"
+                                variant="ghost"
+                                size="icon"
+                                class="h-6 w-6 rounded-md text-zinc-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950 dark:hover:text-rose-400"
+                                title="Eliminar plato"
+                            >
+                                <Trash class="h-3 w-3" />
+                            </Button>
+                        </div>
                     </div>
-
-                    <!-- Quick Action Buttons -->
-                    <div class="absolute top-2 right-2 flex items-center gap-0.5 opacity-80 group-hover:opacity-100">
-                        <Button
-                            @click.stop="duplicateDish(dish)"
-                            variant="ghost"
-                            size="icon"
-                            class="h-6 w-6 rounded-md text-zinc-400 hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-950 dark:hover:text-indigo-400"
-                            title="Duplicar plato"
-                        >
-                            <Copy class="h-3 w-3" />
-                        </Button>
-                        <Button
-                            @click.stop="deleteDish(dish.id)"
-                            variant="ghost"
-                            size="icon"
-                            class="h-6 w-6 rounded-md text-zinc-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950 dark:hover:text-rose-400"
-                            title="Eliminar plato"
-                        >
-                            <Trash class="h-3 w-3" />
-                        </Button>
-                    </div>
-                </div>
                 </template>
             </div>
         </div>
@@ -1061,14 +1042,11 @@ onUnmounted(() => {
         >
             <template v-if="form.id !== null || isCreating">
                 <!-- Header Bar -->
-                <div class="sticky top-0 z-30 flex shrink-0 items-center justify-between border-b border-zinc-200/80 bg-white/90 px-4 py-2.5 backdrop-blur-md dark:border-zinc-800 dark:bg-zinc-950/90 md:px-5">
+                <div
+                    class="sticky top-0 z-30 flex shrink-0 items-center justify-between border-b border-zinc-200/80 bg-white/90 px-4 py-2.5 backdrop-blur-md md:px-5 dark:border-zinc-800 dark:bg-zinc-950/90"
+                >
                     <div class="flex items-center gap-2.5">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            class="h-7 w-7 md:hidden"
-                            @click="resetView()"
-                        >
+                        <Button variant="ghost" size="icon" class="h-7 w-7 md:hidden" @click="resetView()">
                             <ArrowLeft class="h-4 w-4" />
                         </Button>
                         <div>
@@ -1080,7 +1058,7 @@ onUnmounted(() => {
                                     v-if="hasUnsavedChanges()"
                                     class="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/50 dark:text-amber-400"
                                 >
-                                    <span class="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                                    <span class="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500"></span>
                                     Sin guardar
                                 </span>
                             </div>
@@ -1089,7 +1067,10 @@ onUnmounted(() => {
                     </div>
 
                     <div class="flex items-center gap-2">
-                        <kbd class="hidden lg:inline-flex items-center gap-1 rounded-md border border-zinc-200 bg-zinc-100 px-1.5 py-0.5 text-[10px] font-mono text-zinc-400 dark:border-zinc-800 dark:bg-zinc-800" title="Atajo de teclado">
+                        <kbd
+                            class="hidden items-center gap-1 rounded-md border border-zinc-200 bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400 lg:inline-flex dark:border-zinc-800 dark:bg-zinc-800"
+                            title="Atajo de teclado"
+                        >
                             Ctrl + S
                         </kbd>
 
@@ -1101,7 +1082,7 @@ onUnmounted(() => {
                             size="sm"
                             @click="submit"
                             :disabled="form.processing"
-                            class="h-8 px-4 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 shadow-xs shadow-indigo-500/20 gap-1.5"
+                            class="h-8 gap-1.5 rounded-xl bg-indigo-600 px-4 text-xs font-bold text-white shadow-xs shadow-indigo-500/20 hover:bg-indigo-700"
                         >
                             <Loader2 v-if="form.processing" class="h-3.5 w-3.5 animate-spin" />
                             <Check v-else class="h-3.5 w-3.5" />
@@ -1111,26 +1092,38 @@ onUnmounted(() => {
                 </div>
 
                 <!-- Main Form Body -->
-                <div class="min-h-0 flex-1 space-y-4 overflow-y-auto p-3.5 md:p-5 bg-zinc-50/40 dark:bg-zinc-950/40">
+                <div class="min-h-0 flex-1 space-y-4 overflow-y-auto bg-zinc-50/40 p-3.5 md:p-5 dark:bg-zinc-950/40">
                     <!-- Basic Info Card -->
-                    <div class="rounded-xl border border-zinc-200/80 bg-white p-3.5 md:p-4 shadow-xs space-y-3.5 dark:border-zinc-800 dark:bg-zinc-900/60">
+                    <div
+                        class="space-y-3.5 rounded-xl border border-zinc-200/80 bg-white p-3.5 shadow-xs md:p-4 dark:border-zinc-800 dark:bg-zinc-900/60"
+                    >
                         <div class="grid grid-cols-1 gap-3.5 md:grid-cols-3">
                             <!-- Nombre -->
                             <div class="space-y-1">
-                                <label class="text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Nombre del Plato</label>
-                                <Input v-model="form.name" placeholder="Ej. Lomo Saltado Especial" class="h-8 rounded-lg border-zinc-200 bg-white text-xs font-medium dark:border-zinc-700 dark:bg-zinc-900" />
+                                <label class="text-[11px] font-bold tracking-wider text-zinc-500 uppercase dark:text-zinc-400"
+                                    >Nombre del Plato</label
+                                >
+                                <Input
+                                    v-model="form.name"
+                                    placeholder="Ej. Lomo Saltado Especial"
+                                    class="h-8 rounded-lg border-zinc-200 bg-white text-xs font-medium dark:border-zinc-700 dark:bg-zinc-900"
+                                />
                             </div>
 
                             <!-- Descripción -->
                             <div class="space-y-1">
-                                <label class="text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Descripción</label>
-                                <Input v-model="form.description" placeholder="Breve detalle del plato" class="h-8 rounded-lg border-zinc-200 bg-white text-xs dark:border-zinc-700 dark:bg-zinc-900" />
+                                <label class="text-[11px] font-bold tracking-wider text-zinc-500 uppercase dark:text-zinc-400">Descripción</label>
+                                <Input
+                                    v-model="form.description"
+                                    placeholder="Breve detalle del plato"
+                                    class="h-8 rounded-lg border-zinc-200 bg-white text-xs dark:border-zinc-700 dark:bg-zinc-900"
+                                />
                             </div>
 
                             <!-- Categorías -->
                             <div class="space-y-1">
                                 <div class="flex items-center justify-between">
-                                    <label class="text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">Categorías</label>
+                                    <label class="text-[11px] font-bold tracking-wider text-zinc-500 uppercase dark:text-zinc-400">Categorías</label>
                                     <Popover>
                                         <PopoverTrigger as-child>
                                             <Button
@@ -1142,9 +1135,9 @@ onUnmounted(() => {
                                                 <ChevronDown class="h-3 w-3" />
                                             </Button>
                                         </PopoverTrigger>
-                                        <PopoverContent class="w-64 p-0 rounded-xl shadow-xl border-zinc-200 dark:border-zinc-800" align="end">
-                                            <div class="border-b border-zinc-100 dark:border-zinc-800 p-2">
-                                                <h4 class="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Seleccionar Categorías</h4>
+                                        <PopoverContent class="w-64 rounded-xl border-zinc-200 p-0 shadow-xl dark:border-zinc-800" align="end">
+                                            <div class="border-b border-zinc-100 p-2 dark:border-zinc-800">
+                                                <h4 class="text-[10px] font-bold tracking-wider text-zinc-400 uppercase">Seleccionar Categorías</h4>
                                             </div>
                                             <div class="max-h-60 overflow-y-auto p-1">
                                                 <div
@@ -1155,13 +1148,21 @@ onUnmounted(() => {
                                                 >
                                                     <div
                                                         class="flex h-3.5 w-3.5 items-center justify-center rounded border transition-colors"
-                                                        :class="isCategorySelected(cat.id) ? 'border-indigo-600 bg-indigo-600 text-white' : 'border-zinc-300 dark:border-zinc-700'"
+                                                        :class="
+                                                            isCategorySelected(cat.id)
+                                                                ? 'border-indigo-600 bg-indigo-600 text-white'
+                                                                : 'border-zinc-300 dark:border-zinc-700'
+                                                        "
                                                     >
                                                         <Check v-if="isCategorySelected(cat.id)" class="h-2.5 w-2.5" />
                                                     </div>
                                                     <span
                                                         class="text-xs font-medium"
-                                                        :class="isCategorySelected(cat.id) ? 'text-indigo-600 font-bold dark:text-indigo-400' : 'text-zinc-600 dark:text-zinc-400'"
+                                                        :class="
+                                                            isCategorySelected(cat.id)
+                                                                ? 'font-bold text-indigo-600 dark:text-indigo-400'
+                                                                : 'text-zinc-600 dark:text-zinc-400'
+                                                        "
                                                     >
                                                         {{ formatCategoryName(cat.name) }}
                                                     </span>
@@ -1175,22 +1176,24 @@ onUnmounted(() => {
                                         v-for="cat in form.dish_categories"
                                         :key="cat.id"
                                         variant="secondary"
-                                        class="rounded-md border border-indigo-100 bg-indigo-50/80 px-2 py-0.5 text-[10px] font-bold text-indigo-600 gap-1 max-w-full truncate dark:border-indigo-900/50 dark:bg-indigo-950/60 dark:text-indigo-400"
+                                        class="max-w-full gap-1 truncate rounded-md border border-indigo-100 bg-indigo-50/80 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:border-indigo-900/50 dark:bg-indigo-950/60 dark:text-indigo-400"
                                     >
                                         <span class="truncate">{{ formatCategoryName(cat.name) }}</span>
-                                        <button @click.stop="toggleCategory(cat)" class="hover:text-indigo-900 shrink-0 dark:hover:text-white">
+                                        <button @click.stop="toggleCategory(cat)" class="shrink-0 hover:text-indigo-900 dark:hover:text-white">
                                             <X class="h-2.5 w-2.5" />
                                         </button>
                                     </Badge>
-                                    <span v-if="!form.dish_categories?.length" class="text-[11px] text-zinc-400 italic">Sin categorías asignadas</span>
+                                    <span v-if="!form.dish_categories?.length" class="text-[11px] text-zinc-400 italic"
+                                        >Sin categorías asignadas</span
+                                    >
                                 </div>
                             </div>
                         </div>
 
                         <!-- Niveles de Aplicación Selector -->
-                        <div class="border-t border-zinc-100 pt-2.5 dark:border-zinc-800 space-y-1.5">
+                        <div class="space-y-1.5 border-t border-zinc-100 pt-2.5 dark:border-zinc-800">
                             <div class="flex items-center justify-between">
-                                <label class="text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                                <label class="text-[11px] font-bold tracking-wider text-zinc-500 uppercase dark:text-zinc-400">
                                     Niveles de Aplicación (Recetarios)
                                 </label>
                                 <button
@@ -1207,18 +1210,14 @@ onUnmounted(() => {
                                     <button
                                         type="button"
                                         @click="toggleLevel(level.id)"
-                                        class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-bold transition-all shadow-2xs"
+                                        class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-bold shadow-2xs transition-all"
                                         :class="
                                             form.mesearument_unit.includes(level.id)
                                                 ? 'border-indigo-600 bg-indigo-600 text-white shadow-xs shadow-indigo-500/20'
-                                                : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 dark:border-zinc-800 dark:bg-zinc-800/80 dark:text-zinc-400 dark:hover:bg-indigo-950'
+                                                : 'border-zinc-200 bg-zinc-50 text-zinc-600 hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-600 dark:border-zinc-800 dark:bg-zinc-800/80 dark:text-zinc-400 dark:hover:bg-indigo-950'
                                         "
                                     >
                                         <span>{{ level.name }}</span>
-                                        <Trash
-                                            @click.stop="deleteLevelFromList(level.id)"
-                                            class="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100 hover:text-rose-400"
-                                        />
                                     </button>
                                 </div>
                             </div>
@@ -1235,7 +1234,7 @@ onUnmounted(() => {
                                 :key="levelId"
                                 type="button"
                                 @click="activeLevelTab = levelId"
-                                class="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-extrabold transition-all whitespace-nowrap"
+                                class="flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-extrabold whitespace-nowrap transition-all"
                                 :class="
                                     activeLevelTab === levelId
                                         ? 'bg-indigo-600 text-white shadow-xs shadow-indigo-500/20'
@@ -1247,7 +1246,11 @@ onUnmounted(() => {
                                 <Badge
                                     variant="secondary"
                                     class="rounded-md px-1.5 py-0 text-[9px] font-extrabold"
-                                    :class="activeLevelTab === levelId ? 'bg-indigo-700 text-white' : 'bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'"
+                                    :class="
+                                        activeLevelTab === levelId
+                                            ? 'bg-indigo-700 text-white'
+                                            : 'bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'
+                                    "
                                 >
                                     {{ form.recipes[levelId]?.ingredients.length || 0 }}
                                 </Badge>
@@ -1258,7 +1261,7 @@ onUnmounted(() => {
                         <div v-if="activeLevelTab && form.recipes[activeLevelTab]" class="space-y-2.5">
                             <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                 <div class="flex items-center gap-2">
-                                    <h4 class="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
+                                    <h4 class="text-xs font-bold tracking-wider text-indigo-700 uppercase dark:text-indigo-400">
                                         Ingredientes — Receta {{ localLevels.find((l) => l.id === activeLevelTab)?.name }}
                                     </h4>
                                 </div>
@@ -1271,12 +1274,12 @@ onUnmounted(() => {
                                         v-model="ingredientSearchQuery"
                                         placeholder="Agregar ingrediente... (Esc para cerrar)"
                                         @keyup.esc="closeIngredientSearch"
-                                        class="h-7.5 rounded-lg border-zinc-200 bg-white pl-8 text-xs focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 dark:border-zinc-800 dark:bg-zinc-900"
+                                        class="h-7.5 rounded-lg border-zinc-200 bg-white pl-8 text-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 dark:border-zinc-800 dark:bg-zinc-900"
                                     />
                                     <!-- Search Results Dropdown -->
                                     <div
                                         v-if="ingredientsFounded.length > 0 || (ingredientSearchDone && !isSearchingIngredients)"
-                                        class="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-1 shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
+                                        class="absolute top-full right-0 left-0 z-50 mt-1 max-h-56 overflow-y-auto rounded-xl border border-zinc-200 bg-white p-1 shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
                                     >
                                         <div
                                             v-for="ingredient in ingredientsFounded"
@@ -1285,19 +1288,21 @@ onUnmounted(() => {
                                             class="flex cursor-pointer items-center justify-between rounded-lg p-1.5 text-xs transition-colors hover:bg-indigo-50 dark:hover:bg-indigo-950/60"
                                         >
                                             <div class="flex items-center gap-2">
-                                                <div class="flex h-5 w-5 items-center justify-center rounded bg-indigo-100 text-indigo-600 dark:bg-indigo-900/60 dark:text-indigo-400">
+                                                <div
+                                                    class="flex h-5 w-5 items-center justify-center rounded bg-indigo-100 text-indigo-600 dark:bg-indigo-900/60 dark:text-indigo-400"
+                                                >
                                                     <Plus class="h-3 w-3" />
                                                 </div>
                                                 <span class="font-semibold text-zinc-900 dark:text-zinc-100">{{ ingredient.name }}</span>
                                             </div>
-                                            <span v-if="ingredient.unit_price" class="text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400">
+                                            <span
+                                                v-if="ingredient.unit_price"
+                                                class="font-mono text-[10px] font-bold text-amber-600 dark:text-amber-400"
+                                            >
                                                 S/. {{ Number(ingredient.unit_price).toFixed(2) }}
                                             </span>
                                         </div>
-                                        <div
-                                            v-if="ingredientsFounded.length === 0"
-                                            class="p-2.5 text-center text-xs text-zinc-400 italic"
-                                        >
+                                        <div v-if="ingredientsFounded.length === 0" class="p-2.5 text-center text-xs text-zinc-400 italic">
                                             No se encontraron ingredientes con ese nombre.
                                         </div>
                                     </div>
@@ -1305,22 +1310,47 @@ onUnmounted(() => {
                             </div>
 
                             <!-- Table Container -->
-                            <div class="overflow-hidden rounded-xl border border-zinc-200/80 bg-white shadow-2xs dark:border-zinc-800 dark:bg-zinc-900">
+                            <div
+                                class="overflow-hidden rounded-xl border border-zinc-200/80 bg-white shadow-2xs dark:border-zinc-800 dark:bg-zinc-900"
+                            >
                                 <div class="overflow-x-auto">
                                     <Table class="w-full text-xs">
                                         <TableHeader class="bg-zinc-900 text-zinc-100 dark:bg-zinc-900 dark:text-zinc-100">
                                             <TableRow class="border-zinc-800 hover:bg-transparent">
-                                                <TableHead class="h-8 text-[10px] font-extrabold uppercase tracking-wider text-zinc-200">Insumo</TableHead>
-                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-amber-300">P. Unit</TableHead>
-                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-purple-300">P. x Gr</TableHead>
-                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-sky-300">Cantidad</TableHead>
-                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-lime-300">Und</TableHead>
-                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-emerald-300">Costo Base</TableHead>
-                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-zinc-300">Mat. Prima</TableHead>
-                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-orange-300">Desecho</TableHead>
-                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-indigo-300">Prod. Final</TableHead>
-                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-rose-300">Calorías</TableHead>
-                                                <TableHead class="h-8 text-center text-[10px] font-extrabold uppercase tracking-wider text-indigo-300">Ajustes</TableHead>
+                                                <TableHead class="h-8 text-[10px] font-extrabold tracking-wider text-zinc-200 uppercase"
+                                                    >Insumo</TableHead
+                                                >
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold tracking-wider text-amber-300 uppercase"
+                                                    >P. Unit</TableHead
+                                                >
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold tracking-wider text-purple-300 uppercase"
+                                                    >P. x Gr</TableHead
+                                                >
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold tracking-wider text-sky-300 uppercase"
+                                                    >Cantidad</TableHead
+                                                >
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold tracking-wider text-lime-300 uppercase"
+                                                    >Und</TableHead
+                                                >
+                                                <TableHead
+                                                    class="h-8 text-center text-[10px] font-extrabold tracking-wider text-emerald-300 uppercase"
+                                                    >Costo Base</TableHead
+                                                >
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold tracking-wider text-zinc-300 uppercase"
+                                                    >Mat. Prima</TableHead
+                                                >
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold tracking-wider text-orange-300 uppercase"
+                                                    >Desecho</TableHead
+                                                >
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold tracking-wider text-indigo-300 uppercase"
+                                                    >Prod. Final</TableHead
+                                                >
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold tracking-wider text-rose-300 uppercase"
+                                                    >Calorías</TableHead
+                                                >
+                                                <TableHead class="h-8 text-center text-[10px] font-extrabold tracking-wider text-indigo-300 uppercase"
+                                                    >Ajustes</TableHead
+                                                >
                                                 <TableHead class="h-8 w-8 text-right"></TableHead>
                                             </TableRow>
                                         </TableHeader>
@@ -1328,7 +1358,7 @@ onUnmounted(() => {
                                             <TableRow
                                                 v-for="ingredient in form.recipes[activeLevelTab].ingredients"
                                                 :key="ingredient.id"
-                                                class="border-b border-zinc-100 dark:border-zinc-800/60 transition-colors hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20"
+                                                class="border-b border-zinc-100 transition-colors hover:bg-indigo-50/30 dark:border-zinc-800/60 dark:hover:bg-indigo-950/20"
                                             >
                                                 <!-- Insumo -->
                                                 <TableCell class="py-1.5 font-bold text-zinc-900 dark:text-zinc-100">
@@ -1342,7 +1372,7 @@ onUnmounted(() => {
 
                                                 <!-- Precio x Gr -->
                                                 <TableCell class="py-1.5 text-center font-mono text-[11px] text-purple-600 dark:text-purple-400">
-                                                    S/. {{ Number((ingredient.unit_price || 0) / 1000).toFixed(4) }}
+                                                    S/. {{ Number((ingredient.unit_price || 0) / 1000).toFixed(2) }}
                                                 </TableCell>
 
                                                 <!-- Cantidad Input -->
@@ -1352,7 +1382,7 @@ onUnmounted(() => {
                                                         v-model="ingredient.input_quantity"
                                                         @input="onWeightInput(ingredient)"
                                                         step="any"
-                                                        class="h-7 w-24 px-1.5 mx-auto rounded-lg tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none border-zinc-200 text-center text-xs font-bold text-indigo-900 dark:text-indigo-200 dark:border-zinc-700 dark:bg-zinc-900 focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
+                                                        class="mx-auto h-7 w-24 [appearance:textfield] rounded-lg border-zinc-200 px-1.5 text-center text-xs font-bold text-indigo-900 tabular-nums focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/30 dark:border-zinc-700 dark:bg-zinc-900 dark:text-indigo-200 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                                                     />
                                                 </TableCell>
 
@@ -1361,16 +1391,18 @@ onUnmounted(() => {
                                                     <select
                                                         v-model="ingredient.selected_unit"
                                                         @change="onWeightInput(ingredient)"
-                                                        class="h-7 rounded-lg border-zinc-200 bg-zinc-50 text-[11px] font-bold text-zinc-800 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 focus:ring-2 focus:ring-indigo-500/30"
+                                                        class="h-7 rounded-lg border-zinc-200 bg-zinc-50 text-[11px] font-bold text-zinc-800 focus:ring-2 focus:ring-indigo-500/30 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
                                                     >
                                                         <option value="Kg">Kg</option>
                                                         <option value="g">Gr</option>
                                                     </select>
                                                 </TableCell>
 
-                                                <!-- Costo Base -->
+                                                <!-- Costo Base: 4 decimales como "P. x Gr". Con 2 se perdia
+                                                     la fila entera: 2 g de ajos son S/. 0.0218, que a dos
+                                                     decimales se ve como S/. 0.00 y parece que no calcula. -->
                                                 <TableCell class="py-1.5 text-center font-mono font-extrabold text-emerald-600 dark:text-emerald-400">
-                                                    S/. {{ Number(ingredient.cost).toFixed(2) }}
+                                                    S/. {{ Number(ingredient.cost || 0).toFixed(4) }}
                                                 </TableCell>
 
                                                 <!-- Materia Prima -->
@@ -1423,7 +1455,7 @@ onUnmounted(() => {
                                                         variant="ghost"
                                                         size="icon"
                                                         @click="removeIngredientFromForm(ingredient.id)"
-                                                        class="h-6 w-6 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50"
+                                                        class="h-6 w-6 text-zinc-400 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-950/50"
                                                     >
                                                         <Trash class="h-3 w-3" />
                                                     </Button>
@@ -1436,7 +1468,9 @@ onUnmounted(() => {
                                                         <div class="rounded-full bg-indigo-50 p-2.5 text-indigo-500 dark:bg-indigo-950/60">
                                                             <Plus class="h-4 w-4" />
                                                         </div>
-                                                        <span class="font-medium text-zinc-600 dark:text-zinc-300">Busque e ingrese ingredientes para configurar la receta.</span>
+                                                        <span class="font-medium text-zinc-600 dark:text-zinc-300"
+                                                            >Busque e ingrese ingredientes para configurar la receta.</span
+                                                        >
                                                         <Button
                                                             v-if="form.mesearument_unit.length > 1"
                                                             type="button"
@@ -1459,56 +1493,82 @@ onUnmounted(() => {
                             <!-- KPI Summary Footer Bar -->
                             <div class="grid grid-cols-2 gap-2 pt-1 sm:grid-cols-3 md:grid-cols-5">
                                 <!-- Peso Bruto -->
-                                <div class="rounded-xl border border-zinc-200/80 bg-white p-2 text-center dark:border-zinc-800 dark:bg-zinc-900 shadow-2xs">
-                                    <div class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Peso Bruto</div>
+                                <div
+                                    class="rounded-xl border border-zinc-200/80 bg-white p-2 text-center shadow-2xs dark:border-zinc-800 dark:bg-zinc-900"
+                                >
+                                    <div class="text-[10px] font-bold tracking-wider text-zinc-400 uppercase">Peso Bruto</div>
                                     <div class="mt-0.5 font-mono text-sm font-extrabold text-zinc-900 dark:text-zinc-100">
-                                        {{ Number(form.recipes[activeLevelTab].total_gross_weight).toFixed(4) }} <span class="text-[10px] font-normal text-zinc-400">g</span>
+                                        {{ Number(form.recipes[activeLevelTab].total_gross_weight).toFixed(4) }}
+                                        <span class="text-[10px] font-normal text-zinc-400">g</span>
                                     </div>
                                 </div>
 
                                 <!-- Mermas Totales -->
-                                <div class="rounded-xl border border-amber-200/80 bg-amber-50/50 p-2 text-center dark:border-amber-900/40 dark:bg-amber-950/30 shadow-2xs">
-                                    <div class="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400">Mermas Totales</div>
+                                <div
+                                    class="rounded-xl border border-amber-200/80 bg-amber-50/50 p-2 text-center shadow-2xs dark:border-amber-900/40 dark:bg-amber-950/30"
+                                >
+                                    <div class="text-[10px] font-bold tracking-wider text-amber-700 uppercase dark:text-amber-400">
+                                        Mermas Totales
+                                    </div>
                                     <div class="mt-0.5 font-mono text-sm font-extrabold text-amber-700 dark:text-amber-300">
-                                        {{ Number(form.recipes[activeLevelTab].total_waste_weight).toFixed(4) }} <span class="text-[10px] font-normal text-amber-600">g</span>
+                                        {{ Number(form.recipes[activeLevelTab].total_waste_weight).toFixed(4) }}
+                                        <span class="text-[10px] font-normal text-amber-600">g</span>
                                     </div>
                                 </div>
 
                                 <!-- Calorías -->
-                                <div class="rounded-xl border border-rose-200/80 bg-rose-50/50 p-2 text-center dark:border-rose-900/40 dark:bg-rose-950/30 shadow-2xs">
-                                    <div class="text-[10px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400">Calorías</div>
+                                <div
+                                    class="rounded-xl border border-rose-200/80 bg-rose-50/50 p-2 text-center shadow-2xs dark:border-rose-900/40 dark:bg-rose-950/30"
+                                >
+                                    <div class="text-[10px] font-bold tracking-wider text-rose-700 uppercase dark:text-rose-400">Calorías</div>
                                     <div class="mt-0.5 font-mono text-sm font-extrabold text-rose-700 dark:text-rose-300">
-                                        {{ Number(form.recipes[activeLevelTab].total_calories).toFixed(2) }} <span class="text-[10px] font-normal text-rose-600">kcal</span>
+                                        {{ Number(form.recipes[activeLevelTab].total_calories).toFixed(2) }}
+                                        <span class="text-[10px] font-normal text-rose-600">kcal</span>
                                     </div>
                                 </div>
 
                                 <!-- Costo Receta -->
-                                <div class="rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-2 text-center dark:border-emerald-900/40 dark:bg-emerald-950/30 shadow-2xs">
-                                    <div class="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Costo Receta</div>
+                                <div
+                                    class="rounded-xl border border-emerald-200/80 bg-emerald-50/50 p-2 text-center shadow-2xs dark:border-emerald-900/40 dark:bg-emerald-950/30"
+                                >
+                                    <div class="text-[10px] font-bold tracking-wider text-emerald-700 uppercase dark:text-emerald-400">
+                                        Costo Receta
+                                    </div>
                                     <div class="mt-0.5 font-mono text-sm font-extrabold text-emerald-700 dark:text-emerald-300">
                                         S/. {{ Number(form.recipes[activeLevelTab].total_cost).toFixed(2) }}
                                     </div>
                                 </div>
 
                                 <!-- Prod Final -->
-                                <div class="rounded-xl border border-indigo-200/80 bg-indigo-50/50 p-2 text-center dark:border-indigo-900/40 dark:bg-indigo-950/30 shadow-2xs">
-                                    <div class="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">Prod. Final</div>
+                                <div
+                                    class="rounded-xl border border-indigo-200/80 bg-indigo-50/50 p-2 text-center shadow-2xs dark:border-indigo-900/40 dark:bg-indigo-950/30"
+                                >
+                                    <div class="text-[10px] font-bold tracking-wider text-indigo-700 uppercase dark:text-indigo-400">Prod. Final</div>
                                     <div class="mt-0.5 font-mono text-sm font-extrabold text-indigo-700 dark:text-indigo-300">
-                                        {{ Number(form.recipes[activeLevelTab].total_net_weight).toFixed(4) }} <span class="text-[10px] font-normal text-indigo-600">g</span>
+                                        {{ Number(form.recipes[activeLevelTab].total_net_weight).toFixed(4) }}
+                                        <span class="text-[10px] font-normal text-indigo-600">g</span>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
                         <!-- Empty State for Level Selection -->
-                        <div v-else-if="form.mesearument_unit.length > 0" class="flex h-44 flex-col items-center justify-center rounded-xl border border-dashed border-zinc-200 text-zinc-400 dark:border-zinc-800">
-                            <Layers class="mb-2 h-7 w-7 opacity-40 text-indigo-500" />
-                            <p class="text-xs font-semibold text-zinc-600 dark:text-zinc-300">Seleccione un nivel de aplicación en la barra superior para ver su receta.</p>
+                        <div
+                            v-else-if="form.mesearument_unit.length > 0"
+                            class="flex h-44 flex-col items-center justify-center rounded-xl border border-dashed border-zinc-200 text-zinc-400 dark:border-zinc-800"
+                        >
+                            <Layers class="mb-2 h-7 w-7 text-indigo-500 opacity-40" />
+                            <p class="text-xs font-semibold text-zinc-600 dark:text-zinc-300">
+                                Seleccione un nivel de aplicación en la barra superior para ver su receta.
+                            </p>
                         </div>
                     </div>
 
                     <!-- Empty State for No Levels Selected -->
-                    <div v-else class="flex h-44 flex-col items-center justify-center rounded-xl border border-dashed border-zinc-200 text-zinc-400 dark:border-zinc-800">
+                    <div
+                        v-else
+                        class="flex h-44 flex-col items-center justify-center rounded-xl border border-dashed border-zinc-200 text-zinc-400 dark:border-zinc-800"
+                    >
                         <AlertCircle class="mb-2 h-7 w-7 text-amber-500 opacity-80" />
                         <p class="text-xs font-bold text-zinc-700 dark:text-zinc-300">Sin niveles de aplicación seleccionados</p>
                         <p class="text-[11px] text-zinc-400">Seleccione o añada un nivel arriba para comenzar a armar la receta.</p>
@@ -1517,15 +1577,21 @@ onUnmounted(() => {
             </template>
 
             <!-- Blank Empty State (No dish selected) -->
-            <div v-else class="flex h-full flex-col items-center justify-center p-8 text-center bg-zinc-50/50 dark:bg-zinc-950">
-                <div class="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md">
+            <div v-else class="flex h-full flex-col items-center justify-center bg-zinc-50/50 p-8 text-center dark:bg-zinc-950">
+                <div
+                    class="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md"
+                >
                     <ChefHat class="h-7 w-7" />
                 </div>
                 <h3 class="text-base font-extrabold text-zinc-900 dark:text-zinc-100">Seleccione un plato o cree uno nuevo</h3>
-                <p class="mt-1 max-w-xs text-xs text-zinc-400 leading-relaxed">
-                    Seleccione un plato del panel izquierdo para revisar y modificar sus ingredientes y valores nutricionales, o cree una nueva receta.
+                <p class="mt-1 max-w-xs text-xs leading-relaxed text-zinc-400">
+                    Seleccione un plato del panel izquierdo para revisar y modificar sus ingredientes y valores nutricionales, o cree una nueva
+                    receta.
                 </p>
-                <Button @click="createDish" class="mt-5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 shadow-sm shadow-indigo-500/20 gap-1.5">
+                <Button
+                    @click="createDish"
+                    class="mt-5 gap-1.5 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm shadow-indigo-500/20 hover:bg-indigo-700"
+                >
                     <Plus class="h-3.5 w-3.5" />
                     <span>Crear Nuevo Plato</span>
                 </Button>

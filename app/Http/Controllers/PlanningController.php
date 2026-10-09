@@ -37,7 +37,11 @@ class PlanningController extends Controller
 
     public function index()
     {
-        $menuCycles = \App\Models\MenuCycle::orderBy('id', 'desc')->get();
+        // Sin `cycle_data`: el listado solo necesita metadatos y hidratar el JSON de todos los
+        // ciclos agota la memoria de PHP. La matriz lo pide por ciclo en planning/cycles/{id}.
+        $menuCycles = \App\Models\MenuCycle::select(\App\Http\Controllers\MenuCycleController::LIST_COLUMNS)
+            ->orderBy('id', 'desc')
+            ->get();
 
         // Batch-fetch serviceables/services instead of querying inside the map() loop.
         $serviceableIds = $menuCycles->pluck('serviceable_id')->filter()->unique();
@@ -65,7 +69,10 @@ class PlanningController extends Controller
 
         // El servicio al que pertenece cada programación es único. Se guarda en weekly_programs.meal_type;
         // para programaciones antiguas sin ese dato, se cae al meal_type predominante de sus items.
+        // Solo para las que no lo tienen: agrupar toda la tabla de items (600k+ filas
+        // con las programaciones migradas) en cada carga de la pantalla no tiene sentido.
         $fallbackService = WeeklyProgramItem::select('weekly_program_id', 'meal_type', DB::raw('COUNT(*) as c'))
+            ->whereIn('weekly_program_id', WeeklyProgram::whereNull('meal_type')->select('id'))
             ->groupBy('weekly_program_id', 'meal_type')
             ->orderByDesc('c')
             ->get()

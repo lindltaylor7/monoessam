@@ -148,12 +148,38 @@ const normalizeDays = (days: any): Record<string, any> => {
 
 const normalizeCycleRows = (rows: any[]) => (rows || []).map((row: any) => ({ ...row, days: normalizeDays(row.days) }));
 
-const copyCycle = (cycle: any) => {
+// El índice solo trae los metadatos de cada ciclo (son miles y su cycle_data suma ~100 MB de JSON).
+// El detalle se pide al abrirlo y se cachea por id para no repetir la petición.
+const cycleDataCache = new Map<number, any[]>();
+const loadingCycleId = ref<number | null>(null);
+
+const fetchCycleData = async (cycle: any): Promise<any[] | null> => {
+    const cached = cycleDataCache.get(cycle.id);
+    if (cached) return cached;
+
+    loadingCycleId.value = cycle.id;
+    try {
+        const { data } = await axios.get(`/cycles/${cycle.id}`);
+        const rows = Array.isArray(data?.cycle_data) ? data.cycle_data : [];
+        cycleDataCache.set(cycle.id, rows);
+        return rows;
+    } catch {
+        Swal.fire('Error', 'No se pudo cargar el detalle del ciclo.', 'error');
+        return null;
+    } finally {
+        loadingCycleId.value = null;
+    }
+};
+
+const copyCycle = async (cycle: any) => {
+    const cycleData = await fetchCycleData(cycle);
+    if (!cycleData) return;
+
     activeCycleId.value = cycle.id;
     activeCycleName.value = cycle.name || '';
     inputDays.value = cycle.days;
     generatedDays.value = cycle.days;
-    menuStructureData.value = normalizeCycleRows(JSON.parse(JSON.stringify(cycle.cycle_data)));
+    menuStructureData.value = normalizeCycleRows(JSON.parse(JSON.stringify(cycleData)));
     repeatedDishes.value = [];
     isSavedCyclesModalOpen.value = false;
     isServiceCyclesModalOpen.value = false;
@@ -166,10 +192,13 @@ const copyCycle = (cycle: any) => {
     });
 };
 
-const compareCycle = (cycle: any) => {
+const compareCycle = async (cycle: any) => {
+    const cycleData = await fetchCycleData(cycle);
+    if (!cycleData) return;
+
     repeatedDishes.value = [];
     let matchCount = 0;
-    cycle.cycle_data.forEach((compareRow: any) => {
+    cycleData.forEach((compareRow: any) => {
         const currentRow = menuStructureData.value.find((r: any) => r.id === compareRow.id);
         if (currentRow) {
             Object.keys(currentRow.days).forEach((dayKey) => {
@@ -196,11 +225,14 @@ const menuStructureData = ref<any[]>([]);
 
 // Once a single structure is settled on for this service, load its matching cycle (if there's exactly
 // one) or fall back to blank defaults from the structure's costs.
-const applyStructure = (structure: any, newId: string) => {
+const applyStructure = async (structure: any, newId: string) => {
     const serviceCycles = props.savedCycles?.filter((c) => String(c.serviceable_id) === String(newId)) || [];
 
     if (serviceCycles.length === 1) {
         const savedCycle = serviceCycles[0];
+        const savedCycleData = await fetchCycleData(savedCycle);
+        if (!savedCycleData) return;
+
         activeCycleId.value = savedCycle.id;
         activeCycleName.value = savedCycle.name || '';
         inputDays.value = savedCycle.days;
@@ -211,7 +243,7 @@ const applyStructure = (structure: any, newId: string) => {
         // A cycle's cycle_data is a frozen snapshot from whenever it was saved, so if the structure
         // was edited since (categories added/removed), it must not dictate which rows are shown.
         menuStructureData.value = (structure.costs || []).map((cost: any) => {
-            const savedRow = savedCycle.cycle_data.find((row: any) => row.dishCategoryId === cost.dish_category_id);
+            const savedRow = savedCycleData.find((row: any) => row.dishCategoryId === cost.dish_category_id);
             return {
                 id: cost.id,
                 category: cost.name || 'Categoría',
@@ -557,7 +589,12 @@ const calculateIngredientCalories = (ingredient: any) => {
         const fatFactor = parseFloat(atwaterFactor.fat_kcal) || 0;
         const carbFactor = parseFloat(atwaterFactor.carb_kcal) || 0;
 
-        return protein * proteinFactor + lipid * fatFactor + carbohydrate * carbFactor;
+        const atwaterCalories = protein * proteinFactor + lipid * fatFactor + carbohydrate * carbFactor;
+        // Igual que food/Quebrados: con factor asignado pero sin macronutrientes daría 0 kcal;
+        // en ese caso se usa el cálculo de respaldo.
+        if (atwaterCalories > 0) {
+            return atwaterCalories;
+        }
     }
 
     const factors = ingredient?.nutritional_factors || ingredient?.nutritionalFactors;
@@ -612,7 +649,9 @@ const openQuebradoModal = async (row: any, dayIndex: number) => {
                         calories: calculateIngredientCalories(ing),
                     },
                 };
-                newIng.calories = (newIng.gross_weight * newIng.originalValues.calories) / 100;
+                // Como en food/Quebrados: las kcal por 100 g van sobre el producto final (la merma
+                // no aporta calorías).
+                newIng.calories = (newIng.final_product * newIng.originalValues.calories) / 100;
                 return newIng;
             }),
         };
@@ -644,7 +683,7 @@ const onQuebradoWeightInput = (ingredient: any) => {
 
     ingredient.solid_waste = (weightInGrams * origWaste) / 100;
     ingredient.final_product = weightInGrams - ingredient.solid_waste;
-    ingredient.calories = (ingredient.gross_weight * origCalories) / 100;
+    ingredient.calories = (ingredient.final_product * origCalories) / 100;
 
     if (ingredient.unit_price) {
         ingredient.cost =
@@ -1046,7 +1085,7 @@ const resetToNew = () => {
                                                     <div
                                                         class="shrink-0 rounded border border-orange-100 bg-orange-50 px-1.5 py-0.5 text-[10px] font-bold text-orange-700 shadow-sm"
                                                     >
-                                                        {{ row.days[dayIndex].calories }} kcal
+                                                        {{ Number(row.days[dayIndex].calories || 0).toFixed(2) }} kcal
                                                     </div>
                                                 </div>
                                                 <span class="line-clamp-2 text-[12px] leading-snug font-semibold text-slate-800">
@@ -1149,7 +1188,7 @@ const resetToNew = () => {
                                             </p>
                                             <p class="mt-1 text-[11px] text-slate-500">
                                                 Costo: S/ {{ Number(recipe.total_cost || 0).toFixed(2) }} &bull; Calorías:
-                                                {{ recipe.total_calories || 0 }} kcal
+                                                {{ Number(recipe.total_calories || 0).toFixed(2) }} kcal
                                             </p>
                                         </div>
                                         <div class="flex shrink-0 items-center gap-2">
@@ -1253,11 +1292,20 @@ const resetToNew = () => {
                                     size="sm"
                                     variant="outline"
                                     class="border-blue-200 text-blue-600 hover:bg-blue-50"
+                                    :disabled="loadingCycleId === cycle.id"
                                     @click="compareCycle(cycle)"
                                 >
                                     Comparar
                                 </Button>
-                                <Button size="sm" class="bg-[#FF5A1F] text-white hover:bg-[#e04a17]" @click="copyCycle(cycle)"> Copiar </Button>
+                                <Button
+                                    size="sm"
+                                    class="bg-[#FF5A1F] text-white hover:bg-[#e04a17]"
+                                    :disabled="loadingCycleId === cycle.id"
+                                    @click="copyCycle(cycle)"
+                                >
+                                    <Loader2 v-if="loadingCycleId === cycle.id" class="mr-1 h-3.5 w-3.5 animate-spin" />
+                                    Copiar
+                                </Button>
                             </div>
                         </li>
                     </ul>
@@ -1313,6 +1361,7 @@ const resetToNew = () => {
                             v-for="cycle in paginatedServiceCycles"
                             :key="cycle.id"
                             class="mb-2 flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-transparent bg-white/50 px-4 py-4 transition-all hover:border-blue-100 hover:bg-white hover:shadow-sm"
+                            :class="loadingCycleId === cycle.id ? 'pointer-events-none opacity-60' : ''"
                             @click="copyCycle(cycle)"
                         >
                             <div class="flex items-center gap-4">

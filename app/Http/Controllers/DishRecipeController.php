@@ -47,6 +47,8 @@ class DishRecipeController extends Controller
             return $ingredient;
         });
 
+        $recipe->applyLiveTotals();
+
         return response()->json($recipe);
     }
 

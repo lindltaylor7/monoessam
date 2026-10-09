@@ -9,9 +9,51 @@ use App\Models\Level;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class DishController extends Controller
 {
+    /**
+     * Normaliza los niveles enviados en `mesearument_unit` y descarta los que ya no existen.
+     *
+     * `dish_recipes.level_id` tiene FK a `levels` (ON DELETE CASCADE): si la pantalla manda un
+     * nivel que mientras tanto se borró —la papelera del badge lo elimina de toda la base—, el
+     * insert revienta con un SQLSTATE[23000] crudo en la cara del usuario. Aquí se corta antes
+     * con un mensaje entendible.
+     *
+     * @return array<int, int>
+     */
+    private function resolveLevelIds(Request $request): array
+    {
+        $levelIds = $request->input('mesearument_unit', []);
+        if (!is_array($levelIds)) {
+            $levelIds = [$levelIds];
+        }
+
+        // Un nivel repetido en la petición chocaría con dish_recipes_dish_level_unique.
+        $levelIds = array_values(array_unique(
+            array_map('intval', array_filter($levelIds, fn ($id) => $id !== null && $id !== '')),
+            SORT_NUMERIC
+        ));
+
+        if (empty($levelIds)) {
+            return [];
+        }
+
+        $existing = Level::whereIn('id', $levelIds)->pluck('id')->all();
+        $missing  = array_diff($levelIds, $existing);
+
+        if (!empty($missing)) {
+            throw ValidationException::withMessages([
+                'mesearument_unit' => 'Uno o más niveles de aplicación seleccionados ya no existen (ID: '
+                    . implode(', ', $missing) . '). Recargue la página para ver los niveles vigentes '
+                    . 'y vuelva a asignar el recetario.',
+            ]);
+        }
+
+        return $levelIds;
+    }
+
     /**
      * Display a listing of the resource.
      */
@@ -41,25 +83,22 @@ class DishController extends Controller
             'dish_categories' => 'nullable|array',
         ]);
 
+        // Fuera del try: ValidationException extiende Exception y el catch de abajo la
+        // convertiria en un "Error saving dish: ..." en vez del mensaje de validación.
+        $levelIds = $this->resolveLevelIds($request);
+
         try {
             DB::beginTransaction();
 
             $dish = Dish::create([
                 'name' => $validated['name'],
-                'description' => $validated['description'],
+                'description' => $validated['description'] ?? null,
                 'user_id' => auth()->id(),
             ]);
 
             if (isset($validated['dish_categories'])) {
                 $dish->dish_categories()->sync($validated['dish_categories']);
             }
-
-            $levelIds = $request->input('mesearument_unit', []);
-            if (!is_array($levelIds)) {
-                $levelIds = [$levelIds];
-            }
-            // Un nivel repetido en la petición chocaría con dish_recipes_dish_level_unique.
-            $levelIds = array_values(array_unique(array_filter($levelIds, fn ($id) => $id !== null && $id !== ''), SORT_NUMERIC));
 
             $recipesData = $request->input('recipes', []);
 
@@ -138,22 +177,20 @@ class DishController extends Controller
             'dish_categories' => 'nullable|array',
         ]);
 
+        // Ver nota en store(): la validación de niveles va antes del try.
+        $levelIds = $this->resolveLevelIds($request);
+
         try {
             DB::beginTransaction();
 
             $dish = Dish::findOrFail($id);
             $dish->update([
                 'name' => $validated['name'],
-                'description' => $validated['description'],
+                'description' => $validated['description'] ?? null,
             ]);
 
             if (isset($validated['dish_categories'])) {
                 $dish->dish_categories()->sync($validated['dish_categories']);
-            }
-
-            $levelIds = $request->input('mesearument_unit', []);
-            if (!is_array($levelIds)) {
-                $levelIds = [$levelIds];
             }
 
             $recipesData = $request->input('recipes', []);
@@ -357,6 +394,13 @@ class DishController extends Controller
 
         Recipe::applyPreciseQuantities($dishes);
 
+        // Después de applyPreciseQuantities, que puede pasar el peso a gramos.
+        foreach ($dishes as $dish) {
+            foreach ($dish->recipes as $recipe) {
+                $recipe->applyLiveTotals();
+            }
+        }
+
         return $dishes;
     }
 
@@ -402,9 +446,21 @@ class DishController extends Controller
 
         ini_set('max_execution_time', 0); // Disable time limit for this request
 
-        $file = $request->file('excel_file');
-        \Maatwebsite\Excel\Facades\Excel::import(new \App\Imports\DishRecipesImport, $file);
+        $file   = $request->file('excel_file');
+        $import = new \App\Imports\DishRecipesImport;
+        \Maatwebsite\Excel\Facades\Excel::import($import, $file);
 
-        return redirect()->back()->with('success', 'Platos importados correctamente');
+        // El resumen importa: una importación silenciosa esconde el caso en que
+        // el Excel no traía la columna de cantidad y todas las recetas entraron
+        // en cero, que se ve igual que una importación correcta hasta que
+        // alguien abre un plato.
+        $r = $import->resumen();
+
+        return redirect()->back()->with('success', sprintf(
+            'Importación terminada: %s platos nuevos, %s insumos nuevos, %s líneas con cantidad.',
+            number_format($r['platos_nuevos']),
+            number_format($r['insumos_nuevos']),
+            number_format($r['con_cantidad'])
+        ));
     }
 }

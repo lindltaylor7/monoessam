@@ -225,7 +225,7 @@ const addServiceSelected = (service: Service) => {
                     {{ servicesSelected.length }}
                 </Badge>
             </div>
-            <CardContent class="max-h-[320px] p-0">
+            <CardContent class="custom-scrollbar max-h-[min(60vh,420px)] overflow-y-auto overscroll-contain p-0">
                 <DinnersTable :services="servicesSelected" @addServiceSelected="addServiceSelected" />
             </CardContent>
         </Card>
