@@ -41,6 +41,12 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ReportSalesController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\SaleController;
+use App\Http\Controllers\ServiceDesk\AuditController as ServiceDeskAuditController;
+use App\Http\Controllers\ServiceDesk\ConfigController as ServiceDeskConfigController;
+use App\Http\Controllers\ServiceDesk\IndicatorController as ServiceDeskIndicatorController;
+use App\Http\Controllers\ServiceDesk\KedbController as ServiceDeskKedbController;
+use App\Http\Controllers\ServiceDesk\SurveyController as ServiceDeskSurveyController;
+use App\Http\Controllers\ServiceDesk\TicketController as ServiceDeskTicketController;
 use App\Http\Controllers\ServiceController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\StoreController;
@@ -536,6 +542,60 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('/export/{serviceable_id}', [MenuCycleController::class, 'export'])->name('export');
         // El detalle (cycle_data) se pide bajo demanda; el listado del índice ya no lo trae.
         Route::get('/{id}', [MenuCycleController::class, 'show'])->name('show');
+    });
+
+    // ========================================================================
+    // SERVICE DESK (ITIL 4)
+    // ========================================================================
+    // Todo el módulo cuelga del segmento `service-desk`, que es el que tiene fila en
+    // `permissions` (migración add_service_desk_permission): CheckRoutePermission filtra por
+    // el primer segmento, así que las subrutas heredan el mismo permiso sin configurar nada.
+    Route::prefix('service-desk')->name('service-desk.')->group(function () {
+        // Bandeja de incidencias
+        Route::get('/', [ServiceDeskTicketController::class, 'index'])->name('index');
+        Route::get('tickets/{id}', [ServiceDeskTicketController::class, 'show'])->name('tickets.show');
+        Route::post('tickets', [ServiceDeskTicketController::class, 'store'])->name('tickets.store');
+        Route::put('tickets/{id}', [ServiceDeskTicketController::class, 'update'])->name('tickets.update');
+        Route::post('tickets/{id}/assign', [ServiceDeskTicketController::class, 'assign'])->name('tickets.assign');
+        Route::post('tickets/{id}/respond', [ServiceDeskTicketController::class, 'respond'])->name('tickets.respond');
+        Route::post('tickets/{id}/status', [ServiceDeskTicketController::class, 'changeStatus'])->name('tickets.status');
+        Route::post('tickets/{id}/resolve', [ServiceDeskTicketController::class, 'resolve'])->name('tickets.resolve');
+        Route::post('tickets/{id}/close', [ServiceDeskTicketController::class, 'close'])->name('tickets.close');
+        Route::post('tickets/{id}/reopen', [ServiceDeskTicketController::class, 'reopen'])->name('tickets.reopen');
+        Route::delete('tickets/{id}', [ServiceDeskTicketController::class, 'destroy'])->name('tickets.destroy');
+
+        // Base de conocimientos (KEDB)
+        Route::get('kedb', [ServiceDeskKedbController::class, 'index'])->name('kedb.index');
+        Route::post('kedb', [ServiceDeskKedbController::class, 'store'])->name('kedb.store');
+        Route::put('kedb/{id}', [ServiceDeskKedbController::class, 'update'])->name('kedb.update');
+        Route::delete('kedb/{id}', [ServiceDeskKedbController::class, 'destroy'])->name('kedb.destroy');
+
+        // Auditoría de clasificación
+        Route::get('audits', [ServiceDeskAuditController::class, 'index'])->name('audits.index');
+        Route::post('audits/{ticket}', [ServiceDeskAuditController::class, 'store'])->name('audits.store');
+        Route::post('audits/{ticket}/apply', [ServiceDeskAuditController::class, 'applyCorrection'])->name('audits.apply');
+        Route::delete('audits/{ticket}', [ServiceDeskAuditController::class, 'destroy'])->name('audits.destroy');
+
+        // Cuestionarios (usuarios y personal TI)
+        Route::get('surveys', [ServiceDeskSurveyController::class, 'index'])->name('surveys.index');
+        Route::post('surveys/satisfaction', [ServiceDeskSurveyController::class, 'storeSatisfaction'])->name('surveys.satisfaction.store');
+        Route::delete('surveys/satisfaction/{id}', [ServiceDeskSurveyController::class, 'destroySatisfaction'])->name('surveys.satisfaction.destroy');
+        Route::post('surveys/maturity', [ServiceDeskSurveyController::class, 'storeMaturity'])->name('surveys.maturity.store');
+        Route::delete('surveys/maturity/{id}', [ServiceDeskSurveyController::class, 'destroyMaturity'])->name('surveys.maturity.destroy');
+
+        // Tablero de indicadores
+        Route::get('indicators', [ServiceDeskIndicatorController::class, 'index'])->name('indicators.index');
+        Route::get('indicators/export', [ServiceDeskIndicatorController::class, 'export'])->name('indicators.export');
+
+        // Configuración: categorías, SLA y cuestionario de madurez
+        Route::get('config', [ServiceDeskConfigController::class, 'index'])->name('config.index');
+        Route::post('config/categories', [ServiceDeskConfigController::class, 'storeCategory'])->name('config.categories.store');
+        Route::put('config/categories/{id}', [ServiceDeskConfigController::class, 'updateCategory'])->name('config.categories.update');
+        Route::delete('config/categories/{id}', [ServiceDeskConfigController::class, 'destroyCategory'])->name('config.categories.destroy');
+        Route::put('config/slas/{id}', [ServiceDeskConfigController::class, 'updateSla'])->name('config.slas.update');
+        Route::post('config/questions', [ServiceDeskConfigController::class, 'storeQuestion'])->name('config.questions.store');
+        Route::put('config/questions/{id}', [ServiceDeskConfigController::class, 'updateQuestion'])->name('config.questions.update');
+        Route::delete('config/questions/{id}', [ServiceDeskConfigController::class, 'destroyQuestion'])->name('config.questions.destroy');
     });
 
     // ========================================================================

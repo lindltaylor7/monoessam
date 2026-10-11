@@ -1774,6 +1774,14 @@ return new class extends Migration
 
     public function up(): void
     {
+        // Toda la reparación son sentencias MySQL (information_schema, ALTER ... MODIFY
+        // AUTO_INCREMENT). En SQLite —el driver de los tests— reventaba con
+        // "no such table: information_schema.STATISTICS" y tumbaba la suite completa.
+        // Ahí no hay nada que reparar: el esquema se crea desde estas mismas migraciones.
+        if (DB::connection()->getDriverName() !== 'mysql') {
+            return;
+        }
+
         $db = DB::getDatabaseName();
 
         /* ── 1. PRIMARY KEYS ── */
