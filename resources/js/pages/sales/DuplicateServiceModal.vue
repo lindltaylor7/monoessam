@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { AlertTriangle, X } from 'lucide-vue-next';
+import { onBeforeUnmount, watch } from 'vue';
 
 interface Conflict {
     service_name: string;
@@ -13,7 +14,7 @@ interface DuplicateData {
     message: string;
 }
 
-defineProps<{
+const props = defineProps<{
     show: boolean;
     data: DuplicateData | null;
 }>();
@@ -22,6 +23,28 @@ const emits = defineEmits<{
     (e: 'cancel'): void;
     (e: 'confirm'): void;
 }>();
+
+// Enter cierra el modal (y devuelve el foco al input de DNI) sin disparar
+// ningun otro handler de la pagina: se captura antes y se detiene ahi.
+const handleKeydown = (event: KeyboardEvent) => {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    event.stopPropagation();
+    emits('cancel');
+};
+
+const stopListening = () => document.removeEventListener('keydown', handleKeydown, true);
+
+watch(
+    () => props.show,
+    (show) => {
+        stopListening();
+        if (show) document.addEventListener('keydown', handleKeydown, true);
+    },
+    { immediate: true },
+);
+
+onBeforeUnmount(stopListening);
 </script>
 
 <template>
@@ -100,12 +123,6 @@ const emits = defineEmits<{
                         >
                             Cancelar
                         </button>
-                        <!--  <button
-                            @click="emits('confirm')"
-                            class="rounded-lg bg-amber-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600 active:scale-95"
-                        >
-                            Permitir de todas formas
-                        </button> -->
                     </div>
                 </div>
             </Transition>
