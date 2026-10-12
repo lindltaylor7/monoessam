@@ -26,20 +26,37 @@ const emits = defineEmits<{
 
 // Enter cierra el modal (y devuelve el foco al input de DNI) sin disparar
 // ningun otro handler de la pagina: se captura antes y se detiene ahi.
-const handleKeydown = (event: KeyboardEvent) => {
-    if (event.key !== 'Enter') return;
+// El cierre va en keyup y el keydown solo se bloquea, porque el input de DNI
+// escucha keyup.enter: si cerraramos en keydown, el keyup de esa misma
+// pulsacion caeria en el input ya reenfocado y dispararia una busqueda vacia.
+const swallow = (event: KeyboardEvent) => {
+    if (event.key !== 'Enter') return false;
     event.preventDefault();
     event.stopPropagation();
-    emits('cancel');
+    return true;
 };
 
-const stopListening = () => document.removeEventListener('keydown', handleKeydown, true);
+const handleKeydown = (event: KeyboardEvent) => {
+    swallow(event);
+};
+
+const handleKeyup = (event: KeyboardEvent) => {
+    if (swallow(event)) emits('cancel');
+};
+
+const stopListening = () => {
+    document.removeEventListener('keydown', handleKeydown, true);
+    document.removeEventListener('keyup', handleKeyup, true);
+};
 
 watch(
     () => props.show,
     (show) => {
         stopListening();
-        if (show) document.addEventListener('keydown', handleKeydown, true);
+        if (show) {
+            document.addEventListener('keydown', handleKeydown, true);
+            document.addEventListener('keyup', handleKeyup, true);
+        }
     },
     { immediate: true },
 );
