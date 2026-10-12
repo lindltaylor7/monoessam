@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { AlertTriangle, X } from 'lucide-vue-next';
+import { onBeforeUnmount, watch } from 'vue';
 
 interface Conflict {
     service_name: string;
@@ -13,7 +14,7 @@ interface DuplicateData {
     message: string;
 }
 
-defineProps<{
+const props = defineProps<{
     show: boolean;
     data: DuplicateData | null;
 }>();
@@ -22,6 +23,45 @@ const emits = defineEmits<{
     (e: 'cancel'): void;
     (e: 'confirm'): void;
 }>();
+
+// Enter cierra el modal (y devuelve el foco al input de DNI) sin disparar
+// ningun otro handler de la pagina: se captura antes y se detiene ahi.
+// El cierre va en keyup y el keydown solo se bloquea, porque el input de DNI
+// escucha keyup.enter: si cerraramos en keydown, el keyup de esa misma
+// pulsacion caeria en el input ya reenfocado y dispararia una busqueda vacia.
+const swallow = (event: KeyboardEvent) => {
+    if (event.key !== 'Enter') return false;
+    event.preventDefault();
+    event.stopPropagation();
+    return true;
+};
+
+const handleKeydown = (event: KeyboardEvent) => {
+    swallow(event);
+};
+
+const handleKeyup = (event: KeyboardEvent) => {
+    if (swallow(event)) emits('cancel');
+};
+
+const stopListening = () => {
+    document.removeEventListener('keydown', handleKeydown, true);
+    document.removeEventListener('keyup', handleKeyup, true);
+};
+
+watch(
+    () => props.show,
+    (show) => {
+        stopListening();
+        if (show) {
+            document.addEventListener('keydown', handleKeydown, true);
+            document.addEventListener('keyup', handleKeyup, true);
+        }
+    },
+    { immediate: true },
+);
+
+onBeforeUnmount(stopListening);
 </script>
 
 <template>
@@ -100,12 +140,6 @@ const emits = defineEmits<{
                         >
                             Cancelar
                         </button>
-                        <!--  <button
-                            @click="emits('confirm')"
-                            class="rounded-lg bg-amber-500 px-5 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600 active:scale-95"
-                        >
-                            Permitir de todas formas
-                        </button> -->
                     </div>
                 </div>
             </Transition>

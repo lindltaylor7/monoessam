@@ -59,7 +59,11 @@ return new class extends Migration
         // days tenia default 7. El ciclo real es de 10 dias en el 75% de los casos
         // (y de 8 o 9 en un 23%), asi que el default enganaba. Se quita el default
         // para forzar que cada ciclo declare su duracion.
-        DB::statement('ALTER TABLE `menu_cycles` MODIFY `days` INT NOT NULL');
+        // MODIFY es sintaxis MySQL-only; en sqlite (driver de los tests) no hay default
+        // que quitar porque la tabla se crea desde cero con estas mismas migraciones.
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement('ALTER TABLE `menu_cycles` MODIFY `days` INT NOT NULL');
+        }
     }
 
     public function down(): void
@@ -78,7 +82,9 @@ return new class extends Migration
             ]);
         });
 
-        DB::statement('ALTER TABLE `menu_cycles` MODIFY `days` INT NOT NULL DEFAULT 7');
+        if (DB::getDriverName() === 'mysql') {
+            DB::statement('ALTER TABLE `menu_cycles` MODIFY `days` INT NOT NULL DEFAULT 7');
+        }
     }
 };
 
