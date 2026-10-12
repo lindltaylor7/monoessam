@@ -6,7 +6,9 @@ use Illuminate\Database\Eloquent\Model;
 
 class PurchaseOrderItem extends Model
 {
-    protected $fillable = ['purchase_order_id', 'ingredient_id', 'total_amount', 'unit', 'estimated_cost'];
+    protected $fillable = ['purchase_order_id', 'ingredient_id', 'total_amount', 'unit', 'estimated_cost', 'is_manual'];
+
+    protected $casts = ['is_manual' => 'boolean'];
 
     public function order()
     {

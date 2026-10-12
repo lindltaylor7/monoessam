@@ -516,8 +516,13 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
 
     Route::prefix('purchase-orders')->name('purchase_orders.')->group(function () {
         Route::get('/', [PurchaseOrderController::class, 'index'])->name('index');
-        Route::get('{id}', [PurchaseOrderController::class, 'show'])->name('show');
-        Route::delete('{id}', [PurchaseOrderController::class, 'destroy'])->name('destroy');
+        // Buscador propio del módulo: el de `ingredients` exige el permiso de ese segmento
+        // también en lectura, así que un usuario de Órdenes de Compra no podría usarlo.
+        Route::get('search-ingredients', [PurchaseOrderController::class, 'searchIngredients'])->name('search-ingredients');
+        Route::get('{id}', [PurchaseOrderController::class, 'show'])->whereNumber('id')->name('show');
+        Route::post('{id}/items', [PurchaseOrderController::class, 'storeItem'])->name('items.store');
+        Route::delete('{id}/items/{itemId}', [PurchaseOrderController::class, 'destroyItem'])->name('items.destroy');
+        Route::delete('{id}', [PurchaseOrderController::class, 'destroy'])->whereNumber('id')->name('destroy');
     });
 
     Route::prefix('orders')->name('orders.')->group(function () {

@@ -28,7 +28,10 @@ class CheckRoutePermission
      * Aplica a lectura y escritura. Solo restringe: antes no había comprobación alguna.
      */
     private const SEGMENT_PERMISSION_ALIASES = [
-        'purchase-orders'      => ['orders'],
+        // 'orders' es el permiso legado del listado /orders, anterior a que Órdenes de
+        // Compra tuviera fila propia ('purchase-orders'). Se conserva para no quitarle el
+        // módulo a quien solo tenga el antiguo.
+        'purchase-orders'      => ['purchase-orders', 'orders'],
         'atwater'              => ['nutritional', 'food', 'cycles'],
         'cafes'                => ['management', 'headcount', 'sales'],
         'mines'                => ['management'],

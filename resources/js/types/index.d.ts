@@ -396,6 +396,8 @@ export interface PurchaseOrderItem {
     ingredient?: Ingredient;
     total_amount: number;
     unit: string;
+    /** true cuando la línea se agregó a mano en el detalle, no vino del quebrado. */
+    is_manual?: boolean;
     estimated_cost?: number;
 }
 
