@@ -22,7 +22,7 @@ dayjs.locale('es');
 
 interface Props {
     cafes: Cafe[];
-    programs: WeeklyProgram[];
+    programs_total: number;
     dish_categories: DishCategory[];
     menu_structure: MenuStructure[];
     structures?: Structure[];
@@ -435,6 +435,9 @@ const promptForLevel = async (title: string, prompt: string): Promise<string | n
 // en la tabla, enviando program_ids[] al backend.
 const selectedProgramIds = ref<number[]>([]);
 
+// La tabla se pide paginada a planning/programs (con miles de programaciones, traerlas todas
+// en la carga de la pantalla la volvía lenta). Los filtros se aplican en el servidor y las
+// opciones de Mina/Unidad/Comedor salen del árbol `mines` que ya viene en las props.
 const programFilters = ref({
     mine: '',
     unit: '',
@@ -452,48 +455,114 @@ const programRow = (p: any) => ({
     savedAt: p.created_at as string | null,
 });
 
-const programMineOptions = computed(() => [...new Set(props.programs.map((p: any) => p.cafe?.unit?.mine?.name).filter(Boolean))].sort());
+const byName = (a: any, b: any) => String(a.name).localeCompare(String(b.name));
+const programMineOptions = computed(() => [...(props.mines ?? [])].sort(byName));
 const programUnitOptions = computed(() =>
-    [
-        ...new Set(
-            props.programs
-                .filter((p: any) => !programFilters.value.mine || p.cafe?.unit?.mine?.name === programFilters.value.mine)
-                .map((p: any) => p.cafe?.unit?.name)
-                .filter(Boolean),
-        ),
-    ].sort(),
+    programMineOptions.value
+        .filter((m: any) => !programFilters.value.mine || String(m.id) === programFilters.value.mine)
+        .flatMap((m: any) => m.units ?? [])
+        .sort(byName),
 );
 const programCafeOptions = computed(() =>
-    [
-        ...new Set(
-            props.programs
-                .filter((p: any) => !programFilters.value.mine || p.cafe?.unit?.mine?.name === programFilters.value.mine)
-                .filter((p: any) => !programFilters.value.unit || p.cafe?.unit?.name === programFilters.value.unit)
-                .map((p: any) => p.cafe?.name)
-                .filter(Boolean),
-        ),
-    ].sort(),
+    programUnitOptions.value
+        .filter((u: any) => !programFilters.value.unit || String(u.id) === programFilters.value.unit)
+        .flatMap((u: any) => u.cafes ?? [])
+        .sort(byName),
 );
 
-const filteredPrograms = computed(() => {
+// Al cambiar la mina/unidad, se limpian los filtros hijos que ya no pertenecen a ella.
+watch(
+    () => programFilters.value.mine,
+    () => {
+        if (programFilters.value.unit && !programUnitOptions.value.some((u: any) => String(u.id) === programFilters.value.unit)) {
+            programFilters.value.unit = '';
+        }
+    },
+);
+watch(
+    () => programFilters.value.unit,
+    () => {
+        if (programFilters.value.cafe && !programCafeOptions.value.some((c: any) => String(c.id) === programFilters.value.cafe)) {
+            programFilters.value.cafe = '';
+        }
+    },
+);
+
+const programsPage = ref<any[]>([]);
+const programsMeta = ref({ current_page: 1, last_page: 1, total: 0, from: 0 as number | null, to: 0 as number | null });
+const programsLoading = ref(false);
+const programsLoaded = ref(false);
+let programsRequest = 0;
+
+const loadPrograms = async (page = 1) => {
     const f = programFilters.value;
-    return props.programs.filter((p: any) => {
-        const row = programRow(p);
-        if (f.mine && row.mine !== f.mine) return false;
-        if (f.unit && row.unit !== f.unit) return false;
-        if (f.cafe && row.cafe !== f.cafe) return false;
-        if (f.savedFrom && (!row.savedAt || dayjs(row.savedAt).isBefore(dayjs(f.savedFrom), 'day'))) return false;
-        if (f.savedTo && (!row.savedAt || dayjs(row.savedAt).isAfter(dayjs(f.savedTo), 'day'))) return false;
-        return true;
-    });
+    const requestId = ++programsRequest;
+    programsLoading.value = true;
+    try {
+        const { data } = await axios.get(route('planning.programs'), {
+            params: {
+                page,
+                mine_id: f.mine || undefined,
+                unit_id: f.unit || undefined,
+                cafe_id: f.cafe || undefined,
+                saved_from: f.savedFrom || undefined,
+                saved_to: f.savedTo || undefined,
+            },
+        });
+        // Una respuesta vieja (filtros cambiados mientras cargaba) no pisa la más reciente.
+        if (requestId !== programsRequest) return;
+        programsPage.value = data.data;
+        programsMeta.value = {
+            current_page: data.current_page,
+            last_page: data.last_page,
+            total: data.total,
+            from: data.from,
+            to: data.to,
+        };
+        programsLoaded.value = true;
+    } catch {
+        if (requestId === programsRequest) Swal.fire('Error', 'No se pudieron cargar las programaciones guardadas.', 'error');
+    } finally {
+        if (requestId === programsRequest) programsLoading.value = false;
+    }
+};
+
+const goToProgramsPage = (page: number) => {
+    if (page < 1 || page > programsMeta.value.last_page || page === programsMeta.value.current_page) return;
+    loadPrograms(page);
+};
+
+// Se carga la primera vez que se abre la pestaña, no en la carga de la pantalla.
+watch(activeTab, (tab) => {
+    if (tab === 'programaciones' && !programsLoaded.value) loadPrograms();
 });
+
+// Tras guardar una planificación Inertia recarga las props: refrescar la tabla si ya se mostró.
+watch(
+    () => props.programs_total,
+    () => {
+        if (programsLoaded.value) loadPrograms(programsMeta.value.current_page);
+    },
+);
+
+// Cambiar un filtro vuelve a la página 1. La selección se descarta para que el contador de la
+// barra de acciones no incluya programaciones que ya no coinciden con el filtro.
+watch(
+    programFilters,
+    () => {
+        selectedProgramIds.value = [];
+        loadPrograms(1);
+    },
+    { deep: true },
+);
 
 const hasProgramFilters = computed(() => Object.values(programFilters.value).some(Boolean));
 const clearProgramFilters = () => {
     programFilters.value = { mine: '', unit: '', cafe: '', savedFrom: '', savedTo: '' };
 };
 
-const visibleProgramIds = computed<number[]>(() => filteredPrograms.value.map((p: any) => p.id));
+// La selección se conserva al cambiar de página, así se pueden combinar programaciones de varias.
+const visibleProgramIds = computed<number[]>(() => programsPage.value.map((p: any) => p.id));
 const allVisibleSelected = computed(
     () => visibleProgramIds.value.length > 0 && visibleProgramIds.value.every((id) => selectedProgramIds.value.includes(id)),
 );
@@ -511,11 +580,6 @@ const toggleProgram = (id: number, checked: boolean) => {
         selectedProgramIds.value = selectedProgramIds.value.filter((x) => x !== id);
     }
 };
-
-// Drop selections that are filtered out of view so the action bar count always matches what's checked on screen.
-watch(filteredPrograms, () => {
-    selectedProgramIds.value = selectedProgramIds.value.filter((id) => visibleProgramIds.value.includes(id));
-});
 
 const requireSelection = (): number[] | null => {
     if (!selectedProgramIds.value.length) {
@@ -973,7 +1037,7 @@ const loadStructure = (structureIdStr: string) => {
                         <span
                             class="ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold"
                             :class="activeTab === 'programaciones' ? 'bg-[#FF5A1F]/15 text-[#FF5A1F]' : 'bg-slate-200 text-slate-600'"
-                            >{{ programs.length }}</span
+                            >{{ programs_total }}</span
                         >
                     </TabsTrigger>
                 </TabsList>
@@ -1500,7 +1564,7 @@ const loadStructure = (structureIdStr: string) => {
 
             <div v-if="activeTab === 'programaciones'" class="flex flex-col gap-4">
                 <div
-                    v-if="programs.length === 0"
+                    v-if="programs_total === 0"
                     class="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm text-slate-400"
                 >
                     Aún no hay programaciones guardadas. Complete la matriz en la pestaña "Planificar" y presione "Guardar Planificación".
@@ -1518,7 +1582,7 @@ const loadStructure = (structureIdStr: string) => {
                                 class="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none sm:w-auto sm:min-w-[150px]"
                             >
                                 <option value="">Todas</option>
-                                <option v-for="m in programMineOptions" :key="m" :value="m">{{ m }}</option>
+                                <option v-for="m in programMineOptions" :key="m.id" :value="String(m.id)">{{ m.name }}</option>
                             </select>
                         </div>
                         <div class="flex flex-col gap-1 sm:min-w-[140px]">
@@ -1528,7 +1592,7 @@ const loadStructure = (structureIdStr: string) => {
                                 class="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none sm:w-auto sm:min-w-[150px]"
                             >
                                 <option value="">Todas</option>
-                                <option v-for="u in programUnitOptions" :key="u" :value="u">{{ u }}</option>
+                                <option v-for="u in programUnitOptions" :key="u.id" :value="String(u.id)">{{ u.name }}</option>
                             </select>
                         </div>
                         <div class="flex flex-col gap-1 sm:min-w-[140px]">
@@ -1538,7 +1602,7 @@ const loadStructure = (structureIdStr: string) => {
                                 class="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none sm:w-auto sm:min-w-[140px]"
                             >
                                 <option value="">Todos</option>
-                                <option v-for="c in programCafeOptions" :key="c" :value="c">{{ c }}</option>
+                                <option v-for="c in programCafeOptions" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
                             </select>
                         </div>
                         <div class="flex flex-col gap-1">
@@ -1566,7 +1630,7 @@ const loadStructure = (structureIdStr: string) => {
                             Limpiar filtros
                         </button>
                         <span class="col-span-2 self-center text-xs text-slate-400 sm:col-auto sm:ml-auto">
-                            {{ filteredPrograms.length }} de {{ programs.length }}
+                            {{ programsLoading ? 'Cargando…' : `${programsMeta.total} de ${programs_total}` }}
                         </span>
                     </div>
 
@@ -1659,7 +1723,7 @@ const loadStructure = (structureIdStr: string) => {
                                 </TableHeader>
                                 <TableBody>
                                     <TableRow
-                                        v-for="program in filteredPrograms"
+                                        v-for="program in programsPage"
                                         :key="program.id"
                                         class="transition-colors hover:bg-slate-50/50"
                                         :class="selectedProgramIds.includes(program.id) ? 'bg-orange-50/50' : ''"
@@ -1733,13 +1797,60 @@ const loadStructure = (structureIdStr: string) => {
                                             </div>
                                         </TableCell>
                                     </TableRow>
-                                    <tr v-if="filteredPrograms.length === 0">
+                                    <tr v-if="programsPage.length === 0">
                                         <td colspan="8" class="py-10 text-center text-sm text-slate-400">
-                                            Ninguna programación coincide con los filtros.
+                                            {{ programsLoading ? 'Cargando programaciones…' : 'Ninguna programación coincide con los filtros.' }}
                                         </td>
                                     </tr>
                                 </TableBody>
                             </Table>
+                        </div>
+                        <div
+                            v-if="programsMeta.total > 0"
+                            class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-xs text-slate-500"
+                        >
+                            <span>
+                                Mostrando {{ programsMeta.from }}–{{ programsMeta.to }} de {{ programsMeta.total }}
+                            </span>
+                            <div class="flex items-center gap-1.5">
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    class="h-8 rounded-lg border-slate-200 px-2.5 text-xs"
+                                    :disabled="programsLoading || programsMeta.current_page <= 1"
+                                    @click="goToProgramsPage(1)"
+                                >
+                                    «
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    class="h-8 rounded-lg border-slate-200 px-2.5 text-xs"
+                                    :disabled="programsLoading || programsMeta.current_page <= 1"
+                                    @click="goToProgramsPage(programsMeta.current_page - 1)"
+                                >
+                                    Anterior
+                                </Button>
+                                <span class="px-2 tabular-nums">Página {{ programsMeta.current_page }} de {{ programsMeta.last_page }}</span>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    class="h-8 rounded-lg border-slate-200 px-2.5 text-xs"
+                                    :disabled="programsLoading || programsMeta.current_page >= programsMeta.last_page"
+                                    @click="goToProgramsPage(programsMeta.current_page + 1)"
+                                >
+                                    Siguiente
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    class="h-8 rounded-lg border-slate-200 px-2.5 text-xs"
+                                    :disabled="programsLoading || programsMeta.current_page >= programsMeta.last_page"
+                                    @click="goToProgramsPage(programsMeta.last_page)"
+                                >
+                                    »
+                                </Button>
+                            </div>
                         </div>
                     </div>
                 </template>

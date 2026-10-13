@@ -500,6 +500,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     Route::prefix('planning')->name('planning.')->group(function () {
         Route::get('/', [PlanningController::class, 'index'])->name('index');
         Route::post('/', [PlanningController::class, 'store'])->name('store');
+        Route::get('programs', [PlanningController::class, 'programs'])->name('programs');
         Route::post('{id}/generate-po', [PlanningController::class, 'generatePurchaseOrder'])->name('generate-po');
         // Todos los reportes operan sobre una o varias programaciones seleccionadas (program_ids[]),
         // igual que menu-excel.

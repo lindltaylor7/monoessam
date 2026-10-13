@@ -72,9 +72,8 @@ function seedReportBase(): array
     return [$mine, $unit, $cafe, $user, $level, $category, $dish, $ingredient];
 }
 
-test('planning index exposes service, unit, mine and saved date per program', function () {
-    [$mine, $unit, $cafe, $user, $level, $category, $dish] = seedReportBase();
-    // Sin meal_type explícito: se infiere del meal_type de los items ("Almuerzo").
+test('planning index only sends the saved programs count', function () {
+    [, , $cafe, $user, $level, $category, $dish] = seedReportBase();
     seedReportProgram($level, $dish, $category, $cafe, $user, '2026-02-02', '2026-02-03', 100);
 
     $this->actingAs($user)
@@ -82,10 +81,49 @@ test('planning index exposes service, unit, mine and saved date per program', fu
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('planning/Index')
-            ->where('programs.0.service', 'Almuerzo')
-            ->where('programs.0.cafe.unit.name', $unit->name)
-            ->where('programs.0.cafe.unit.mine.name', $mine->name)
-            ->has('programs.0.created_at'));
+            ->where('programs_total', 1)
+            ->missing('programs'));
+});
+
+test('planning programs endpoint exposes service, unit, mine and saved date per program', function () {
+    [$mine, $unit, $cafe, $user, $level, $category, $dish] = seedReportBase();
+    // Sin meal_type explícito: se infiere del meal_type de los items ("Almuerzo").
+    seedReportProgram($level, $dish, $category, $cafe, $user, '2026-02-02', '2026-02-03', 100);
+
+    $this->actingAs($user)
+        ->getJson(route('planning.programs'))
+        ->assertOk()
+        ->assertJsonPath('total', 1)
+        ->assertJsonPath('data.0.service', 'Almuerzo')
+        ->assertJsonPath('data.0.cafe.unit.name', $unit->name)
+        ->assertJsonPath('data.0.cafe.unit.mine.name', $mine->name)
+        ->assertJsonStructure(['data' => [['created_at']]]);
+});
+
+test('planning programs endpoint paginates and filters by mine, unit and cafe', function () {
+    [$mine, $unit, $cafe, $user, $level, $category, $dish] = seedReportBase();
+    $otherCafe = Cafe::factory()->create(['unit_id' => Unit::factory()->create(['mine_id' => Mine::factory()->create()->id])->id]);
+
+    for ($i = 0; $i < 30; $i++) {
+        seedReportProgram($level, $dish, $category, $cafe, $user, '2026-02-02', '2026-02-03', 100);
+    }
+    seedReportProgram($level, $dish, $category, $otherCafe, $user, '2026-02-02', '2026-02-03', 100);
+
+    $this->actingAs($user)->getJson(route('planning.programs'))
+        ->assertJsonPath('total', 31)
+        ->assertJsonPath('last_page', 2)
+        ->assertJsonCount(25, 'data');
+
+    $this->actingAs($user)->getJson(route('planning.programs', ['page' => 2]))
+        ->assertJsonCount(6, 'data');
+
+    foreach (['mine_id' => $mine->id, 'unit_id' => $unit->id, 'cafe_id' => $cafe->id] as $key => $id) {
+        $this->actingAs($user)->getJson(route('planning.programs', [$key => $id]))->assertJsonPath('total', 30);
+    }
+
+    $this->actingAs($user)->getJson(route('planning.programs', ['cafe_id' => $otherCafe->id]))
+        ->assertJsonPath('total', 1)
+        ->assertJsonPath('data.0.cafe_id', $otherCafe->id);
 });
 
 test('planning store persists the active service on the program', function () {

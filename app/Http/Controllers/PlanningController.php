@@ -16,6 +16,7 @@ use App\Models\Level;
 use App\Models\MenuStructure;
 use App\Models\Serviceable;
 use App\Models\Service;
+use App\Models\Unit;
 use App\Services\QuebradosService;
 use App\Exports\WeeklyPurchaseOrderExport;
 use App\Exports\WeeklyMenuExport;
@@ -67,28 +68,11 @@ class PlanningController extends Controller
             return $cycle;
         });
 
-        // El servicio al que pertenece cada programación es único. Se guarda en weekly_programs.meal_type;
-        // para programaciones antiguas sin ese dato, se cae al meal_type predominante de sus items.
-        // Solo para las que no lo tienen: agrupar toda la tabla de items (600k+ filas
-        // con las programaciones migradas) en cada carga de la pantalla no tiene sentido.
-        $fallbackService = WeeklyProgramItem::select('weekly_program_id', 'meal_type', DB::raw('COUNT(*) as c'))
-            ->whereIn('weekly_program_id', WeeklyProgram::whereNull('meal_type')->select('id'))
-            ->groupBy('weekly_program_id', 'meal_type')
-            ->orderByDesc('c')
-            ->get()
-            ->groupBy('weekly_program_id')
-            ->map(fn($rows) => $rows->first()->meal_type);
-
-        $programs = WeeklyProgram::with(['cafe.unit.mine', 'structure'])
-            ->orderByDesc('created_at')
-            ->get()
-            ->each(function ($program) use ($fallbackService) {
-                $program->setAttribute('service', $program->meal_type ?: $fallbackService->get($program->id));
-            });
-
         return Inertia::render('planning/Index', [
             'cafes' => Cafe::all(),
-            'programs' => $programs,
+            // El listado de programaciones guardadas se pide paginado a planning/programs: con
+            // miles de filas, mandarlas todas en la carga inicial volvía lenta la pantalla.
+            'programs_total' => WeeklyProgram::count(),
             'dish_categories' => Dish_category::all(),
             'menu_structure' => MenuStructure::with('dish_category')->get(),
             'structures' => \App\Models\Structure::with('costs')->get(),
@@ -97,6 +81,53 @@ class PlanningController extends Controller
             'levels' => Level::orderBy('name')->get(),
             'cities' => City::orderBy('name')->get(),
         ]);
+    }
+
+    /**
+     * Listado paginado de programaciones guardadas para la pestaña "Programaciones Guardadas".
+     * Los filtros (mina/unidad/comedor/fecha de guardado) se aplican en la consulta.
+     */
+    public function programs(Request $request)
+    {
+        $validated = $request->validate([
+            'mine_id' => 'nullable|integer',
+            'unit_id' => 'nullable|integer',
+            'cafe_id' => 'nullable|integer',
+            'saved_from' => 'nullable|date',
+            'saved_to' => 'nullable|date',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        $programs = WeeklyProgram::with(['cafe.unit.mine', 'structure'])
+            ->when($validated['cafe_id'] ?? null, fn($q, $id) => $q->where('cafe_id', $id))
+            ->when($validated['unit_id'] ?? null, fn($q, $id) => $q->whereIn('cafe_id', Cafe::where('unit_id', $id)->select('id')))
+            ->when($validated['mine_id'] ?? null, fn($q, $id) => $q->whereIn(
+                'cafe_id',
+                Cafe::whereIn('unit_id', Unit::where('mine_id', $id)->select('id'))->select('id'),
+            ))
+            ->when($validated['saved_from'] ?? null, fn($q, $d) => $q->whereDate('created_at', '>=', $d))
+            ->when($validated['saved_to'] ?? null, fn($q, $d) => $q->whereDate('created_at', '<=', $d))
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate($validated['per_page'] ?? 25);
+
+        // El servicio al que pertenece cada programación es único. Se guarda en weekly_programs.meal_type;
+        // para programaciones antiguas sin ese dato, se cae al meal_type predominante de sus items
+        // (solo para las de esta página).
+        $missing = $programs->getCollection()->whereNull('meal_type')->pluck('id');
+        $fallbackService = $missing->isEmpty() ? collect() : WeeklyProgramItem::select('weekly_program_id', 'meal_type', DB::raw('COUNT(*) as c'))
+            ->whereIn('weekly_program_id', $missing)
+            ->groupBy('weekly_program_id', 'meal_type')
+            ->orderByDesc('c')
+            ->get()
+            ->groupBy('weekly_program_id')
+            ->map(fn($rows) => $rows->first()->meal_type);
+
+        $programs->getCollection()->each(function ($program) use ($fallbackService) {
+            $program->setAttribute('service', $program->meal_type ?: $fallbackService->get($program->id));
+        });
+
+        return response()->json($programs);
     }
 
     public function store(Request $request)
