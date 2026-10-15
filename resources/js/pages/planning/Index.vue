@@ -815,6 +815,16 @@ const loadMenuCycle = (cycleIdStr: string) => {
         return;
     }
 
+    if (!availableServices.value.some((s: any) => s.name.toLowerCase() === mealType.toLowerCase())) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Servicio no asignado',
+            text: `El ciclo es de ${mealType}, pero este comedor no tiene ese servicio asignado. Asígnelo en Servicios para poder planificarlo.`,
+            confirmButtonColor: '#FF5A1F',
+        });
+        return;
+    }
+
     // Validar que el número de días de la planificación sea mayor o igual al del ciclo
     if (daysCount.value < cycle.days) {
         Swal.fire({
@@ -853,6 +863,16 @@ const loadMenuCycle = (cycleIdStr: string) => {
                 };
             });
             localMenuStructure.value = [...otherMeals, ...newMealStructure];
+
+            // La matriz solo muestra el servicio seleccionado: si el ciclo es de otro servicio (p. ej.
+            // un ciclo de Cena con Desayuno elegido) los platos se cargaban en Cena y se veía vacío.
+            const cycleService = availableServices.value.find((s: any) => s.name.toLowerCase() === mealType.toLowerCase());
+            if (cycleService && String(cycleService.id) !== selectedServiceId.value) {
+                selectedServiceId.value = String(cycleService.id);
+                // La estructura de costos elegida era del servicio anterior.
+                selectedStructureId.value = '';
+                form.structure_id = null;
+            }
 
             // 2. Inicializar la cuadrícula local preservando valores de otras comidas
             const oldPortions = { ...portionsGrid.value };
