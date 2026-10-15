@@ -513,6 +513,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('reporte-compras', [PlanningController::class, 'purchaseReport'])->name('reporte-compras');
         // Mismo detalle que cycles.show, pero bajo el segmento 'planning' para que un usuario de
         // Planificación pueda cargar un ciclo en la matriz sin tener el permiso 'cycles'.
+        Route::get('cycles', [PlanningController::class, 'cycles'])->name('cycles.index');
         Route::get('cycles/{id}', [MenuCycleController::class, 'show'])->name('cycles.show');
     });
 

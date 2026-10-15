@@ -9,12 +9,27 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Cafe, DishCategory, MealType, MenuStructure, Structure, WeeklyProgram } from '@/types';
+import { Cafe, DishCategory, MealType, MenuStructure, WeeklyProgram } from '@/types';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 import dayjs from 'dayjs';
 import 'dayjs/locale/es';
-import { ChevronDown, FileSpreadsheet } from 'lucide-vue-next';
+import {
+    Building2,
+    CalendarDays,
+    Check,
+    ChevronDown,
+    Clock,
+    Coffee,
+    ConciergeBell,
+    FileSpreadsheet,
+    Loader2,
+    Minus,
+    Mountain,
+    Plus,
+    Search,
+    Settings2,
+} from 'lucide-vue-next';
 import Swal from 'sweetalert2';
 import { computed, onMounted, ref, watch } from 'vue';
 
@@ -25,8 +40,6 @@ interface Props {
     programs_total: number;
     dish_categories: DishCategory[];
     menu_structure: MenuStructure[];
-    structures?: Structure[];
-    menu_cycles?: any[];
     mines?: any[];
     levels?: any[];
     cities?: any[];
@@ -131,21 +144,12 @@ const selectedServiceableId = computed(() => {
     return srv?.pivot?.id ?? null;
 });
 
-const structuresForService = computed(() => {
-    if (!selectedServiceableId.value || !props.structures) return [];
-    return props.structures.filter((s) => String(s.serviceable_id) === String(selectedServiceableId.value));
-});
-
-const selectedStructureId = ref<string>('');
-
 watch(
     () => form.cafe_id,
     (newCafeId) => {
         if (newCafeId && (!selectedMineId.value || !selectedUnitId.value)) {
             resolveMineAndUnitFromCafe(newCafeId);
         }
-        selectedStructureId.value = '';
-        form.structure_id = null;
         setTimeout(() => {
             if (availableServices.value && availableServices.value.length > 0) {
                 selectedServiceId.value = String(availableServices.value[0].id);
@@ -773,10 +777,74 @@ const getDishesForCell = (date: string, meal: string, struct: any) => {
     return filtered;
 };
 
-const filteredCycles = computed(() => {
-    if (!props.menu_cycles) return [];
-    // Muestra los ciclos que pertenecen a este café o no están asignados a ningún café
-    return props.menu_cycles.filter((c) => !c.cafe_id || String(c.cafe_id) === String(form.cafe_id));
+// --- Ciclos de menú ---------------------------------------------------------
+// La matriz se arma a partir de un ciclo del comedor+servicio elegidos: se piden solo los
+// ciclos de ese serviceable (antes llegaban los ~8 mil ciclos de todos los comedores).
+interface CycleOption {
+    id: number;
+    name: string;
+    days: number;
+    legacy_cycle_number: number | null;
+    is_current: boolean | number;
+    updated_at?: string;
+}
+
+const cycleOptions = ref<CycleOption[]>([]);
+const cyclesLoading = ref(false);
+const cycleSearch = ref('');
+const loadedCycleId = ref<number | null>(null);
+const loadingCycleId = ref<number | null>(null);
+const cyclesByServiceable = new Map<number, CycleOption[]>();
+
+const cycleLabel = (cycle: CycleOption) => {
+    if (cycle.legacy_cycle_number != null) return `Ciclo ${cycle.legacy_cycle_number}`;
+    const match = cycle.name.match(/ciclo\s*\d+/i);
+    return match ? match[0].replace(/^c/, 'C') : cycle.name;
+};
+
+const fetchCycleOptions = async (serviceableId: number | null) => {
+    loadedCycleId.value = null;
+    cycleSearch.value = '';
+    if (!serviceableId) {
+        cycleOptions.value = [];
+        return;
+    }
+    const cached = cyclesByServiceable.get(serviceableId);
+    if (cached) {
+        cycleOptions.value = cached;
+        return;
+    }
+    cyclesLoading.value = true;
+    try {
+        const { data } = await axios.get(route('planning.cycles.index'), { params: { serviceable_id: serviceableId } });
+        cyclesByServiceable.set(serviceableId, data);
+        // Si el usuario cambió de servicio mientras cargaba, no pisar la lista nueva.
+        if (selectedServiceableId.value === serviceableId) cycleOptions.value = data;
+    } catch {
+        cycleOptions.value = [];
+        Swal.fire('Error', 'No se pudieron cargar los ciclos de este servicio.', 'error');
+    } finally {
+        cyclesLoading.value = false;
+    }
+};
+
+watch(selectedServiceableId, (id) => fetchCycleOptions(id), { immediate: true });
+
+const visibleCycles = computed(() => {
+    const q = cycleSearch.value.trim().toLowerCase();
+    if (!q) return cycleOptions.value;
+    return cycleOptions.value.filter((c) => cycleLabel(c).toLowerCase().includes(q) || c.name.toLowerCase().includes(q));
+});
+
+const loadedCycle = computed(() => cycleOptions.value.find((c) => c.id === loadedCycleId.value) ?? null);
+
+const selectedCafeName = computed(() => availableCafes.value.find((c: any) => String(c.id) === String(form.cafe_id))?.name ?? 'Este comedor');
+
+// Resumen visible con el panel colapsado, para no tener que abrirlo para saber qué se planifica.
+const configSummary = computed(() => {
+    if (configOpen.value) return 'Ocultar panel';
+    if (!form.cafe_id) return 'Sin comedor seleccionado';
+    return [selectedCafeName.value, activeMealType.value, loadedCycle.value ? cycleLabel(loadedCycle.value) : null].filter(Boolean).join(' · ');
 });
 
 const cycleDataCache = new Map<number, any[]>();
@@ -796,237 +864,114 @@ const fetchCycleData = async (cycleId: number): Promise<any[] | null> => {
     }
 };
 
-const loadMenuCycle = (cycleIdStr: string) => {
-    const cycleId = parseInt(cycleIdStr);
-    const cycle = props.menu_cycles?.find((c) => c.id === cycleId);
-    if (!cycle) return;
-
-    const mealTypeRaw = cycle.meal_type;
-    // Búsqueda insensible a mayúsculas/minúsculas para normalizar el tipo de comida
-    const mealType = meals.find((m) => m.toLowerCase() === mealTypeRaw.toLowerCase());
-
-    if (!mealType) {
-        Swal.fire({
-            icon: 'error',
-            title: 'Servicio No Válido',
-            text: `El tipo de servicio de este ciclo (${mealTypeRaw}) no es válido en esta planificación.`,
-            confirmButtonColor: '#FF5A1F',
-        });
-        return;
-    }
-
-    if (!availableServices.value.some((s: any) => s.name.toLowerCase() === mealType.toLowerCase())) {
-        Swal.fire({
-            icon: 'warning',
-            title: 'Servicio no asignado',
-            text: `El ciclo es de ${mealType}, pero este comedor no tiene ese servicio asignado. Asígnelo en Servicios para poder planificarlo.`,
-            confirmButtonColor: '#FF5A1F',
-        });
-        return;
-    }
-
-    // Validar que el número de días de la planificación sea mayor o igual al del ciclo
-    if (daysCount.value < cycle.days) {
-        Swal.fire({
-            icon: 'warning',
-            title: 'Días Insuficientes',
-            text: `El ciclo seleccionado tiene ${cycle.days} días, pero su planificación actual solo tiene ${daysCount.value} días. Por favor, aumente los días de la planificación primero.`,
-            confirmButtonColor: '#FF5A1F',
-        });
-        return;
-    }
-
-    Swal.fire({
-        title: '¿Cargar Ciclo de Menú?',
-        text: `¿Desea cargar la estructura y los platos de "${cycle.name}" para el servicio de "${mealType}"? Esto reemplazará los platos actuales de ese servicio.`,
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Sí, cargar',
-        cancelButtonText: 'Cancelar',
-        confirmButtonColor: '#FF5A1F',
-    }).then(async (result) => {
-        if (result.isConfirmed) {
-            // El listado de ciclos solo trae metadatos (su cycle_data suma ~100 MB entre todos);
-            // el detalle del ciclo elegido se pide aquí.
-            const cycleData = await fetchCycleData(cycle.id);
-            if (!cycleData) return;
-
-            // 1. Reconstruir localMenuStructure para este mealType basándose exactamente en el ciclo
-            const otherMeals = localMenuStructure.value.filter((s) => s.meal_type !== mealType);
-            const newMealStructure = cycleData.map((cycleRow: any, index: number) => {
-                const categoryObj = props.dish_categories?.find((c) => c.id === cycleRow.dishCategoryId);
-                return {
-                    id: cycleRow.id || 20000 + index, // ID único temporal
-                    meal_type: mealType,
-                    dish_category_id: cycleRow.dishCategoryId,
-                    dish_category: categoryObj || { id: cycleRow.dishCategoryId, name: cycleRow.category },
-                };
-            });
-            localMenuStructure.value = [...otherMeals, ...newMealStructure];
-
-            // La matriz solo muestra el servicio seleccionado: si el ciclo es de otro servicio (p. ej.
-            // un ciclo de Cena con Desayuno elegido) los platos se cargaban en Cena y se veía vacío.
-            const cycleService = availableServices.value.find((s: any) => s.name.toLowerCase() === mealType.toLowerCase());
-            if (cycleService && String(cycleService.id) !== selectedServiceId.value) {
-                selectedServiceId.value = String(cycleService.id);
-                // La estructura de costos elegida era del servicio anterior.
-                selectedStructureId.value = '';
-                form.structure_id = null;
-            }
-
-            // 2. Inicializar la cuadrícula local preservando valores de otras comidas
-            const oldPortions = { ...portionsGrid.value };
-            const oldItems = { ...itemsGrid.value };
-            const oldPercentages = { ...percentagesGrid.value };
-
-            portionsGrid.value = {};
-            itemsGrid.value = {};
-            percentagesGrid.value = {};
-
-            dates.value.forEach((date) => {
-                meals.forEach((meal) => {
-                    const portKey = `${date}_${meal}`;
-                    portionsGrid.value[portKey] = oldPortions[portKey] !== undefined ? oldPortions[portKey] : 0;
-
-                    const structureForMeal = localMenuStructure.value.filter((s) => s.meal_type === meal);
-                    structureForMeal.forEach((s) => {
-                        const itemKey = `${date}_${meal}_${s.id}`;
-                        if (meal === mealType) {
-                            itemsGrid.value[itemKey] = '';
-                            percentagesGrid.value[itemKey] = 100;
-                        } else {
-                            itemsGrid.value[itemKey] = oldItems[itemKey] || '';
-                            percentagesGrid.value[itemKey] = oldPercentages[itemKey] !== undefined ? oldPercentages[itemKey] : 100;
-                        }
-                    });
-                });
-            });
-
-            // 3. Poblar la cuadrícula con los platos del ciclo
-            let assignedCount = 0;
-            cycleData.forEach((cycleRow: any, index: number) => {
-                const tempId = cycleRow.id || 20000 + index;
-                for (let dayNum = 1; dayNum <= cycle.days; dayNum++) {
-                    const dateIndex = dayNum - 1;
-                    if (dateIndex < dates.value.length) {
-                        const date = dates.value[dateIndex];
-                        const dayData = cycleRow.days?.[dayNum];
-                        if (dayData && dayData.dish_id) {
-                            const itemKey = `${date}_${mealType}_${tempId}`;
-                            itemsGrid.value[itemKey] = String(dayData.dish_id);
-                            if (dayData.dish_name) {
-                                knownDishNames.value[dayData.dish_id] = dayData.dish_name;
-                            }
-                            assignedCount++;
-                        }
-                    }
-                }
-            });
-
-            Swal.fire({
-                icon: 'success',
-                title: 'Ciclo Cargado',
-                text: `Se han configurado las categorías y cargado con éxito ${assignedCount} platos en el servicio de "${mealType}".`,
-                timer: 2000,
-                showConfirmButton: false,
-            });
-        }
-    });
-};
-
-// Carga una Estructura de Costos (del café+servicio activo) como las filas/categorías de la matriz
-// para el servicio activo, con sus techos de costo (L.Inferior/L.Superior) visibles por fila.
-const loadStructure = (structureIdStr: string) => {
-    const structureId = parseInt(structureIdStr);
-    const structure = structuresForService.value.find((s) => s.id === structureId);
-    if (!structure) return;
-
+const loadMenuCycle = async (cycle: CycleOption) => {
     const mealType = activeMealType.value;
     if (!mealType) return;
 
-    Swal.fire({
-        title: '¿Cargar Estructura de Costos?',
-        text: `¿Desea cargar las categorías de "${structure.name}" para el servicio de "${mealType}"? Se conservarán los platos ya asignados donde la categoría coincida.`,
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Sí, cargar',
-        cancelButtonText: 'Cancelar',
-        confirmButtonColor: '#FF5A1F',
-    }).then((result) => {
+    const hasDishes = localMenuStructure.value
+        .filter((s) => s.meal_type === mealType)
+        .some((s) => dates.value.some((date) => itemsGrid.value[`${date}_${mealType}_${s.id}`]));
+
+    // Solo se pide confirmación cuando hay platos que se van a perder.
+    if (hasDishes) {
+        const result = await Swal.fire({
+            title: `¿Cargar ${cycleLabel(cycle)}?`,
+            text: `Se reemplazarán los platos actuales de ${mealType}.`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, cargar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#FF5A1F',
+        });
         if (!result.isConfirmed) return;
+    }
 
-        form.structure_id = structure.id;
+    loadingCycleId.value = cycle.id;
+    const cycleData = await fetchCycleData(cycle.id);
+    loadingCycleId.value = null;
+    if (!cycleData) return;
 
-        // 1. Capturar asignaciones actuales del servicio activo, indexadas por categoría (no por id de
-        //    fila, que va a cambiar) para poder preservarlas si la nueva categoría coincide.
-        const oldByCategory: Record<string, string> = {};
-        const oldPctByCategory: Record<string, number> = {};
-        localMenuStructure.value
-            .filter((s) => s.meal_type === mealType)
-            .forEach((s) => {
-                dates.value.forEach((date) => {
-                    const oldKey = `${date}_${mealType}_${s.id}`;
-                    const val = itemsGrid.value[oldKey];
-                    if (val) {
-                        oldByCategory[`${date}_${s.dish_category_id}`] = val;
-                        oldPctByCategory[`${date}_${s.dish_category_id}`] = percentagesGrid.value[oldKey] ?? 100;
-                    }
-                });
-            });
+    // La planificación cubre al menos los días del ciclo.
+    if (daysCount.value < cycle.days) {
+        daysCount.value = Math.min(cycle.days, 31);
+        form.end_date = dayjs(form.start_date)
+            .add(daysCount.value - 1, 'days')
+            .format('YYYY-MM-DD');
+    }
 
-        // 2. Reconstruir localMenuStructure para este mealType a partir de la Estructura de Costos
-        const otherMeals = localMenuStructure.value.filter((s) => s.meal_type !== mealType);
-        const costs = [...(structure.costs ?? [])].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-        const newMealStructure: MenuStructure[] = costs.map((cost, index) => ({
-            id: 30000 + (cost.id ?? index), // rango de ids temporales separado del que usa loadMenuCycle (20000+)
-            meal_type: mealType as MealType,
-            dish_category_id: cost.dish_category_id as number,
-            dish_category: { id: cost.dish_category_id as number, name: cost.name ?? '' } as DishCategory,
-            sort_order: cost.order,
-            ration: cost.ration,
-            unit_cost: cost.unit_cost,
-            total_cost: cost.total_cost,
-            unit_cost_superior: cost.unit_cost_superior,
-            total_cost_superior: cost.total_cost_superior,
-        }));
-        localMenuStructure.value = [...otherMeals, ...newMealStructure];
+    // 1. Las filas de la matriz son las del ciclo, con sus techos de costo (L.Inf/L.Sup).
+    const otherMeals = localMenuStructure.value.filter((s) => s.meal_type !== mealType);
+    const newMealStructure = cycleData.map((cycleRow: any, index: number) => {
+        const categoryObj = props.dish_categories?.find((c) => c.id === cycleRow.dishCategoryId);
+        return {
+            id: cycleRow.id || 20000 + index, // ID único temporal
+            meal_type: mealType,
+            dish_category_id: cycleRow.dishCategoryId,
+            dish_category: categoryObj || { id: cycleRow.dishCategoryId, name: cycleRow.category },
+            sort_order: index,
+            total_cost: cycleRow.costValue ?? null,
+            total_cost_superior: cycleRow.costValueMax ?? null,
+        } as MenuStructure;
+    });
+    localMenuStructure.value = [...otherMeals, ...newMealStructure];
 
-        // 3. Reconstruir la cuadrícula preservando otras comidas y remapeando por categoría para el
-        //    servicio activo (en vez de vaciarlo, como hace loadMenuCycle).
-        const oldPortions = { ...portionsGrid.value };
-        const oldItems = { ...itemsGrid.value };
-        const oldPercentages = { ...percentagesGrid.value };
-        portionsGrid.value = {};
-        itemsGrid.value = {};
-        percentagesGrid.value = {};
+    // 2. Inicializar la cuadrícula local preservando valores de otras comidas
+    const oldPortions = { ...portionsGrid.value };
+    const oldItems = { ...itemsGrid.value };
+    const oldPercentages = { ...percentagesGrid.value };
 
-        dates.value.forEach((date) => {
-            meals.forEach((meal) => {
-                const portKey = `${date}_${meal}`;
-                portionsGrid.value[portKey] = oldPortions[portKey] !== undefined ? oldPortions[portKey] : 0;
+    portionsGrid.value = {};
+    itemsGrid.value = {};
+    percentagesGrid.value = {};
 
-                const structureForMeal = localMenuStructure.value.filter((s) => s.meal_type === meal);
-                structureForMeal.forEach((s) => {
-                    const itemKey = `${date}_${meal}_${s.id}`;
-                    if (meal === mealType) {
-                        const catKey = `${date}_${s.dish_category_id}`;
-                        itemsGrid.value[itemKey] = oldByCategory[catKey] || '';
-                        percentagesGrid.value[itemKey] = oldPctByCategory[catKey] ?? 100;
-                    } else {
-                        itemsGrid.value[itemKey] = oldItems[itemKey] || '';
-                        percentagesGrid.value[itemKey] = oldPercentages[itemKey] !== undefined ? oldPercentages[itemKey] : 100;
-                    }
-                });
+    dates.value.forEach((date) => {
+        meals.forEach((meal) => {
+            const portKey = `${date}_${meal}`;
+            portionsGrid.value[portKey] = oldPortions[portKey] !== undefined ? oldPortions[portKey] : 0;
+
+            const structureForMeal = localMenuStructure.value.filter((s) => s.meal_type === meal);
+            structureForMeal.forEach((s) => {
+                const itemKey = `${date}_${meal}_${s.id}`;
+                if (meal === mealType) {
+                    itemsGrid.value[itemKey] = '';
+                    percentagesGrid.value[itemKey] = 100;
+                } else {
+                    itemsGrid.value[itemKey] = oldItems[itemKey] || '';
+                    percentagesGrid.value[itemKey] = oldPercentages[itemKey] !== undefined ? oldPercentages[itemKey] : 100;
+                }
             });
         });
+    });
 
-        Swal.fire({
-            icon: 'success',
-            title: 'Estructura Cargada',
-            text: `Se configuraron ${newMealStructure.length} categorías de costo para el servicio de "${mealType}".`,
-            timer: 2000,
-            showConfirmButton: false,
-        });
+    // 3. Poblar la cuadrícula con los platos del ciclo
+    let assignedCount = 0;
+    cycleData.forEach((cycleRow: any, index: number) => {
+        const tempId = cycleRow.id || 20000 + index;
+        for (let dayNum = 1; dayNum <= cycle.days; dayNum++) {
+            const dateIndex = dayNum - 1;
+            if (dateIndex < dates.value.length) {
+                const date = dates.value[dateIndex];
+                const dayData = cycleRow.days?.[dayNum];
+                if (dayData && dayData.dish_id) {
+                    const itemKey = `${date}_${mealType}_${tempId}`;
+                    itemsGrid.value[itemKey] = String(dayData.dish_id);
+                    if (dayData.dish_name) {
+                        knownDishNames.value[dayData.dish_id] = dayData.dish_name;
+                    }
+                    assignedCount++;
+                }
+            }
+        }
+    });
+
+    loadedCycleId.value = cycle.id;
+
+    Swal.fire({
+        icon: 'success',
+        title: `${cycleLabel(cycle)} cargado`,
+        text: `${newMealStructure.length} categorías y ${assignedCount} platos en ${mealType}.`,
+        timer: 1800,
+        showConfirmButton: false,
     });
 };
 </script>
@@ -1088,280 +1033,255 @@ const loadStructure = (structureIdStr: string) => {
                         :aria-expanded="configOpen"
                         class="flex w-full items-center justify-between gap-2 bg-gradient-to-r from-orange-50 to-white px-4 py-3.5 text-left transition-colors hover:from-orange-100/70"
                     >
-                        <span class="flex items-center gap-2.5">
+                        <span class="flex min-w-0 items-center gap-2.5">
                             <span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#FF5A1F] text-white shadow-sm shadow-orange-500/30">
-                                <svg
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    width="18"
-                                    height="18"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                >
-                                    <circle cx="12" cy="12" r="3" />
-                                    <path
-                                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"
-                                    />
-                                </svg>
+                                <Settings2 class="h-[18px] w-[18px]" />
                             </span>
-                            <span class="flex flex-col">
+                            <span class="flex min-w-0 flex-col">
                                 <span class="text-base font-bold text-slate-800">Configuración</span>
-                                <span class="text-[11px] text-slate-400">{{ configOpen ? 'Ocultar panel' : 'Mostrar panel' }}</span>
+                                <span class="truncate text-[11px] text-slate-400">{{ configSummary }}</span>
                             </span>
                         </span>
                         <ChevronDown class="h-5 w-5 shrink-0 text-[#FF5A1F] transition-transform" :class="configOpen ? '' : '-rotate-90'" />
                     </button>
-                    <CardContent
-                        v-show="configOpen"
-                        class="grid grid-cols-1 gap-4 border-t border-orange-100/70 p-4 sm:p-5 md:grid-cols-2 lg:grid-cols-1"
-                    >
-                        <div class="flex flex-col gap-2">
-                            <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
-                                <svg
-                                    class="h-4 w-4 text-[#FF5A1F]"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    viewBox="0 0 24 24"
-                                    xmlns="http://www.w3.org/2000/svg"
+                    <CardContent v-show="configOpen" class="flex flex-col gap-5 border-t border-orange-100/70 p-4 sm:p-5">
+                        <!-- Paso 1: comedor -->
+                        <section class="flex flex-col gap-3">
+                            <h3 class="flex items-center gap-2 text-xs font-bold tracking-wide text-slate-500 uppercase">
+                                <span
+                                    class="grid h-5 w-5 place-items-center rounded-full text-[10px]"
+                                    :class="form.cafe_id ? 'bg-[#FF5A1F] text-white' : 'bg-slate-100 text-slate-500'"
                                 >
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 21h18M3 21l8-16 8 16M9.5 12h5"></path>
-                                </svg>
-                                <span>Mina</span>
-                            </label>
-                            <Select v-model="selectedMineId" @update:modelValue="handleMineChange">
-                                <SelectTrigger class="h-10 rounded-xl border-slate-200 focus:ring-[#FF5A1F]">
-                                    <SelectValue placeholder="Seleccionar Mina" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem v-for="mine in mines" :key="mine.id" :value="mine.id.toString()">
-                                        {{ mine.name }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div class="flex flex-col gap-2">
-                            <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
-                                <svg
-                                    class="h-4 w-4 text-[#FF5A1F]"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    viewBox="0 0 24 24"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                >
-                                    <path
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
-                                    ></path>
-                                </svg>
-                                <span>Unidad</span>
-                            </label>
-                            <Select v-model="selectedUnitId" @update:modelValue="handleUnitChange" :disabled="!selectedMineId">
-                                <SelectTrigger class="h-10 rounded-xl border-slate-200 focus:ring-[#FF5A1F]">
-                                    <SelectValue placeholder="Seleccionar Unidad" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem v-for="unit in availableUnits" :key="unit.id" :value="unit.id.toString()">
-                                        {{ unit.name }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div class="flex flex-col gap-2">
-                            <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
-                                <svg
-                                    class="h-4 w-4 text-[#FF5A1F]"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    viewBox="0 0 24 24"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                >
-                                    <path
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        d="M6 14a6 6 0 0012 0V4H6v10zM18 8h2a2 2 0 012 2v2a2 2 0 01-2 2h-2m-12 4h12"
-                                    ></path>
-                                </svg>
-                                <span>Café / Comedor</span>
-                            </label>
-                            <Select v-model="form.cafe_id" :disabled="!selectedUnitId">
-                                <SelectTrigger class="h-10 rounded-xl border-slate-200 focus:ring-[#FF5A1F]">
-                                    <SelectValue placeholder="Seleccionar Café" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem v-for="cafe in availableCafes" :key="cafe.id" :value="cafe.id.toString()">
-                                        {{ cafe.name }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div class="flex flex-col gap-2">
-                            <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
-                                <svg
-                                    class="h-4 w-4 text-[#FF5A1F]"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    viewBox="0 0 24 24"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                >
-                                    <path
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-                                    ></path>
-                                </svg>
-                                <span>Servicio</span>
-                            </label>
-                            <Select v-model="selectedServiceId" :disabled="!form.cafe_id">
-                                <SelectTrigger class="h-10 rounded-xl border-slate-200 focus:ring-[#FF5A1F]">
-                                    <SelectValue placeholder="Seleccionar Servicio" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem v-for="service in availableServices" :key="service.id" :value="service.id.toString()">
-                                        {{ service.name }}
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div class="flex flex-col gap-2">
-                            <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
-                                <svg
-                                    class="h-4 w-4 text-[#FF5A1F]"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    viewBox="0 0 24 24"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                >
-                                    <path
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                                    ></path>
-                                </svg>
-                                <span>Fecha de Inicio</span>
-                            </label>
-                            <Input
-                                type="date"
-                                v-model="form.start_date"
-                                @change="handleDateChange"
-                                class="h-10 rounded-xl border-slate-200 focus-visible:ring-[#FF5A1F]"
-                            />
-                        </div>
-
-                        <div class="flex flex-col gap-2">
-                            <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
-                                <svg
-                                    class="h-4 w-4 text-[#FF5A1F]"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    viewBox="0 0 24 24"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                >
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-                                </svg>
-                                <span>Días de Planificación</span>
-                            </label>
-                            <div class="flex items-center gap-1">
-                                <Button
-                                    variant="outline"
-                                    size="icon"
-                                    class="h-10 w-10 shrink-0 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50"
-                                    @click="decreaseDays"
-                                    :disabled="daysCount <= 1"
-                                >
-                                    -
-                                </Button>
-                                <Input
-                                    type="number"
-                                    v-model="daysCount"
-                                    min="1"
-                                    max="31"
-                                    class="h-10 w-full rounded-xl border-slate-200 text-center font-bold focus-visible:ring-[#FF5A1F]"
-                                    @change="handleDaysCountChange"
-                                />
-                                <Button
-                                    variant="outline"
-                                    size="icon"
-                                    class="h-10 w-10 shrink-0 rounded-xl border-slate-200 text-slate-600 hover:bg-slate-50"
-                                    @click="increaseDays"
-                                    :disabled="daysCount >= 31"
-                                >
-                                    +
-                                </Button>
+                                    <Check v-if="form.cafe_id" class="h-3 w-3" />
+                                    <template v-else>1</template>
+                                </span>
+                                Comedor
+                            </h3>
+                            <div class="grid grid-cols-1 gap-3 md:grid-cols-3 lg:grid-cols-1">
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                                        <Mountain class="h-3.5 w-3.5 text-[#FF5A1F]" /> Mina
+                                    </label>
+                                    <Select v-model="selectedMineId" @update:modelValue="handleMineChange">
+                                        <SelectTrigger class="h-10 w-full rounded-xl border-slate-200 focus:ring-[#FF5A1F]">
+                                            <SelectValue placeholder="Seleccionar mina" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem v-for="mine in mines" :key="mine.id" :value="mine.id.toString()">
+                                                {{ mine.name }}
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                                        <Building2 class="h-3.5 w-3.5 text-[#FF5A1F]" /> Unidad
+                                    </label>
+                                    <Select v-model="selectedUnitId" @update:modelValue="handleUnitChange" :disabled="!selectedMineId">
+                                        <SelectTrigger class="h-10 w-full rounded-xl border-slate-200 focus:ring-[#FF5A1F]">
+                                            <SelectValue placeholder="Seleccionar unidad" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem v-for="unit in availableUnits" :key="unit.id" :value="unit.id.toString()">
+                                                {{ unit.name }}
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                                        <Coffee class="h-3.5 w-3.5 text-[#FF5A1F]" /> Café / Comedor
+                                    </label>
+                                    <Select v-model="form.cafe_id" :disabled="!selectedUnitId">
+                                        <SelectTrigger class="h-10 w-full rounded-xl border-slate-200 focus:ring-[#FF5A1F]">
+                                            <SelectValue placeholder="Seleccionar comedor" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem v-for="cafe in availableCafes" :key="cafe.id" :value="cafe.id.toString()">
+                                                {{ cafe.name }}
+                                            </SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
                             </div>
-                        </div>
+                        </section>
 
-                        <div class="flex flex-col gap-2">
-                            <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
-                                <svg
-                                    class="h-4 w-4 text-[#FF5A1F]"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    viewBox="0 0 24 24"
-                                    xmlns="http://www.w3.org/2000/svg"
+                        <!-- Paso 2: servicio y periodo -->
+                        <section class="flex flex-col gap-3 border-t border-slate-100 pt-4">
+                            <h3 class="flex items-center gap-2 text-xs font-bold tracking-wide text-slate-500 uppercase">
+                                <span
+                                    class="grid h-5 w-5 place-items-center rounded-full text-[10px]"
+                                    :class="activeMealType ? 'bg-[#FF5A1F] text-white' : 'bg-slate-100 text-slate-500'"
                                 >
-                                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 1121.21 8H18"></path>
-                                </svg>
-                                <span>Cargar Ciclo de Menú</span>
-                            </label>
-                            <Select @update:modelValue="loadMenuCycle($event)" :disabled="!form.cafe_id">
-                                <SelectTrigger class="h-10 rounded-xl border-slate-200 focus:ring-[#FF5A1F]">
-                                    <SelectValue placeholder="Elegir un ciclo" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem v-for="cycle in filteredCycles" :key="cycle.id" :value="cycle.id.toString()">
-                                        {{ cycle.name }} ({{ cycle.meal_type }})
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div class="flex flex-col gap-2">
-                            <label class="flex items-center gap-1.5 text-sm font-medium text-slate-700">
-                                <svg
-                                    class="h-4 w-4 text-[#FF5A1F]"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    stroke-width="2"
-                                    viewBox="0 0 24 24"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                >
-                                    <path
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        d="M9 7h6m0 10v-3m-3 3v-3m-3 3v-3m9-4H3m18 0a2 2 0 00-2-2H5a2 2 0 00-2 2m18 0v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6"
-                                    ></path>
-                                </svg>
-                                <span>Estructura de Costos</span>
-                            </label>
-                            <Select v-model="selectedStructureId" @update:modelValue="loadStructure($event)" :disabled="!selectedServiceableId">
-                                <SelectTrigger class="h-10 rounded-xl border-slate-200 focus:ring-[#FF5A1F]">
-                                    <SelectValue placeholder="Elegir una estructura" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem v-for="structure in structuresForService" :key="structure.id" :value="structure.id.toString()">
-                                        {{ structure.name }}
-                                    </SelectItem>
-                                    <div v-if="structuresForService.length === 0" class="p-2 text-center text-xs text-slate-400">
-                                        Sin estructuras para este servicio
+                                    <Check v-if="activeMealType" class="h-3 w-3" />
+                                    <template v-else>2</template>
+                                </span>
+                                Servicio y periodo
+                            </h3>
+                            <div class="flex flex-col gap-1.5">
+                                <label class="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                                    <ConciergeBell class="h-3.5 w-3.5 text-[#FF5A1F]" /> Servicio
+                                </label>
+                                <div v-if="availableServices.length" class="flex flex-wrap gap-1.5">
+                                    <button
+                                        v-for="service in availableServices"
+                                        :key="service.id"
+                                        type="button"
+                                        @click="selectedServiceId = String(service.id)"
+                                        class="rounded-full border px-3 py-1.5 text-xs font-semibold capitalize transition-colors"
+                                        :class="
+                                            String(service.id) === selectedServiceId
+                                                ? 'border-[#FF5A1F] bg-[#FF5A1F] text-white shadow-sm shadow-orange-500/20'
+                                                : 'border-slate-200 bg-white text-slate-600 hover:border-[#FF5A1F] hover:text-[#FF5A1F]'
+                                        "
+                                    >
+                                        {{ service.name.toLowerCase() }}
+                                    </button>
+                                </div>
+                                <p v-else class="rounded-xl border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-400">
+                                    {{ form.cafe_id ? 'Este comedor no tiene servicios asignados.' : 'Elija un comedor para ver sus servicios.' }}
+                                </p>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                                        <CalendarDays class="h-3.5 w-3.5 text-[#FF5A1F]" /> Inicio
+                                    </label>
+                                    <Input
+                                        type="date"
+                                        v-model="form.start_date"
+                                        @change="handleDateChange"
+                                        class="h-10 rounded-xl border-slate-200 px-2 text-sm focus-visible:ring-[#FF5A1F]"
+                                    />
+                                </div>
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                                        <Clock class="h-3.5 w-3.5 text-[#FF5A1F]" /> Días
+                                    </label>
+                                    <div class="flex h-10 items-center rounded-xl border border-slate-200">
+                                        <button
+                                            type="button"
+                                            class="grid h-full w-8 shrink-0 place-items-center text-slate-500 hover:text-[#FF5A1F] disabled:opacity-40"
+                                            @click="decreaseDays"
+                                            :disabled="daysCount <= 1"
+                                            aria-label="Menos días"
+                                        >
+                                            <Minus class="h-3.5 w-3.5" />
+                                        </button>
+                                        <input
+                                            type="number"
+                                            v-model.number="daysCount"
+                                            min="1"
+                                            max="31"
+                                            class="h-full w-full min-w-0 [appearance:textfield] bg-transparent text-center text-sm font-bold focus:outline-none [&::-webkit-inner-spin-button]:appearance-none"
+                                            @change="handleDaysCountChange"
+                                        />
+                                        <button
+                                            type="button"
+                                            class="grid h-full w-8 shrink-0 place-items-center text-slate-500 hover:text-[#FF5A1F] disabled:opacity-40"
+                                            @click="increaseDays"
+                                            :disabled="daysCount >= 31"
+                                            aria-label="Más días"
+                                        >
+                                            <Plus class="h-3.5 w-3.5" />
+                                        </button>
                                     </div>
-                                </SelectContent>
-                            </Select>
-                        </div>
+                                </div>
+                            </div>
+                            <p class="text-[11px] text-slate-400">
+                                Del <span class="font-semibold text-slate-600">{{ dayjs(dates[0]).format('ddd DD/MM') }}</span> al
+                                <span class="font-semibold text-slate-600">{{ dayjs(dates[dates.length - 1]).format('ddd DD/MM/YYYY') }}</span>
+                            </p>
+                        </section>
+
+                        <!-- Paso 3: ciclo de menú (filtrado por comedor + servicio) -->
+                        <section class="flex flex-col gap-3 border-t border-slate-100 pt-4">
+                            <h3 class="flex items-center gap-2 text-xs font-bold tracking-wide text-slate-500 uppercase">
+                                <span
+                                    class="grid h-5 w-5 place-items-center rounded-full text-[10px]"
+                                    :class="loadedCycle ? 'bg-[#FF5A1F] text-white' : 'bg-slate-100 text-slate-500'"
+                                >
+                                    <Check v-if="loadedCycle" class="h-3 w-3" />
+                                    <template v-else>3</template>
+                                </span>
+                                Ciclo de menú
+                                <span
+                                    v-if="cycleOptions.length"
+                                    class="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500 normal-case"
+                                >
+                                    {{ cycleOptions.length }} disponibles
+                                </span>
+                            </h3>
+
+                            <p
+                                v-if="!selectedServiceableId"
+                                class="rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400"
+                            >
+                                Elija comedor y servicio para ver sus ciclos.
+                            </p>
+                            <div v-else-if="cyclesLoading" class="flex flex-col gap-1.5">
+                                <div v-for="n in 4" :key="n" class="h-11 animate-pulse rounded-xl bg-slate-100"></div>
+                            </div>
+                            <p
+                                v-else-if="!cycleOptions.length"
+                                class="rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400"
+                            >
+                                {{ selectedCafeName }} no tiene ciclos de {{ activeMealType?.toLowerCase() }}. Créelos en Ciclos de Menú.
+                            </p>
+                            <template v-else>
+                                <div v-if="cycleOptions.length > 6" class="relative">
+                                    <Search class="absolute top-1/2 left-3 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                                    <Input
+                                        v-model="cycleSearch"
+                                        placeholder="Buscar ciclo (ej. 12)"
+                                        class="h-9 rounded-xl border-slate-200 pl-8 text-xs focus-visible:ring-[#FF5A1F]"
+                                    />
+                                </div>
+                                <div class="-mx-1 flex max-h-72 flex-col gap-1 overflow-y-auto px-1">
+                                    <button
+                                        v-for="cycle in visibleCycles"
+                                        :key="cycle.id"
+                                        type="button"
+                                        :disabled="loadingCycleId !== null"
+                                        @click="loadMenuCycle(cycle)"
+                                        :title="cycle.name"
+                                        class="group flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left transition-colors disabled:cursor-wait"
+                                        :class="
+                                            loadedCycleId === cycle.id
+                                                ? 'border-[#FF5A1F] bg-orange-50'
+                                                : 'border-slate-100 bg-white hover:border-orange-200 hover:bg-orange-50/50'
+                                        "
+                                    >
+                                        <span class="flex min-w-0 flex-col">
+                                            <span
+                                                class="text-sm font-semibold"
+                                                :class="loadedCycleId === cycle.id ? 'text-[#FF5A1F]' : 'text-slate-700'"
+                                            >
+                                                {{ cycleLabel(cycle) }}
+                                            </span>
+                                            <span class="text-[11px] text-slate-400">{{ cycle.days }} días</span>
+                                        </span>
+                                        <span class="flex shrink-0 items-center gap-1.5">
+                                            <span
+                                                v-if="cycle.is_current"
+                                                class="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-600"
+                                                >Vigente</span
+                                            >
+                                            <Loader2 v-if="loadingCycleId === cycle.id" class="h-4 w-4 animate-spin text-[#FF5A1F]" />
+                                            <Check v-else-if="loadedCycleId === cycle.id" class="h-4 w-4 text-[#FF5A1F]" />
+                                            <span
+                                                v-else
+                                                class="text-[11px] font-semibold text-[#FF5A1F] opacity-0 transition-opacity group-hover:opacity-100"
+                                                >Cargar</span
+                                            >
+                                        </span>
+                                    </button>
+                                    <p v-if="!visibleCycles.length" class="py-3 text-center text-xs text-slate-400">
+                                        Sin ciclos que coincidan con "{{ cycleSearch.trim() }}".
+                                    </p>
+                                </div>
+                            </template>
+                        </section>
                     </CardContent>
                 </Card>
 

@@ -176,3 +176,29 @@ test('requerimiento pdf scales by the per-dish percentage', function () {
         ->assertOk()
         ->assertHeader('content-type', 'application/pdf');
 });
+
+test('el selector de ciclos solo lista los ciclos del comedor y servicio elegidos', function () {
+    $user  = User::factory()->create();
+    $cafe  = Cafe::factory()->create(['unit_id' => Unit::factory()->create(['mine_id' => Mine::factory()->create()->id])->id]);
+    $cena  = \App\Models\Serviceable::create(['serviceable_id' => $cafe->id, 'serviceable_type' => Cafe::class, 'service_id' => \App\Models\Service::create(['name' => 'CENA', 'code' => 'CEN', 'type' => 'comedor'])->id]);
+    $otro  = \App\Models\Serviceable::create(['serviceable_id' => $cafe->id, 'serviceable_type' => Cafe::class, 'service_id' => \App\Models\Service::create(['name' => 'DESAYUNO', 'code' => 'DES', 'type' => 'comedor'])->id]);
+
+    $make = fn ($serviceable, $n, $current = false) => \App\Models\MenuCycle::forceCreate([
+        'serviceable_id' => $serviceable->id, 'name' => "ciclo {$n}", 'days' => 10,
+        'legacy_cycle_number' => $n, 'is_current' => $current, 'cycle_data' => '[]',
+    ]);
+    $make($cena, 10);
+    $make($cena, 2);
+    $make($cena, 7, true);
+    $make($otro, 1);
+
+    $this->actingAs($user)
+        ->getJson(route('planning.cycles.index', ['serviceable_id' => $cena->id]))
+        ->assertOk()
+        ->assertJsonCount(3)
+        // El vigente primero; luego por número de ciclo (2 antes que 10, no orden alfabético).
+        ->assertJsonPath('0.legacy_cycle_number', 7)
+        ->assertJsonPath('1.legacy_cycle_number', 2)
+        ->assertJsonPath('2.legacy_cycle_number', 10)
+        ->assertJsonMissingPath('0.cycle_data');
+});

@@ -38,36 +38,6 @@ class PlanningController extends Controller
 
     public function index()
     {
-        // Sin `cycle_data`: el listado solo necesita metadatos y hidratar el JSON de todos los
-        // ciclos agota la memoria de PHP. La matriz lo pide por ciclo en planning/cycles/{id}.
-        $menuCycles = \App\Models\MenuCycle::select(\App\Http\Controllers\MenuCycleController::LIST_COLUMNS)
-            ->orderBy('id', 'desc')
-            ->get();
-
-        // Batch-fetch serviceables/services instead of querying inside the map() loop.
-        $serviceableIds = $menuCycles->pluck('serviceable_id')->filter()->unique();
-        $serviceables = Serviceable::whereIn('id', $serviceableIds)->get()->keyBy('id');
-        $serviceIds = $serviceables->pluck('service_id')->filter()->unique();
-        $services = Service::whereIn('id', $serviceIds)->get()->keyBy('id');
-
-        $menuCycles = $menuCycles->map(function ($cycle) use ($serviceables, $services) {
-            $serviceable = $serviceables->get($cycle->serviceable_id);
-            $mealType = 'N/A';
-            $cafeId = null;
-            if ($serviceable) {
-                $service = $services->get($serviceable->service_id);
-                if ($service) {
-                    $mealType = $service->name;
-                }
-                if ($serviceable->serviceable_type === \App\Models\Cafe::class) {
-                    $cafeId = $serviceable->serviceable_id;
-                }
-            }
-            $cycle->meal_type = $mealType;
-            $cycle->cafe_id = $cafeId;
-            return $cycle;
-        });
-
         return Inertia::render('planning/Index', [
             'cafes' => Cafe::all(),
             // El listado de programaciones guardadas se pide paginado a planning/programs: con
@@ -75,8 +45,6 @@ class PlanningController extends Controller
             'programs_total' => WeeklyProgram::count(),
             'dish_categories' => Dish_category::all(),
             'menu_structure' => MenuStructure::with('dish_category')->get(),
-            'structures' => \App\Models\Structure::with('costs')->get(),
-            'menu_cycles' => $menuCycles,
             'mines' => \App\Models\Mine::with(['units', 'units.cafes', 'units.cafes.services'])->get(),
             'levels' => Level::orderBy('name')->get(),
             'cities' => City::orderBy('name')->get(),
@@ -187,6 +155,28 @@ class PlanningController extends Controller
         }
 
         return redirect()->route('planning.index')->with('success', 'Plan guardado correctamente');
+    }
+
+    /**
+     * Ciclos de menú de un comedor+servicio (serviceable_id = pivot café↔servicio), para el
+     * selector de la matriz. Solo metadatos: el cycle_data se pide al elegir uno (cycles/{id}).
+     * Antes la página recibía los ~8 mil ciclos de todos los comedores en cada carga.
+     */
+    public function cycles(Request $request)
+    {
+        $validated = $request->validate([
+            'serviceable_id' => 'required|integer',
+        ]);
+
+        return response()->json(
+            \App\Models\MenuCycle::select(['id', 'name', 'days', 'legacy_cycle_number', 'is_current', 'updated_at'])
+                ->where('serviceable_id', $validated['serviceable_id'])
+                ->orderByDesc('is_current')
+                ->orderByRaw('legacy_cycle_number is null')
+                ->orderBy('legacy_cycle_number')
+                ->orderByDesc('id')
+                ->get()
+        );
     }
 
     public function generatePurchaseOrder(Request $request, $id)
