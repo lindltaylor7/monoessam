@@ -141,3 +141,26 @@ test('el buscador de insumos del modulo responde sin el permiso de ingredientes'
     expect($response->json())->toHaveCount(1);
     expect($response->json('0.name'))->toBe('Papa amarilla');
 });
+
+test('el costo estimado usa el precio del proveedor activo de la ciudad elegida', function () {
+    $order      = ordenDeCompra();
+    $ingredient = Ingredient::create(['name' => 'Papa amarilla']);
+    $city       = \App\Models\City::create(['name' => 'HUANCAYO']);
+    $active     = \App\Models\Provider::create(['name' => 'Proveedor Activo']);
+    $other      = \App\Models\Provider::create(['name' => 'Proveedor Inactivo']);
+
+    \App\Models\Ingredient_city_provider::create(['ingredient_id' => $ingredient->id, 'provider_id' => $other->id, 'city_id' => $city->id, 'cost_price' => 2.00, 'is_active' => false]);
+    \App\Models\Ingredient_city_provider::create(['ingredient_id' => $ingredient->id, 'provider_id' => $active->id, 'city_id' => $city->id, 'cost_price' => 5.50, 'is_active' => true]);
+
+    PurchaseOrderItem::create(['purchase_order_id' => $order->id, 'ingredient_id' => $ingredient->id, 'total_amount' => 10, 'unit' => 'Kg.']);
+
+    $this->actingAs(usuarioDeCompras())
+        ->get(route('purchase_orders.show', ['id' => $order->id, 'city_id' => $city->id]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('cityId', $city->id)
+            ->where('order.items.0.active_unit_price', 5.5)
+            ->where('order.items.0.active_provider', 'Proveedor Activo')
+            ->where('order.items.0.active_cost', 55)
+        );
+});

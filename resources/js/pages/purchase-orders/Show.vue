@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { PurchaseOrder, WeeklyProgram } from '@/types';
+import { PurchaseOrder, PurchaseOrderItem, WeeklyProgram } from '@/types';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import dayjs from 'dayjs';
@@ -14,6 +14,8 @@ import { computed, ref, watch } from 'vue';
 
 interface Props {
     order: PurchaseOrder;
+    cities: { id: number; name: string }[];
+    cityId: number | null;
 }
 
 /** Lo que devuelve purchase_orders.search-ingredients (no es el Ingredient completo). */
@@ -35,7 +37,24 @@ const programs = computed<WeeklyProgram[]>(() => {
     return props.order.program ? [props.order.program] : [];
 });
 
-const totalCost = computed(() => (props.order.items ?? []).reduce((acc, item) => acc + Number(item.estimated_cost ?? 0), 0));
+// Costo según el proveedor activo en Proveedores; el costo escrito a mano solo cubre insumos sin precio activo.
+const itemCost = (item: PurchaseOrderItem): number | null => {
+    if (item.active_cost != null) return Number(item.active_cost);
+    return item.estimated_cost ? Number(item.estimated_cost) : null;
+};
+
+const totalCost = computed(() => (props.order.items ?? []).reduce((acc, item) => acc + (itemCost(item) ?? 0), 0));
+const missingPriceCount = computed(() => (props.order.items ?? []).filter((item) => itemCost(item) === null).length);
+
+// El proveedor activo es por insumo y ciudad; el pedido no tiene ciudad propia.
+const cityId = ref<number | null>(props.cityId);
+watch(cityId, (value) => {
+    router.get(
+        route('purchase_orders.show', props.order.id),
+        { city_id: value },
+        { preserveScroll: true, preserveState: true, only: ['order', 'cityId'] },
+    );
+});
 
 // --- Agregar insumo -------------------------------------------------------
 // El quebrado solo trae lo que estaba en la programación semanal; compras necesita poder
@@ -297,8 +316,17 @@ const exportExcel = () => {
                 </div>
 
                 <Card class="rounded-2xl border-none shadow-sm md:col-span-2">
-                    <CardHeader>
+                    <CardHeader class="flex flex-row flex-wrap items-center justify-between gap-3">
                         <CardTitle class="text-lg">Consolidado de Insumos (Quebrados)</CardTitle>
+                        <label class="flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase">
+                            Precios de
+                            <select
+                                v-model.number="cityId"
+                                class="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm font-normal text-slate-700 normal-case focus:ring-2 focus:ring-[#FF5A1F] focus:outline-none"
+                            >
+                                <option v-for="city in cities" :key="city.id" :value="city.id">{{ city.name }}</option>
+                            </select>
+                        </label>
                     </CardHeader>
                     <CardContent>
                         <Table>
@@ -327,7 +355,16 @@ const exportExcel = () => {
                                     <TableCell class="text-center">{{ Number(item.total_amount).toFixed(3) }}</TableCell>
                                     <TableCell class="text-center">{{ item.unit }}</TableCell>
                                     <TableCell class="text-right">
-                                        {{ item.estimated_cost ? Number(item.estimated_cost).toFixed(2) : '-' }}
+                                        <div v-if="itemCost(item) !== null" class="flex flex-col items-end">
+                                            <span>{{ itemCost(item)!.toFixed(2) }}</span>
+                                            <span v-if="item.active_cost != null" class="text-[11px] text-slate-400">
+                                                {{ item.active_provider || 'Proveedor activo' }} · S/. {{ Number(item.active_unit_price).toFixed(2) }}
+                                            </span>
+                                            <span v-else class="text-[11px] text-orange-400">Costo manual</span>
+                                        </div>
+                                        <span v-else class="text-xs text-slate-400" title="Sin proveedor activo con precio en esta ciudad"
+                                            >Sin precio</span
+                                        >
                                     </TableCell>
                                     <TableCell class="text-right">
                                         <button
@@ -346,7 +383,12 @@ const exportExcel = () => {
                                     </TableCell>
                                 </TableRow>
                                 <TableRow v-else-if="totalCost > 0" class="bg-slate-50/80 font-semibold">
-                                    <TableCell colspan="3" class="text-right text-slate-500">Costo estimado total</TableCell>
+                                    <TableCell colspan="3" class="text-right text-slate-500">
+                                        Costo estimado total
+                                        <span v-if="missingPriceCount" class="block text-xs font-normal text-orange-500">
+                                            {{ missingPriceCount }} insumo(s) sin proveedor activo con precio
+                                        </span>
+                                    </TableCell>
                                     <TableCell class="text-right">{{ totalCost.toFixed(2) }}</TableCell>
                                     <TableCell></TableCell>
                                 </TableRow>

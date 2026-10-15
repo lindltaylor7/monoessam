@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\City;
 use App\Models\Ingredient;
+use App\Models\Ingredient_city_provider;
 use App\Models\Level;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
@@ -36,14 +37,47 @@ class PurchaseOrderController extends Controller
         ];
     }
 
-    public function show($id)
+    /**
+     * El costo estimado se calcula con el proveedor marcado como activo en Proveedores. Ese
+     * activo es por (insumo, ciudad) y no hay relación Mina/Unidad/Comedor -> Ciudad, así que la
+     * ciudad se elige en la pantalla; por defecto, la que tiene más precios activos cargados.
+     */
+    public function show(Request $request, $id)
     {
+        $order = PurchaseOrder::with([
+            'program.cafe.unit.mine',
+            'programs.cafe.unit.mine',
+            'items' => fn ($q) => $q->with('ingredient')->orderBy('id'),
+        ])->findOrFail($id);
+
+        $cityId = $request->integer('city_id') ?: Ingredient_city_provider::where('is_active', true)
+            ->selectRaw('city_id, count(*) as total')
+            ->groupBy('city_id')
+            ->orderByDesc('total')
+            ->value('city_id');
+
+        $activePrices = $cityId
+            ? Ingredient_city_provider::with('provider:id,name')
+                ->where('city_id', $cityId)
+                ->where('is_active', true)
+                ->whereIn('ingredient_id', $order->items->pluck('ingredient_id'))
+                ->get()
+                ->keyBy('ingredient_id')
+            : collect();
+
+        foreach ($order->items as $item) {
+            $active = $activePrices->get($item->ingredient_id);
+            $unitPrice = $active?->cost_price !== null ? (float) $active->cost_price : null;
+
+            $item->setAttribute('active_unit_price', $unitPrice);
+            $item->setAttribute('active_provider', $active?->provider?->name);
+            $item->setAttribute('active_cost', $unitPrice !== null ? round($unitPrice * (float) $item->total_amount, 2) : null);
+        }
+
         return Inertia::render('purchase-orders/Show', [
-            'order' => PurchaseOrder::with([
-                'program.cafe.unit.mine',
-                'programs.cafe.unit.mine',
-                'items' => fn ($q) => $q->with('ingredient')->orderBy('id'),
-            ])->findOrFail($id),
+            'order' => $order,
+            'cities' => City::orderBy('name')->get(['id', 'name']),
+            'cityId' => $cityId,
         ]);
     }
 

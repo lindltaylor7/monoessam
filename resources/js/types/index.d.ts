@@ -402,6 +402,11 @@ export interface PurchaseOrderItem {
     /** true cuando la línea se agregó a mano en el detalle, no vino del quebrado. */
     is_manual?: boolean;
     estimated_cost?: number;
+    /** Precio del proveedor activo (Proveedores) para la ciudad elegida en el detalle. */
+    active_unit_price?: number | null;
+    active_provider?: string | null;
+    /** total_amount × active_unit_price; null si el insumo no tiene proveedor activo con precio. */
+    active_cost?: number | null;
 }
 
 export type BreadcrumbItemType = BreadcrumbItem;
