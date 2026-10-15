@@ -196,15 +196,47 @@ class PlanningController extends Controller
         ]);
 
         $program = WeeklyProgram::with('portions')->findOrFail($id);
-        $level   = Level::findOrFail($validated['level_id']);
-        $order   = $this->quebradosService->generatePurchaseOrder($program, $level);
+
+        return $this->purchaseOrderResponse(collect([$program]), Level::findOrFail($validated['level_id']));
+    }
+
+    /**
+     * Quebrado (PO) consolidado de varias programaciones marcadas en "Programaciones Guardadas":
+     * una sola orden con la suma de insumos de todas.
+     */
+    public function generatePurchaseOrderMultiple(Request $request)
+    {
+        $validated = $request->validate([
+            'level_id' => 'required|exists:levels,id',
+            'program_ids' => 'required|array|min:1',
+            'program_ids.*' => 'integer|exists:weekly_programs,id',
+        ]);
+
+        $programs = WeeklyProgram::with('portions')
+            ->whereIn('id', array_unique($validated['program_ids']))
+            ->orderBy('start_date')
+            ->orderBy('id')
+            ->get();
+
+        return $this->purchaseOrderResponse($programs, Level::findOrFail($validated['level_id']));
+    }
+
+    private function purchaseOrderResponse($programs, Level $level)
+    {
+        $order = $this->quebradosService->generatePurchaseOrder($programs, $level);
 
         if ($order->items()->count() === 0) {
+            $which = $programs->count() > 1 ? 'estas programaciones' : 'esta programación';
+
             return redirect()->route('purchase_orders.show', $order->id)
-                ->with('error', 'La orden se creó sin ítems: los platos de esta programación no tienen receta en el nivel elegido, o no hay raciones cargadas.');
+                ->with('error', "La orden se creó sin ítems: los platos de {$which} no tienen receta en el nivel elegido, o no hay raciones cargadas.");
         }
 
-        return redirect()->route('purchase_orders.show', $order->id)->with('success', 'Pedido (Quebrado) generado con éxito');
+        $message = $programs->count() > 1
+            ? "Pedido (Quebrado) consolidado de {$programs->count()} programaciones generado con éxito"
+            : 'Pedido (Quebrado) generado con éxito';
+
+        return redirect()->route('purchase_orders.show', $order->id)->with('success', $message);
     }
 
     /**

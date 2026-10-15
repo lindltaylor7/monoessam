@@ -8,62 +8,76 @@ use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use App\Models\WeeklyProgram;
 use App\Models\WeeklyProgramItem;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class QuebradosService
 {
     /**
-     * Genera una Orden de Compra a partir de una Programación Semanal (proceso "Quebrados").
+     * Genera una Orden de Compra a partir de una o varias Programaciones Semanales (proceso
+     * "Quebrados"). Con varias, los insumos se consolidan en una sola orden.
      *
      * Antes recorría Dish::ingredients() (tabla dish_ingredient_levels + gross_weights, la
      * generación 2 del recetario, con 0 filas en la BD), así que SIEMPRE producía una orden
      * sin líneas mientras informaba éxito. Ahora usa DishRecipe + dish_recipe_ingredients
      * (la generación vigente), el mismo camino que los tres reportes del módulo, y por eso
      * necesita el nivel de receta.
+     *
+     * @param  WeeklyProgram|Collection<int, WeeklyProgram>  $programs
      */
-    public function generatePurchaseOrder(WeeklyProgram $program, Level $level): PurchaseOrder
+    public function generatePurchaseOrder(WeeklyProgram|Collection $programs, Level $level): PurchaseOrder
     {
-        return DB::transaction(function () use ($program, $level) {
+        $programs = new EloquentCollection($programs instanceof WeeklyProgram ? [$programs] : $programs->values()->all());
+        $programs->loadMissing('portions');
+
+        return DB::transaction(function () use ($programs, $level) {
             $order = PurchaseOrder::create([
-                'weekly_program_id' => $program->id,
+                // La primera programación queda como referencia; la lista completa va al pivote.
+                'weekly_program_id' => $programs->first()->id,
                 'status'            => 'pendiente',
             ]);
+            $order->programs()->attach($programs->pluck('id'));
 
-            $items = WeeklyProgramItem::where('weekly_program_id', $program->id)->get();
-
-            $portions = $program->portions->groupBy(fn ($p) => $p->date . '_' . $p->meal_type);
+            $itemsByProgram = WeeklyProgramItem::whereIn('weekly_program_id', $programs->pluck('id'))
+                ->get()
+                ->groupBy('weekly_program_id');
 
             $recipes = DishRecipe::where('level_id', $level->id)
-                ->whereIn('dish_id', $items->pluck('dish_id')->unique()->values())
+                ->whereIn('dish_id', $itemsByProgram->flatten()->pluck('dish_id')->unique()->values())
                 ->with('ingredients')
                 ->get()
                 ->keyBy('dish_id');
 
-            // [ingredient_id => grams] acumulado en toda la semana.
+            // [ingredient_id => grams] acumulado en todas las programaciones.
             $requirements = [];
 
-            foreach ($items as $item) {
-                $recipe = $recipes->get($item->dish_id);
-                if (!$recipe) {
-                    continue;
-                }
+            foreach ($programs as $program) {
+                $portions = $program->portions->groupBy(fn ($p) => $p->date . '_' . $p->meal_type);
 
-                $key = $item->date . '_' . $item->meal_type;
-                $servicePortions = isset($portions[$key]) ? (int) $portions[$key]->first()->portions_count : 0;
-                // Raciones del plato = raciones del servicio * % de comensales que lo toman.
-                $portionCount = $item->effectivePortions($servicePortions);
-
-                if ($portionCount <= 0) {
-                    continue;
-                }
-
-                foreach ($recipe->ingredients as $ingredient) {
-                    $qtyPerRation = (float) $ingredient->pivot->gross_weight;
-                    if ($qtyPerRation <= 0) {
+                foreach ($itemsByProgram->get($program->id, collect()) as $item) {
+                    $recipe = $recipes->get($item->dish_id);
+                    if (!$recipe) {
                         continue;
                     }
 
-                    $requirements[$ingredient->id] = ($requirements[$ingredient->id] ?? 0) + $qtyPerRation * $portionCount;
+                    $key = $item->date . '_' . $item->meal_type;
+                    $servicePortions = isset($portions[$key]) ? (int) $portions[$key]->first()->portions_count : 0;
+                    // Raciones del plato = raciones del servicio * % de comensales que lo toman.
+                    $portionCount = $item->effectivePortions($servicePortions);
+
+                    if ($portionCount <= 0) {
+                        continue;
+                    }
+
+                    foreach ($recipe->ingredients as $ingredient) {
+                        $qtyPerRation = (float) $ingredient->pivot->gross_weight;
+                        if ($qtyPerRation <= 0) {
+                            continue;
+                        }
+
+                        $requirements[$ingredient->id] = ($requirements[$ingredient->id] ?? 0) + $qtyPerRation * $portionCount;
+                    }
                 }
             }
 

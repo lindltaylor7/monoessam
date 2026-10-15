@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { PurchaseOrder } from '@/types';
+import { PurchaseOrder, WeeklyProgram } from '@/types';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import dayjs from 'dayjs';
@@ -28,6 +28,12 @@ const props = defineProps<Props>();
 const page = usePage();
 
 const flash = computed(() => page.props.flash as { success?: string; error?: string } | undefined);
+
+// Programaciones consolidadas en el quebrado; las órdenes previas al pivote solo traen `program`.
+const programs = computed<WeeklyProgram[]>(() => {
+    if (props.order.programs?.length) return props.order.programs;
+    return props.order.program ? [props.order.program] : [];
+});
 
 const totalCost = computed(() => (props.order.items ?? []).reduce((acc, item) => acc + Number(item.estimated_cost ?? 0), 0));
 
@@ -154,16 +160,36 @@ const exportExcel = () => {
                             <CardTitle class="text-lg">Información del Plan</CardTitle>
                         </CardHeader>
                         <CardContent class="flex flex-col gap-4">
-                            <div class="flex flex-col">
-                                <span class="text-muted-foreground text-xs font-semibold uppercase">Café / Comedor</span>
-                                <span class="text-lg font-bold">{{ order.program?.cafe?.name }}</span>
-                            </div>
-                            <div class="flex flex-col">
-                                <span class="text-muted-foreground text-xs font-semibold uppercase">Periodo de Consumo</span>
-                                <span>
-                                    {{ dayjs(order.program?.start_date).format('DD/MM/YYYY') }} al
-                                    {{ dayjs(order.program?.end_date).format('DD/MM/YYYY') }}
-                                </span>
+                            <span v-if="programs.length > 1" class="text-muted-foreground -mt-2 text-xs">
+                                Quebrado consolidado de {{ programs.length }} programaciones
+                            </span>
+                            <div
+                                v-for="program in programs"
+                                :key="program.id"
+                                class="flex flex-col gap-3"
+                                :class="programs.length > 1 ? 'rounded-xl border border-slate-100 p-3' : ''"
+                            >
+                                <div class="grid grid-cols-2 gap-3">
+                                    <div class="flex flex-col">
+                                        <span class="text-muted-foreground text-xs font-semibold uppercase">Mina</span>
+                                        <span class="font-medium">{{ program.cafe?.unit?.mine?.name || '—' }}</span>
+                                    </div>
+                                    <div class="flex flex-col">
+                                        <span class="text-muted-foreground text-xs font-semibold uppercase">Unidad</span>
+                                        <span class="font-medium">{{ program.cafe?.unit?.name || '—' }}</span>
+                                    </div>
+                                </div>
+                                <div class="flex flex-col">
+                                    <span class="text-muted-foreground text-xs font-semibold uppercase">Café / Comedor</span>
+                                    <span class="text-lg font-bold">{{ program.cafe?.name || '—' }}</span>
+                                </div>
+                                <div class="flex flex-col">
+                                    <span class="text-muted-foreground text-xs font-semibold uppercase">Periodo de Consumo</span>
+                                    <span>
+                                        {{ dayjs(program.start_date).format('DD/MM/YYYY') }} al
+                                        {{ dayjs(program.end_date).format('DD/MM/YYYY') }}
+                                    </span>
+                                </div>
                             </div>
                             <div class="flex flex-col">
                                 <span class="text-muted-foreground text-xs font-semibold uppercase">Estado del Pedido</span>

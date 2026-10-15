@@ -30,7 +30,7 @@ class PurchaseOrderController extends Controller
     private function listPayload(): array
     {
         return [
-            'orders' => PurchaseOrder::with(['program.cafe.unit'])->latest()->get(),
+            'orders' => PurchaseOrder::with(['program.cafe.unit.mine', 'programs.cafe.unit.mine'])->latest()->get(),
             'levels' => Level::orderBy('name')->get(),
             'cities' => City::orderBy('name')->get(),
         ];
@@ -40,7 +40,8 @@ class PurchaseOrderController extends Controller
     {
         return Inertia::render('purchase-orders/Show', [
             'order' => PurchaseOrder::with([
-                'program.cafe',
+                'program.cafe.unit.mine',
+                'programs.cafe.unit.mine',
                 'items' => fn ($q) => $q->with('ingredient')->orderBy('id'),
             ])->findOrFail($id),
         ]);

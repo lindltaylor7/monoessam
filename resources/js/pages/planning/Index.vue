@@ -403,6 +403,19 @@ const generatePO = async (program: WeeklyProgram) => {
     router.post(route('planning.generate-po', program.id), { level_id: levelId });
 };
 
+// Un solo quebrado (PO) que consolida los insumos de todas las programaciones marcadas.
+const generatePOForSelection = async () => {
+    const ids = requireSelection();
+    if (!ids) return;
+    const levelId = await promptForLevel(
+        '¿Generar Quebrado (PO) consolidado?',
+        `Se generará una sola orden de compra con los insumos de las ${ids.length} programación${ids.length === 1 ? '' : 'es'} seleccionada${ids.length === 1 ? '' : 's'}. Elija el nivel de receta:`,
+    );
+    if (!levelId) return;
+
+    router.post(route('planning.generate-po-multiple'), { program_ids: ids, level_id: levelId });
+};
+
 // The planning grid never records which recipe "nivel" (Master/Staff/Empleado/Obrero) a dish
 // was assigned under — only dish_id — so it's asked here and applied uniformly to every dish
 // in the week's PDF. Shared by both PDF reports below.
@@ -1663,6 +1676,15 @@ const loadStructure = (structureIdStr: string) => {
                                 <FileSpreadsheet class="h-4 w-4 shrink-0" />
                                 <span class="truncate">Menú Semanal (Excel)</span>
                             </Button>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                :disabled="!selectedProgramIds.length"
+                                @click="generatePOForSelection"
+                                class="flex flex-1 items-center justify-center rounded-lg border-[#FF5A1F]/40 text-[#FF5A1F] hover:bg-orange-50 disabled:opacity-40 sm:flex-none"
+                            >
+                                <span class="truncate">Quebrado (PO)</span>
+                            </Button>
                             <DropdownMenu>
                                 <DropdownMenuTrigger as-child>
                                     <Button
@@ -1809,9 +1831,7 @@ const loadStructure = (structureIdStr: string) => {
                             v-if="programsMeta.total > 0"
                             class="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-xs text-slate-500"
                         >
-                            <span>
-                                Mostrando {{ programsMeta.from }}–{{ programsMeta.to }} de {{ programsMeta.total }}
-                            </span>
+                            <span> Mostrando {{ programsMeta.from }}–{{ programsMeta.to }} de {{ programsMeta.total }} </span>
                             <div class="flex items-center gap-1.5">
                                 <Button
                                     size="sm"

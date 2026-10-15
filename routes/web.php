@@ -502,6 +502,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('/', [PlanningController::class, 'store'])->name('store');
         Route::get('programs', [PlanningController::class, 'programs'])->name('programs');
         Route::post('{id}/generate-po', [PlanningController::class, 'generatePurchaseOrder'])->name('generate-po');
+        Route::post('generate-po', [PlanningController::class, 'generatePurchaseOrderMultiple'])->name('generate-po-multiple');
         // Todos los reportes operan sobre una o varias programaciones seleccionadas (program_ids[]),
         // igual que menu-excel.
         Route::get('quebrado-pdf', [PlanningController::class, 'quebradoPdf'])->name('quebrado-pdf');

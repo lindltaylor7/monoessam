@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/AppLayout.vue';
-import { PurchaseOrder } from '@/types';
+import { PurchaseOrder, WeeklyProgram } from '@/types';
 import { Head, Link, router } from '@inertiajs/vue3';
 import dayjs from 'dayjs';
 import 'dayjs/locale/es';
@@ -25,12 +25,40 @@ interface Props {
 const props = defineProps<Props>();
 
 const search = ref('');
+
+// Programaciones consolidadas en el quebrado; las órdenes previas al pivote solo traen `program`.
+const orderPrograms = (order: PurchaseOrder): WeeklyProgram[] => {
+    if (order.programs?.length) return order.programs;
+    return order.program ? [order.program] : [];
+};
+
+const orderProgramIds = (order: PurchaseOrder): number[] => {
+    const ids = orderPrograms(order).map((p) => p.id);
+    return ids.length ? ids : [order.weekly_program_id];
+};
+
+/** Periodo cubierto por todas las programaciones del quebrado. */
+const orderPeriod = (order: PurchaseOrder): { start: string; end: string } | null => {
+    const programs = orderPrograms(order).filter((p) => p.start_date && p.end_date);
+    if (!programs.length) return null;
+    const start = programs.map((p) => p.start_date).sort()[0];
+    const end = programs
+        .map((p) => p.end_date)
+        .sort()
+        .at(-1)!;
+    return { start, end };
+};
 const filterStatus = ref('todos');
 
 const filteredOrders = computed(() => {
     return props.orders.filter((order) => {
+        const term = search.value.toLowerCase();
         const matchesSearch =
-            !search.value || order.program?.cafe?.name?.toLowerCase().includes(search.value.toLowerCase()) || String(order.id).includes(search.value);
+            !term ||
+            String(order.id).includes(term) ||
+            orderPrograms(order).some((p) =>
+                [p.cafe?.name, p.cafe?.unit?.name, p.cafe?.unit?.mine?.name].some((name) => name?.toLowerCase().includes(term)),
+            );
         const matchesStatus = filterStatus.value === 'todos' || order.status === filterStatus.value;
         return matchesSearch && matchesStatus;
     });
@@ -67,21 +95,21 @@ const promptForLevel = async (title: string, prompt: string): Promise<string | n
 };
 
 const generateWeeklyQuebradoPdf = async (order: PurchaseOrder) => {
-    const programId = order.program?.id ?? order.weekly_program_id;
+    const programIds = orderProgramIds(order);
     const levelId = await promptForLevel('Quebrado Semanal (PDF)', 'Seleccione el nivel de receta a usar para calcular los ingredientes.');
     if (levelId) {
-        window.open(route('planning.quebrado-pdf', { id: programId, level_id: levelId }), '_blank');
+        window.open(route('planning.quebrado-pdf', { program_ids: programIds, level_id: levelId }), '_blank');
     }
 };
 
 const generateWeeklyRequirementPdf = async (order: PurchaseOrder) => {
-    const programId = order.program?.id ?? order.weekly_program_id;
+    const programIds = orderProgramIds(order);
     const levelId = await promptForLevel(
         'Requerimiento x Producto (PDF)',
         'Seleccione el nivel de receta a usar para calcular cuánto insumo se necesita.',
     );
     if (levelId) {
-        window.open(route('planning.requerimiento-pdf', { id: programId, level_id: levelId }), '_blank');
+        window.open(route('planning.requerimiento-pdf', { program_ids: programIds, level_id: levelId }), '_blank');
     }
 };
 
@@ -90,7 +118,7 @@ const generateWeeklyPurchaseOrderExcel = async (order: PurchaseOrder) => {
         Swal.fire('Atención', 'Faltan niveles o ciudades configuradas en el sistema.', 'warning');
         return;
     }
-    const programId = order.program?.id ?? order.weekly_program_id;
+    const programIds = orderProgramIds(order);
     const { value: formValues } = await Swal.fire({
         title: 'Orden de Pedido Semanal (Excel)',
         html:
@@ -114,14 +142,22 @@ const generateWeeklyPurchaseOrderExcel = async (order: PurchaseOrder) => {
         }),
     });
     if (formValues?.levelId && formValues?.cityId) {
-        window.open(route('planning.orden-pedido-excel', { id: programId, level_id: formValues.levelId, city_id: formValues.cityId }), '_blank');
+        window.open(
+            route('planning.orden-pedido-excel', { program_ids: programIds, level_id: formValues.levelId, city_id: formValues.cityId }),
+            '_blank',
+        );
     }
 };
 
 const deleteOrder = (order: PurchaseOrder) => {
     Swal.fire({
         title: '¿Eliminar orden?',
-        text: `Se eliminará la orden #${order.id} del comedor "${order.program?.cafe?.name || '—'}". Esta acción no se puede deshacer.`,
+        text: `Se eliminará la orden #${order.id} de "${
+            orderPrograms(order)
+                .map((p) => p.cafe?.name)
+                .filter(Boolean)
+                .join(', ') || '—'
+        }". Esta acción no se puede deshacer.`,
         icon: 'warning',
         showCancelButton: true,
         confirmButtonText: 'Sí, eliminar',
@@ -188,7 +224,7 @@ const deleteOrder = (order: PurchaseOrder) => {
             <div class="flex flex-wrap items-center gap-3">
                 <Input
                     v-model="search"
-                    placeholder="Buscar por comedor o ID..."
+                    placeholder="Buscar por mina, unidad, comedor o ID..."
                     class="h-9 w-64 rounded-xl border-slate-200 text-sm focus-visible:ring-[#FF5A1F]"
                 />
                 <Select v-model="filterStatus">
@@ -226,7 +262,7 @@ const deleteOrder = (order: PurchaseOrder) => {
                         <TableHeader>
                             <TableRow class="bg-slate-50/80 hover:bg-slate-50/80">
                                 <TableHead class="w-16 font-semibold text-slate-500">#</TableHead>
-                                <TableHead class="font-semibold text-slate-600">Comedor</TableHead>
+                                <TableHead class="font-semibold text-slate-600">Comedor · Mina · Unidad</TableHead>
                                 <TableHead class="font-semibold text-slate-600">Periodo</TableHead>
                                 <TableHead class="font-semibold text-slate-600">Generado</TableHead>
                                 <TableHead class="font-semibold text-slate-600">Estado</TableHead>
@@ -248,20 +284,34 @@ const deleteOrder = (order: PurchaseOrder) => {
                                     </span>
                                 </TableCell>
                                 <TableCell>
-                                    <div class="font-semibold text-slate-800">{{ order.program?.cafe?.name || '—' }}</div>
-                                    <div v-if="order.program?.cafe?.unit?.name" class="text-xs text-slate-400">
-                                        {{ order.program.cafe.unit.name }}
-                                    </div>
+                                    <template v-if="orderPrograms(order).length">
+                                        <div
+                                            v-for="program in orderPrograms(order)"
+                                            :key="program.id"
+                                            class="leading-tight [&:not(:first-child)]:mt-2"
+                                        >
+                                            <div class="font-semibold text-slate-800">{{ program.cafe?.name || '—' }}</div>
+                                            <div class="text-xs text-slate-500">
+                                                <span class="font-medium">{{ program.cafe?.unit?.mine?.name || '—' }}</span>
+                                                <span class="text-slate-300"> · </span>
+                                                {{ program.cafe?.unit?.name || '—' }}
+                                            </div>
+                                        </div>
+                                        <div v-if="orderPrograms(order).length > 1" class="mt-1.5 text-[11px] font-medium text-orange-500">
+                                            Consolidado · {{ orderPrograms(order).length }} programaciones
+                                        </div>
+                                    </template>
+                                    <template v-else>—</template>
                                 </TableCell>
                                 <TableCell>
-                                    <template v-if="order.program?.start_date && order.program?.end_date">
+                                    <template v-if="orderPeriod(order)">
                                         <div class="text-sm font-medium text-slate-700">
-                                            {{ dayjs(order.program.start_date).format('DD/MM/YY') }}
+                                            {{ dayjs(orderPeriod(order)!.start).format('DD/MM/YY') }}
                                             <span class="text-slate-400"> – </span>
-                                            {{ dayjs(order.program.end_date).format('DD/MM/YY') }}
+                                            {{ dayjs(orderPeriod(order)!.end).format('DD/MM/YY') }}
                                         </div>
                                         <div class="text-xs text-slate-400">
-                                            {{ dayjs(order.program.end_date).diff(dayjs(order.program.start_date), 'day') + 1 }} días
+                                            {{ dayjs(orderPeriod(order)!.end).diff(dayjs(orderPeriod(order)!.start), 'day') + 1 }} días
                                         </div>
                                     </template>
                                     <template v-else>—</template>

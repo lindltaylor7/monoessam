@@ -91,6 +91,7 @@ export interface Cafe {
         id: number;
         name: string;
         cafes: Cafe[];
+        mine?: Mine;
     };
     // Properties used in Headcount context
     assigned_roles?: any[];
@@ -383,6 +384,8 @@ export interface PurchaseOrder {
     id: number;
     weekly_program_id: number;
     program?: WeeklyProgram;
+    /** Todas las programaciones consolidadas en el quebrado (pivote purchase_order_weekly_program). */
+    programs?: WeeklyProgram[];
     status: 'pendiente' | 'enviada';
     notes?: string;
     items?: PurchaseOrderItem[];

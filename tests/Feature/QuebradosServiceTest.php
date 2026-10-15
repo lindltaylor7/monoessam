@@ -74,3 +74,36 @@ test('generate purchase order requires a level', function () {
         ->post(route('planning.generate-po', $program->id), [])
         ->assertSessionHasErrors('level_id');
 });
+
+test('generate purchase order from several programs consolidates them into one order', function () {
+    ['user' => $user, 'program' => $program, 'level' => $level, 'ingredient' => $ingredient] = seedQuebradosBase();
+
+    // Segunda programación (otro comedor) con el mismo plato y 50 raciones.
+    $second = WeeklyProgram::create([
+        'cafe_id' => Cafe::factory()->create(['unit_id' => $program->cafe->unit_id])->id,
+        'start_date' => '2026-02-09', 'end_date' => '2026-02-15',
+        'user_id' => $user->id, 'status' => 'borrador',
+    ]);
+    $item = WeeklyProgramItem::where('weekly_program_id', $program->id)->first();
+    WeeklyProgramItem::create([
+        'weekly_program_id' => $second->id, 'date' => '2026-02-10', 'meal_type' => 'Almuerzo',
+        'dish_category_id' => $item->dish_category_id, 'dish_id' => $item->dish_id, 'percentage' => 100,
+    ]);
+    DailyPortion::create([
+        'weekly_program_id' => $second->id, 'date' => '2026-02-10',
+        'meal_type' => 'Almuerzo', 'portions_count' => 50,
+    ]);
+
+    $this->actingAs($user)
+        ->post(route('planning.generate-po-multiple'), ['program_ids' => [$program->id, $second->id], 'level_id' => $level->id])
+        ->assertRedirect();
+
+    expect(\App\Models\PurchaseOrder::count())->toBe(1);
+    $order = \App\Models\PurchaseOrder::first();
+    expect($order->programs->pluck('id')->all())->toBe([$program->id, $second->id]);
+    expect($order->items)->toHaveCount(1);
+
+    // 120 g * (100 + 50) raciones = 18 kg
+    expect((float) $order->items->first()->total_amount)->toBe(18.0);
+    expect($order->items->first()->ingredient_id)->toBe($ingredient->id);
+});
