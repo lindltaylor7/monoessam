@@ -12,7 +12,7 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/es';
 import { ChevronDown, FileSpreadsheet, FileText, Package, ShoppingCart, TrendingUp } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 dayjs.locale('es');
 
@@ -50,17 +50,74 @@ const orderPeriod = (order: PurchaseOrder): { start: string; end: string } | nul
 };
 const filterStatus = ref('todos');
 
+// Filtros Mina → Unidad → Comedor (mismo bloque que Programaciones en Planificación). Las opciones salen
+// de los comedores que aparecen en las órdenes, así no se ofrecen ubicaciones sin órdenes.
+const filters = ref({ mine: '', unit: '', cafe: '', createdFrom: '', createdTo: '' });
+
+type Option = { id: number; name: string };
+const byName = (a: Option, b: Option) => a.name.localeCompare(b.name);
+const uniqueOptions = (items: (Option | undefined | null)[]) =>
+    [...new Map(items.filter((i): i is Option => !!i?.id).map((i) => [i.id, { id: i.id, name: i.name }])).values()].sort(byName);
+
+const orderCafes = computed(() => props.orders.flatMap((order) => orderPrograms(order).map((p) => p.cafe).filter(Boolean)) as any[]);
+
+const mineOptions = computed(() => uniqueOptions(orderCafes.value.map((c) => c.unit?.mine)));
+const unitOptions = computed(() =>
+    uniqueOptions(orderCafes.value.filter((c) => !filters.value.mine || String(c.unit?.mine?.id) === filters.value.mine).map((c) => c.unit)),
+);
+const cafeOptions = computed(() =>
+    uniqueOptions(
+        orderCafes.value.filter(
+            (c) =>
+                (!filters.value.mine || String(c.unit?.mine?.id) === filters.value.mine) &&
+                (!filters.value.unit || String(c.unit?.id) === filters.value.unit),
+        ),
+    ),
+);
+
+// Al cambiar la mina/unidad, se limpian los filtros hijos que ya no pertenecen a ella.
+watch(
+    () => filters.value.mine,
+    () => {
+        if (!unitOptions.value.some((u) => String(u.id) === filters.value.unit)) filters.value.unit = '';
+    },
+);
+watch(
+    () => filters.value.unit,
+    () => {
+        if (!cafeOptions.value.some((c) => String(c.id) === filters.value.cafe)) filters.value.cafe = '';
+    },
+);
+
+const hasFilters = computed(() => !!search.value || filterStatus.value !== 'todos' || Object.values(filters.value).some(Boolean));
+const clearFilters = () => {
+    search.value = '';
+    filterStatus.value = 'todos';
+    filters.value = { mine: '', unit: '', cafe: '', createdFrom: '', createdTo: '' };
+};
+
 const filteredOrders = computed(() => {
+    const term = search.value.toLowerCase();
+    const f = filters.value;
     return props.orders.filter((order) => {
-        const term = search.value.toLowerCase();
+        const programs = orderPrograms(order);
         const matchesSearch =
             !term ||
             String(order.id).includes(term) ||
-            orderPrograms(order).some((p) =>
-                [p.cafe?.name, p.cafe?.unit?.name, p.cafe?.unit?.mine?.name].some((name) => name?.toLowerCase().includes(term)),
-            );
+            programs.some((p) => [p.cafe?.name, p.cafe?.unit?.name, p.cafe?.unit?.mine?.name].some((name) => name?.toLowerCase().includes(term)));
         const matchesStatus = filterStatus.value === 'todos' || order.status === filterStatus.value;
-        return matchesSearch && matchesStatus;
+        // Un consolidado coincide si alguna de sus programaciones es de la ubicación elegida.
+        const matchesLocation =
+            (!f.mine && !f.unit && !f.cafe) ||
+            programs.some(
+                (p) =>
+                    (!f.mine || String(p.cafe?.unit?.mine?.id) === f.mine) &&
+                    (!f.unit || String(p.cafe?.unit?.id) === f.unit) &&
+                    (!f.cafe || String(p.cafe?.id) === f.cafe),
+            );
+        const created = dayjs(order.created_at).format('YYYY-MM-DD');
+        const matchesDate = (!f.createdFrom || created >= f.createdFrom) && (!f.createdTo || created <= f.createdTo);
+        return matchesSearch && matchesStatus && matchesLocation && matchesDate;
     });
 });
 
@@ -221,24 +278,86 @@ const deleteOrder = (order: PurchaseOrder) => {
             </div>
 
             <!-- Filtros -->
-            <div class="flex flex-wrap items-center gap-3">
-                <Input
-                    v-model="search"
-                    placeholder="Buscar por mina, unidad, comedor o ID..."
-                    class="h-9 w-64 rounded-xl border-slate-200 text-sm focus-visible:ring-[#FF5A1F]"
-                />
-                <Select v-model="filterStatus">
-                    <SelectTrigger class="h-9 w-44 rounded-xl border-slate-200 text-sm focus:ring-[#FF5A1F]">
-                        <SelectValue placeholder="Estado" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="todos">Todos los estados</SelectItem>
-                        <SelectItem value="pendiente">Pendiente</SelectItem>
-                        <SelectItem value="enviada">Enviada</SelectItem>
-                    </SelectContent>
-                </Select>
-                <span class="ml-auto text-xs text-slate-400">
-                    {{ filteredOrders.length }} {{ filteredOrders.length === 1 ? 'orden' : 'órdenes' }}
+            <div
+                class="grid grid-cols-2 items-end gap-3 rounded-2xl border border-l-4 border-slate-100 border-l-[#FF5A1F] bg-white p-4 shadow-sm sm:flex sm:flex-wrap"
+            >
+                <div class="col-span-2 flex flex-col gap-1 sm:min-w-[220px]">
+                    <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Buscar</label>
+                    <Input
+                        v-model="search"
+                        placeholder="Mina, unidad, comedor o ID..."
+                        class="h-9 w-full rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F] sm:w-[220px]"
+                    />
+                </div>
+                <div class="flex flex-col gap-1 sm:min-w-[140px]">
+                    <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Mina</label>
+                    <select
+                        v-model="filters.mine"
+                        class="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none sm:w-auto sm:min-w-[150px]"
+                    >
+                        <option value="">Todas</option>
+                        <option v-for="m in mineOptions" :key="m.id" :value="String(m.id)">{{ m.name }}</option>
+                    </select>
+                </div>
+                <div class="flex flex-col gap-1 sm:min-w-[140px]">
+                    <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Unidad</label>
+                    <select
+                        v-model="filters.unit"
+                        class="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none sm:w-auto sm:min-w-[150px]"
+                    >
+                        <option value="">Todas</option>
+                        <option v-for="u in unitOptions" :key="u.id" :value="String(u.id)">{{ u.name }}</option>
+                    </select>
+                </div>
+                <div class="flex flex-col gap-1 sm:min-w-[140px]">
+                    <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Café / Comedor</label>
+                    <select
+                        v-model="filters.cafe"
+                        class="h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none sm:w-auto sm:min-w-[140px]"
+                    >
+                        <option value="">Todos</option>
+                        <option v-for="c in cafeOptions" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
+                    </select>
+                </div>
+                <div class="flex flex-col gap-1">
+                    <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Estado</label>
+                    <Select v-model="filterStatus">
+                        <SelectTrigger class="h-9 w-full rounded-lg border-slate-200 text-xs focus:ring-[#FF5A1F] sm:w-[150px]">
+                            <SelectValue placeholder="Estado" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="todos">Todos</SelectItem>
+                            <SelectItem value="pendiente">Pendiente</SelectItem>
+                            <SelectItem value="enviada">Enviada</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div class="flex flex-col gap-1">
+                    <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Generado desde</label>
+                    <Input
+                        type="date"
+                        v-model="filters.createdFrom"
+                        class="h-9 w-full rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F] sm:w-[150px]"
+                    />
+                </div>
+                <div class="flex flex-col gap-1">
+                    <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Generado hasta</label>
+                    <Input
+                        type="date"
+                        v-model="filters.createdTo"
+                        class="h-9 w-full rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F] sm:w-[150px]"
+                    />
+                </div>
+                <button
+                    v-if="hasFilters"
+                    type="button"
+                    @click="clearFilters"
+                    class="col-span-2 h-9 rounded-lg px-2.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700 sm:col-auto"
+                >
+                    Limpiar filtros
+                </button>
+                <span class="col-span-2 flex h-9 items-center text-xs text-slate-400 tabular-nums sm:col-auto sm:ml-auto">
+                    {{ filteredOrders.length }} de {{ orders.length }}
                 </span>
             </div>
 
