@@ -16,6 +16,8 @@ import {
     Calculator,
     CalendarDays,
     ChevronDown,
+    ChevronLeft,
+    ChevronRight,
     Download,
     FolderOpen,
     LineChart,
@@ -27,7 +29,7 @@ import {
     X,
 } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 interface Props {
     mines?: Mine[];
@@ -106,6 +108,65 @@ const generateColumns = () => {
 
 const daysColumns = computed(() => {
     return Array.from({ length: generatedDays.value }, (_, i) => `Día ${i + 1}`);
+});
+
+// Navegación horizontal de la grilla: un solo contenedor de scroll, columnas fijas a la izquierda
+// y saltos por día para que los últimos días siempre sean alcanzables.
+const gridScrollRef = ref<HTMLElement | null>(null);
+const dayHeaderRefs = ref<HTMLElement[]>([]);
+const STICKY_COLUMNS_WIDTH = 56 + 240 + 112;
+const visibleDayRange = ref<{ first: number; last: number }>({ first: 1, last: 1 });
+const canScrollLeft = ref(false);
+const canScrollRight = ref(false);
+
+const updateGridScrollState = () => {
+    const el = gridScrollRef.value;
+    if (!el) return;
+    canScrollLeft.value = el.scrollLeft > 1;
+    canScrollRight.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+
+    const viewStart = el.scrollLeft + STICKY_COLUMNS_WIDTH;
+    const viewEnd = el.scrollLeft + el.clientWidth;
+    let first = 0;
+    let last = 0;
+    dayHeaderRefs.value.forEach((th, i) => {
+        const center = th.offsetLeft + th.offsetWidth / 2;
+        if (center >= viewStart && center <= viewEnd) {
+            if (!first) first = i + 1;
+            last = i + 1;
+        }
+    });
+    visibleDayRange.value = { first: first || 1, last: last || first || 1 };
+};
+
+const isDayVisible = (day: number) => day >= visibleDayRange.value.first && day <= visibleDayRange.value.last;
+
+const scrollToDay = (day: number) => {
+    const el = gridScrollRef.value;
+    const th = dayHeaderRefs.value[day - 1];
+    if (!el || !th) return;
+    el.scrollTo({ left: Math.max(0, th.offsetLeft - STICKY_COLUMNS_WIDTH), behavior: 'smooth' });
+};
+
+const scrollDays = (direction: 1 | -1) => {
+    const { first, last } = visibleDayRange.value;
+    const page = Math.max(1, last - first + 1);
+    const target = Math.min(generatedDays.value, Math.max(1, first + direction * page));
+    scrollToDay(target);
+};
+
+let gridResizeObserver: ResizeObserver | null = null;
+onMounted(() => {
+    if (gridScrollRef.value && typeof ResizeObserver !== 'undefined') {
+        gridResizeObserver = new ResizeObserver(updateGridScrollState);
+        gridResizeObserver.observe(gridScrollRef.value);
+    }
+    updateGridScrollState();
+});
+onBeforeUnmount(() => gridResizeObserver?.disconnect());
+watch(generatedDays, (days) => {
+    dayHeaderRefs.value.length = Math.min(dayHeaderRefs.value.length, days);
+    nextTick(updateGridScrollState);
 });
 
 const isSavedCyclesModalOpen = ref(false);
@@ -424,13 +485,13 @@ const getSemaphoreText = (status: string) => {
 const getSemaphoreCellClass = (status: string) => {
     switch (status) {
         case 'gravisimo':
-            return 'bg-red-50/80 group-hover/row:bg-red-100/70';
+            return 'bg-red-50 group-hover/row:bg-red-100';
         case 'pesimo':
-            return 'bg-yellow-50/80 group-hover/row:bg-yellow-100/60';
+            return 'bg-yellow-50 group-hover/row:bg-yellow-100';
         case 'bueno':
-            return 'bg-green-50/70 group-hover/row:bg-green-100/50';
+            return 'bg-green-50 group-hover/row:bg-green-100';
         default:
-            return 'bg-slate-50/40 group-hover/row:bg-slate-100/50';
+            return 'bg-slate-50 group-hover/row:bg-slate-100';
     }
 };
 
@@ -878,8 +939,8 @@ const resetToNew = () => {
 
 <template>
     <Head title="Ciclos de Menú" />
-    <AppLayout>
-        <div class="flex h-full flex-1 flex-col gap-4 overflow-hidden bg-slate-50/50 p-6">
+    <AppLayout content-class="min-w-0">
+        <div class="flex h-full min-w-0 flex-1 flex-col gap-4 overflow-hidden bg-slate-50/50 p-6">
             <div class="flex flex-none items-center justify-between">
                 <div>
                     <h1 class="text-2xl font-bold tracking-tight text-slate-900">Configuración de Ciclos</h1>
@@ -942,6 +1003,32 @@ const resetToNew = () => {
                                 Generar Columnas
                             </Button>
                         </div>
+
+                        <div class="flex items-center gap-2">
+                            <Button
+                                size="icon"
+                                variant="outline"
+                                class="h-9 w-9 border-slate-200"
+                                title="Días anteriores"
+                                :disabled="!canScrollLeft"
+                                @click="scrollDays(-1)"
+                            >
+                                <ChevronLeft class="h-4 w-4" />
+                            </Button>
+                            <span class="min-w-[110px] text-center text-sm font-medium tabular-nums text-slate-600">
+                                Días {{ visibleDayRange.first }}–{{ visibleDayRange.last }} de {{ generatedDays }}
+                            </span>
+                            <Button
+                                size="icon"
+                                variant="outline"
+                                class="h-9 w-9 border-slate-200"
+                                title="Días siguientes"
+                                :disabled="!canScrollRight"
+                                @click="scrollDays(1)"
+                            >
+                                <ChevronRight class="h-4 w-4" />
+                            </Button>
+                        </div>
                     </div>
 
                     <div class="flex items-center gap-4 text-xs font-medium text-slate-500">
@@ -952,56 +1039,87 @@ const resetToNew = () => {
                     </div>
                 </div>
 
-                <div class="scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent relative isolate w-full flex-1 overflow-auto pb-4">
-                    <Table class="w-full border-collapse">
-                        <TableHeader>
-                            <TableRow class="border-b-slate-200 bg-slate-50/80">
-                                <TableHead
-                                    class="sticky top-0 left-0 z-20 w-[60px] bg-slate-50/95 text-center font-semibold text-slate-600 shadow-[1px_1px_0_0_#e2e8f0] backdrop-blur"
-                                    >Ord</TableHead
+                <!-- Acceso directo a cada día: siempre se puede llegar al último sin arrastrar el scroll -->
+                <div v-if="generatedDays > 1" class="flex flex-none items-center gap-2 border-b border-slate-100 bg-white px-5 py-2.5">
+                    <span class="shrink-0 text-xs font-medium text-slate-500">Ir al día:</span>
+                    <div class="flex min-w-0 flex-wrap gap-1.5">
+                        <button
+                            v-for="day in generatedDays"
+                            :key="day"
+                            type="button"
+                            class="h-7 min-w-[2.25rem] rounded-md border px-2 text-xs font-semibold tabular-nums transition-colors"
+                            :class="
+                                isDayVisible(day)
+                                    ? 'border-[#FF5A1F] bg-orange-50 text-[#FF5A1F]'
+                                    : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+                            "
+                            @click="scrollToDay(day)"
+                        >
+                            D{{ day }}
+                        </button>
+                    </div>
+                </div>
+
+                <div
+                    ref="gridScrollRef"
+                    class="relative isolate min-h-0 w-full flex-1 overflow-auto overscroll-x-contain"
+                    @scroll.passive="updateGridScrollState"
+                >
+                    <table class="w-max min-w-full border-separate border-spacing-0 text-sm">
+                        <thead>
+                            <tr>
+                                <th
+                                    class="sticky top-0 left-0 z-30 h-11 w-14 min-w-14 max-w-14 border-b border-slate-200 bg-slate-50 px-2 text-center font-semibold text-slate-600"
                                 >
-                                <TableHead
-                                    class="sticky top-0 left-[60px] z-20 min-w-[220px] bg-slate-50/95 font-semibold text-slate-600 shadow-[1px_1px_0_0_#e2e8f0] backdrop-blur"
-                                    >Estructura del Menú</TableHead
+                                    Ord
+                                </th>
+                                <th
+                                    class="sticky top-0 left-14 z-30 h-11 w-[240px] min-w-[240px] max-w-[240px] border-b border-slate-200 bg-slate-50 px-3 text-left font-semibold text-slate-600"
                                 >
-                                <TableHead
-                                    class="sticky top-0 left-[280px] z-20 w-[120px] bg-slate-50/95 text-center font-semibold text-slate-600 shadow-[1px_1px_0_0_#e2e8f0] backdrop-blur"
-                                    >Semáforo</TableHead
+                                    Estructura del Menú
+                                </th>
+                                <th
+                                    class="sticky top-0 left-[296px] z-30 h-11 w-28 min-w-28 max-w-28 border-r border-b border-slate-200 bg-slate-50 px-2 text-center font-semibold text-slate-600 shadow-[6px_0_8px_-6px_rgba(15,23,42,0.18)]"
                                 >
-                                <TableHead
+                                    Semáforo
+                                </th>
+                                <th
                                     v-for="(day, index) in daysColumns"
                                     :key="index"
-                                    class="sticky top-0 z-10 min-w-[180px] border-l border-slate-200 bg-slate-50/95 text-center font-semibold text-slate-600 shadow-[0_1px_0_0_#e2e8f0] backdrop-blur"
+                                    :ref="(el) => { if (el) dayHeaderRefs[index] = el as HTMLElement; }"
+                                    class="sticky top-0 z-20 h-11 w-[200px] min-w-[200px] max-w-[200px] border-b border-l border-slate-200 bg-slate-50 px-2 text-center font-semibold text-slate-600"
                                 >
                                     {{ day }}
-                                </TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            <TableRow
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr
                                 v-for="(row, rowIndex) in menuStructureData"
                                 :key="row.id"
                                 class="group/row transition-colors hover:bg-slate-50/50"
                             >
-                                <TableCell
-                                    class="sticky left-0 z-10 border-r border-slate-100 bg-white text-center font-medium text-slate-500 shadow-[1px_0_0_0_#f1f5f9] backdrop-blur group-hover/row:bg-slate-50/95"
+                                <td
+                                    class="sticky left-0 z-10 w-14 min-w-14 max-w-14 border-b border-slate-100 bg-white p-2 text-center font-medium text-slate-500 group-hover/row:bg-slate-50"
                                 >
                                     {{ rowIndex + 1 }}
-                                </TableCell>
+                                </td>
 
-                                <TableCell
-                                    class="sticky left-[60px] z-10 border-r border-slate-100 bg-white shadow-[1px_0_0_0_#f1f5f9] backdrop-blur group-hover/row:bg-slate-50/95"
+                                <td
+                                    class="sticky left-14 z-10 w-[240px] min-w-[240px] max-w-[240px] border-b border-slate-100 bg-white px-3 py-2 group-hover/row:bg-slate-50"
                                 >
                                     <div class="flex flex-col gap-1.5 py-1">
                                         <Badge variant="outline" class="w-max border-slate-200 bg-slate-50 font-semibold text-slate-600">
                                             S/ {{ row.costValue.toFixed(2) }}
                                         </Badge>
-                                        <span class="text-[13px] font-bold tracking-tight text-slate-800">{{ row.category }}</span>
+                                        <span class="line-clamp-2 text-[13px] leading-snug font-bold tracking-tight break-words text-slate-800" :title="row.category">{{
+                                            row.category
+                                        }}</span>
                                     </div>
-                                </TableCell>
+                                </td>
 
-                                <TableCell
-                                    class="sticky left-[280px] z-10 border-r border-slate-100 text-center shadow-[1px_0_0_0_#f1f5f9] backdrop-blur transition-colors"
+                                <td
+                                    class="sticky left-[296px] z-10 w-28 min-w-28 max-w-28 border-r border-b border-slate-200 border-b-slate-100 p-2 text-center shadow-[6px_0_8px_-6px_rgba(15,23,42,0.18)] transition-colors"
                                     :class="[
                                         getSemaphoreCellClass(getRowStatus(row)),
                                         Object.keys(row.days || {}).length > 0 ? 'cursor-pointer' : '',
@@ -1026,13 +1144,13 @@ const resetToNew = () => {
                                             Ver gráfico
                                         </span>
                                     </div>
-                                </TableCell>
+                                </td>
 
                                 <!-- Days Columns -->
-                                <TableCell
+                                <td
                                     v-for="dayIndex in generatedDays"
                                     :key="dayIndex"
-                                    class="group/cell relative border-l border-slate-100 p-2 align-top"
+                                    class="group/cell relative w-[200px] min-w-[200px] max-w-[200px] border-b border-l border-slate-100 p-2 align-top"
                                 >
                                     <div
                                         class="flex h-full flex-col overflow-hidden border bg-white transition-all"
@@ -1115,10 +1233,10 @@ const resetToNew = () => {
                                             </div>
                                         </template>
                                     </div>
-                                </TableCell>
-                            </TableRow>
-                        </TableBody>
-                    </Table>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
