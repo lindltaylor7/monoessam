@@ -26,10 +26,46 @@ class MenuCycleController extends Controller
         return Inertia::render('cycles/Index', [
             'mines'          => Mine::with(['units', 'units.cafes', 'units.cafes.services'])->get(),
             'structures'     => Structure::with('costs')->get(),
-            'savedCycles'    => MenuCycle::select(self::LIST_COLUMNS)->orderBy('id', 'desc')->get(),
             'dishCategories' => Dish_category::all(),
             'levels'         => Level::all(),
         ]);
+    }
+
+    /**
+     * Listado de ciclos guardados bajo demanda. Son miles (8k+), asi que ya no viajan como prop del
+     * indice: el modal "Ajustes de Ciclos" pide paginas filtradas y la carga de un servicio pide solo
+     * los ciclos de ese servicio (`all=1`, sin paginar porque por servicio son pocos).
+     */
+    public function list(Request $request)
+    {
+        $validated = $request->validate([
+            'search'         => 'nullable|string|max:255',
+            'serviceable_id' => 'nullable|integer',
+            'date_from'      => 'nullable|date',
+            'date_to'        => 'nullable|date',
+            'per_page'       => 'nullable|integer|min:5|max:50',
+            'all'            => 'nullable|boolean',
+        ]);
+
+        $query = MenuCycle::select(self::LIST_COLUMNS)
+            ->when($validated['serviceable_id'] ?? null, fn ($q, $id) => $q->where('serviceable_id', $id))
+            ->when(trim($validated['search'] ?? ''), function ($q, $term) {
+                $q->where(function ($q) use ($term) {
+                    $q->where('name', 'like', '%' . $term . '%');
+                    if (ctype_digit($term)) {
+                        $q->orWhere('id', (int) $term);
+                    }
+                });
+            })
+            ->when($validated['date_from'] ?? null, fn ($q, $date) => $q->whereDate('updated_at', '>=', $date))
+            ->when($validated['date_to'] ?? null, fn ($q, $date) => $q->whereDate('updated_at', '<=', $date))
+            ->orderBy('id', 'desc');
+
+        if ($request->boolean('all')) {
+            return response()->json(['data' => $query->get()]);
+        }
+
+        return response()->json($query->paginate($validated['per_page'] ?? 10));
     }
 
     /**

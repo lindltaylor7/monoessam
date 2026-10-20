@@ -548,6 +548,8 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('/', [MenuCycleController::class, 'index'])->name('index');
         Route::post('/', [MenuCycleController::class, 'store'])->name('store');
         Route::get('/export/{serviceable_id}', [MenuCycleController::class, 'export'])->name('export');
+        // Listado paginado/filtrado; debe ir antes de /{id}.
+        Route::get('/list', [MenuCycleController::class, 'list'])->name('list');
         // El detalle (cycle_data) se pide bajo demanda; el listado del índice ya no lo trae.
         Route::get('/{id}', [MenuCycleController::class, 'show'])->name('show');
     });

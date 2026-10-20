@@ -34,7 +34,6 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 interface Props {
     mines?: Mine[];
     structures?: any[];
-    savedCycles?: any[];
     dishCategories?: any[];
     levels?: any[];
 }
@@ -172,24 +171,89 @@ watch(generatedDays, (days) => {
 const isSavedCyclesModalOpen = ref(false);
 const repeatedDishes = ref<{ rowId: any; dayIndex: number }[]>([]);
 
-const getServiceName = (serviceableId: any) => {
-    if (!props.mines) return 'Servicio Desconocido';
-    for (const mine of props.mines) {
-        if (!mine.units) continue;
-        for (const unit of mine.units) {
-            if (!unit.cafes) continue;
-            for (const cafe of unit.cafes) {
-                if (!cafe.services) continue;
-                for (const service of cafe.services) {
-                    if (String(service.pivot?.id) === String(serviceableId)) {
-                        return `${mine.name} - ${unit.name} - ${cafe.name} - ${service.name}`;
+// Índice serviceable_id → "Mina - Unidad - Comedor - Servicio", armado una sola vez en vez de
+// recorrer el árbol completo por cada ciclo listado.
+const serviceNames = computed(() => {
+    const map = new Map<string, string>();
+    for (const mine of (props.mines || []) as any[]) {
+        for (const unit of mine.units || []) {
+            for (const cafe of unit.cafes || []) {
+                for (const service of cafe.services || []) {
+                    if (service.pivot?.id != null) {
+                        map.set(String(service.pivot.id), `${mine.name} - ${unit.name} - ${cafe.name} - ${service.name}`);
                     }
                 }
             }
         }
     }
-    return `Servicio ID: ${serviceableId}`;
+    return map;
+});
+
+const getServiceName = (serviceableId: any) => serviceNames.value.get(String(serviceableId)) || `Servicio ID: ${serviceableId}`;
+
+// Modal "Ajustes de Ciclos": listado paginado y filtrado en el servidor (hay miles de ciclos).
+const savedCycles = ref<any[]>([]);
+const savedCyclesLoading = ref(false);
+const savedCyclesPage = ref(1);
+const savedCyclesLastPage = ref(1);
+const savedCyclesTotal = ref(0);
+const savedCyclesSearch = ref('');
+const savedCyclesOnlyService = ref(true);
+const savedCyclesDateFrom = ref('');
+const savedCyclesDateTo = ref('');
+let savedCyclesRequestId = 0;
+
+const loadSavedCycles = async () => {
+    const requestId = ++savedCyclesRequestId;
+    savedCyclesLoading.value = true;
+    try {
+        const { data } = await axios.get('/cycles/list', {
+            params: {
+                page: savedCyclesPage.value,
+                per_page: 10,
+                search: savedCyclesSearch.value.trim() || undefined,
+                serviceable_id: savedCyclesOnlyService.value && selectedServiceableId.value ? selectedServiceableId.value : undefined,
+                date_from: savedCyclesDateFrom.value || undefined,
+                date_to: savedCyclesDateTo.value || undefined,
+            },
+        });
+        if (requestId !== savedCyclesRequestId) return;
+        savedCycles.value = data.data || [];
+        savedCyclesLastPage.value = data.last_page || 1;
+        savedCyclesTotal.value = data.total || 0;
+    } catch {
+        if (requestId === savedCyclesRequestId) Swal.fire('Error', 'No se pudo cargar el listado de ciclos.', 'error');
+    } finally {
+        if (requestId === savedCyclesRequestId) savedCyclesLoading.value = false;
+    }
 };
+
+const goToSavedCyclesPage = (page: number) => {
+    savedCyclesPage.value = Math.min(Math.max(1, page), savedCyclesLastPage.value);
+    loadSavedCycles();
+};
+
+const reloadSavedCyclesFromFirstPage = () => {
+    savedCyclesPage.value = 1;
+    loadSavedCycles();
+};
+
+let savedCyclesSearchTimer: ReturnType<typeof setTimeout> | undefined;
+watch(savedCyclesSearch, () => {
+    clearTimeout(savedCyclesSearchTimer);
+    savedCyclesSearchTimer = setTimeout(reloadSavedCyclesFromFirstPage, 350);
+});
+watch([savedCyclesOnlyService, savedCyclesDateFrom, savedCyclesDateTo], reloadSavedCyclesFromFirstPage);
+
+const clearSavedCyclesFilters = () => {
+    savedCyclesSearch.value = '';
+    savedCyclesDateFrom.value = '';
+    savedCyclesDateTo.value = '';
+};
+
+watch(isSavedCyclesModalOpen, (open) => {
+    if (open) reloadSavedCyclesFromFirstPage();
+});
 
 const isRepeated = (rowId: any, dayIndex: number) => {
     return repeatedDishes.value.some((r) => r.rowId === rowId && r.dayIndex === dayIndex);
@@ -287,7 +351,13 @@ const menuStructureData = ref<any[]>([]);
 // Once a single structure is settled on for this service, load its matching cycle (if there's exactly
 // one) or fall back to blank defaults from the structure's costs.
 const applyStructure = async (structure: any, newId: string) => {
-    const serviceCycles = props.savedCycles?.filter((c) => String(c.serviceable_id) === String(newId)) || [];
+    let serviceCycles: any[] = [];
+    try {
+        const { data } = await axios.get('/cycles/list', { params: { serviceable_id: newId, all: 1 } });
+        serviceCycles = data?.data || [];
+    } catch {
+        Swal.fire('Error', 'No se pudieron cargar los ciclos del servicio.', 'error');
+    }
 
     if (serviceCycles.length === 1) {
         const savedCycle = serviceCycles[0];
@@ -1384,13 +1454,69 @@ const resetToNew = () => {
                 <DialogHeader class="border-b border-slate-100 bg-white p-6 pb-4">
                     <DialogTitle class="flex items-center gap-2 text-xl font-bold text-slate-800">
                         <Settings2 class="h-5 w-5 text-[#FF5A1F]" />
-                        Ajustes de Ciclos ({{ props.savedCycles?.length || 0 }} guardados)
+                        Ajustes de Ciclos
+                        <span class="text-sm font-medium text-slate-400">({{ savedCyclesTotal }} {{ savedCyclesTotal === 1 ? 'resultado' : 'resultados' }})</span>
                     </DialogTitle>
                 </DialogHeader>
-                <div class="max-h-[500px] overflow-y-auto bg-slate-50/30 p-6">
-                    <ul class="divide-y divide-slate-200/60" v-if="props.savedCycles && props.savedCycles.length > 0">
+
+                <div class="flex flex-col gap-3 border-b border-slate-100 bg-white px-6 py-4">
+                    <div class="relative">
+                        <Search class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <Input
+                            v-model="savedCyclesSearch"
+                            type="text"
+                            placeholder="Buscar por nombre o ID del ciclo..."
+                            class="h-9 border-slate-200 pl-9 focus-visible:ring-[#FF5A1F]"
+                        />
+                    </div>
+                    <div class="flex flex-wrap items-end gap-3">
+                        <label class="flex flex-col gap-1 text-[11px] font-medium text-slate-500">
+                            Actualizado desde
+                            <input
+                                v-model="savedCyclesDateFrom"
+                                type="date"
+                                class="h-8 rounded-md border border-slate-200 px-2 text-xs text-slate-700 focus:ring-2 focus:ring-[#FF5A1F] focus:outline-none"
+                            />
+                        </label>
+                        <label class="flex flex-col gap-1 text-[11px] font-medium text-slate-500">
+                            Hasta
+                            <input
+                                v-model="savedCyclesDateTo"
+                                type="date"
+                                class="h-8 rounded-md border border-slate-200 px-2 text-xs text-slate-700 focus:ring-2 focus:ring-[#FF5A1F] focus:outline-none"
+                            />
+                        </label>
+                        <label
+                            class="flex h-8 items-center gap-2 text-xs font-medium text-slate-600"
+                            :class="selectedServiceableId ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'"
+                            :title="selectedServiceableId ? '' : 'Seleccione un servicio en el Paso 1'"
+                        >
+                            <input
+                                v-model="savedCyclesOnlyService"
+                                type="checkbox"
+                                :disabled="!selectedServiceableId"
+                                class="h-4 w-4 rounded border-slate-300 text-[#FF5A1F] focus:ring-[#FF5A1F]"
+                            />
+                            Solo del servicio seleccionado
+                        </label>
+                        <button
+                            v-if="savedCyclesSearch || savedCyclesDateFrom || savedCyclesDateTo"
+                            type="button"
+                            class="ml-auto h-8 text-xs font-medium text-slate-500 underline-offset-2 hover:text-[#FF5A1F] hover:underline"
+                            @click="clearSavedCyclesFilters"
+                        >
+                            Limpiar filtros
+                        </button>
+                    </div>
+                </div>
+
+                <div class="relative max-h-[420px] min-h-[200px] overflow-y-auto bg-slate-50/30 px-6 py-2">
+                    <div v-if="savedCyclesLoading" class="absolute inset-0 z-10 flex items-center justify-center bg-white/60">
+                        <Loader2 class="h-6 w-6 animate-spin text-[#FF5A1F]" />
+                    </div>
+                    <ul class="divide-y divide-slate-200/60" v-if="savedCycles.length > 0">
                         <li
-                            v-for="cycle in props.savedCycles"
+                            v-for="cycle in savedCycles"
                             :key="cycle.id"
                             class="flex items-center justify-between gap-4 rounded px-2 py-4 transition-colors hover:bg-white"
                         >
@@ -1427,7 +1553,35 @@ const resetToNew = () => {
                             </div>
                         </li>
                     </ul>
-                    <div v-else class="py-8 text-center text-slate-500">No hay ciclos guardados en la base de datos aún.</div>
+                    <div v-else-if="!savedCyclesLoading" class="py-8 text-center text-sm text-slate-500">
+                        No se encontraron ciclos con los filtros aplicados.
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between gap-3 border-t border-slate-100 bg-white px-6 py-3">
+                    <span class="text-xs text-slate-500 tabular-nums">Página {{ savedCyclesPage }} de {{ savedCyclesLastPage }}</span>
+                    <div class="flex items-center gap-1">
+                        <Button
+                            size="icon"
+                            variant="outline"
+                            class="h-8 w-8 border-slate-200"
+                            title="Página anterior"
+                            :disabled="savedCyclesLoading || savedCyclesPage <= 1"
+                            @click="goToSavedCyclesPage(savedCyclesPage - 1)"
+                        >
+                            <ChevronLeft class="h-4 w-4" />
+                        </Button>
+                        <Button
+                            size="icon"
+                            variant="outline"
+                            class="h-8 w-8 border-slate-200"
+                            title="Página siguiente"
+                            :disabled="savedCyclesLoading || savedCyclesPage >= savedCyclesLastPage"
+                            @click="goToSavedCyclesPage(savedCyclesPage + 1)"
+                        >
+                            <ChevronRight class="h-4 w-4" />
+                        </Button>
+                    </div>
                 </div>
             </DialogContent>
         </Dialog>
