@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Cafe;
 use App\Models\Dish_category;
 use App\Models\DishRecipe;
 use App\Models\Level;
@@ -41,6 +42,9 @@ class MenuCycleController extends Controller
         $validated = $request->validate([
             'search'         => 'nullable|string|max:255',
             'serviceable_id' => 'nullable|integer',
+            'mine_id'        => 'nullable|integer',
+            'unit_id'        => 'nullable|integer',
+            'cafe_id'        => 'nullable|integer',
             'date_from'      => 'nullable|date',
             'date_to'        => 'nullable|date',
             'per_page'       => 'nullable|integer|min:5|max:50',
@@ -49,6 +53,18 @@ class MenuCycleController extends Controller
 
         $query = MenuCycle::select(self::LIST_COLUMNS)
             ->when($validated['serviceable_id'] ?? null, fn ($q, $id) => $q->where('serviceable_id', $id))
+            // Mina / unidad / comedor: los ciclos cuelgan de servicios de comedor (serviceable de Cafe).
+            ->when(
+                ($validated['mine_id'] ?? null) || ($validated['unit_id'] ?? null) || ($validated['cafe_id'] ?? null),
+                fn ($q) => $q->whereIn('serviceable_id', DB::table('serviceables')
+                    ->join('cafes', 'cafes.id', '=', 'serviceables.serviceable_id')
+                    ->join('units', 'units.id', '=', 'cafes.unit_id')
+                    ->where('serviceables.serviceable_type', Cafe::class)
+                    ->when($validated['mine_id'] ?? null, fn ($s, $id) => $s->where('units.mine_id', $id))
+                    ->when($validated['unit_id'] ?? null, fn ($s, $id) => $s->where('cafes.unit_id', $id))
+                    ->when($validated['cafe_id'] ?? null, fn ($s, $id) => $s->where('cafes.id', $id))
+                    ->select('serviceables.id'))
+            )
             ->when(trim($validated['search'] ?? ''), function ($q, $term) {
                 $q->where(function ($q) use ($term) {
                     $q->where('name', 'like', '%' . $term . '%');
@@ -65,7 +81,10 @@ class MenuCycleController extends Controller
             return response()->json(['data' => $query->get()]);
         }
 
-        return response()->json($query->paginate($validated['per_page'] ?? 10));
+        return response()->json(array_merge(
+            $query->paginate($validated['per_page'] ?? 10)->toArray(),
+            ['grand_total' => MenuCycle::count()],
+        ));
     }
 
     /**

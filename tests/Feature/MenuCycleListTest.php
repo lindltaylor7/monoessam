@@ -48,6 +48,26 @@ it('filtra por servicio, nombre e id', function () {
         ->and($this->getJson(route('cycles.list', ['search' => (string) $cenaCycle->id]))->json('data.*.id'))->toContain($cenaCycle->id);
 });
 
+it('filtra por mina, unidad y comedor', function () {
+    [$user, $desayuno] = seedCycleListBase();
+    $propio = MenuCycle::create(['serviceable_id' => $desayuno->id, 'name' => 'propio', 'days' => 7, 'cycle_data' => []]);
+
+    $otraMina = Mine::factory()->create();
+    $otraUnidad = Unit::factory()->create(['mine_id' => $otraMina->id]);
+    $otroCafe = Cafe::factory()->create(['unit_id' => $otraUnidad->id]);
+    $otroServicio = Serviceable::create(['serviceable_id' => $otroCafe->id, 'serviceable_type' => Cafe::class, 'service_id' => Service::create(['name' => 'ALMUERZO', 'code' => 'ALM', 'type' => 'comedor'])->id]);
+    MenuCycle::create(['serviceable_id' => $otroServicio->id, 'name' => 'ajeno', 'days' => 7, 'cycle_data' => []]);
+
+    $cafe = Cafe::find($desayuno->serviceable_id);
+    $this->actingAs($user);
+
+    foreach ([['mine_id' => $cafe->unit->mine_id], ['unit_id' => $cafe->unit_id], ['cafe_id' => $cafe->id]] as $filter) {
+        $response = $this->getJson(route('cycles.list', $filter))->assertOk();
+        expect($response->json('data.*.id'))->toBe([$propio->id])
+            ->and($response->json('grand_total'))->toBe(2);
+    }
+});
+
 it('devuelve todos los ciclos de un servicio con all=1', function () {
     [$user, $desayuno] = seedCycleListBase();
     foreach (range(1, 15) as $n) {

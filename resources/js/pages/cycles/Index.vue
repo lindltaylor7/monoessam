@@ -197,11 +197,77 @@ const savedCyclesLoading = ref(false);
 const savedCyclesPage = ref(1);
 const savedCyclesLastPage = ref(1);
 const savedCyclesTotal = ref(0);
+const savedCyclesGrandTotal = ref(0);
 const savedCyclesSearch = ref('');
-const savedCyclesOnlyService = ref(true);
+const savedCyclesMine = ref('');
+const savedCyclesUnit = ref('');
+const savedCyclesCafe = ref('');
+const savedCyclesService = ref('');
 const savedCyclesDateFrom = ref('');
 const savedCyclesDateTo = ref('');
 let savedCyclesRequestId = 0;
+
+// Opciones en cascada Mina → Unidad → Comedor → Servicio, a partir del árbol que ya trae la página.
+const savedCyclesMineOptions = computed(() => (props.mines || []) as any[]);
+const savedCyclesUnitOptions = computed(() =>
+    savedCyclesMineOptions.value.filter((m) => !savedCyclesMine.value || String(m.id) === savedCyclesMine.value).flatMap((m) => m.units || []),
+);
+const savedCyclesCafeOptions = computed(() =>
+    savedCyclesUnitOptions.value.filter((u: any) => !savedCyclesUnit.value || String(u.id) === savedCyclesUnit.value).flatMap((u: any) => u.cafes || []),
+);
+const savedCyclesServiceOptions = computed(() =>
+    savedCyclesCafe.value
+        ? (savedCyclesCafeOptions.value.find((c: any) => String(c.id) === savedCyclesCafe.value)?.services || []).filter((s: any) => s.pivot?.id != null)
+        : [],
+);
+
+// Al cambiar un nivel se limpian los de abajo que ya no pertenecen a él.
+watch(savedCyclesMine, () => {
+    if (!savedCyclesUnitOptions.value.some((u: any) => String(u.id) === savedCyclesUnit.value)) savedCyclesUnit.value = '';
+});
+watch(savedCyclesUnit, () => {
+    if (!savedCyclesCafeOptions.value.some((c: any) => String(c.id) === savedCyclesCafe.value)) savedCyclesCafe.value = '';
+});
+watch(savedCyclesCafe, () => {
+    if (!savedCyclesServiceOptions.value.some((s: any) => String(s.pivot.id) === savedCyclesService.value)) savedCyclesService.value = '';
+});
+
+// Precarga los filtros con la mina/unidad/comedor/servicio elegidos en el Paso 1.
+const prefillSavedCyclesLocation = () => {
+    savedCyclesMine.value = '';
+    savedCyclesUnit.value = '';
+    savedCyclesCafe.value = '';
+    savedCyclesService.value = '';
+    if (!selectedServiceableId.value) return;
+    for (const mine of savedCyclesMineOptions.value) {
+        for (const unit of mine.units || []) {
+            for (const cafe of unit.cafes || []) {
+                for (const service of cafe.services || []) {
+                    if (String(service.pivot?.id) === String(selectedServiceableId.value)) {
+                        savedCyclesMine.value = String(mine.id);
+                        savedCyclesUnit.value = String(unit.id);
+                        savedCyclesCafe.value = String(cafe.id);
+                        savedCyclesService.value = String(service.pivot.id);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+};
+
+const hasSavedCyclesFilters = computed(
+    () =>
+        !!(
+            savedCyclesSearch.value ||
+            savedCyclesMine.value ||
+            savedCyclesUnit.value ||
+            savedCyclesCafe.value ||
+            savedCyclesService.value ||
+            savedCyclesDateFrom.value ||
+            savedCyclesDateTo.value
+        ),
+);
 
 const loadSavedCycles = async () => {
     const requestId = ++savedCyclesRequestId;
@@ -212,7 +278,10 @@ const loadSavedCycles = async () => {
                 page: savedCyclesPage.value,
                 per_page: 10,
                 search: savedCyclesSearch.value.trim() || undefined,
-                serviceable_id: savedCyclesOnlyService.value && selectedServiceableId.value ? selectedServiceableId.value : undefined,
+                mine_id: savedCyclesMine.value || undefined,
+                unit_id: savedCyclesUnit.value || undefined,
+                cafe_id: savedCyclesCafe.value || undefined,
+                serviceable_id: savedCyclesService.value || undefined,
                 date_from: savedCyclesDateFrom.value || undefined,
                 date_to: savedCyclesDateTo.value || undefined,
             },
@@ -221,6 +290,7 @@ const loadSavedCycles = async () => {
         savedCycles.value = data.data || [];
         savedCyclesLastPage.value = data.last_page || 1;
         savedCyclesTotal.value = data.total || 0;
+        savedCyclesGrandTotal.value = data.grand_total || 0;
     } catch {
         if (requestId === savedCyclesRequestId) Swal.fire('Error', 'No se pudo cargar el listado de ciclos.', 'error');
     } finally {
@@ -243,16 +313,34 @@ watch(savedCyclesSearch, () => {
     clearTimeout(savedCyclesSearchTimer);
     savedCyclesSearchTimer = setTimeout(reloadSavedCyclesFromFirstPage, 350);
 });
-watch([savedCyclesOnlyService, savedCyclesDateFrom, savedCyclesDateTo], reloadSavedCyclesFromFirstPage);
+// Mientras se precargan/limpian varios filtros a la vez se suspende la recarga para hacer una sola petición.
+let savedCyclesBatching = false;
+watch([savedCyclesMine, savedCyclesUnit, savedCyclesCafe, savedCyclesService, savedCyclesDateFrom, savedCyclesDateTo], () => {
+    if (!savedCyclesBatching) reloadSavedCyclesFromFirstPage();
+});
 
-const clearSavedCyclesFilters = () => {
-    savedCyclesSearch.value = '';
-    savedCyclesDateFrom.value = '';
-    savedCyclesDateTo.value = '';
+const batchSavedCyclesFilters = async (apply: () => void) => {
+    savedCyclesBatching = true;
+    apply();
+    await nextTick();
+    savedCyclesBatching = false;
+    clearTimeout(savedCyclesSearchTimer);
+    reloadSavedCyclesFromFirstPage();
 };
 
+const clearSavedCyclesFilters = () =>
+    batchSavedCyclesFilters(() => {
+        savedCyclesSearch.value = '';
+        savedCyclesMine.value = '';
+        savedCyclesUnit.value = '';
+        savedCyclesCafe.value = '';
+        savedCyclesService.value = '';
+        savedCyclesDateFrom.value = '';
+        savedCyclesDateTo.value = '';
+    });
+
 watch(isSavedCyclesModalOpen, (open) => {
-    if (open) reloadSavedCyclesFromFirstPage();
+    if (open) batchSavedCyclesFilters(prefillSavedCyclesLocation);
 });
 
 const isRepeated = (rowId: any, dayIndex: number) => {
@@ -1450,7 +1538,7 @@ const resetToNew = () => {
 
         <!-- Saved Cycles Modal -->
         <Dialog :open="isSavedCyclesModalOpen" @update:open="isSavedCyclesModalOpen = $event">
-            <DialogContent class="overflow-hidden rounded-xl border-0 bg-white p-0 shadow-2xl sm:max-w-[700px]">
+            <DialogContent class="overflow-hidden rounded-xl border-0 bg-white p-0 shadow-2xl sm:max-w-[860px]">
                 <DialogHeader class="border-b border-slate-100 bg-white p-6 pb-4">
                     <DialogTitle class="flex items-center gap-2 text-xl font-bold text-slate-800">
                         <Settings2 class="h-5 w-5 text-[#FF5A1F]" />
@@ -1469,44 +1557,78 @@ const resetToNew = () => {
                             class="h-9 border-slate-200 pl-9 focus-visible:ring-[#FF5A1F]"
                         />
                     </div>
-                    <div class="flex flex-wrap items-end gap-3">
-                        <label class="flex flex-col gap-1 text-[11px] font-medium text-slate-500">
-                            Actualizado desde
-                            <input
+                    <div
+                        class="grid grid-cols-2 items-end gap-3 rounded-2xl border border-l-4 border-slate-100 border-l-[#FF5A1F] bg-white p-4 shadow-sm sm:grid-cols-4"
+                    >
+                        <div class="flex min-w-0 flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Mina</label>
+                            <select
+                                v-model="savedCyclesMine"
+                                class="h-9 w-full truncate rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none"
+                            >
+                                <option value="">Todas</option>
+                                <option v-for="m in savedCyclesMineOptions" :key="m.id" :value="String(m.id)">{{ m.name }}</option>
+                            </select>
+                        </div>
+                        <div class="flex min-w-0 flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Unidad</label>
+                            <select
+                                v-model="savedCyclesUnit"
+                                class="h-9 w-full truncate rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none"
+                            >
+                                <option value="">Todas</option>
+                                <option v-for="u in savedCyclesUnitOptions" :key="u.id" :value="String(u.id)">{{ u.name }}</option>
+                            </select>
+                        </div>
+                        <div class="flex min-w-0 flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Café / Comedor</label>
+                            <select
+                                v-model="savedCyclesCafe"
+                                class="h-9 w-full truncate rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none"
+                            >
+                                <option value="">Todos</option>
+                                <option v-for="c in savedCyclesCafeOptions" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
+                            </select>
+                        </div>
+                        <div class="flex min-w-0 flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Servicio</label>
+                            <select
+                                v-model="savedCyclesService"
+                                :disabled="!savedCyclesCafe"
+                                :title="savedCyclesCafe ? '' : 'Seleccione primero un comedor'"
+                                class="h-9 w-full truncate rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                            >
+                                <option value="">Todos</option>
+                                <option v-for="s in savedCyclesServiceOptions" :key="s.pivot.id" :value="String(s.pivot.id)">{{ s.name }}</option>
+                            </select>
+                        </div>
+                        <div class="flex min-w-0 flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Guardado desde</label>
+                            <Input
                                 v-model="savedCyclesDateFrom"
                                 type="date"
-                                class="h-8 rounded-md border border-slate-200 px-2 text-xs text-slate-700 focus:ring-2 focus:ring-[#FF5A1F] focus:outline-none"
+                                class="h-9 w-full rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F]"
                             />
-                        </label>
-                        <label class="flex flex-col gap-1 text-[11px] font-medium text-slate-500">
-                            Hasta
-                            <input
+                        </div>
+                        <div class="flex min-w-0 flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Guardado hasta</label>
+                            <Input
                                 v-model="savedCyclesDateTo"
                                 type="date"
-                                class="h-8 rounded-md border border-slate-200 px-2 text-xs text-slate-700 focus:ring-2 focus:ring-[#FF5A1F] focus:outline-none"
+                                class="h-9 w-full rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F]"
                             />
-                        </label>
-                        <label
-                            class="flex h-8 items-center gap-2 text-xs font-medium text-slate-600"
-                            :class="selectedServiceableId ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'"
-                            :title="selectedServiceableId ? '' : 'Seleccione un servicio en el Paso 1'"
-                        >
-                            <input
-                                v-model="savedCyclesOnlyService"
-                                type="checkbox"
-                                :disabled="!selectedServiceableId"
-                                class="h-4 w-4 rounded border-slate-300 text-[#FF5A1F] focus:ring-[#FF5A1F]"
-                            />
-                            Solo del servicio seleccionado
-                        </label>
-                        <button
-                            v-if="savedCyclesSearch || savedCyclesDateFrom || savedCyclesDateTo"
-                            type="button"
-                            class="ml-auto h-8 text-xs font-medium text-slate-500 underline-offset-2 hover:text-[#FF5A1F] hover:underline"
-                            @click="clearSavedCyclesFilters"
-                        >
-                            Limpiar filtros
-                        </button>
+                        </div>
+                        <div class="col-span-2 flex h-9 items-center justify-end gap-3">
+                            <button
+                                v-if="hasSavedCyclesFilters"
+                                type="button"
+                                class="h-9 rounded-lg px-2.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+                                @click="clearSavedCyclesFilters"
+                            >
+                                Limpiar filtros
+                            </button>
+                            <span class="text-xs text-slate-400 tabular-nums">{{ savedCyclesTotal }} de {{ savedCyclesGrandTotal }}</span>
+                        </div>
                     </div>
                 </div>
 
