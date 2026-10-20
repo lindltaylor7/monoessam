@@ -1623,7 +1623,7 @@ const loadMenuCycle = async (cycle: CycleOption) => {
                                 @click="generatePOForSelection"
                                 class="flex flex-1 items-center justify-center rounded-lg border-[#FF5A1F]/40 text-[#FF5A1F] hover:bg-orange-50 disabled:opacity-40 sm:flex-none"
                             >
-                                <span class="truncate">Quebrado (PO)</span>
+                                <span class="truncate">Orden de Compra</span>
                             </Button>
                             <DropdownMenu>
                                 <DropdownMenuTrigger as-child>
@@ -1754,7 +1754,7 @@ const loadMenuCycle = async (cycle: CycleOption) => {
                                                     variant="outline"
                                                     class="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50"
                                                 >
-                                                    Quebrado (PO)
+                                                    Orden de Compra
                                                 </Button>
                                             </div>
                                         </TableCell>

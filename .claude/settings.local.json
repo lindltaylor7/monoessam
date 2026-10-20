@@ -21,7 +21,10 @@
       "Bash(php *)",
       "Bash(git check-ignore *)",
       "Bash(git status *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "PowerShell(npm run *)",
+      "PowerShell(git *)",
+      "PowerShell(php artisan test --filter=MenuCycleListTest 2>&1 | Select-Object -Last 25)"
     ]
   },
   "skillOverrides": {}
