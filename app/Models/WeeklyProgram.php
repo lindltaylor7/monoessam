@@ -13,6 +13,12 @@ class WeeklyProgram extends Model
         return $this->belongsTo(Cafe::class);
     }
 
+    /** Ciudad desde la que se abastece el comedor de la programación (o la por defecto). */
+    public function supplyCityId(): ?int
+    {
+        return $this->cafe?->supplyCityId() ?: City::defaultSupplyCityId();
+    }
+
     public function structure()
     {
         return $this->belongsTo(Structure::class);

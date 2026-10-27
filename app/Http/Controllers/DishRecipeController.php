@@ -19,6 +19,7 @@ class DishRecipeController extends Controller
         $validated = $request->validate([
             'dish_id' => 'required|integer',
             'level_id' => 'required|integer',
+            'city_id' => 'nullable|integer',
         ]);
 
         $recipe = DishRecipe::where('dish_id', $validated['dish_id'])
@@ -47,7 +48,7 @@ class DishRecipeController extends Controller
             return $ingredient;
         });
 
-        $recipe->applyLiveTotals();
+        $recipe->applyLiveTotals($validated['city_id'] ?? null);
 
         return response()->json($recipe);
     }
@@ -86,7 +87,8 @@ class DishRecipeController extends Controller
                 'total_gross_weight' => $validated['total_gross_weight'] ?? 0,
                 'total_waste_weight' => $validated['total_waste_weight'] ?? 0,
                 'total_calories' => $validated['total_calories'] ?? 0,
-                'total_cost' => $validated['total_cost'] ?? 0,
+                // Sin precios: el costo depende de la ciudad que consulta (applyLiveTotals).
+                'total_cost' => 0,
                 'total_net_weight' => $validated['total_net_weight'] ?? 0,
             ]);
 
@@ -97,8 +99,8 @@ class DishRecipeController extends Controller
                     'solid_waste' => $ingredientData['solid_waste'] ?? 0,
                     'liquid_waste' => $ingredientData['liquid_waste'] ?? 0,
                     'calories' => $ingredientData['calories'] ?? 0,
-                    'cost' => $ingredientData['cost'] ?? 0,
-                    'unit_price' => $ingredientData['unit_price'] ?? 0,
+                    'cost' => 0,
+                    'unit_price' => 0,
                     'net_weight' => $ingredientData['final_product'] ?? 0,
                 ];
             }
@@ -106,10 +108,26 @@ class DishRecipeController extends Controller
 
             DB::commit();
 
+            // El costo que se devuelve es el de la ciudad de quien guarda (p. ej. el comedor del ciclo
+            // abierto), calculado con los proveedores, no el que mandó el navegador.
+            $recipe->load([
+                'ingredients.assignments',
+                'ingredients.dosification',
+                'ingredients.atwaterFactor',
+                'ingredients.nutritionalFactors',
+            ]);
+            foreach ($recipe->ingredients as $ingredient) {
+                $ingredient->gross_weight = $ingredient->pivot->gross_weight;
+                $ingredient->final_product = $ingredient->pivot->net_weight;
+            }
+            $recipe->applyLiveTotals($request->integer('city_id') ?: null);
+
             return response()->json([
                 'id' => $recipe->id,
                 'total_calories' => $recipe->total_calories,
                 'total_cost' => $recipe->total_cost,
+                'missing_prices' => $recipe->missing_prices,
+                'borrowed_prices' => $recipe->borrowed_prices,
             ]);
         } catch (\Exception $e) {
             DB::rollBack();

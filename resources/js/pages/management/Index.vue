@@ -16,6 +16,7 @@ interface Props {
     services: Service[];
     businesses: Business[];
     roles: any[];
+    cities: { id: number; name: string }[];
 }
 
 const props = defineProps<Props>();
@@ -58,13 +59,25 @@ const handleSelectUnit = (unitId: number) => {
         <div class="grid h-full w-full gap-4 p-4 lg:grid-cols-3">
             <MineSelector :mines="mines" @selectMine="handleSelectMine" :selectedMineId="selectedMineId" />
 
-            <UnitSelector v-if="selectedMine" :units="selectedMine.units" @selectUnit="handleSelectUnit" :selectedUnitId="selectedUnitId" />
+            <UnitSelector
+                v-if="selectedMine"
+                :units="selectedMine.units"
+                :cities="cities"
+                @selectUnit="handleSelectUnit"
+                :selectedUnitId="selectedUnitId"
+            />
             <div v-else class="flex items-center justify-center rounded-xl border p-4 text-center text-gray-500">
                 Selecciona una Mina para ver sus Unidades.
             </div>
 
             <div v-if="selectedUnit" class="flex flex-col gap-4">
-                <CafeTable :cafes="selectedUnit.cafes" :services="services" :roles="roles" />
+                <CafeTable
+                    :cafes="selectedUnit.cafes"
+                    :services="services"
+                    :roles="roles"
+                    :cities="cities"
+                    :unit-supply-city-id="selectedUnit.supply_city_id ?? null"
+                />
                 <MercantilTable :mercantiles="selectedUnit.mercantiles" :unit-id="selectedUnit.id" />
             </div>
             <div v-else class="flex items-center justify-center rounded-xl border p-4 text-center text-gray-500">

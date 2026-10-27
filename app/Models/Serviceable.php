@@ -28,4 +28,19 @@ class Serviceable extends Model
     {
         return $this->belongsTo(Service::class);
     }
+
+    /**
+     * Ciudad de abastecimiento del lugar al que pertenece el servicio: Comedor (o su Unidad) o
+     * Unidad. Un servicio colgado de una Mina no tiene ciudad propia y devuelve null.
+     */
+    public function supplyCityId(): ?int
+    {
+        $place = $this->serviceable;
+
+        return match (true) {
+            $place instanceof Cafe => $place->supplyCityId(),
+            $place instanceof Unit => $place->supply_city_id,
+            default => null,
+        };
+    }
 }

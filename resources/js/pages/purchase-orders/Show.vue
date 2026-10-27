@@ -16,6 +16,8 @@ interface Props {
     order: PurchaseOrder;
     cities: { id: number; name: string }[];
     cityId: number | null;
+    // Ciudad de abastecimiento del comedor con la que se generó la orden.
+    supplyCityId: number | null;
 }
 
 /** Lo que devuelve purchase_orders.search-ingredients (no es el Ingredient completo). */
@@ -324,7 +326,9 @@ const exportExcel = () => {
                                 v-model.number="cityId"
                                 class="h-9 rounded-xl border border-slate-200 bg-white px-3 text-sm font-normal text-slate-700 normal-case focus:ring-2 focus:ring-[#FF5A1F] focus:outline-none"
                             >
-                                <option v-for="city in cities" :key="city.id" :value="city.id">{{ city.name }}</option>
+                                <option v-for="city in cities" :key="city.id" :value="city.id">
+                                    {{ city.name }}{{ city.id === supplyCityId ? ' (abastecimiento)' : '' }}
+                                </option>
                             </select>
                         </label>
                     </CardHeader>

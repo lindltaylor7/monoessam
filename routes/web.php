@@ -305,6 +305,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::delete('assign/{id}', [ProviderController::class, 'deleteAssignment'])->name('assign.destroy');
         Route::post('import', [ProviderController::class, 'importAssignment'])->name('import');
         Route::post('import-ids', [ProviderController::class, 'importWithIds'])->name('import-ids');
+        Route::get('coverage', [ProviderController::class, 'coverage'])->name('coverage');
     });
 
     // ========================================================================
@@ -550,6 +551,8 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('/export/{serviceable_id}', [MenuCycleController::class, 'export'])->name('export');
         // Listado paginado/filtrado; debe ir antes de /{id}.
         Route::get('/list', [MenuCycleController::class, 'list'])->name('list');
+        // Costos actuales de los platos de la grilla en la ciudad de abastecimiento del servicio.
+        Route::post('/prices', [MenuCycleController::class, 'prices'])->name('prices');
         // El detalle (cycle_data) se pide bajo demanda; el listado del índice ya no lo trae.
         Route::get('/{id}', [MenuCycleController::class, 'show'])->name('show');
     });

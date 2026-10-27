@@ -76,6 +76,8 @@ export interface Unit {
     id: number;
     name: string;
     mine_id: number;
+    // Ciudad desde la que se abastece de insumos (define los precios de sus ciclos y compras).
+    supply_city_id?: number | null;
     cafes: Cafe[];
     mercantiles: Mercantil[];
 }
@@ -84,6 +86,8 @@ export interface Cafe {
     id: number;
     name: string;
     unit_id: number;
+    // Vacía = la de su Unidad.
+    supply_city_id?: number | null;
     latitude: number | null;
     longitude: number | null;
     address: string | null;

@@ -22,6 +22,8 @@ import {
     FolderOpen,
     LineChart,
     Loader2,
+    MapPin,
+    RefreshCw,
     Plus,
     Save,
     Search,
@@ -36,6 +38,8 @@ interface Props {
     structures?: any[];
     dishCategories?: any[];
     levels?: any[];
+    cities?: { id: number; name: string }[];
+    defaultCityId?: number | null;
 }
 
 const props = defineProps<Props>();
@@ -190,6 +194,42 @@ const serviceNames = computed(() => {
 });
 
 const getServiceName = (serviceableId: any) => serviceNames.value.get(String(serviceableId)) || `Servicio ID: ${serviceableId}`;
+
+// Ciudad de abastecimiento de cada servicio: la del comedor o, si no tiene, la de su unidad. Con
+// ella se costea el ciclo (el mismo quebrado cuesta distinto en Lima que en Huancayo).
+const supplyCityByServiceable = computed(() => {
+    const map = new Map<string, number | null>();
+    for (const mine of (props.mines || []) as any[]) {
+        for (const unit of mine.units || []) {
+            for (const cafe of unit.cafes || []) {
+                for (const service of cafe.services || []) {
+                    if (service.pivot?.id != null) {
+                        map.set(String(service.pivot.id), cafe.supply_city_id ?? unit.supply_city_id ?? null);
+                    }
+                }
+            }
+        }
+    }
+    return map;
+});
+
+const configuredCityId = computed(() =>
+    selectedServiceableId.value ? (supplyCityByServiceable.value.get(String(selectedServiceableId.value)) ?? null) : null,
+);
+// Sin ciudad configurada en el comedor/unidad se usa la por defecto (y se avisa en el encabezado).
+const cycleCityId = computed<number | null>(() => configuredCityId.value ?? props.defaultCityId ?? null);
+const cityName = (id: number | null | undefined) => props.cities?.find((c) => c.id === Number(id))?.name ?? '—';
+
+// Aviso de la celda cuando el costo del día no está completo en la ciudad del ciclo.
+const dayPriceWarning = (day: any): string | null => {
+    const missing = Number(day?.missing_prices || 0);
+    const borrowed = Number(day?.borrowed_prices || 0);
+    if (!missing && !borrowed) return null;
+    const parts = [];
+    if (missing) parts.push(`${missing} insumo(s) sin precio en ninguna ciudad`);
+    if (borrowed) parts.push(`${borrowed} insumo(s) sin proveedor activo en ${cityName(cycleCityId.value)} (se usó el precio de otra ciudad)`);
+    return parts.join(' · ') + '. Complételos en Proveedores.';
+};
 
 // Modal "Ajustes de Ciclos": listado paginado y filtrado en el servidor (hay miles de ciclos).
 const savedCycles = ref<any[]>([]);
@@ -363,18 +403,21 @@ const normalizeCycleRows = (rows: any[]) => (rows || []).map((row: any) => ({ ..
 
 // El índice solo trae los metadatos de cada ciclo (son miles y su cycle_data suma ~100 MB de JSON).
 // El detalle se pide al abrirlo y se cachea por id para no repetir la petición.
-const cycleDataCache = new Map<number, any[]>();
+// Los costos llegan ya expresados en la ciudad de abastecimiento del servicio abierto (así un ciclo
+// copiado de un comedor de otra ciudad se recostea), por eso la caché va por ciclo y ciudad.
+const cycleDataCache = new Map<string, any[]>();
 const loadingCycleId = ref<number | null>(null);
 
 const fetchCycleData = async (cycle: any): Promise<any[] | null> => {
-    const cached = cycleDataCache.get(cycle.id);
+    const cacheKey = `${cycle.id}-${cycleCityId.value ?? ''}`;
+    const cached = cycleDataCache.get(cacheKey);
     if (cached) return cached;
 
     loadingCycleId.value = cycle.id;
     try {
-        const { data } = await axios.get(`/cycles/${cycle.id}`);
+        const { data } = await axios.get(`/cycles/${cycle.id}`, { params: { city_id: cycleCityId.value || undefined } });
         const rows = Array.isArray(data?.cycle_data) ? data.cycle_data : [];
-        cycleDataCache.set(cycle.id, rows);
+        cycleDataCache.set(cacheKey, rows);
         return rows;
     } catch {
         Swal.fire('Error', 'No se pudo cargar el detalle del ciclo.', 'error');
@@ -567,6 +610,7 @@ const searchDish = async () => {
             params: {
                 category_id: searchCategory.value || null,
                 level_id: searchLevel.value || null,
+                city_id: cycleCityId.value || null,
             },
         });
         searchResults.value = response.data;
@@ -583,7 +627,11 @@ const assignDish = (dish: any, recipe: any, action: 'single' | 'all') => {
             dish_name: dish.name,
             level_id: recipe.level_id,
             calories: recipe.total_calories || '0',
+            // Costeado con la ciudad de abastecimiento del servicio (city_id en la búsqueda).
             price: recipe.total_cost || '0.00',
+            city_id: cycleCityId.value,
+            missing_prices: recipe.missing_prices || 0,
+            borrowed_prices: recipe.borrowed_prices || 0,
         };
 
         if (action === 'all') {
@@ -841,7 +889,7 @@ const openQuebradoModal = async (row: any, dayIndex: number) => {
 
     try {
         const response = await axios.get(route('dish-recipes.lookup'), {
-            params: { dish_id: day.dish_id, level_id: day.level_id },
+            params: { dish_id: day.dish_id, level_id: day.level_id, city_id: cycleCityId.value || undefined },
         });
         const recipe = response.data;
         quebradoRecipeId.value = recipe.id;
@@ -935,7 +983,9 @@ const saveQuebrado = async () => {
     isQuebradoSaving.value = true;
     try {
         const recipe = quebradoRecipe.value;
-        await axios.put(route('dish-recipes.update', quebradoRecipeId.value), {
+        const { data: saved } = await axios.put(route('dish-recipes.update', quebradoRecipeId.value), {
+            // El backend devuelve el costo en esta ciudad, con los proveedores activos.
+            city_id: cycleCityId.value,
             total_gross_weight: recipe.total_gross_weight,
             total_waste_weight: recipe.total_waste_weight,
             total_calories: recipe.total_calories,
@@ -958,8 +1008,11 @@ const saveQuebrado = async () => {
         if (quebradoRow.value && quebradoDayIndex.value !== null) {
             const day = quebradoRow.value.days[quebradoDayIndex.value];
             if (day) {
-                day.calories = recipe.total_calories;
-                day.price = recipe.total_cost;
+                day.calories = saved?.total_calories ?? recipe.total_calories;
+                day.price = saved?.total_cost ?? recipe.total_cost;
+                day.city_id = cycleCityId.value;
+                day.missing_prices = saved?.missing_prices ?? 0;
+                day.borrowed_prices = saved?.borrowed_prices ?? 0;
             }
         }
 
@@ -975,6 +1028,46 @@ const saveQuebrado = async () => {
         Swal.fire('Error', err?.response?.data?.message || 'No se pudo guardar el quebrado.', 'error');
     } finally {
         isQuebradoSaving.value = false;
+    }
+};
+
+// "Recalcular costos": vuelve a costear todos los platos de la grilla con los precios actuales
+// de Proveedores en la ciudad de abastecimiento del servicio (guardado o no el ciclo).
+const isRecalculating = ref(false);
+const recalculateCosts = async () => {
+    const days = menuStructureData.value.flatMap((row: any) => Object.values(row.days || {})).filter((d: any) => d?.dish_id && d?.level_id);
+    if (!days.length) {
+        Swal.fire('Atención', 'No hay platos asignados para recalcular.', 'info');
+        return;
+    }
+
+    isRecalculating.value = true;
+    try {
+        const { data } = await axios.post(route('cycles.prices'), {
+            city_id: cycleCityId.value,
+            items: days.map((d: any) => ({ dish_id: d.dish_id, level_id: d.level_id })),
+        });
+        const totals = data?.totals || {};
+        days.forEach((day: any) => {
+            const total = totals[`${day.dish_id}-${day.level_id}`];
+            if (!total) return;
+            day.price = total.price;
+            day.calories = total.calories;
+            day.city_id = data.city_id;
+            day.missing_prices = total.missing_prices;
+            day.borrowed_prices = total.borrowed_prices;
+        });
+        Swal.fire({
+            icon: 'success',
+            title: 'Costos recalculados',
+            text: `Precios de ${cityName(data.city_id)}. Guarde el ciclo para conservarlos.`,
+            timer: 2000,
+            showConfirmButton: false,
+        });
+    } catch {
+        Swal.fire('Error', 'No se pudieron recalcular los costos.', 'error');
+    } finally {
+        isRecalculating.value = false;
     }
 };
 
@@ -1189,6 +1282,34 @@ const resetToNew = () => {
                         </div>
                     </div>
 
+                    <div v-if="selectedServiceableId" class="flex items-center gap-2">
+                        <span
+                            class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold"
+                            :class="configuredCityId ? 'border-slate-200 bg-slate-50 text-slate-700' : 'border-amber-200 bg-amber-50 text-amber-800'"
+                            :title="
+                                configuredCityId
+                                    ? 'Los costos usan los proveedores activos de esta ciudad.'
+                                    : 'Configure la ciudad de abastecimiento de la Unidad o el Comedor en Lugares.'
+                            "
+                        >
+                            <MapPin class="h-3.5 w-3.5" />
+                            Abastecimiento: {{ cityName(cycleCityId) }}
+                            <template v-if="!configuredCityId"> (por defecto, sin ciudad configurada)</template>
+                        </span>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            class="h-8 border-slate-200 text-slate-600"
+                            :disabled="isRecalculating"
+                            title="Volver a costear todos los platos con los precios actuales de Proveedores"
+                            @click="recalculateCosts"
+                        >
+                            <Loader2 v-if="isRecalculating" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                            <RefreshCw v-else class="mr-1.5 h-3.5 w-3.5" />
+                            Recalcular costos
+                        </Button>
+                    </div>
+
                     <div class="flex items-center gap-4 text-xs font-medium text-slate-500">
                         <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-green-500"></span>Óptimo</span>
                         <span class="flex items-center gap-1.5"><span class="h-2.5 w-2.5 rounded-full bg-yellow-400"></span>Muy bajo</span>
@@ -1368,8 +1489,14 @@ const resetToNew = () => {
                                                     {{ row.days[dayIndex].dish_name }}
                                                 </span>
                                                 <div class="mt-2 flex items-center justify-between gap-1">
-                                                    <span class="text-[12px] font-bold tabular-nums text-slate-900">
+                                                    <span class="flex items-center gap-1 text-[12px] font-bold tabular-nums text-slate-900">
                                                         S/ {{ Number(row.days[dayIndex].price).toFixed(2) }}
+                                                        <AlertTriangle
+                                                            v-if="dayPriceWarning(row.days[dayIndex])"
+                                                            class="h-3.5 w-3.5 shrink-0"
+                                                            :class="row.days[dayIndex].missing_prices ? 'text-red-500' : 'text-amber-500'"
+                                                            :title="dayPriceWarning(row.days[dayIndex]) ?? undefined"
+                                                        />
                                                     </span>
                                                     <button
                                                         type="button"
@@ -1465,6 +1592,10 @@ const resetToNew = () => {
                                             <p class="mt-1 text-[11px] text-slate-500">
                                                 Costo: S/ {{ Number(recipe.total_cost || 0).toFixed(2) }} &bull; Calorías:
                                                 {{ Number(recipe.total_calories || 0).toFixed(2) }} kcal
+                                            </p>
+                                            <p v-if="dayPriceWarning(recipe)" class="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-700">
+                                                <AlertTriangle class="h-3 w-3 shrink-0" />
+                                                {{ dayPriceWarning(recipe) }}
                                             </p>
                                         </div>
                                         <div class="flex shrink-0 items-center gap-2">
@@ -2054,6 +2185,7 @@ const resetToNew = () => {
                                                 :totalCalories="quebradoRecipe.total_calories"
                                                 :totalCost="quebradoRecipe.total_cost"
                                                 :totalfinalProduct="quebradoRecipe.total_net_weight"
+                                                :cityId="cycleCityId"
                                                 @calcMassiveProperties="calcQuebradoMassiveProperties"
                                             />
                                         </div>

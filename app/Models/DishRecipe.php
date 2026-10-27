@@ -53,30 +53,43 @@ class DishRecipe extends Model
      * Completa costo y calorías de cada insumo y los totales de la receta con el mismo criterio
      * que food/Quebrados.vue, que los recalcula en el navegador:
      *
-     *  - Costo: si la línea no tiene precio guardado, se toma el del proveedor activo (cost_price
-     *    por Kg) y el costo es gramos / 1000 * precio.
+     *  - Costo: precio del proveedor activo de la ciudad que consulta (cost_price por Kg, ver
+     *    Ingredient_city_provider::activeFor) y el costo es gramos / 1000 * precio. El precio
+     *    que hubiera grabado en la línea de la receta NO se usa: un mismo quebrado se usa en
+     *    unidades abastecidas desde ciudades distintas, así que el precio depende de quién mira.
      *  - Calorías: kcal por 100 g del insumo (ver caloriesPer100g) aplicadas al producto final,
      *    porque la merma no aporta calorías.
      *
-     * Hace falta porque el recetario migrado tiene total_cost, total_calories, cost y calories
-     * en 0: el editor de platos los recalcula, pero cycles mostraba el 0 guardado.
+     * Deja en la receta price_city_id y los contadores missing_prices (insumos sin precio en
+     * ninguna ciudad) y borrowed_prices (con precio de otra ciudad), y en cada insumo
+     * price_city_id / price_borrowed / price_missing, para que Quebrados y Ciclos lo avisen.
      *
-     * Espera los ingredientes ya mapeados (gross_weight, final_product, cost, unit_price fuera
-     * del pivot) y con assignments, dosification, atwaterFactor y nutritionalFactors cargados.
+     * Espera los ingredientes ya mapeados (gross_weight, final_product fuera del pivot) y con
+     * assignments, dosification, atwaterFactor y nutritionalFactors cargados.
      */
-    public function applyLiveTotals(): void
+    public function applyLiveTotals(?int $cityId = null): void
     {
+        $cityId ??= City::defaultSupplyCityId();
+
         $totalCost = 0.0;
         $totalCalories = 0.0;
+        $missing = 0;
+        $borrowed = 0;
 
         foreach ($this->ingredients as $ingredient) {
-            if (!(float) $ingredient->unit_price) {
-                $active = $ingredient->assignments
-                    ?->first(fn ($a) => $a->is_active && (float) $a->cost_price > 0);
-                $price = $active ? (float) $active->cost_price : 0.0;
+            $active = Ingredient_city_provider::activeFor($ingredient->assignments, $cityId);
+            $price = $active ? (float) $active['assignment']->cost_price : 0.0;
 
-                $ingredient->unit_price = $price;
-                $ingredient->cost = ((float) $ingredient->gross_weight / 1000) * $price;
+            $ingredient->unit_price = $price;
+            $ingredient->cost = ((float) $ingredient->gross_weight / 1000) * $price;
+            $ingredient->price_city_id = $active ? $active['assignment']->city_id : null;
+            $ingredient->price_borrowed = $active ? $active['borrowed'] : false;
+            $ingredient->price_missing = !$active;
+
+            if (!$active) {
+                $missing++;
+            } elseif ($active['borrowed']) {
+                $borrowed++;
             }
 
             $ingredient->calories = ((float) $ingredient->final_product * self::caloriesPer100g($ingredient)) / 100;
@@ -87,6 +100,9 @@ class DishRecipe extends Model
 
         $this->total_cost = $totalCost;
         $this->total_calories = $totalCalories;
+        $this->price_city_id = $cityId;
+        $this->missing_prices = $missing;
+        $this->borrowed_prices = $borrowed;
     }
 
     /**

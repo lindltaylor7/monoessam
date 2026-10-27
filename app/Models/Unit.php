@@ -13,12 +13,18 @@ class Unit extends Model
     /** @use HasFactory<\Database\Factories\UnitFactory> */
     use \Illuminate\Database\Eloquent\Factories\HasFactory;
 
-    protected $fillable = ['name', 'mine_id', 'latitude', 'longitude', 'address'];
+    protected $fillable = ['name', 'mine_id', 'supply_city_id', 'latitude', 'longitude', 'address'];
 
 
     public function mine(): BelongsTo
     {
         return $this->belongsTo(Mine::class);
+    }
+
+    /** Ciudad desde la que se le envían los insumos (define qué precios usan sus ciclos y compras). */
+    public function supplyCity(): BelongsTo
+    {
+        return $this->belongsTo(City::class, 'supply_city_id');
     }
 
     public function cafes(): HasMany

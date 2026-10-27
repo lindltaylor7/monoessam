@@ -121,7 +121,7 @@ class DishController extends Controller
                     'total_gross_weight' => $levelRecipe['total_gross_weight'] ?? 0,
                     'total_waste_weight' => $levelRecipe['total_waste_weight'] ?? 0,
                     'total_calories' => $levelRecipe['total_calories'] ?? 0,
-                    'total_cost' => $levelRecipe['total_cost'] ?? 0,
+                    'total_cost' => 0,
                     'total_net_weight' => $levelRecipe['total_net_weight'] ?? 0,
                 ]);
 
@@ -132,8 +132,10 @@ class DishController extends Controller
                             'solid_waste'   => $ingredientData['solid_waste'] ?? 0,
                             'liquid_waste'  => $ingredientData['liquid_waste'] ?? 0,
                             'calories'      => $ingredientData['calories'] ?? 0,
-                            'cost'          => $ingredientData['cost'] ?? 0,
-                            'unit_price'    => $ingredientData['unit_price'] ?? 0,
+                            // El quebrado no guarda precios: dependen de la ciudad que consulta
+                            // (DishRecipe::applyLiveTotals).
+                            'cost'          => 0,
+                            'unit_price'    => 0,
                             'net_weight'    => $ingredientData['final_product'] ?? 0,
                         ]);
                     }
@@ -229,7 +231,7 @@ class DishController extends Controller
                         'total_gross_weight' => $levelRecipe['total_gross_weight'] ?? 0,
                         'total_waste_weight' => $levelRecipe['total_waste_weight'] ?? 0,
                         'total_calories' => $levelRecipe['total_calories'] ?? 0,
-                        'total_cost' => $levelRecipe['total_cost'] ?? 0,
+                        'total_cost' => 0,
                         'total_net_weight' => $levelRecipe['total_net_weight'] ?? 0,
                     ]);
 
@@ -241,8 +243,9 @@ class DishController extends Controller
                                 'solid_waste'   => $ingredientData['solid_waste'] ?? 0,
                                 'liquid_waste'  => $ingredientData['liquid_waste'] ?? 0,
                                 'calories'      => $ingredientData['calories'] ?? 0,
-                                'cost'          => $ingredientData['cost'] ?? 0,
-                                'unit_price'    => $ingredientData['unit_price'] ?? 0,
+                                // Sin precios: dependen de la ciudad (DishRecipe::applyLiveTotals).
+                                'cost'          => 0,
+                                'unit_price'    => 0,
                                 'net_weight'    => $ingredientData['final_product'] ?? 0,
                             ];
                         }
@@ -277,6 +280,9 @@ class DishController extends Controller
     {
         $categoryId = $request->query('category_id');
         $levelId = $request->query('level_id');
+        // Ciudad con cuyos precios se costean las recetas (la del comedor del ciclo, o la elegida en
+        // el selector de Quebrados). Sin ciudad, la por defecto.
+        $cityId = $request->integer('city_id') ?: null;
 
         $query = Dish::query();
 
@@ -397,7 +403,7 @@ class DishController extends Controller
         // Después de applyPreciseQuantities, que puede pasar el peso a gramos.
         foreach ($dishes as $dish) {
             foreach ($dish->recipes as $recipe) {
-                $recipe->applyLiveTotals();
+                $recipe->applyLiveTotals($cityId);
             }
         }
 

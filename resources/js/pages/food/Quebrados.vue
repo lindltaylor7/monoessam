@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { applyCityPrice, cityPriceFor, ingredientsWithoutCityPrice } from '@/lib/city-price';
 import { Dish, Ingredient } from '@/types';
 import { router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
@@ -25,6 +26,7 @@ import {
     Layers,
     ListFilter,
     Loader2,
+    MapPin,
     Plus,
     Search,
     Trash,
@@ -43,7 +45,24 @@ const props = defineProps<{
     ingredients: Ingredient[];
     dishCategories: any[];
     levels: any[];
+    cities: { id: number; name: string }[];
+    defaultCityId: number | null;
 }>();
+
+// Ciudad con cuyos proveedores se costea el quebrado en pantalla. Solo cambia lo que se ve: el
+// quebrado no guarda precios, porque el mismo se usa en unidades abastecidas desde ciudades
+// distintas; cada ciclo lo costea con la ciudad de su comedor.
+const PRICE_CITY_KEY = 'quebrados.priceCityId';
+const readStoredCity = (): number | null => {
+    try {
+        const stored = Number(localStorage.getItem(PRICE_CITY_KEY));
+        return props.cities?.some((c) => c.id === stored) ? stored : null;
+    } catch {
+        return null;
+    }
+};
+const priceCityId = ref<number | null>(readStoredCity() ?? props.defaultCityId ?? props.cities?.[0]?.id ?? null);
+const cityName = (id: number | null) => props.cities?.find((c) => c.id === id)?.name ?? '—';
 
 // Helper to format category names (preserving full name including prefixes like 'zBase(Master) | JUGO')
 const formatCategoryName = (name: string) => {
@@ -372,12 +391,9 @@ const calculateIngredientCalories = (ingredient: any) => {
 // Las calorías de la fila se derivan del valor por 100 g del ingrediente
 // (`originalValues.calories`) aplicado al producto final, porque las tablas de composición
 // expresan la energía por 100 g de parte comestible: la merma no aporta calorías.
-// Precio por defecto del insumo: el costo del proveedor marcado como activo en la asignación
-// ingrediente-ciudad-proveedor (se expresa por Kg, igual que `unit_price`).
-const activeProviderPrice = (ingredient: any) => {
-    const active = ingredient?.assignments?.find((a: any) => a.is_active && parseFloat(a.cost_price) > 0);
-    return active ? parseFloat(active.cost_price) : 0;
-};
+// Precio del insumo: el del proveedor activo de la ciudad elegida en el selector (por Kg, igual
+// que `unit_price`). Ver lib/city-price.
+const activeProviderPrice = (ingredient: any) => cityPriceFor(ingredient, priceCityId.value).price;
 
 const caloriesFor = (ingredient: any) => {
     const netWeight = parseFloat(ingredient?.final_product) || 0;
@@ -553,9 +569,9 @@ const loadRecipesIntoForm = (dish: Dish) => {
                         solid_waste: parseFloat(ing.solid_waste) || 0,
                         liquid_waste: parseFloat(ing.liquid_waste) || 0,
                         calories: parseFloat(ing.calories) || 0,
-                        cost: parseFloat(ing.cost) || 0,
                         final_product: parseFloat(ing.final_product) || 0,
-                        unit_price: parseFloat(ing.unit_price) || 0,
+                        // Los detalles de proveedor (assignments) vienen del catálogo si la fila no los trae.
+                        assignments: ing.assignments || (fullIng as any)?.assignments || [],
                         selected_unit: sourceQuantity !== null ? ing.source_unit || 'Kg' : 'g',
                         input_quantity: (sourceQuantity !== null ? sourceQuantity : grossWeight).toFixed(4),
                         originalValues: {
@@ -563,11 +579,8 @@ const loadRecipesIntoForm = (dish: Dish) => {
                             calories: calculateIngredientCalories(fullIng || ing),
                         },
                     };
-                    // Sin precio guardado, el costo base toma el del proveedor activo.
-                    if (!newIng.unit_price) {
-                        newIng.unit_price = activeProviderPrice(fullIng || ing);
-                        newIng.cost = (grossWeight / 1000) * newIng.unit_price;
-                    }
+                    // El precio siempre sale del proveedor activo de la ciudad elegida, nunca del quebrado.
+                    applyCityPrice(newIng, priceCityId.value);
                     newIng.calories = caloriesFor(newIng);
                     return newIng;
                 }),
@@ -662,6 +675,31 @@ const recalculateTotals = () => {
     sumRecipeTotals(form.recipes[activeLevelTab.value]);
 };
 
+// Cambiar de ciudad vuelve a costear todas las recetas abiertas con los proveedores de esa ciudad.
+watch(priceCityId, (cityId) => {
+    try {
+        if (cityId) localStorage.setItem(PRICE_CITY_KEY, String(cityId));
+    } catch {
+        // Sin almacenamiento local solo se pierde recordar la ciudad.
+    }
+    Object.values(form.recipes).forEach((recipe: any) => {
+        recipe.ingredients.forEach((ing: any) => applyCityPrice(ing, cityId));
+        sumRecipeTotals(recipe);
+    });
+});
+
+// Cobertura de la receta abierta en cada ciudad: qué insumos no tienen proveedor activo con precio.
+// Así quien arma el quebrado ve, sin cambiar el selector, si el plato ya sirve para un ciclo de
+// cualquier ciudad y qué falta cargar en Proveedores.
+const cityCoverage = computed(() => {
+    const recipe = activeLevelTab.value ? form.recipes[activeLevelTab.value] : null;
+    if (!recipe) return [];
+    return (props.cities || []).map((city) => {
+        const missing = ingredientsWithoutCityPrice(recipe.ingredients, city.id);
+        return { id: city.id, name: city.name, missing: missing.map((ing: any) => ing.name) };
+    });
+});
+
 let ingredientSearchTimer: ReturnType<typeof setTimeout> | null = null;
 watch(ingredientSearchQuery, (value) => {
     if (ingredientSearchTimer) clearTimeout(ingredientSearchTimer);
@@ -722,8 +760,8 @@ const selectIngredient = (ingredient: Ingredient) => {
         calories: 0,
         cost: 0,
         final_product: 0,
-        unit_price: activeProviderPrice(ingredient),
     };
+    applyCityPrice(newIng, priceCityId.value);
     recipe.ingredients.push(newIng);
     ingredientsFounded.value = [];
     ingredientSearchDone.value = false;
@@ -1260,10 +1298,46 @@ onUnmounted(() => {
                         <!-- Ingredients & Calculator Table -->
                         <div v-if="activeLevelTab && form.recipes[activeLevelTab]" class="space-y-2.5">
                             <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                <div class="flex items-center gap-2">
+                                <div class="flex flex-col gap-1.5">
                                     <h4 class="text-xs font-bold tracking-wider text-indigo-700 uppercase dark:text-indigo-400">
                                         Ingredientes — Receta {{ localLevels.find((l) => l.id === activeLevelTab)?.name }}
                                     </h4>
+                                    <!-- Ciudad de precios: solo cambia lo que se ve, el quebrado no guarda precios. -->
+                                    <div v-if="cities?.length" class="flex flex-wrap items-center gap-1.5">
+                                        <label
+                                            class="flex items-center gap-1 text-[10px] font-bold tracking-wider text-zinc-500 uppercase dark:text-zinc-400"
+                                            title="Ver costos con los proveedores activos de esta ciudad. No se guarda en el quebrado: cada ciclo usa la ciudad de abastecimiento de su comedor."
+                                        >
+                                            <MapPin class="h-3 w-3" />
+                                            Precios de
+                                            <select
+                                                v-model.number="priceCityId"
+                                                class="h-6 rounded-md border-zinc-200 bg-zinc-50 py-0 pr-6 pl-1.5 text-[11px] font-bold text-zinc-800 normal-case focus:ring-2 focus:ring-indigo-500/30 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
+                                            >
+                                                <option v-for="city in cities" :key="city.id" :value="city.id">{{ city.name }}</option>
+                                            </select>
+                                        </label>
+                                        <span
+                                            v-for="coverage in cityCoverage"
+                                            :key="coverage.id"
+                                            class="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold"
+                                            :class="
+                                                coverage.missing.length
+                                                    ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'
+                                                    : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+                                            "
+                                            :title="
+                                                coverage.missing.length
+                                                    ? `Sin proveedor activo en ${coverage.name}: ${coverage.missing.join(', ')}`
+                                                    : `Todos los insumos tienen proveedor activo en ${coverage.name}`
+                                            "
+                                        >
+                                            <Check v-if="!coverage.missing.length" class="h-3 w-3" />
+                                            <AlertCircle v-else class="h-3 w-3" />
+                                            {{ coverage.name }}
+                                            <template v-if="coverage.missing.length"> · {{ coverage.missing.length }} sin precio </template>
+                                        </span>
+                                    </div>
                                 </div>
 
                                 <!-- Ingredient Search Bar -->
@@ -1296,10 +1370,10 @@ onUnmounted(() => {
                                                 <span class="font-semibold text-zinc-900 dark:text-zinc-100">{{ ingredient.name }}</span>
                                             </div>
                                             <span
-                                                v-if="ingredient.unit_price"
+                                                v-if="activeProviderPrice(ingredient)"
                                                 class="font-mono text-[10px] font-bold text-amber-600 dark:text-amber-400"
                                             >
-                                                S/. {{ Number(ingredient.unit_price).toFixed(2) }}
+                                                S/. {{ activeProviderPrice(ingredient).toFixed(2) }}
                                             </span>
                                         </div>
                                         <div v-if="ingredientsFounded.length === 0" class="p-2.5 text-center text-xs text-zinc-400 italic">
@@ -1367,7 +1441,23 @@ onUnmounted(() => {
 
                                                 <!-- Precio Unitario -->
                                                 <TableCell class="py-1.5 text-center font-mono font-bold text-amber-600 dark:text-amber-400">
-                                                    S/. {{ Number(ingredient.unit_price || 0).toFixed(2) }}
+                                                    <span
+                                                        v-if="ingredient.price_missing"
+                                                        class="font-sans text-[10px] font-bold text-rose-600 dark:text-rose-400"
+                                                        title="Ninguna ciudad tiene un proveedor activo con precio para este insumo"
+                                                    >
+                                                        Sin precio
+                                                    </span>
+                                                    <template v-else>
+                                                        S/. {{ Number(ingredient.unit_price || 0).toFixed(2) }}
+                                                        <span
+                                                            v-if="ingredient.price_borrowed"
+                                                            class="mt-0.5 block font-sans text-[9px] font-bold text-amber-700 uppercase dark:text-amber-300"
+                                                            :title="`Sin proveedor activo en ${cityName(priceCityId)}: se usa el precio de ${cityName(ingredient.price_city_id)}`"
+                                                        >
+                                                            precio de {{ cityName(ingredient.price_city_id) }}
+                                                        </span>
+                                                    </template>
                                                 </TableCell>
 
                                                 <!-- Precio x Gr -->
@@ -1435,6 +1525,7 @@ onUnmounted(() => {
                                                             :totalCalories="form.recipes[activeLevelTab].total_calories"
                                                             :totalCost="form.recipes[activeLevelTab].total_cost"
                                                             :totalfinalProduct="form.recipes[activeLevelTab].total_net_weight"
+                                                            :cityId="priceCityId"
                                                             @calcMassiveProperties="calcMassiveProperties"
                                                         />
                                                         <Button

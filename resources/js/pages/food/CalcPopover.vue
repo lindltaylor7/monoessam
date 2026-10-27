@@ -19,6 +19,8 @@ const props = defineProps<{
     totalCalories: number;
     totalCost: number;
     totalfinalProduct: number;
+    // Ciudad de precios de la pantalla: su proveedor activo es el que se preselecciona.
+    cityId?: number | null;
 }>();
 
 const emits = defineEmits(['calcMassiveProperties']);
@@ -27,7 +29,9 @@ const ingredientSelected = ref(props.ingredient);
 // Arranca con el precio que ya tiene la fila (por defecto el del proveedor activo) y preselecciona
 // la asignación que lo origina, para que recalcular aquí no deje el costo base en 0.
 const initialPrice = parseFloat(props.ingredient?.unit_price) || 0;
+const sameCity = (a: any) => !props.cityId || Number(a.city_id) === Number(props.cityId);
 const initialAssignment =
+    props.ingredient?.assignments?.find((a: any) => a.is_active && sameCity(a) && parseFloat(a.cost_price) === initialPrice) ??
     props.ingredient?.assignments?.find((a: any) => a.is_active && parseFloat(a.cost_price) === initialPrice) ??
     props.ingredient?.assignments?.find((a: any) => parseFloat(a.cost_price) === initialPrice);
 const providerSelected = ref<string | number>(initialPrice && initialAssignment ? initialAssignment.id : 0);
@@ -217,6 +221,11 @@ const loadSubstitutes = async (isOpen: boolean) => {
                             </SelectGroup>
                         </SelectContent>
                     </Select>
+
+                    <p class="text-[10px] leading-snug text-zinc-400">
+                        Elegir otro proveedor aquí solo simula el costo. El quebrado no guarda precios: se costea con el proveedor activo
+                        de cada ciudad en Proveedores.
+                    </p>
 
                     <div class="grid grid-cols-2 gap-4">
                         <div class="space-y-1.5">

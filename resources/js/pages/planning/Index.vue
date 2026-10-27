@@ -506,6 +506,9 @@ watch(
 );
 
 const programsPage = ref<any[]>([]);
+// Ciudad de abastecimiento del comedor de cada programación vista (la selección puede abarcar
+// varias páginas), para preseleccionar la ciudad de precios de los reportes.
+const programSupplyCity = new Map<number, number | null>();
 const programsMeta = ref({ current_page: 1, last_page: 1, total: 0, from: 0 as number | null, to: 0 as number | null });
 const programsLoading = ref(false);
 const programsLoaded = ref(false);
@@ -529,6 +532,7 @@ const loadPrograms = async (page = 1) => {
         // Una respuesta vieja (filtros cambiados mientras cargaba) no pisa la más reciente.
         if (requestId !== programsRequest) return;
         programsPage.value = data.data;
+        data.data.forEach((p: any) => programSupplyCity.set(p.id, p.supply_city_id ?? null));
         programsMeta.value = {
             current_page: data.current_page,
             last_page: data.last_page,
@@ -647,9 +651,24 @@ const generateWeeklyMenuExcel = () => {
     openReport('planning.menu-excel', { program_ids: ids });
 };
 
-// Prices only exist per (insumo, ciudad, proveedor) — there's no relation from
-// Mina/Unidad/Comedor to Ciudad in the system — so the city used to price this order is also
-// chosen manually here, same reasoning as the recipe nivel above.
+// Ciudad de precios sugerida: la de abastecimiento del comedor cuando todas las programaciones
+// marcadas comparten una; si se mezclan ciudades (o no hay ninguna configurada), la primera.
+const suggestedCityId = (ids: number[]): number | null => {
+    const cities = new Set(ids.map((id) => programSupplyCity.get(id) ?? null));
+    return cities.size === 1 ? ([...cities][0] ?? null) : null;
+};
+const cityOptions = (ids: number[]) => {
+    const suggested = suggestedCityId(ids);
+    return (props.cities ?? [])
+        .map(
+            (c: any) =>
+                `<option value="${c.id}"${c.id === suggested ? ' selected' : ''}>${c.name}${c.id === suggested ? ' (abastecimiento del comedor)' : ''}</option>`,
+        )
+        .join('');
+};
+
+// Prices only exist per (insumo, ciudad, proveedor). The city defaults to the comedor's supply
+// city (Unidad/Comedor) and can still be changed here to compare.
 const generateWeeklyPurchaseOrderExcel = async () => {
     const ids = requireSelection();
     if (!ids) return;
@@ -668,7 +687,7 @@ const generateWeeklyPurchaseOrderExcel = async () => {
             '</select>' +
             '<label class="mb-1 block text-left text-xs font-semibold text-gray-500">Ciudad (precios)</label>' +
             '<select id="swal-city" class="swal2-select" style="display:block;width:100%;">' +
-            props.cities.map((c: any) => `<option value="${c.id}">${c.name}</option>`).join('') +
+            cityOptions(ids) +
             '</select>',
         focusConfirm: false,
         showCancelButton: true,
@@ -706,7 +725,7 @@ const generatePurchaseReport = async () => {
             '</select>' +
             '<label class="mb-1 block text-left text-xs font-semibold text-gray-500">Ciudad (precios)</label>' +
             '<select id="swal-report-city" class="swal2-select" style="display:block;width:100%;">' +
-            props.cities.map((c: any) => `<option value="${c.id}">${c.name}</option>`).join('') +
+            cityOptions(ids) +
             '</select>',
         focusConfirm: false,
         showCancelButton: true,

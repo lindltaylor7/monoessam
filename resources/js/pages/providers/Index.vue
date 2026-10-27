@@ -12,7 +12,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
-import { Building2, ChevronLeft, ChevronRight, Filter, Loader2, MapPin, PackagePlus, Pencil, Plus, Search, Trash2, Upload } from 'lucide-vue-next';
+import {
+    AlertTriangle,
+    Building2,
+    ChevronLeft,
+    ChevronRight,
+    Filter,
+    Loader2,
+    MapPin,
+    PackagePlus,
+    Pencil,
+    Plus,
+    Search,
+    Trash2,
+    Upload,
+} from 'lucide-vue-next';
 import { computed, inject, ref, watch } from 'vue';
 
 const swal: any = inject('$swal');
@@ -300,6 +314,47 @@ const toggleActive = (item: any, isActive: boolean) => {
     );
 };
 
+// Cobertura por ciudad: insumos usados en quebrados sin proveedor activo con precio en la ciudad.
+// Son los que en Quebrados y Ciclos salen "sin precio" o con precio prestado de otra ciudad.
+const isCoverageModalOpen = ref(false);
+const coverageCityId = ref<string>('');
+const coverageItems = ref<any[]>([]);
+const coverageLoading = ref(false);
+const coverageSearch = ref('');
+
+const loadCoverage = async () => {
+    if (!coverageCityId.value) return;
+    coverageLoading.value = true;
+    try {
+        const { data } = await axios.get(route('providers.coverage'), { params: { city_id: coverageCityId.value } });
+        coverageItems.value = data;
+    } catch {
+        swal.fire('Error', 'No se pudo consultar la cobertura de la ciudad.', 'error');
+    } finally {
+        coverageLoading.value = false;
+    }
+};
+
+const openCoverageModal = () => {
+    if (!coverageCityId.value && props.cities.length) coverageCityId.value = String(props.cities[0].id);
+    isCoverageModalOpen.value = true;
+    loadCoverage();
+};
+
+watch(coverageCityId, () => loadCoverage());
+
+const filteredCoverage = computed(() => {
+    const term = coverageSearch.value.trim().toLowerCase();
+    return term ? coverageItems.value.filter((i) => i.name.toLowerCase().includes(term)) : coverageItems.value;
+});
+
+// Desde la cobertura, ver las asignaciones del insumo en la ciudad para activar una.
+const showCoverageIngredient = (item: any) => {
+    globalSearch.value = item.name;
+    selectedCityId.value = coverageCityId.value;
+    isCoverageModalOpen.value = false;
+};
+
 const fileInput = ref<HTMLInputElement | null>(null);
 const triggerImport = () => {
     isImportModalOpen.value = true;
@@ -321,7 +376,12 @@ const onFileChange = (e: any) => {
             onSuccess: () => {
                 isImportModalOpen.value = false;
                 importForm.reset();
-                swal.fire('¡Éxito!', 'Los datos se han importado correctamente.', 'success');
+                // La importación no activa proveedores: el activo lo elige el usuario.
+                swal.fire(
+                    '¡Éxito!',
+                    'Los datos se han importado correctamente. Recuerde activar el proveedor de cada insumo en esta ciudad: solo el activo se usa para costear quebrados y ciclos.',
+                    'success',
+                );
             },
             onError: (err) => {
                 console.error(err);
@@ -381,6 +441,14 @@ const onFileIdsChange = (e: any) => {
                     >
                         <Upload class="h-4 w-4" />
                         Importar Excel (IDs)
+                    </Button>
+                    <Button
+                        @click="openCoverageModal"
+                        variant="outline"
+                        class="flex gap-2 border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                    >
+                        <AlertTriangle class="h-4 w-4" />
+                        Cobertura por ciudad
                     </Button>
                     <Button @click="openCreateAssignmentModal()">
                         <Plus class="mr-2 h-4 w-4" />
@@ -739,6 +807,63 @@ const onFileIdsChange = (e: any) => {
         </Dialog>
 
         <!-- Import Modal -->
+        <Dialog :open="isCoverageModalOpen" @update:open="isCoverageModalOpen = $event">
+            <DialogContent class="sm:max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle>Cobertura de precios por ciudad</DialogTitle>
+                </DialogHeader>
+                <p class="text-sm text-gray-500">
+                    Insumos usados en algún quebrado que no tienen proveedor activo con precio en la ciudad. En los ciclos de esa ciudad
+                    aparecen sin precio o con el precio de otra ciudad.
+                </p>
+                <div class="flex flex-col gap-3 sm:flex-row">
+                    <Select v-model="coverageCityId">
+                        <SelectTrigger class="sm:w-56">
+                            <SelectValue placeholder="Ciudad" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem v-for="city in cities" :key="city.id" :value="String(city.id)">{{ city.name }}</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <Input v-model="coverageSearch" placeholder="Buscar insumo..." class="flex-1" />
+                </div>
+                <div class="max-h-[50vh] overflow-y-auto rounded-xl border border-gray-200">
+                    <div v-if="coverageLoading" class="flex items-center justify-center gap-2 p-6 text-sm text-gray-500">
+                        <Loader2 class="h-4 w-4 animate-spin" /> Consultando...
+                    </div>
+                    <div v-else-if="!filteredCoverage.length" class="p-6 text-center text-sm text-emerald-700">
+                        Todos los insumos de los quebrados tienen proveedor activo en esta ciudad.
+                    </div>
+                    <Table v-else>
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead>Insumo</TableHead>
+                                <TableHead>Situación</TableHead>
+                                <TableHead class="text-right"></TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            <TableRow v-for="item in filteredCoverage" :key="item.id">
+                                <TableCell class="font-medium">{{ item.name }}</TableCell>
+                                <TableCell class="text-xs text-gray-600">
+                                    <span v-if="item.has_providers_in_city" class="font-semibold text-amber-700">Tiene proveedores, ninguno activo</span>
+                                    <span v-else>Sin proveedores en la ciudad</span>
+                                    <span v-if="item.priced_in.length" class="block text-gray-400">Con precio en: {{ item.priced_in.join(', ') }}</span>
+                                    <span v-else class="block font-semibold text-rose-600">Sin precio en ninguna ciudad</span>
+                                </TableCell>
+                                <TableCell class="text-right">
+                                    <Button v-if="item.has_providers_in_city" size="sm" variant="outline" @click="showCoverageIngredient(item)">
+                                        Ver proveedores
+                                    </Button>
+                                </TableCell>
+                            </TableRow>
+                        </TableBody>
+                    </Table>
+                </div>
+                <p class="text-xs text-gray-400">{{ coverageItems.length }} insumo(s) sin cobertura.</p>
+            </DialogContent>
+        </Dialog>
+
         <Dialog :open="isImportModalOpen" @update:open="isImportModalOpen = $event">
             <DialogContent class="sm:max-w-[425px]">
                 <DialogHeader>

@@ -26,15 +26,17 @@ class QuebradosService
      *
      * @param  WeeklyProgram|Collection<int, WeeklyProgram>  $programs
      */
-    public function generatePurchaseOrder(WeeklyProgram|Collection $programs, Level $level): PurchaseOrder
+    public function generatePurchaseOrder(WeeklyProgram|Collection $programs, Level $level, ?int $cityId = null): PurchaseOrder
     {
         $programs = new EloquentCollection($programs instanceof WeeklyProgram ? [$programs] : $programs->values()->all());
-        $programs->loadMissing('portions');
+        $programs->loadMissing(['portions', 'cafe.unit']);
 
-        return DB::transaction(function () use ($programs, $level) {
+        return DB::transaction(function () use ($programs, $level, $cityId) {
             $order = PurchaseOrder::create([
                 // La primera programación queda como referencia; la lista completa va al pivote.
                 'weekly_program_id' => $programs->first()->id,
+                // Ciudad de abastecimiento: define proveedor y precio del detalle de la orden.
+                'city_id'           => $cityId ?? $programs->first()->supplyCityId(),
                 'status'            => 'pendiente',
             ]);
             $order->programs()->attach($programs->pluck('id'));
@@ -94,5 +96,25 @@ class QuebradosService
 
             return $order;
         });
+    }
+
+    /**
+     * Igual que generatePurchaseOrder, pero separando las programaciones por la ciudad desde la que
+     * se abastece su comedor: cada ciudad compra a sus propios proveedores, así que un quebrado
+     * que junta comedores de Lima y de Huancayo se convierte en una orden por ciudad.
+     *
+     * @param  Collection<int, WeeklyProgram>  $programs
+     * @return EloquentCollection<int, PurchaseOrder>
+     */
+    public function generatePurchaseOrdersByCity(Collection $programs, Level $level): EloquentCollection
+    {
+        $programs = new EloquentCollection($programs->values()->all());
+        $programs->loadMissing('cafe.unit');
+
+        return new EloquentCollection($programs
+            ->groupBy(fn (WeeklyProgram $program) => $program->supplyCityId() ?? 0)
+            ->map(fn ($group, $cityId) => $this->generatePurchaseOrder($group, $level, $cityId ?: null))
+            ->values()
+            ->all());
     }
 }

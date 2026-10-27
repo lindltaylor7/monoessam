@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Collection;
 
 class Ingredient_city_provider extends Model
 {
@@ -44,5 +45,29 @@ class Ingredient_city_provider extends Model
     public function measurement_unit(): BelongsTo
     {
         return $this->belongsTo(Measurement_unit::class);
+    }
+
+    /**
+     * Regla única de "precio vigente" de un insumo para una ciudad: el proveedor activo con precio
+     * de esa ciudad. Si la ciudad no tiene ninguno, se toma el activo de otra ciudad y se marca
+     * como prestado, para que el costo no quede en 0 y la pantalla pueda avisarlo.
+     *
+     * Recibe las asignaciones ya cargadas del insumo (Ingredient::assignments).
+     *
+     * @return array{assignment: self, borrowed: bool}|null  null = sin precio en ninguna ciudad.
+     */
+    public static function activeFor(?Collection $assignments, ?int $cityId): ?array
+    {
+        $priced = ($assignments ?? collect())
+            ->filter(fn ($a) => $a->is_active && (float) $a->cost_price > 0);
+
+        $own = $cityId ? $priced->firstWhere('city_id', $cityId) : null;
+        if ($own) {
+            return ['assignment' => $own, 'borrowed' => false];
+        }
+
+        $other = $priced->sortBy('city_id')->first();
+
+        return $other ? ['assignment' => $other, 'borrowed' => (bool) $cityId] : null;
     }
 }

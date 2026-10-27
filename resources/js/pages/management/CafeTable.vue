@@ -7,6 +7,7 @@ import { ShieldCheck } from 'lucide-vue-next';
 import { ref, watch } from 'vue';
 import CafeRolesModal from './CafeRolesModal.vue';
 import CoordEditor from './CoordEditor.vue';
+import SupplyCityEditor from './SupplyCityEditor.vue';
 
 interface CafeItem {
     id: number;
@@ -14,6 +15,7 @@ interface CafeItem {
     latitude: number | null;
     longitude: number | null;
     address: string | null;
+    supply_city_id?: number | null;
     unit: {
         name: string;
         mine: { name: string };
@@ -25,6 +27,8 @@ const props = defineProps<{
     cafes: CafeItem[];
     services: Service[];
     roles: any[];
+    cities: { id: number; name: string }[];
+    unitSupplyCityId: number | null;
 }>();
 
 const localCafes = ref<CafeItem[]>(props.cafes.map(c => ({ ...c })));
@@ -72,6 +76,13 @@ const openRolesModal = (cafe: any) => {
                                     :address="cafe.address"
                                     :patch-url="`/cafes/${cafe.id}`"
                                     @updated="(lat, lng, addr) => onCoordUpdated(cafe.id, lat, lng, addr)"
+                                />
+                                <SupplyCityEditor
+                                    :cities="cities"
+                                    :city-id="cafe.supply_city_id ?? null"
+                                    :inherited-city-id="unitSupplyCityId"
+                                    :patch-url="`/cafes/${cafe.id}`"
+                                    @updated="(cityId) => (cafe.supply_city_id = cityId)"
                                 />
                             </TableCell>
                             <TableCell class="flex flex-row justify-end gap-2 text-right">

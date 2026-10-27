@@ -93,6 +93,8 @@ class PlanningController extends Controller
 
         $programs->getCollection()->each(function ($program) use ($fallbackService) {
             $program->setAttribute('service', $program->meal_type ?: $fallbackService->get($program->id));
+            // Para preseleccionar la ciudad de precios de los reportes (Orden de Pedido / Compras).
+            $program->setAttribute('supply_city_id', $program->cafe?->supplyCityId());
         });
 
         return response()->json($programs);
@@ -213,7 +215,17 @@ class PlanningController extends Controller
 
     private function purchaseOrderResponse($programs, Level $level)
     {
-        $order = $this->quebradosService->generatePurchaseOrder($programs, $level);
+        $orders = $this->quebradosService->generatePurchaseOrdersByCity($programs, $level);
+
+        if ($orders->count() > 1) {
+            $orders->load('city');
+            $summary = $orders->map(fn ($o) => "#{$o->id} " . ($o->city?->name ?? 'sin ciudad'))->implode(', ');
+
+            return redirect()->route('purchase_orders.index')
+                ->with('success', "Las programaciones se abastecen desde ciudades distintas: se generó una orden por ciudad ({$summary}).");
+        }
+
+        $order = $orders->first();
 
         if ($order->items()->count() === 0) {
             $which = $programs->count() > 1 ? 'estas programaciones' : 'esta programación';
@@ -660,9 +672,9 @@ class PlanningController extends Controller
      * whole week (grouped by ingredient_category), priced and summed to a grand total.
      *
      * Same per-level caveat as the other two reports (level chosen manually). Price additionally
-     * needs a city, because there's no relation from Mina/Unidad/Comedor to City in this schema —
-     * ingredient prices only exist per (ingredient, city, provider) — so the city is also chosen
-     * manually here. When an ingredient has no registered price for the chosen city, its row is
+     * needs a city — ingredient prices only exist per (ingredient, city, provider). The screen
+     * preselects the supply city of the selected programs' comedor (Unidad/Comedor
+     * supply_city_id), but it can still be changed to compare. When an ingredient has no registered price for the chosen city, its row is
      * flagged instead of silently counted as zero, and the grand total excludes it.
      */
     public function purchaseOrderExcel(Request $request)
@@ -769,8 +781,8 @@ class PlanningController extends Controller
      * (cheapest first) instead of only the minimum. Mirrors the multi-proveedor Excel sheet the
      * mines use today, computed live instead of by hand.
      *
-     * Same city caveat as purchaseOrderExcel: there's no Mina/Unidad/Comedor -> City relation, so
-     * the city used to price is chosen manually by the user generating the report.
+     * Same city handling as purchaseOrderExcel: preselected from the comedor's supply city,
+     * changeable by the user generating the report.
      */
     public function purchaseReport(Request $request)
     {

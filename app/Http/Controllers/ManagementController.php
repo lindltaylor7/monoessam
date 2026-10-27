@@ -23,7 +23,8 @@ class ManagementController extends Controller
             'cafes' => Cafe::with(['unit', 'unit.mine', 'unit.services', 'services', 'roles'])->get(),
             'services' => Service::all(),
             'businesses' => Business::all(),
-            'roles' => \Spatie\Permission\Models\Role::all()
+            'roles' => \Spatie\Permission\Models\Role::all(),
+            'cities' => \App\Models\City::orderBy('name')->get(['id', 'name']),
         ]);
     }
 

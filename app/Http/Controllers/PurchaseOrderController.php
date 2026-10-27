@@ -38,9 +38,10 @@ class PurchaseOrderController extends Controller
     }
 
     /**
-     * El costo estimado se calcula con el proveedor marcado como activo en Proveedores. Ese
-     * activo es por (insumo, ciudad) y no hay relación Mina/Unidad/Comedor -> Ciudad, así que la
-     * ciudad se elige en la pantalla; por defecto, la que tiene más precios activos cargados.
+     * El costo estimado se calcula con el proveedor marcado como activo en Proveedores, que es
+     * por (insumo, ciudad). La ciudad es la de abastecimiento con la que se generó la orden (la
+     * del comedor); se puede cambiar en la pantalla para comparar, y las órdenes anteriores a
+     * la ciudad de abastecimiento usan la del comedor de su primera programación.
      */
     public function show(Request $request, $id)
     {
@@ -50,11 +51,8 @@ class PurchaseOrderController extends Controller
             'items' => fn ($q) => $q->with('ingredient')->orderBy('id'),
         ])->findOrFail($id);
 
-        $cityId = $request->integer('city_id') ?: Ingredient_city_provider::where('is_active', true)
-            ->selectRaw('city_id, count(*) as total')
-            ->groupBy('city_id')
-            ->orderByDesc('total')
-            ->value('city_id');
+        $supplyCityId = $order->city_id ?: $order->program?->supplyCityId() ?: City::defaultSupplyCityId();
+        $cityId = $request->integer('city_id') ?: $supplyCityId;
 
         $activePrices = $cityId
             ? Ingredient_city_provider::with('provider:id,name')
@@ -78,6 +76,7 @@ class PurchaseOrderController extends Controller
             'order' => $order,
             'cities' => City::orderBy('name')->get(['id', 'name']),
             'cityId' => $cityId,
+            'supplyCityId' => $supplyCityId,
         ]);
     }
 

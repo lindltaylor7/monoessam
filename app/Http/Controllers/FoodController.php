@@ -51,6 +51,9 @@ class FoodController extends Controller
             'ingredient_categories' => Ingredient_category::all(),
             'dish_categories' => Dish_category::all(),
             'levels' => \App\Models\Level::all(),
+            // Selector de ciudad de precios de Quebrados.
+            'cities' => \App\Models\City::withPrices(),
+            'defaultCityId' => \App\Models\City::defaultSupplyCityId(),
             'ingredients' => Ingredient::with(['assignments.provider', 'assignments.city', 'nutritionalFactors', 'dosification', 'atwaterFactor'])
                 ->orderBy('name')
                 ->take(300)
