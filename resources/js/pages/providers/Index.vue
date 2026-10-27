@@ -512,7 +512,7 @@ const onFileIdsChange = (e: any) => {
                                 </TableCell>
                                 <TableCell class="text-center">
                                     <Badge variant="secondary" class="bg-gray-100 text-gray-600">
-                                        {{ item.measurement_unit ? item.measurement_unit.name : item.ingredient.measurement_unit || '-' }}
+                                        {{ item.measurement_unit ? item.measurement_unit.name : item.ingredient.unit_medida || '-' }}
                                     </Badge>
                                 </TableCell>
                                 <TableCell class="text-right">
