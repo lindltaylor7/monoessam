@@ -5,7 +5,6 @@ use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
-use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -24,7 +23,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             HandleAppearance::class,
             HandleInertiaRequests::class,
-            AddLinkHeadersForPreloadedAssets::class,
+            // AddLinkHeadersForPreloadedAssets quedaba fuera a proposito: generaba una
+            // cabecera `Link:` con los ~130 modulepreload de la pagina (>10 KB en staff,
+            // sales, headcount y management). El proxy de Hostinger (hcdn) corta la
+            // respuesta con un 500 propio cuando una cabecera supera su buffer, y solo
+            // ocurria en cargas completas (F5), no en la navegacion Inertia por XHR.
+            // Las etiquetas <link rel="modulepreload"> siguen en el <head> via @vite.
             \App\Http\Middleware\PreventInertiaCaching::class,
         ]);
     })
