@@ -161,10 +161,26 @@ class IngredientController extends Controller
             return response()->json([]);
         }
 
+        // Con ciudad de abastecimiento solo sirven los proveedores activos de esa ciudad: son los
+        // únicos con los que se costea la receta (Ingredient_city_provider::activeFor).
+        $usable = function ($q) use ($cityId) {
+            $q->where('cost_price', '>', 0);
+            if ($cityId) {
+                $q->where('city_id', $cityId)->where('is_active', true);
+            }
+        };
+
         $substitutes = Ingredient::where('name', 'like', '%' . $baseWord . '%')
             ->where('id', '!=', $ingredient->id)
-            ->with(['assignments.provider', 'assignments.city'])
-            ->whereHas('assignments', fn ($q) => $q->where('cost_price', '>', 0))
+            ->whereHas('assignments', $usable)
+            ->with([
+                'assignments' => $usable,
+                'assignments.provider',
+                'assignments.city',
+                'nutritionalFactors',
+                'dosification',
+                'atwaterFactor',
+            ])
             ->take(40)
             ->get();
 
@@ -172,19 +188,23 @@ class IngredientController extends Controller
         $assignments = collect();
         foreach ($substitutes as $substitute) {
             similar_text($target, mb_strtoupper($substitute->name), $similarity);
+            // Lo necesario para reemplazar el insumo en la receta (merma y calorías del sustituto).
+            $data = $substitute->only(['id', 'name', 'waste', 'energy']) + [
+                'nutritional_factors' => $substitute->nutritionalFactors,
+                'dosification' => $substitute->dosification,
+                'atwater_factor' => $substitute->atwaterFactor,
+                'assignments' => $substitute->assignments->toArray(),
+            ];
             foreach ($substitute->assignments as $assignment) {
-                if ((float) $assignment->cost_price <= 0) {
-                    continue;
-                }
                 $assignment->ingredient_name = $substitute->name;
                 $assignment->similarity = round($similarity, 1);
+                $assignment->substitute = $data;
                 $assignments->push($assignment);
             }
         }
 
-        // Primero los de la ciudad de abastecimiento y activos; luego por parecido del nombre.
+        // Primero los activos; luego por parecido del nombre.
         $sorted = $assignments->sortBy([
-            fn ($a, $b) => (int) ($cityId && $b->city_id == $cityId) <=> (int) ($cityId && $a->city_id == $cityId),
             fn ($a, $b) => (int) $b->is_active <=> (int) $a->is_active,
             fn ($a, $b) => $b->similarity <=> $a->similarity,
         ])->values();

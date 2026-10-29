@@ -1,0 +1,1 @@
+import{g as r}from"./useForwardExpose-CE8qMM70.js";import{l as i,c as l}from"./app-TFo8IV-l.js";function c(){const e=i(),m=l(()=>{var t,n;return["#text","#comment"].includes((t=e.value)==null?void 0:t.$el.nodeName)?(n=e.value)==null?void 0:n.$el.nextElementSibling:r(e)});return{primitiveElement:e,currentElement:m}}export{c as u};

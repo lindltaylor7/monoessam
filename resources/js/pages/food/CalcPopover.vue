@@ -21,9 +21,12 @@ const props = defineProps<{
     totalfinalProduct: number;
     // Ciudad de precios de la pantalla: su proveedor activo es el que se preselecciona.
     cityId?: number | null;
+    // Si es true, elegir un sustituto reemplaza el insumo en la receta (evento `substitute`)
+    // en lugar de solo simular su precio.
+    allowReplace?: boolean;
 }>();
 
-const emits = defineEmits(['calcMassiveProperties']);
+const emits = defineEmits(['calcMassiveProperties', 'substitute']);
 
 const ingredientSelected = ref(props.ingredient);
 // Arranca con el precio que ya tiene la fila (por defecto el del proveedor activo) y preselecciona
@@ -87,6 +90,13 @@ watch(providerSelected, (newId) => {
         let assignment = ingredientSelected.value.assignments?.find((a: any) => a.id === Number(newId));
         if (!assignment) {
             assignment = substitutes.value.find((a: any) => a.id === Number(newId));
+            if (assignment && props.allowReplace) {
+                // El padre cambia el insumo de la fila en el mismo objeto (id, nombre, merma, kcal),
+                // así que el recálculo de abajo ya usa los datos del sustituto.
+                emits('substitute', ingredientSelected.value.id, assignment.substitute);
+                // Sus proveedores ya son los propios del insumo: no repetirlos como sugerencias.
+                substitutes.value = substitutes.value.filter((a: any) => a.ingredient_id !== assignment.ingredient_id);
+            }
         }
         if (assignment) {
             priceSelected.value = parseFloat(assignment.cost_price) || 0;
@@ -225,7 +235,11 @@ const loadSubstitutes = async (isOpen: boolean) => {
                         </SelectContent>
                     </Select>
 
-                    <p class="text-[10px] leading-snug text-zinc-400">
+                    <p v-if="allowReplace" class="text-[10px] leading-snug text-zinc-400">
+                        Elegir un sustituto reemplaza este insumo en la receta al guardar. Solo se listan productos con proveedor activo
+                        en la ciudad de abastecimiento.
+                    </p>
+                    <p v-else class="text-[10px] leading-snug text-zinc-400">
                         Elegir otro proveedor aquí solo simula el costo. El quebrado no guarda precios: se costea con el proveedor activo
                         de cada ciudad en Proveedores.
                     </p>

@@ -977,6 +977,35 @@ const calcQuebradoMassiveProperties = (id: number, calcArray: number[]) => {
     }
 };
 
+// Sustituto elegido en el popover: la fila pasa a ser ese insumo (se guarda con su id), con su
+// merma y sus calorías. Se muta el mismo objeto para que el popover abierto siga apuntando a él.
+const replaceQuebradoIngredient = (id: number, substitute: any) => {
+    if (!quebradoRecipe.value || !substitute) return;
+    const ing = quebradoRecipe.value.ingredients.find((i) => i.id == id);
+    if (!ing) return;
+    if (quebradoRecipe.value.ingredients.some((i) => i.id == substitute.id)) {
+        Swal.fire('Atención', `"${substitute.name}" ya está en este quebrado.`, 'warning');
+        return;
+    }
+
+    Object.assign(ing, {
+        id: substitute.id,
+        name: substitute.name,
+        waste: substitute.waste,
+        energy: substitute.energy,
+        nutritional_factors: substitute.nutritional_factors,
+        dosification: substitute.dosification,
+        atwater_factor: substitute.atwater_factor,
+        assignments: substitute.assignments,
+        originalValues: {
+            waste: substitute.waste || 0,
+            calories: calculateIngredientCalories(substitute),
+        },
+    });
+    // Sin precio propio todavía: el popover lo fija enseguida con el proveedor elegido.
+    onQuebradoWeightInput(ing);
+};
+
 const saveQuebrado = async () => {
     if (!quebradoRecipeId.value || !quebradoRecipe.value) return;
 
@@ -1005,15 +1034,20 @@ const saveQuebrado = async () => {
 
         // The cycle currently being edited hasn't been saved yet (or is being re-edited before
         // the next save), so reflect the new totals immediately in the day cell on screen.
-        if (quebradoRow.value && quebradoDayIndex.value !== null) {
-            const day = quebradoRow.value.days[quebradoDayIndex.value];
-            if (day) {
-                day.calories = saved?.total_calories ?? recipe.total_calories;
-                day.price = saved?.total_cost ?? recipe.total_cost;
-                day.city_id = cycleCityId.value;
-                day.missing_prices = saved?.missing_prices ?? 0;
-                day.borrowed_prices = saved?.borrowed_prices ?? 0;
-            }
+        // La receta es la misma en todas las celdas con ese plato y nivel, así que se actualizan todas.
+        const edited = quebradoRow.value && quebradoDayIndex.value !== null ? quebradoRow.value.days[quebradoDayIndex.value] : null;
+        if (edited) {
+            const { dish_id, level_id } = edited;
+            menuStructureData.value
+                .flatMap((row: any) => Object.values(row.days || {}))
+                .filter((d: any) => d?.dish_id === dish_id && d?.level_id === level_id)
+                .forEach((day: any) => {
+                    day.calories = saved?.total_calories ?? recipe.total_calories;
+                    day.price = saved?.total_cost ?? recipe.total_cost;
+                    day.city_id = cycleCityId.value;
+                    day.missing_prices = saved?.missing_prices ?? 0;
+                    day.borrowed_prices = saved?.borrowed_prices ?? 0;
+                });
         }
 
         isQuebradoModalOpen.value = false;
@@ -2131,8 +2165,8 @@ const resetToNew = () => {
                             </TableHeader>
                             <TableBody>
                                 <TableRow
-                                    v-for="ingredient in quebradoRecipe.ingredients"
-                                    :key="ingredient.id"
+                                    v-for="(ingredient, index) in quebradoRecipe.ingredients"
+                                    :key="index"
                                     class="border-b-slate-100 transition-colors hover:bg-slate-50/50"
                                 >
                                     <TableCell class="py-2 font-semibold text-slate-800">{{ ingredient.name }}</TableCell>
@@ -2186,7 +2220,9 @@ const resetToNew = () => {
                                                 :totalCost="quebradoRecipe.total_cost"
                                                 :totalfinalProduct="quebradoRecipe.total_net_weight"
                                                 :cityId="cycleCityId"
+                                                allow-replace
                                                 @calcMassiveProperties="calcQuebradoMassiveProperties"
+                                                @substitute="replaceQuebradoIngredient"
                                             />
                                         </div>
                                     </TableCell>
