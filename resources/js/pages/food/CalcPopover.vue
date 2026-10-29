@@ -108,7 +108,9 @@ const loadSubstitutes = async (isOpen: boolean) => {
     if (isOpen && substitutes.value.length === 0 && ingredientSelected.value?.id) {
         loadingSubstitutes.value = true;
         try {
-            const response = await axios.get(route('ingredients.substitutes', ingredientSelected.value.id));
+            const response = await axios.get(route('dish-recipes.substitutes', ingredientSelected.value.id), {
+                params: { city_id: props.cityId || undefined },
+            });
             substitutes.value = response.data;
         } catch (error) {
             console.error('Error loading substitutes:', error);
@@ -196,6 +198,9 @@ const loadSubstitutes = async (isOpen: boolean) => {
                                         class="py-2.5"
                                     >
                                         <div class="flex flex-col gap-0.5" v-if="assignment.provider">
+                                            <span class="max-w-[300px] truncate text-xs font-semibold text-zinc-800" :title="assignment.ingredient_name">
+                                                {{ assignment.ingredient_name }}
+                                            </span>
                                             <div class="flex items-center gap-1.5">
                                                 <span class="font-medium text-zinc-700">{{ assignment.provider.name }}</span>
                                                 <Badge
@@ -206,14 +211,12 @@ const loadSubstitutes = async (isOpen: boolean) => {
                                                     S/. {{ assignment.cost_price }}
                                                 </Badge>
                                             </div>
-                                            <div class="mt-0.5 flex items-center justify-between text-[10px] text-zinc-400">
+                                            <div class="mt-0.5 flex items-center gap-2 text-[10px] text-zinc-400">
                                                 <div class="flex items-center gap-1" v-if="assignment.city">
                                                     <MapPin class="h-3 w-3" />
                                                     <span>{{ assignment.city.name }}</span>
                                                 </div>
-                                                <span class="max-w-[120px] truncate text-zinc-400 italic" :title="assignment.ingredient_name"
-                                                    >De: {{ assignment.ingredient_name }}</span
-                                                >
+                                                <span v-if="!assignment.is_active" class="italic">inactivo</span>
                                             </div>
                                         </div>
                                     </SelectItem>

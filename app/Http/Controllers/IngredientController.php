@@ -139,42 +139,57 @@ class IngredientController extends Controller
         return response()->json($ingredients);
     }
 
-    public function substitutes($id)
+    public function substitutes(Request $request, $id)
     {
         $ingredient = Ingredient::findOrFail($id);
-        
-        $words = explode(' ', trim($ingredient->name));
-        $firstWord = $words[0] ?? '';
-        
-        // Convert to singular form for better matching (simple Spanish stemmer)
-        // Convert to uppercase so the suffix check works regardless of case
-        $baseWord = mb_strtoupper($firstWord);
+        $cityId = $request->integer('city_id') ?: null;
+
+        // Primera palabra "real" del nombre: se ignoran signos y números para que
+        // "- GUINDONES CON PEPA..." o "Guindones (4 x Kg)" den la misma raíz.
+        preg_match_all('/\p{L}{3,}/u', $ingredient->name, $m);
+        $words = $m[0];
+        $baseWord = mb_strtoupper($words[0] ?? trim($ingredient->name));
+
+        // Singular simple en español, para que "GUINDONES" encuentre también "GUINDON".
         if (mb_strlen($baseWord) > 4 && mb_substr($baseWord, -2) === 'ES') {
             $baseWord = mb_substr($baseWord, 0, -2);
         } elseif (mb_strlen($baseWord) > 3 && mb_substr($baseWord, -1) === 'S') {
             $baseWord = mb_substr($baseWord, 0, -1);
         }
-        
-        if (mb_strlen($baseWord) < 3) {
-            $baseWord = mb_strtoupper(implode(' ', array_slice($words, 0, 2)));
+
+        if ($baseWord === '') {
+            return response()->json([]);
         }
 
-        $substitutes = Ingredient::where('name', 'like', $baseWord . '%')
+        $substitutes = Ingredient::where('name', 'like', '%' . $baseWord . '%')
             ->where('id', '!=', $ingredient->id)
             ->with(['assignments.provider', 'assignments.city'])
-            ->whereHas('assignments')
-            ->take(15)
+            ->whereHas('assignments', fn ($q) => $q->where('cost_price', '>', 0))
+            ->take(40)
             ->get();
 
+        $target = mb_strtoupper($ingredient->name);
         $assignments = collect();
         foreach ($substitutes as $substitute) {
+            similar_text($target, mb_strtoupper($substitute->name), $similarity);
             foreach ($substitute->assignments as $assignment) {
+                if ((float) $assignment->cost_price <= 0) {
+                    continue;
+                }
                 $assignment->ingredient_name = $substitute->name;
+                $assignment->similarity = round($similarity, 1);
                 $assignments->push($assignment);
             }
         }
 
-        return response()->json($assignments);
+        // Primero los de la ciudad de abastecimiento y activos; luego por parecido del nombre.
+        $sorted = $assignments->sortBy([
+            fn ($a, $b) => (int) ($cityId && $b->city_id == $cityId) <=> (int) ($cityId && $a->city_id == $cityId),
+            fn ($a, $b) => (int) $b->is_active <=> (int) $a->is_active,
+            fn ($a, $b) => $b->similarity <=> $a->similarity,
+        ])->values();
+
+        return response()->json($sorted);
     }
 
     public function import(Request $request)

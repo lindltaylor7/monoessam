@@ -221,6 +221,10 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
 
     Route::prefix('dish-recipes')->name('dish-recipes.')->group(function () {
         Route::get('lookup', [DishRecipeController::class, 'lookup'])->name('lookup');
+        // Sustitutos del popover de quebrado. Va bajo dish-recipes (food + cycles) y no bajo
+        // ingredients: desde Ciclos el usuario no suele tener el permiso de Ingredientes y la
+        // petición devolvía 403, dejando el selector vacío.
+        Route::get('substitutes/{id}', [IngredientController::class, 'substitutes'])->name('substitutes');
         Route::put('{id}', [DishRecipeController::class, 'update'])->name('update');
     });
 
