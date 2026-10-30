@@ -159,6 +159,42 @@ class ProviderController extends Controller
         return redirect()->back();
     }
 
+    /**
+     * Insumos que se usan en algún quebrado y no tienen proveedor activo con precio en la ciudad
+     * elegida. Son los que en Quebrados y Ciclos aparecen "sin precio" o con precio prestado de
+     * otra ciudad; se listan con las ciudades donde sí tienen precio para completar el hueco.
+     */
+    public function coverage(Request $request)
+    {
+        $validated = $request->validate([
+            'city_id' => 'required|exists:cities,id',
+        ]);
+        $cityId = (int) $validated['city_id'];
+
+        $covered = Ingredient_city_provider::where('city_id', $cityId)
+            ->where('is_active', true)
+            ->where('cost_price', '>', 0)
+            ->select('ingredient_id');
+
+        $ingredients = Ingredient::whereIn('id', DB::table('dish_recipe_ingredients')->select('ingredient_id'))
+            ->whereNotIn('id', $covered)
+            ->with(['assignments' => fn ($q) => $q->with('city:id,name')])
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        return response()->json($ingredients->map(fn ($ingredient) => [
+            'id' => $ingredient->id,
+            'name' => $ingredient->name,
+            // Tiene proveedores cargados en la ciudad pero ninguno activo: basta con activar uno.
+            'has_providers_in_city' => $ingredient->assignments->contains('city_id', $cityId),
+            'priced_in' => $ingredient->assignments
+                ->filter(fn ($a) => $a->is_active && (float) $a->cost_price > 0 && $a->city)
+                ->map(fn ($a) => $a->city->name)
+                ->unique()
+                ->values(),
+        ]));
+    }
+
     public function importAssignment(Request $request)
     {
         $request->validate([
@@ -169,7 +205,9 @@ class ProviderController extends Controller
         $file = $request->file('excel_file');
         \Maatwebsite\Excel\Facades\Excel::import(new \App\Imports\IngredientCityProviderImport($request->city_id), $file);
 
-        return redirect()->back()->with('success', 'Datos importados correctamente.');
+        // La importación no activa proveedores: el activo de cada insumo en la ciudad lo elige el
+        // usuario, y solo ese se usa para costear quebrados, ciclos y órdenes de compra.
+        return redirect()->back()->with('success', 'Datos importados correctamente. Recuerde activar el proveedor de cada insumo en esta ciudad: solo el activo se usa para costear.');
     }
 
     public function importWithIds(Request $request)

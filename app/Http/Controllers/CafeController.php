@@ -46,7 +46,8 @@ class CafeController extends Controller
 
     public function update(Request $request, Cafe $cafe)
     {
-        $cafe->update($request->only(['name', 'latitude', 'longitude', 'address']));
+        $request->validate(['supply_city_id' => 'nullable|exists:cities,id']);
+        $cafe->update($request->only(['name', 'latitude', 'longitude', 'address', 'supply_city_id']));
         return response()->json($cafe);
     }
 

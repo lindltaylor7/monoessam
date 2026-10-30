@@ -16,6 +16,7 @@ use App\Models\Level;
 use App\Models\MenuStructure;
 use App\Models\Serviceable;
 use App\Models\Service;
+use App\Models\Unit;
 use App\Services\QuebradosService;
 use App\Exports\WeeklyPurchaseOrderExport;
 use App\Exports\WeeklyMenuExport;
@@ -37,66 +38,66 @@ class PlanningController extends Controller
 
     public function index()
     {
-        // Sin `cycle_data`: el listado solo necesita metadatos y hidratar el JSON de todos los
-        // ciclos agota la memoria de PHP. La matriz lo pide por ciclo en planning/cycles/{id}.
-        $menuCycles = \App\Models\MenuCycle::select(\App\Http\Controllers\MenuCycleController::LIST_COLUMNS)
-            ->orderBy('id', 'desc')
-            ->get();
+        return Inertia::render('planning/Index', [
+            'cafes' => Cafe::all(),
+            // El listado de programaciones guardadas se pide paginado a planning/programs: con
+            // miles de filas, mandarlas todas en la carga inicial volvía lenta la pantalla.
+            'programs_total' => WeeklyProgram::count(),
+            'dish_categories' => Dish_category::all(),
+            'menu_structure' => MenuStructure::with('dish_category')->get(),
+            'mines' => \App\Models\Mine::with(['units', 'units.cafes', 'units.cafes.services'])->get(),
+            'levels' => Level::orderBy('name')->get(),
+            'cities' => City::orderBy('name')->get(),
+        ]);
+    }
 
-        // Batch-fetch serviceables/services instead of querying inside the map() loop.
-        $serviceableIds = $menuCycles->pluck('serviceable_id')->filter()->unique();
-        $serviceables = Serviceable::whereIn('id', $serviceableIds)->get()->keyBy('id');
-        $serviceIds = $serviceables->pluck('service_id')->filter()->unique();
-        $services = Service::whereIn('id', $serviceIds)->get()->keyBy('id');
+    /**
+     * Listado paginado de programaciones guardadas para la pestaña "Programaciones Guardadas".
+     * Los filtros (mina/unidad/comedor/fecha de guardado) se aplican en la consulta.
+     */
+    public function programs(Request $request)
+    {
+        $validated = $request->validate([
+            'mine_id' => 'nullable|integer',
+            'unit_id' => 'nullable|integer',
+            'cafe_id' => 'nullable|integer',
+            'saved_from' => 'nullable|date',
+            'saved_to' => 'nullable|date',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
 
-        $menuCycles = $menuCycles->map(function ($cycle) use ($serviceables, $services) {
-            $serviceable = $serviceables->get($cycle->serviceable_id);
-            $mealType = 'N/A';
-            $cafeId = null;
-            if ($serviceable) {
-                $service = $services->get($serviceable->service_id);
-                if ($service) {
-                    $mealType = $service->name;
-                }
-                if ($serviceable->serviceable_type === \App\Models\Cafe::class) {
-                    $cafeId = $serviceable->serviceable_id;
-                }
-            }
-            $cycle->meal_type = $mealType;
-            $cycle->cafe_id = $cafeId;
-            return $cycle;
-        });
+        $programs = WeeklyProgram::with(['cafe.unit.mine', 'structure'])
+            ->when($validated['cafe_id'] ?? null, fn($q, $id) => $q->where('cafe_id', $id))
+            ->when($validated['unit_id'] ?? null, fn($q, $id) => $q->whereIn('cafe_id', Cafe::where('unit_id', $id)->select('id')))
+            ->when($validated['mine_id'] ?? null, fn($q, $id) => $q->whereIn(
+                'cafe_id',
+                Cafe::whereIn('unit_id', Unit::where('mine_id', $id)->select('id'))->select('id'),
+            ))
+            ->when($validated['saved_from'] ?? null, fn($q, $d) => $q->whereDate('created_at', '>=', $d))
+            ->when($validated['saved_to'] ?? null, fn($q, $d) => $q->whereDate('created_at', '<=', $d))
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate($validated['per_page'] ?? 25);
 
         // El servicio al que pertenece cada programación es único. Se guarda en weekly_programs.meal_type;
-        // para programaciones antiguas sin ese dato, se cae al meal_type predominante de sus items.
-        // Solo para las que no lo tienen: agrupar toda la tabla de items (600k+ filas
-        // con las programaciones migradas) en cada carga de la pantalla no tiene sentido.
-        $fallbackService = WeeklyProgramItem::select('weekly_program_id', 'meal_type', DB::raw('COUNT(*) as c'))
-            ->whereIn('weekly_program_id', WeeklyProgram::whereNull('meal_type')->select('id'))
+        // para programaciones antiguas sin ese dato, se cae al meal_type predominante de sus items
+        // (solo para las de esta página).
+        $missing = $programs->getCollection()->whereNull('meal_type')->pluck('id');
+        $fallbackService = $missing->isEmpty() ? collect() : WeeklyProgramItem::select('weekly_program_id', 'meal_type', DB::raw('COUNT(*) as c'))
+            ->whereIn('weekly_program_id', $missing)
             ->groupBy('weekly_program_id', 'meal_type')
             ->orderByDesc('c')
             ->get()
             ->groupBy('weekly_program_id')
             ->map(fn($rows) => $rows->first()->meal_type);
 
-        $programs = WeeklyProgram::with(['cafe.unit.mine', 'structure'])
-            ->orderByDesc('created_at')
-            ->get()
-            ->each(function ($program) use ($fallbackService) {
-                $program->setAttribute('service', $program->meal_type ?: $fallbackService->get($program->id));
-            });
+        $programs->getCollection()->each(function ($program) use ($fallbackService) {
+            $program->setAttribute('service', $program->meal_type ?: $fallbackService->get($program->id));
+            // Para preseleccionar la ciudad de precios de los reportes (Orden de Pedido / Compras).
+            $program->setAttribute('supply_city_id', $program->cafe?->supplyCityId());
+        });
 
-        return Inertia::render('planning/Index', [
-            'cafes' => Cafe::all(),
-            'programs' => $programs,
-            'dish_categories' => Dish_category::all(),
-            'menu_structure' => MenuStructure::with('dish_category')->get(),
-            'structures' => \App\Models\Structure::with('costs')->get(),
-            'menu_cycles' => $menuCycles,
-            'mines' => \App\Models\Mine::with(['units', 'units.cafes', 'units.cafes.services'])->get(),
-            'levels' => Level::orderBy('name')->get(),
-            'cities' => City::orderBy('name')->get(),
-        ]);
+        return response()->json($programs);
     }
 
     public function store(Request $request)
@@ -158,6 +159,28 @@ class PlanningController extends Controller
         return redirect()->route('planning.index')->with('success', 'Plan guardado correctamente');
     }
 
+    /**
+     * Ciclos de menú de un comedor+servicio (serviceable_id = pivot café↔servicio), para el
+     * selector de la matriz. Solo metadatos: el cycle_data se pide al elegir uno (cycles/{id}).
+     * Antes la página recibía los ~8 mil ciclos de todos los comedores en cada carga.
+     */
+    public function cycles(Request $request)
+    {
+        $validated = $request->validate([
+            'serviceable_id' => 'required|integer',
+        ]);
+
+        return response()->json(
+            \App\Models\MenuCycle::select(['id', 'name', 'days', 'legacy_cycle_number', 'is_current', 'updated_at'])
+                ->where('serviceable_id', $validated['serviceable_id'])
+                ->orderByDesc('is_current')
+                ->orderByRaw('legacy_cycle_number is null')
+                ->orderBy('legacy_cycle_number')
+                ->orderByDesc('id')
+                ->get()
+        );
+    }
+
     public function generatePurchaseOrder(Request $request, $id)
     {
         $validated = $request->validate([
@@ -165,15 +188,57 @@ class PlanningController extends Controller
         ]);
 
         $program = WeeklyProgram::with('portions')->findOrFail($id);
-        $level   = Level::findOrFail($validated['level_id']);
-        $order   = $this->quebradosService->generatePurchaseOrder($program, $level);
 
-        if ($order->items()->count() === 0) {
-            return redirect()->route('purchase_orders.show', $order->id)
-                ->with('error', 'La orden se creó sin ítems: los platos de esta programación no tienen receta en el nivel elegido, o no hay raciones cargadas.');
+        return $this->purchaseOrderResponse(collect([$program]), Level::findOrFail($validated['level_id']));
+    }
+
+    /**
+     * Quebrado (PO) consolidado de varias programaciones marcadas en "Programaciones Guardadas":
+     * una sola orden con la suma de insumos de todas.
+     */
+    public function generatePurchaseOrderMultiple(Request $request)
+    {
+        $validated = $request->validate([
+            'level_id' => 'required|exists:levels,id',
+            'program_ids' => 'required|array|min:1',
+            'program_ids.*' => 'integer|exists:weekly_programs,id',
+        ]);
+
+        $programs = WeeklyProgram::with('portions')
+            ->whereIn('id', array_unique($validated['program_ids']))
+            ->orderBy('start_date')
+            ->orderBy('id')
+            ->get();
+
+        return $this->purchaseOrderResponse($programs, Level::findOrFail($validated['level_id']));
+    }
+
+    private function purchaseOrderResponse($programs, Level $level)
+    {
+        $orders = $this->quebradosService->generatePurchaseOrdersByCity($programs, $level);
+
+        if ($orders->count() > 1) {
+            $orders->load('city');
+            $summary = $orders->map(fn ($o) => "#{$o->id} " . ($o->city?->name ?? 'sin ciudad'))->implode(', ');
+
+            return redirect()->route('purchase_orders.index')
+                ->with('success', "Las programaciones se abastecen desde ciudades distintas: se generó una orden por ciudad ({$summary}).");
         }
 
-        return redirect()->route('purchase_orders.show', $order->id)->with('success', 'Pedido (Quebrado) generado con éxito');
+        $order = $orders->first();
+
+        if ($order->items()->count() === 0) {
+            $which = $programs->count() > 1 ? 'estas programaciones' : 'esta programación';
+
+            return redirect()->route('purchase_orders.show', $order->id)
+                ->with('error', "La orden se creó sin ítems: los platos de {$which} no tienen receta en el nivel elegido, o no hay raciones cargadas.");
+        }
+
+        $message = $programs->count() > 1
+            ? "Pedido (Quebrado) consolidado de {$programs->count()} programaciones generado con éxito"
+            : 'Pedido (Quebrado) generado con éxito';
+
+        return redirect()->route('purchase_orders.show', $order->id)->with('success', $message);
     }
 
     /**
@@ -607,9 +672,9 @@ class PlanningController extends Controller
      * whole week (grouped by ingredient_category), priced and summed to a grand total.
      *
      * Same per-level caveat as the other two reports (level chosen manually). Price additionally
-     * needs a city, because there's no relation from Mina/Unidad/Comedor to City in this schema —
-     * ingredient prices only exist per (ingredient, city, provider) — so the city is also chosen
-     * manually here. When an ingredient has no registered price for the chosen city, its row is
+     * needs a city — ingredient prices only exist per (ingredient, city, provider). The screen
+     * preselects the supply city of the selected programs' comedor (Unidad/Comedor
+     * supply_city_id), but it can still be changed to compare. When an ingredient has no registered price for the chosen city, its row is
      * flagged instead of silently counted as zero, and the grand total excludes it.
      */
     public function purchaseOrderExcel(Request $request)
@@ -716,8 +781,8 @@ class PlanningController extends Controller
      * (cheapest first) instead of only the minimum. Mirrors the multi-proveedor Excel sheet the
      * mines use today, computed live instead of by hand.
      *
-     * Same city caveat as purchaseOrderExcel: there's no Mina/Unidad/Comedor -> City relation, so
-     * the city used to price is chosen manually by the user generating the report.
+     * Same city handling as purchaseOrderExcel: preselected from the comedor's supply city,
+     * changeable by the user generating the report.
      */
     public function purchaseReport(Request $request)
     {

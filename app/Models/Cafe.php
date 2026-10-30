@@ -13,13 +13,25 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 class Cafe extends Model
 {
     use HasFactory;
-    protected $fillable = ['name', 'unit_id', 'latitude', 'longitude', 'address'];
+    protected $fillable = ['name', 'unit_id', 'supply_city_id', 'latitude', 'longitude', 'address'];
 
 
     public function unit(): BelongsTo
     {
         return $this->belongsTo(Unit::class);
     }
+    /** Ciudad de abastecimiento propia; vacía = la de su Unidad (ver supplyCityId). */
+    public function supplyCity(): BelongsTo
+    {
+        return $this->belongsTo(City::class, 'supply_city_id');
+    }
+
+    /** Ciudad desde la que se abastece el comedor: la suya o, si no tiene, la de su Unidad. */
+    public function supplyCityId(): ?int
+    {
+        return $this->supply_city_id ?? $this->unit?->supply_city_id;
+    }
+
     public function dinners(): HasMany
     {
         return $this->hasMany(Dinner::class);

@@ -72,9 +72,8 @@ function seedReportBase(): array
     return [$mine, $unit, $cafe, $user, $level, $category, $dish, $ingredient];
 }
 
-test('planning index exposes service, unit, mine and saved date per program', function () {
-    [$mine, $unit, $cafe, $user, $level, $category, $dish] = seedReportBase();
-    // Sin meal_type explícito: se infiere del meal_type de los items ("Almuerzo").
+test('planning index only sends the saved programs count', function () {
+    [, , $cafe, $user, $level, $category, $dish] = seedReportBase();
     seedReportProgram($level, $dish, $category, $cafe, $user, '2026-02-02', '2026-02-03', 100);
 
     $this->actingAs($user)
@@ -82,10 +81,49 @@ test('planning index exposes service, unit, mine and saved date per program', fu
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('planning/Index')
-            ->where('programs.0.service', 'Almuerzo')
-            ->where('programs.0.cafe.unit.name', $unit->name)
-            ->where('programs.0.cafe.unit.mine.name', $mine->name)
-            ->has('programs.0.created_at'));
+            ->where('programs_total', 1)
+            ->missing('programs'));
+});
+
+test('planning programs endpoint exposes service, unit, mine and saved date per program', function () {
+    [$mine, $unit, $cafe, $user, $level, $category, $dish] = seedReportBase();
+    // Sin meal_type explícito: se infiere del meal_type de los items ("Almuerzo").
+    seedReportProgram($level, $dish, $category, $cafe, $user, '2026-02-02', '2026-02-03', 100);
+
+    $this->actingAs($user)
+        ->getJson(route('planning.programs'))
+        ->assertOk()
+        ->assertJsonPath('total', 1)
+        ->assertJsonPath('data.0.service', 'Almuerzo')
+        ->assertJsonPath('data.0.cafe.unit.name', $unit->name)
+        ->assertJsonPath('data.0.cafe.unit.mine.name', $mine->name)
+        ->assertJsonStructure(['data' => [['created_at']]]);
+});
+
+test('planning programs endpoint paginates and filters by mine, unit and cafe', function () {
+    [$mine, $unit, $cafe, $user, $level, $category, $dish] = seedReportBase();
+    $otherCafe = Cafe::factory()->create(['unit_id' => Unit::factory()->create(['mine_id' => Mine::factory()->create()->id])->id]);
+
+    for ($i = 0; $i < 30; $i++) {
+        seedReportProgram($level, $dish, $category, $cafe, $user, '2026-02-02', '2026-02-03', 100);
+    }
+    seedReportProgram($level, $dish, $category, $otherCafe, $user, '2026-02-02', '2026-02-03', 100);
+
+    $this->actingAs($user)->getJson(route('planning.programs'))
+        ->assertJsonPath('total', 31)
+        ->assertJsonPath('last_page', 2)
+        ->assertJsonCount(25, 'data');
+
+    $this->actingAs($user)->getJson(route('planning.programs', ['page' => 2]))
+        ->assertJsonCount(6, 'data');
+
+    foreach (['mine_id' => $mine->id, 'unit_id' => $unit->id, 'cafe_id' => $cafe->id] as $key => $id) {
+        $this->actingAs($user)->getJson(route('planning.programs', [$key => $id]))->assertJsonPath('total', 30);
+    }
+
+    $this->actingAs($user)->getJson(route('planning.programs', ['cafe_id' => $otherCafe->id]))
+        ->assertJsonPath('total', 1)
+        ->assertJsonPath('data.0.cafe_id', $otherCafe->id);
 });
 
 test('planning store persists the active service on the program', function () {
@@ -137,4 +175,30 @@ test('requerimiento pdf scales by the per-dish percentage', function () {
         ->get(route('planning.requerimiento-pdf', ['program_ids' => [$program->id], 'level_id' => $level->id]))
         ->assertOk()
         ->assertHeader('content-type', 'application/pdf');
+});
+
+test('el selector de ciclos solo lista los ciclos del comedor y servicio elegidos', function () {
+    $user  = User::factory()->create();
+    $cafe  = Cafe::factory()->create(['unit_id' => Unit::factory()->create(['mine_id' => Mine::factory()->create()->id])->id]);
+    $cena  = \App\Models\Serviceable::create(['serviceable_id' => $cafe->id, 'serviceable_type' => Cafe::class, 'service_id' => \App\Models\Service::create(['name' => 'CENA', 'code' => 'CEN', 'type' => 'comedor'])->id]);
+    $otro  = \App\Models\Serviceable::create(['serviceable_id' => $cafe->id, 'serviceable_type' => Cafe::class, 'service_id' => \App\Models\Service::create(['name' => 'DESAYUNO', 'code' => 'DES', 'type' => 'comedor'])->id]);
+
+    $make = fn ($serviceable, $n, $current = false) => \App\Models\MenuCycle::forceCreate([
+        'serviceable_id' => $serviceable->id, 'name' => "ciclo {$n}", 'days' => 10,
+        'legacy_cycle_number' => $n, 'is_current' => $current, 'cycle_data' => '[]',
+    ]);
+    $make($cena, 10);
+    $make($cena, 2);
+    $make($cena, 7, true);
+    $make($otro, 1);
+
+    $this->actingAs($user)
+        ->getJson(route('planning.cycles.index', ['serviceable_id' => $cena->id]))
+        ->assertOk()
+        ->assertJsonCount(3)
+        // El vigente primero; luego por número de ciclo (2 antes que 10, no orden alfabético).
+        ->assertJsonPath('0.legacy_cycle_number', 7)
+        ->assertJsonPath('1.legacy_cycle_number', 2)
+        ->assertJsonPath('2.legacy_cycle_number', 10)
+        ->assertJsonMissingPath('0.cycle_data');
 });

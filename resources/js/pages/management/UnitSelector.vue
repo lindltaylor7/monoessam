@@ -3,17 +3,20 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Unit } from '@/types';
 import { ref, watch } from 'vue';
 import CoordEditor from './CoordEditor.vue';
+import SupplyCityEditor from './SupplyCityEditor.vue';
 
 interface UnitWithCoords extends Unit {
     cafes: { id: number; name: string }[];
     latitude: number | null;
     longitude: number | null;
     address: string | null;
+    supply_city_id?: number | null;
 }
 
 const props = defineProps<{
     units: UnitWithCoords[];
     selectedUnitId: number | null;
+    cities: { id: number; name: string }[];
 }>();
 
 const emit = defineEmits<{
@@ -60,6 +63,12 @@ const selectUnit = (unitId: number) => {
                         :address="unit.address"
                         :patch-url="`/units/${unit.id}`"
                         @updated="(lat, lng, addr) => onCoordUpdated(unit.id, lat, lng, addr)"
+                    />
+                    <SupplyCityEditor
+                        :cities="cities"
+                        :city-id="unit.supply_city_id ?? null"
+                        :patch-url="`/units/${unit.id}`"
+                        @updated="(cityId) => (unit.supply_city_id = cityId)"
                     />
                 </div>
             </div>

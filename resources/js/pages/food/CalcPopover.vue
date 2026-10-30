@@ -19,15 +19,22 @@ const props = defineProps<{
     totalCalories: number;
     totalCost: number;
     totalfinalProduct: number;
+    // Ciudad de precios de la pantalla: su proveedor activo es el que se preselecciona.
+    cityId?: number | null;
+    // Si es true, elegir un sustituto reemplaza el insumo en la receta (evento `substitute`)
+    // en lugar de solo simular su precio.
+    allowReplace?: boolean;
 }>();
 
-const emits = defineEmits(['calcMassiveProperties']);
+const emits = defineEmits(['calcMassiveProperties', 'substitute']);
 
 const ingredientSelected = ref(props.ingredient);
 // Arranca con el precio que ya tiene la fila (por defecto el del proveedor activo) y preselecciona
 // la asignación que lo origina, para que recalcular aquí no deje el costo base en 0.
 const initialPrice = parseFloat(props.ingredient?.unit_price) || 0;
+const sameCity = (a: any) => !props.cityId || Number(a.city_id) === Number(props.cityId);
 const initialAssignment =
+    props.ingredient?.assignments?.find((a: any) => a.is_active && sameCity(a) && parseFloat(a.cost_price) === initialPrice) ??
     props.ingredient?.assignments?.find((a: any) => a.is_active && parseFloat(a.cost_price) === initialPrice) ??
     props.ingredient?.assignments?.find((a: any) => parseFloat(a.cost_price) === initialPrice);
 const providerSelected = ref<string | number>(initialPrice && initialAssignment ? initialAssignment.id : 0);
@@ -83,6 +90,13 @@ watch(providerSelected, (newId) => {
         let assignment = ingredientSelected.value.assignments?.find((a: any) => a.id === Number(newId));
         if (!assignment) {
             assignment = substitutes.value.find((a: any) => a.id === Number(newId));
+            if (assignment && props.allowReplace) {
+                // El padre cambia el insumo de la fila en el mismo objeto (id, nombre, merma, kcal),
+                // así que el recálculo de abajo ya usa los datos del sustituto.
+                emits('substitute', ingredientSelected.value.id, assignment.substitute);
+                // Sus proveedores ya son los propios del insumo: no repetirlos como sugerencias.
+                substitutes.value = substitutes.value.filter((a: any) => a.ingredient_id !== assignment.ingredient_id);
+            }
         }
         if (assignment) {
             priceSelected.value = parseFloat(assignment.cost_price) || 0;
@@ -104,7 +118,9 @@ const loadSubstitutes = async (isOpen: boolean) => {
     if (isOpen && substitutes.value.length === 0 && ingredientSelected.value?.id) {
         loadingSubstitutes.value = true;
         try {
-            const response = await axios.get(route('ingredients.substitutes', ingredientSelected.value.id));
+            const response = await axios.get(route('dish-recipes.substitutes', ingredientSelected.value.id), {
+                params: { city_id: props.cityId || undefined },
+            });
             substitutes.value = response.data;
         } catch (error) {
             console.error('Error loading substitutes:', error);
@@ -192,6 +208,9 @@ const loadSubstitutes = async (isOpen: boolean) => {
                                         class="py-2.5"
                                     >
                                         <div class="flex flex-col gap-0.5" v-if="assignment.provider">
+                                            <span class="max-w-[300px] truncate text-xs font-semibold text-zinc-800" :title="assignment.ingredient_name">
+                                                {{ assignment.ingredient_name }}
+                                            </span>
                                             <div class="flex items-center gap-1.5">
                                                 <span class="font-medium text-zinc-700">{{ assignment.provider.name }}</span>
                                                 <Badge
@@ -202,14 +221,12 @@ const loadSubstitutes = async (isOpen: boolean) => {
                                                     S/. {{ assignment.cost_price }}
                                                 </Badge>
                                             </div>
-                                            <div class="mt-0.5 flex items-center justify-between text-[10px] text-zinc-400">
+                                            <div class="mt-0.5 flex items-center gap-2 text-[10px] text-zinc-400">
                                                 <div class="flex items-center gap-1" v-if="assignment.city">
                                                     <MapPin class="h-3 w-3" />
                                                     <span>{{ assignment.city.name }}</span>
                                                 </div>
-                                                <span class="max-w-[120px] truncate text-zinc-400 italic" :title="assignment.ingredient_name"
-                                                    >De: {{ assignment.ingredient_name }}</span
-                                                >
+                                                <span v-if="!assignment.is_active" class="italic">inactivo</span>
                                             </div>
                                         </div>
                                     </SelectItem>
@@ -217,6 +234,15 @@ const loadSubstitutes = async (isOpen: boolean) => {
                             </SelectGroup>
                         </SelectContent>
                     </Select>
+
+                    <p v-if="allowReplace" class="text-[10px] leading-snug text-zinc-400">
+                        Elegir un sustituto reemplaza este insumo en la receta al guardar. Solo se listan productos con proveedor activo
+                        en la ciudad de abastecimiento.
+                    </p>
+                    <p v-else class="text-[10px] leading-snug text-zinc-400">
+                        Elegir otro proveedor aquí solo simula el costo. El quebrado no guarda precios: se costea con el proveedor activo
+                        de cada ciudad en Proveedores.
+                    </p>
 
                     <div class="grid grid-cols-2 gap-4">
                         <div class="space-y-1.5">

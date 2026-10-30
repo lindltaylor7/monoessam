@@ -76,6 +76,8 @@ export interface Unit {
     id: number;
     name: string;
     mine_id: number;
+    // Ciudad desde la que se abastece de insumos (define los precios de sus ciclos y compras).
+    supply_city_id?: number | null;
     cafes: Cafe[];
     mercantiles: Mercantil[];
 }
@@ -84,6 +86,8 @@ export interface Cafe {
     id: number;
     name: string;
     unit_id: number;
+    // Vacía = la de su Unidad.
+    supply_city_id?: number | null;
     latitude: number | null;
     longitude: number | null;
     address: string | null;
@@ -91,6 +95,7 @@ export interface Cafe {
         id: number;
         name: string;
         cafes: Cafe[];
+        mine?: Mine;
     };
     // Properties used in Headcount context
     assigned_roles?: any[];
@@ -383,6 +388,8 @@ export interface PurchaseOrder {
     id: number;
     weekly_program_id: number;
     program?: WeeklyProgram;
+    /** Todas las programaciones consolidadas en el quebrado (pivote purchase_order_weekly_program). */
+    programs?: WeeklyProgram[];
     status: 'pendiente' | 'enviada';
     notes?: string;
     items?: PurchaseOrderItem[];
@@ -396,7 +403,14 @@ export interface PurchaseOrderItem {
     ingredient?: Ingredient;
     total_amount: number;
     unit: string;
+    /** true cuando la línea se agregó a mano en el detalle, no vino del quebrado. */
+    is_manual?: boolean;
     estimated_cost?: number;
+    /** Precio del proveedor activo (Proveedores) para la ciudad elegida en el detalle. */
+    active_unit_price?: number | null;
+    active_provider?: string | null;
+    /** total_amount × active_unit_price; null si el insumo no tiene proveedor activo con precio. */
+    active_cost?: number | null;
 }
 
 export type BreadcrumbItemType = BreadcrumbItem;

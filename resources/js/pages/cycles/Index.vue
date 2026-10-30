@@ -16,10 +16,14 @@ import {
     Calculator,
     CalendarDays,
     ChevronDown,
+    ChevronLeft,
+    ChevronRight,
     Download,
     FolderOpen,
     LineChart,
     Loader2,
+    MapPin,
+    RefreshCw,
     Plus,
     Save,
     Search,
@@ -27,14 +31,15 @@ import {
     X,
 } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 interface Props {
     mines?: Mine[];
     structures?: any[];
-    savedCycles?: any[];
     dishCategories?: any[];
     levels?: any[];
+    cities?: { id: number; name: string }[];
+    defaultCityId?: number | null;
 }
 
 const props = defineProps<Props>();
@@ -108,27 +113,275 @@ const daysColumns = computed(() => {
     return Array.from({ length: generatedDays.value }, (_, i) => `Día ${i + 1}`);
 });
 
+// Navegación horizontal de la grilla: un solo contenedor de scroll, columnas fijas a la izquierda
+// y saltos por día para que los últimos días siempre sean alcanzables.
+const gridScrollRef = ref<HTMLElement | null>(null);
+const dayHeaderRefs = ref<HTMLElement[]>([]);
+const STICKY_COLUMNS_WIDTH = 56 + 240 + 112;
+const visibleDayRange = ref<{ first: number; last: number }>({ first: 1, last: 1 });
+const canScrollLeft = ref(false);
+const canScrollRight = ref(false);
+
+const updateGridScrollState = () => {
+    const el = gridScrollRef.value;
+    if (!el) return;
+    canScrollLeft.value = el.scrollLeft > 1;
+    canScrollRight.value = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+
+    const viewStart = el.scrollLeft + STICKY_COLUMNS_WIDTH;
+    const viewEnd = el.scrollLeft + el.clientWidth;
+    let first = 0;
+    let last = 0;
+    dayHeaderRefs.value.forEach((th, i) => {
+        const center = th.offsetLeft + th.offsetWidth / 2;
+        if (center >= viewStart && center <= viewEnd) {
+            if (!first) first = i + 1;
+            last = i + 1;
+        }
+    });
+    visibleDayRange.value = { first: first || 1, last: last || first || 1 };
+};
+
+const isDayVisible = (day: number) => day >= visibleDayRange.value.first && day <= visibleDayRange.value.last;
+
+const scrollToDay = (day: number) => {
+    const el = gridScrollRef.value;
+    const th = dayHeaderRefs.value[day - 1];
+    if (!el || !th) return;
+    el.scrollTo({ left: Math.max(0, th.offsetLeft - STICKY_COLUMNS_WIDTH), behavior: 'smooth' });
+};
+
+const scrollDays = (direction: 1 | -1) => {
+    const { first, last } = visibleDayRange.value;
+    const page = Math.max(1, last - first + 1);
+    const target = Math.min(generatedDays.value, Math.max(1, first + direction * page));
+    scrollToDay(target);
+};
+
+let gridResizeObserver: ResizeObserver | null = null;
+onMounted(() => {
+    if (gridScrollRef.value && typeof ResizeObserver !== 'undefined') {
+        gridResizeObserver = new ResizeObserver(updateGridScrollState);
+        gridResizeObserver.observe(gridScrollRef.value);
+    }
+    updateGridScrollState();
+});
+onBeforeUnmount(() => gridResizeObserver?.disconnect());
+watch(generatedDays, (days) => {
+    dayHeaderRefs.value.length = Math.min(dayHeaderRefs.value.length, days);
+    nextTick(updateGridScrollState);
+});
+
 const isSavedCyclesModalOpen = ref(false);
 const repeatedDishes = ref<{ rowId: any; dayIndex: number }[]>([]);
 
-const getServiceName = (serviceableId: any) => {
-    if (!props.mines) return 'Servicio Desconocido';
-    for (const mine of props.mines) {
-        if (!mine.units) continue;
-        for (const unit of mine.units) {
-            if (!unit.cafes) continue;
-            for (const cafe of unit.cafes) {
-                if (!cafe.services) continue;
-                for (const service of cafe.services) {
-                    if (String(service.pivot?.id) === String(serviceableId)) {
-                        return `${mine.name} - ${unit.name} - ${cafe.name} - ${service.name}`;
+// Índice serviceable_id → "Mina - Unidad - Comedor - Servicio", armado una sola vez en vez de
+// recorrer el árbol completo por cada ciclo listado.
+const serviceNames = computed(() => {
+    const map = new Map<string, string>();
+    for (const mine of (props.mines || []) as any[]) {
+        for (const unit of mine.units || []) {
+            for (const cafe of unit.cafes || []) {
+                for (const service of cafe.services || []) {
+                    if (service.pivot?.id != null) {
+                        map.set(String(service.pivot.id), `${mine.name} - ${unit.name} - ${cafe.name} - ${service.name}`);
                     }
                 }
             }
         }
     }
-    return `Servicio ID: ${serviceableId}`;
+    return map;
+});
+
+const getServiceName = (serviceableId: any) => serviceNames.value.get(String(serviceableId)) || `Servicio ID: ${serviceableId}`;
+
+// Ciudad de abastecimiento de cada servicio: la del comedor o, si no tiene, la de su unidad. Con
+// ella se costea el ciclo (el mismo quebrado cuesta distinto en Lima que en Huancayo).
+const supplyCityByServiceable = computed(() => {
+    const map = new Map<string, number | null>();
+    for (const mine of (props.mines || []) as any[]) {
+        for (const unit of mine.units || []) {
+            for (const cafe of unit.cafes || []) {
+                for (const service of cafe.services || []) {
+                    if (service.pivot?.id != null) {
+                        map.set(String(service.pivot.id), cafe.supply_city_id ?? unit.supply_city_id ?? null);
+                    }
+                }
+            }
+        }
+    }
+    return map;
+});
+
+const configuredCityId = computed(() =>
+    selectedServiceableId.value ? (supplyCityByServiceable.value.get(String(selectedServiceableId.value)) ?? null) : null,
+);
+// Sin ciudad configurada en el comedor/unidad se usa la por defecto (y se avisa en el encabezado).
+const cycleCityId = computed<number | null>(() => configuredCityId.value ?? props.defaultCityId ?? null);
+const cityName = (id: number | null | undefined) => props.cities?.find((c) => c.id === Number(id))?.name ?? '—';
+
+// Aviso de la celda cuando el costo del día no está completo en la ciudad del ciclo.
+const dayPriceWarning = (day: any): string | null => {
+    const missing = Number(day?.missing_prices || 0);
+    const borrowed = Number(day?.borrowed_prices || 0);
+    if (!missing && !borrowed) return null;
+    const parts = [];
+    if (missing) parts.push(`${missing} insumo(s) sin precio en ninguna ciudad`);
+    if (borrowed) parts.push(`${borrowed} insumo(s) sin proveedor activo en ${cityName(cycleCityId.value)} (se usó el precio de otra ciudad)`);
+    return parts.join(' · ') + '. Complételos en Proveedores.';
 };
+
+// Modal "Ajustes de Ciclos": listado paginado y filtrado en el servidor (hay miles de ciclos).
+const savedCycles = ref<any[]>([]);
+const savedCyclesLoading = ref(false);
+const savedCyclesPage = ref(1);
+const savedCyclesLastPage = ref(1);
+const savedCyclesTotal = ref(0);
+const savedCyclesGrandTotal = ref(0);
+const savedCyclesSearch = ref('');
+const savedCyclesMine = ref('');
+const savedCyclesUnit = ref('');
+const savedCyclesCafe = ref('');
+const savedCyclesService = ref('');
+const savedCyclesDateFrom = ref('');
+const savedCyclesDateTo = ref('');
+let savedCyclesRequestId = 0;
+
+// Opciones en cascada Mina → Unidad → Comedor → Servicio, a partir del árbol que ya trae la página.
+const savedCyclesMineOptions = computed(() => (props.mines || []) as any[]);
+const savedCyclesUnitOptions = computed(() =>
+    savedCyclesMineOptions.value.filter((m) => !savedCyclesMine.value || String(m.id) === savedCyclesMine.value).flatMap((m) => m.units || []),
+);
+const savedCyclesCafeOptions = computed(() =>
+    savedCyclesUnitOptions.value.filter((u: any) => !savedCyclesUnit.value || String(u.id) === savedCyclesUnit.value).flatMap((u: any) => u.cafes || []),
+);
+const savedCyclesServiceOptions = computed(() =>
+    savedCyclesCafe.value
+        ? (savedCyclesCafeOptions.value.find((c: any) => String(c.id) === savedCyclesCafe.value)?.services || []).filter((s: any) => s.pivot?.id != null)
+        : [],
+);
+
+// Al cambiar un nivel se limpian los de abajo que ya no pertenecen a él.
+watch(savedCyclesMine, () => {
+    if (!savedCyclesUnitOptions.value.some((u: any) => String(u.id) === savedCyclesUnit.value)) savedCyclesUnit.value = '';
+});
+watch(savedCyclesUnit, () => {
+    if (!savedCyclesCafeOptions.value.some((c: any) => String(c.id) === savedCyclesCafe.value)) savedCyclesCafe.value = '';
+});
+watch(savedCyclesCafe, () => {
+    if (!savedCyclesServiceOptions.value.some((s: any) => String(s.pivot.id) === savedCyclesService.value)) savedCyclesService.value = '';
+});
+
+// Precarga los filtros con la mina/unidad/comedor/servicio elegidos en el Paso 1.
+const prefillSavedCyclesLocation = () => {
+    savedCyclesMine.value = '';
+    savedCyclesUnit.value = '';
+    savedCyclesCafe.value = '';
+    savedCyclesService.value = '';
+    if (!selectedServiceableId.value) return;
+    for (const mine of savedCyclesMineOptions.value) {
+        for (const unit of mine.units || []) {
+            for (const cafe of unit.cafes || []) {
+                for (const service of cafe.services || []) {
+                    if (String(service.pivot?.id) === String(selectedServiceableId.value)) {
+                        savedCyclesMine.value = String(mine.id);
+                        savedCyclesUnit.value = String(unit.id);
+                        savedCyclesCafe.value = String(cafe.id);
+                        savedCyclesService.value = String(service.pivot.id);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+};
+
+const hasSavedCyclesFilters = computed(
+    () =>
+        !!(
+            savedCyclesSearch.value ||
+            savedCyclesMine.value ||
+            savedCyclesUnit.value ||
+            savedCyclesCafe.value ||
+            savedCyclesService.value ||
+            savedCyclesDateFrom.value ||
+            savedCyclesDateTo.value
+        ),
+);
+
+const loadSavedCycles = async () => {
+    const requestId = ++savedCyclesRequestId;
+    savedCyclesLoading.value = true;
+    try {
+        const { data } = await axios.get('/cycles/list', {
+            params: {
+                page: savedCyclesPage.value,
+                per_page: 10,
+                search: savedCyclesSearch.value.trim() || undefined,
+                mine_id: savedCyclesMine.value || undefined,
+                unit_id: savedCyclesUnit.value || undefined,
+                cafe_id: savedCyclesCafe.value || undefined,
+                serviceable_id: savedCyclesService.value || undefined,
+                date_from: savedCyclesDateFrom.value || undefined,
+                date_to: savedCyclesDateTo.value || undefined,
+            },
+        });
+        if (requestId !== savedCyclesRequestId) return;
+        savedCycles.value = data.data || [];
+        savedCyclesLastPage.value = data.last_page || 1;
+        savedCyclesTotal.value = data.total || 0;
+        savedCyclesGrandTotal.value = data.grand_total || 0;
+    } catch {
+        if (requestId === savedCyclesRequestId) Swal.fire('Error', 'No se pudo cargar el listado de ciclos.', 'error');
+    } finally {
+        if (requestId === savedCyclesRequestId) savedCyclesLoading.value = false;
+    }
+};
+
+const goToSavedCyclesPage = (page: number) => {
+    savedCyclesPage.value = Math.min(Math.max(1, page), savedCyclesLastPage.value);
+    loadSavedCycles();
+};
+
+const reloadSavedCyclesFromFirstPage = () => {
+    savedCyclesPage.value = 1;
+    loadSavedCycles();
+};
+
+let savedCyclesSearchTimer: ReturnType<typeof setTimeout> | undefined;
+watch(savedCyclesSearch, () => {
+    clearTimeout(savedCyclesSearchTimer);
+    savedCyclesSearchTimer = setTimeout(reloadSavedCyclesFromFirstPage, 350);
+});
+// Mientras se precargan/limpian varios filtros a la vez se suspende la recarga para hacer una sola petición.
+let savedCyclesBatching = false;
+watch([savedCyclesMine, savedCyclesUnit, savedCyclesCafe, savedCyclesService, savedCyclesDateFrom, savedCyclesDateTo], () => {
+    if (!savedCyclesBatching) reloadSavedCyclesFromFirstPage();
+});
+
+const batchSavedCyclesFilters = async (apply: () => void) => {
+    savedCyclesBatching = true;
+    apply();
+    await nextTick();
+    savedCyclesBatching = false;
+    clearTimeout(savedCyclesSearchTimer);
+    reloadSavedCyclesFromFirstPage();
+};
+
+const clearSavedCyclesFilters = () =>
+    batchSavedCyclesFilters(() => {
+        savedCyclesSearch.value = '';
+        savedCyclesMine.value = '';
+        savedCyclesUnit.value = '';
+        savedCyclesCafe.value = '';
+        savedCyclesService.value = '';
+        savedCyclesDateFrom.value = '';
+        savedCyclesDateTo.value = '';
+    });
+
+watch(isSavedCyclesModalOpen, (open) => {
+    if (open) batchSavedCyclesFilters(prefillSavedCyclesLocation);
+});
 
 const isRepeated = (rowId: any, dayIndex: number) => {
     return repeatedDishes.value.some((r) => r.rowId === rowId && r.dayIndex === dayIndex);
@@ -150,18 +403,21 @@ const normalizeCycleRows = (rows: any[]) => (rows || []).map((row: any) => ({ ..
 
 // El índice solo trae los metadatos de cada ciclo (son miles y su cycle_data suma ~100 MB de JSON).
 // El detalle se pide al abrirlo y se cachea por id para no repetir la petición.
-const cycleDataCache = new Map<number, any[]>();
+// Los costos llegan ya expresados en la ciudad de abastecimiento del servicio abierto (así un ciclo
+// copiado de un comedor de otra ciudad se recostea), por eso la caché va por ciclo y ciudad.
+const cycleDataCache = new Map<string, any[]>();
 const loadingCycleId = ref<number | null>(null);
 
 const fetchCycleData = async (cycle: any): Promise<any[] | null> => {
-    const cached = cycleDataCache.get(cycle.id);
+    const cacheKey = `${cycle.id}-${cycleCityId.value ?? ''}`;
+    const cached = cycleDataCache.get(cacheKey);
     if (cached) return cached;
 
     loadingCycleId.value = cycle.id;
     try {
-        const { data } = await axios.get(`/cycles/${cycle.id}`);
+        const { data } = await axios.get(`/cycles/${cycle.id}`, { params: { city_id: cycleCityId.value || undefined } });
         const rows = Array.isArray(data?.cycle_data) ? data.cycle_data : [];
-        cycleDataCache.set(cycle.id, rows);
+        cycleDataCache.set(cacheKey, rows);
         return rows;
     } catch {
         Swal.fire('Error', 'No se pudo cargar el detalle del ciclo.', 'error');
@@ -226,7 +482,13 @@ const menuStructureData = ref<any[]>([]);
 // Once a single structure is settled on for this service, load its matching cycle (if there's exactly
 // one) or fall back to blank defaults from the structure's costs.
 const applyStructure = async (structure: any, newId: string) => {
-    const serviceCycles = props.savedCycles?.filter((c) => String(c.serviceable_id) === String(newId)) || [];
+    let serviceCycles: any[] = [];
+    try {
+        const { data } = await axios.get('/cycles/list', { params: { serviceable_id: newId, all: 1 } });
+        serviceCycles = data?.data || [];
+    } catch {
+        Swal.fire('Error', 'No se pudieron cargar los ciclos del servicio.', 'error');
+    }
 
     if (serviceCycles.length === 1) {
         const savedCycle = serviceCycles[0];
@@ -348,6 +610,7 @@ const searchDish = async () => {
             params: {
                 category_id: searchCategory.value || null,
                 level_id: searchLevel.value || null,
+                city_id: cycleCityId.value || null,
             },
         });
         searchResults.value = response.data;
@@ -364,7 +627,11 @@ const assignDish = (dish: any, recipe: any, action: 'single' | 'all') => {
             dish_name: dish.name,
             level_id: recipe.level_id,
             calories: recipe.total_calories || '0',
+            // Costeado con la ciudad de abastecimiento del servicio (city_id en la búsqueda).
             price: recipe.total_cost || '0.00',
+            city_id: cycleCityId.value,
+            missing_prices: recipe.missing_prices || 0,
+            borrowed_prices: recipe.borrowed_prices || 0,
         };
 
         if (action === 'all') {
@@ -424,13 +691,13 @@ const getSemaphoreText = (status: string) => {
 const getSemaphoreCellClass = (status: string) => {
     switch (status) {
         case 'gravisimo':
-            return 'bg-red-50/80 group-hover/row:bg-red-100/70';
+            return 'bg-red-50 group-hover/row:bg-red-100';
         case 'pesimo':
-            return 'bg-yellow-50/80 group-hover/row:bg-yellow-100/60';
+            return 'bg-yellow-50 group-hover/row:bg-yellow-100';
         case 'bueno':
-            return 'bg-green-50/70 group-hover/row:bg-green-100/50';
+            return 'bg-green-50 group-hover/row:bg-green-100';
         default:
-            return 'bg-slate-50/40 group-hover/row:bg-slate-100/50';
+            return 'bg-slate-50 group-hover/row:bg-slate-100';
     }
 };
 
@@ -622,7 +889,7 @@ const openQuebradoModal = async (row: any, dayIndex: number) => {
 
     try {
         const response = await axios.get(route('dish-recipes.lookup'), {
-            params: { dish_id: day.dish_id, level_id: day.level_id },
+            params: { dish_id: day.dish_id, level_id: day.level_id, city_id: cycleCityId.value || undefined },
         });
         const recipe = response.data;
         quebradoRecipeId.value = recipe.id;
@@ -710,13 +977,44 @@ const calcQuebradoMassiveProperties = (id: number, calcArray: number[]) => {
     }
 };
 
+// Sustituto elegido en el popover: la fila pasa a ser ese insumo (se guarda con su id), con su
+// merma y sus calorías. Se muta el mismo objeto para que el popover abierto siga apuntando a él.
+const replaceQuebradoIngredient = (id: number, substitute: any) => {
+    if (!quebradoRecipe.value || !substitute) return;
+    const ing = quebradoRecipe.value.ingredients.find((i) => i.id == id);
+    if (!ing) return;
+    if (quebradoRecipe.value.ingredients.some((i) => i.id == substitute.id)) {
+        Swal.fire('Atención', `"${substitute.name}" ya está en este quebrado.`, 'warning');
+        return;
+    }
+
+    Object.assign(ing, {
+        id: substitute.id,
+        name: substitute.name,
+        waste: substitute.waste,
+        energy: substitute.energy,
+        nutritional_factors: substitute.nutritional_factors,
+        dosification: substitute.dosification,
+        atwater_factor: substitute.atwater_factor,
+        assignments: substitute.assignments,
+        originalValues: {
+            waste: substitute.waste || 0,
+            calories: calculateIngredientCalories(substitute),
+        },
+    });
+    // Sin precio propio todavía: el popover lo fija enseguida con el proveedor elegido.
+    onQuebradoWeightInput(ing);
+};
+
 const saveQuebrado = async () => {
     if (!quebradoRecipeId.value || !quebradoRecipe.value) return;
 
     isQuebradoSaving.value = true;
     try {
         const recipe = quebradoRecipe.value;
-        await axios.put(route('dish-recipes.update', quebradoRecipeId.value), {
+        const { data: saved } = await axios.put(route('dish-recipes.update', quebradoRecipeId.value), {
+            // El backend devuelve el costo en esta ciudad, con los proveedores activos.
+            city_id: cycleCityId.value,
             total_gross_weight: recipe.total_gross_weight,
             total_waste_weight: recipe.total_waste_weight,
             total_calories: recipe.total_calories,
@@ -736,12 +1034,20 @@ const saveQuebrado = async () => {
 
         // The cycle currently being edited hasn't been saved yet (or is being re-edited before
         // the next save), so reflect the new totals immediately in the day cell on screen.
-        if (quebradoRow.value && quebradoDayIndex.value !== null) {
-            const day = quebradoRow.value.days[quebradoDayIndex.value];
-            if (day) {
-                day.calories = recipe.total_calories;
-                day.price = recipe.total_cost;
-            }
+        // La receta es la misma en todas las celdas con ese plato y nivel, así que se actualizan todas.
+        const edited = quebradoRow.value && quebradoDayIndex.value !== null ? quebradoRow.value.days[quebradoDayIndex.value] : null;
+        if (edited) {
+            const { dish_id, level_id } = edited;
+            menuStructureData.value
+                .flatMap((row: any) => Object.values(row.days || {}))
+                .filter((d: any) => d?.dish_id === dish_id && d?.level_id === level_id)
+                .forEach((day: any) => {
+                    day.calories = saved?.total_calories ?? recipe.total_calories;
+                    day.price = saved?.total_cost ?? recipe.total_cost;
+                    day.city_id = cycleCityId.value;
+                    day.missing_prices = saved?.missing_prices ?? 0;
+                    day.borrowed_prices = saved?.borrowed_prices ?? 0;
+                });
         }
 
         isQuebradoModalOpen.value = false;
@@ -756,6 +1062,46 @@ const saveQuebrado = async () => {
         Swal.fire('Error', err?.response?.data?.message || 'No se pudo guardar el quebrado.', 'error');
     } finally {
         isQuebradoSaving.value = false;
+    }
+};
+
+// "Recalcular costos": vuelve a costear todos los platos de la grilla con los precios actuales
+// de Proveedores en la ciudad de abastecimiento del servicio (guardado o no el ciclo).
+const isRecalculating = ref(false);
+const recalculateCosts = async () => {
+    const days = menuStructureData.value.flatMap((row: any) => Object.values(row.days || {})).filter((d: any) => d?.dish_id && d?.level_id);
+    if (!days.length) {
+        Swal.fire('Atención', 'No hay platos asignados para recalcular.', 'info');
+        return;
+    }
+
+    isRecalculating.value = true;
+    try {
+        const { data } = await axios.post(route('cycles.prices'), {
+            city_id: cycleCityId.value,
+            items: days.map((d: any) => ({ dish_id: d.dish_id, level_id: d.level_id })),
+        });
+        const totals = data?.totals || {};
+        days.forEach((day: any) => {
+            const total = totals[`${day.dish_id}-${day.level_id}`];
+            if (!total) return;
+            day.price = total.price;
+            day.calories = total.calories;
+            day.city_id = data.city_id;
+            day.missing_prices = total.missing_prices;
+            day.borrowed_prices = total.borrowed_prices;
+        });
+        Swal.fire({
+            icon: 'success',
+            title: 'Costos recalculados',
+            text: `Precios de ${cityName(data.city_id)}. Guarde el ciclo para conservarlos.`,
+            timer: 2000,
+            showConfirmButton: false,
+        });
+    } catch {
+        Swal.fire('Error', 'No se pudieron recalcular los costos.', 'error');
+    } finally {
+        isRecalculating.value = false;
     }
 };
 
@@ -878,8 +1224,8 @@ const resetToNew = () => {
 
 <template>
     <Head title="Ciclos de Menú" />
-    <AppLayout>
-        <div class="flex h-full flex-1 flex-col gap-4 overflow-hidden bg-slate-50/50 p-6">
+    <AppLayout content-class="min-w-0">
+        <div class="flex h-full min-w-0 flex-1 flex-col gap-4 overflow-hidden bg-slate-50/50 p-6">
             <div class="flex flex-none items-center justify-between">
                 <div>
                     <h1 class="text-2xl font-bold tracking-tight text-slate-900">Configuración de Ciclos</h1>
@@ -942,6 +1288,60 @@ const resetToNew = () => {
                                 Generar Columnas
                             </Button>
                         </div>
+
+                        <div class="flex items-center gap-2">
+                            <Button
+                                size="icon"
+                                variant="outline"
+                                class="h-9 w-9 border-slate-200"
+                                title="Días anteriores"
+                                :disabled="!canScrollLeft"
+                                @click="scrollDays(-1)"
+                            >
+                                <ChevronLeft class="h-4 w-4" />
+                            </Button>
+                            <span class="min-w-[110px] text-center text-sm font-medium tabular-nums text-slate-600">
+                                Días {{ visibleDayRange.first }}–{{ visibleDayRange.last }} de {{ generatedDays }}
+                            </span>
+                            <Button
+                                size="icon"
+                                variant="outline"
+                                class="h-9 w-9 border-slate-200"
+                                title="Días siguientes"
+                                :disabled="!canScrollRight"
+                                @click="scrollDays(1)"
+                            >
+                                <ChevronRight class="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div v-if="selectedServiceableId" class="flex items-center gap-2">
+                        <span
+                            class="flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold"
+                            :class="configuredCityId ? 'border-slate-200 bg-slate-50 text-slate-700' : 'border-amber-200 bg-amber-50 text-amber-800'"
+                            :title="
+                                configuredCityId
+                                    ? 'Los costos usan los proveedores activos de esta ciudad.'
+                                    : 'Configure la ciudad de abastecimiento de la Unidad o el Comedor en Lugares.'
+                            "
+                        >
+                            <MapPin class="h-3.5 w-3.5" />
+                            Abastecimiento: {{ cityName(cycleCityId) }}
+                            <template v-if="!configuredCityId"> (por defecto, sin ciudad configurada)</template>
+                        </span>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            class="h-8 border-slate-200 text-slate-600"
+                            :disabled="isRecalculating"
+                            title="Volver a costear todos los platos con los precios actuales de Proveedores"
+                            @click="recalculateCosts"
+                        >
+                            <Loader2 v-if="isRecalculating" class="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                            <RefreshCw v-else class="mr-1.5 h-3.5 w-3.5" />
+                            Recalcular costos
+                        </Button>
                     </div>
 
                     <div class="flex items-center gap-4 text-xs font-medium text-slate-500">
@@ -952,56 +1352,87 @@ const resetToNew = () => {
                     </div>
                 </div>
 
-                <div class="scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent relative isolate w-full flex-1 overflow-auto pb-4">
-                    <Table class="w-full border-collapse">
-                        <TableHeader>
-                            <TableRow class="border-b-slate-200 bg-slate-50/80">
-                                <TableHead
-                                    class="sticky top-0 left-0 z-20 w-[60px] bg-slate-50/95 text-center font-semibold text-slate-600 shadow-[1px_1px_0_0_#e2e8f0] backdrop-blur"
-                                    >Ord</TableHead
+                <!-- Acceso directo a cada día: siempre se puede llegar al último sin arrastrar el scroll -->
+                <div v-if="generatedDays > 1" class="flex flex-none items-center gap-2 border-b border-slate-100 bg-white px-5 py-2.5">
+                    <span class="shrink-0 text-xs font-medium text-slate-500">Ir al día:</span>
+                    <div class="flex min-w-0 flex-wrap gap-1.5">
+                        <button
+                            v-for="day in generatedDays"
+                            :key="day"
+                            type="button"
+                            class="h-7 min-w-[2.25rem] rounded-md border px-2 text-xs font-semibold tabular-nums transition-colors"
+                            :class="
+                                isDayVisible(day)
+                                    ? 'border-[#FF5A1F] bg-orange-50 text-[#FF5A1F]'
+                                    : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+                            "
+                            @click="scrollToDay(day)"
+                        >
+                            D{{ day }}
+                        </button>
+                    </div>
+                </div>
+
+                <div
+                    ref="gridScrollRef"
+                    class="relative isolate min-h-0 w-full flex-1 overflow-auto overscroll-x-contain"
+                    @scroll.passive="updateGridScrollState"
+                >
+                    <table class="w-max min-w-full border-separate border-spacing-0 text-sm">
+                        <thead>
+                            <tr>
+                                <th
+                                    class="sticky top-0 left-0 z-30 h-11 w-14 min-w-14 max-w-14 border-b border-slate-200 bg-slate-50 px-2 text-center font-semibold text-slate-600"
                                 >
-                                <TableHead
-                                    class="sticky top-0 left-[60px] z-20 min-w-[220px] bg-slate-50/95 font-semibold text-slate-600 shadow-[1px_1px_0_0_#e2e8f0] backdrop-blur"
-                                    >Estructura del Menú</TableHead
+                                    Ord
+                                </th>
+                                <th
+                                    class="sticky top-0 left-14 z-30 h-11 w-[240px] min-w-[240px] max-w-[240px] border-b border-slate-200 bg-slate-50 px-3 text-left font-semibold text-slate-600"
                                 >
-                                <TableHead
-                                    class="sticky top-0 left-[280px] z-20 w-[120px] bg-slate-50/95 text-center font-semibold text-slate-600 shadow-[1px_1px_0_0_#e2e8f0] backdrop-blur"
-                                    >Semáforo</TableHead
+                                    Estructura del Menú
+                                </th>
+                                <th
+                                    class="sticky top-0 left-[296px] z-30 h-11 w-28 min-w-28 max-w-28 border-r border-b border-slate-200 bg-slate-50 px-2 text-center font-semibold text-slate-600 shadow-[6px_0_8px_-6px_rgba(15,23,42,0.18)]"
                                 >
-                                <TableHead
+                                    Semáforo
+                                </th>
+                                <th
                                     v-for="(day, index) in daysColumns"
                                     :key="index"
-                                    class="sticky top-0 z-10 min-w-[180px] border-l border-slate-200 bg-slate-50/95 text-center font-semibold text-slate-600 shadow-[0_1px_0_0_#e2e8f0] backdrop-blur"
+                                    :ref="(el) => { if (el) dayHeaderRefs[index] = el as HTMLElement; }"
+                                    class="sticky top-0 z-20 h-11 w-[200px] min-w-[200px] max-w-[200px] border-b border-l border-slate-200 bg-slate-50 px-2 text-center font-semibold text-slate-600"
                                 >
                                     {{ day }}
-                                </TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            <TableRow
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr
                                 v-for="(row, rowIndex) in menuStructureData"
                                 :key="row.id"
                                 class="group/row transition-colors hover:bg-slate-50/50"
                             >
-                                <TableCell
-                                    class="sticky left-0 z-10 border-r border-slate-100 bg-white text-center font-medium text-slate-500 shadow-[1px_0_0_0_#f1f5f9] backdrop-blur group-hover/row:bg-slate-50/95"
+                                <td
+                                    class="sticky left-0 z-10 w-14 min-w-14 max-w-14 border-b border-slate-100 bg-white p-2 text-center font-medium text-slate-500 group-hover/row:bg-slate-50"
                                 >
                                     {{ rowIndex + 1 }}
-                                </TableCell>
+                                </td>
 
-                                <TableCell
-                                    class="sticky left-[60px] z-10 border-r border-slate-100 bg-white shadow-[1px_0_0_0_#f1f5f9] backdrop-blur group-hover/row:bg-slate-50/95"
+                                <td
+                                    class="sticky left-14 z-10 w-[240px] min-w-[240px] max-w-[240px] border-b border-slate-100 bg-white px-3 py-2 group-hover/row:bg-slate-50"
                                 >
                                     <div class="flex flex-col gap-1.5 py-1">
                                         <Badge variant="outline" class="w-max border-slate-200 bg-slate-50 font-semibold text-slate-600">
                                             S/ {{ row.costValue.toFixed(2) }}
                                         </Badge>
-                                        <span class="text-[13px] font-bold tracking-tight text-slate-800">{{ row.category }}</span>
+                                        <span class="line-clamp-2 text-[13px] leading-snug font-bold tracking-tight break-words text-slate-800" :title="row.category">{{
+                                            row.category
+                                        }}</span>
                                     </div>
-                                </TableCell>
+                                </td>
 
-                                <TableCell
-                                    class="sticky left-[280px] z-10 border-r border-slate-100 text-center shadow-[1px_0_0_0_#f1f5f9] backdrop-blur transition-colors"
+                                <td
+                                    class="sticky left-[296px] z-10 w-28 min-w-28 max-w-28 border-r border-b border-slate-200 border-b-slate-100 p-2 text-center shadow-[6px_0_8px_-6px_rgba(15,23,42,0.18)] transition-colors"
                                     :class="[
                                         getSemaphoreCellClass(getRowStatus(row)),
                                         Object.keys(row.days || {}).length > 0 ? 'cursor-pointer' : '',
@@ -1026,13 +1457,13 @@ const resetToNew = () => {
                                             Ver gráfico
                                         </span>
                                     </div>
-                                </TableCell>
+                                </td>
 
                                 <!-- Days Columns -->
-                                <TableCell
+                                <td
                                     v-for="dayIndex in generatedDays"
                                     :key="dayIndex"
-                                    class="group/cell relative border-l border-slate-100 p-2 align-top"
+                                    class="group/cell relative w-[200px] min-w-[200px] max-w-[200px] border-b border-l border-slate-100 p-2 align-top"
                                 >
                                     <div
                                         class="flex h-full flex-col overflow-hidden border bg-white transition-all"
@@ -1092,8 +1523,14 @@ const resetToNew = () => {
                                                     {{ row.days[dayIndex].dish_name }}
                                                 </span>
                                                 <div class="mt-2 flex items-center justify-between gap-1">
-                                                    <span class="text-[12px] font-bold tabular-nums text-slate-900">
+                                                    <span class="flex items-center gap-1 text-[12px] font-bold tabular-nums text-slate-900">
                                                         S/ {{ Number(row.days[dayIndex].price).toFixed(2) }}
+                                                        <AlertTriangle
+                                                            v-if="dayPriceWarning(row.days[dayIndex])"
+                                                            class="h-3.5 w-3.5 shrink-0"
+                                                            :class="row.days[dayIndex].missing_prices ? 'text-red-500' : 'text-amber-500'"
+                                                            :title="dayPriceWarning(row.days[dayIndex]) ?? undefined"
+                                                        />
                                                     </span>
                                                     <button
                                                         type="button"
@@ -1115,10 +1552,10 @@ const resetToNew = () => {
                                             </div>
                                         </template>
                                     </div>
-                                </TableCell>
-                            </TableRow>
-                        </TableBody>
-                    </Table>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -1189,6 +1626,10 @@ const resetToNew = () => {
                                             <p class="mt-1 text-[11px] text-slate-500">
                                                 Costo: S/ {{ Number(recipe.total_cost || 0).toFixed(2) }} &bull; Calorías:
                                                 {{ Number(recipe.total_calories || 0).toFixed(2) }} kcal
+                                            </p>
+                                            <p v-if="dayPriceWarning(recipe)" class="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-700">
+                                                <AlertTriangle class="h-3 w-3 shrink-0" />
+                                                {{ dayPriceWarning(recipe) }}
                                             </p>
                                         </div>
                                         <div class="flex shrink-0 items-center gap-2">
@@ -1262,17 +1703,107 @@ const resetToNew = () => {
 
         <!-- Saved Cycles Modal -->
         <Dialog :open="isSavedCyclesModalOpen" @update:open="isSavedCyclesModalOpen = $event">
-            <DialogContent class="overflow-hidden rounded-xl border-0 bg-white p-0 shadow-2xl sm:max-w-[700px]">
+            <DialogContent class="overflow-hidden rounded-xl border-0 bg-white p-0 shadow-2xl sm:max-w-[860px]">
                 <DialogHeader class="border-b border-slate-100 bg-white p-6 pb-4">
                     <DialogTitle class="flex items-center gap-2 text-xl font-bold text-slate-800">
                         <Settings2 class="h-5 w-5 text-[#FF5A1F]" />
-                        Ajustes de Ciclos ({{ props.savedCycles?.length || 0 }} guardados)
+                        Ajustes de Ciclos
+                        <span class="text-sm font-medium text-slate-400">({{ savedCyclesTotal }} {{ savedCyclesTotal === 1 ? 'resultado' : 'resultados' }})</span>
                     </DialogTitle>
                 </DialogHeader>
-                <div class="max-h-[500px] overflow-y-auto bg-slate-50/30 p-6">
-                    <ul class="divide-y divide-slate-200/60" v-if="props.savedCycles && props.savedCycles.length > 0">
+
+                <div class="flex flex-col gap-3 border-b border-slate-100 bg-white px-6 py-4">
+                    <div class="relative">
+                        <Search class="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <Input
+                            v-model="savedCyclesSearch"
+                            type="text"
+                            placeholder="Buscar por nombre o ID del ciclo..."
+                            class="h-9 border-slate-200 pl-9 focus-visible:ring-[#FF5A1F]"
+                        />
+                    </div>
+                    <div
+                        class="grid grid-cols-2 items-end gap-3 rounded-2xl border border-l-4 border-slate-100 border-l-[#FF5A1F] bg-white p-4 shadow-sm sm:grid-cols-4"
+                    >
+                        <div class="flex min-w-0 flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Mina</label>
+                            <select
+                                v-model="savedCyclesMine"
+                                class="h-9 w-full truncate rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none"
+                            >
+                                <option value="">Todas</option>
+                                <option v-for="m in savedCyclesMineOptions" :key="m.id" :value="String(m.id)">{{ m.name }}</option>
+                            </select>
+                        </div>
+                        <div class="flex min-w-0 flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Unidad</label>
+                            <select
+                                v-model="savedCyclesUnit"
+                                class="h-9 w-full truncate rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none"
+                            >
+                                <option value="">Todas</option>
+                                <option v-for="u in savedCyclesUnitOptions" :key="u.id" :value="String(u.id)">{{ u.name }}</option>
+                            </select>
+                        </div>
+                        <div class="flex min-w-0 flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Café / Comedor</label>
+                            <select
+                                v-model="savedCyclesCafe"
+                                class="h-9 w-full truncate rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none"
+                            >
+                                <option value="">Todos</option>
+                                <option v-for="c in savedCyclesCafeOptions" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
+                            </select>
+                        </div>
+                        <div class="flex min-w-0 flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Servicio</label>
+                            <select
+                                v-model="savedCyclesService"
+                                :disabled="!savedCyclesCafe"
+                                :title="savedCyclesCafe ? '' : 'Seleccione primero un comedor'"
+                                class="h-9 w-full truncate rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
+                            >
+                                <option value="">Todos</option>
+                                <option v-for="s in savedCyclesServiceOptions" :key="s.pivot.id" :value="String(s.pivot.id)">{{ s.name }}</option>
+                            </select>
+                        </div>
+                        <div class="flex min-w-0 flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Guardado desde</label>
+                            <Input
+                                v-model="savedCyclesDateFrom"
+                                type="date"
+                                class="h-9 w-full rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F]"
+                            />
+                        </div>
+                        <div class="flex min-w-0 flex-col gap-1">
+                            <label class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase">Guardado hasta</label>
+                            <Input
+                                v-model="savedCyclesDateTo"
+                                type="date"
+                                class="h-9 w-full rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F]"
+                            />
+                        </div>
+                        <div class="col-span-2 flex h-9 items-center justify-end gap-3">
+                            <button
+                                v-if="hasSavedCyclesFilters"
+                                type="button"
+                                class="h-9 rounded-lg px-2.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700"
+                                @click="clearSavedCyclesFilters"
+                            >
+                                Limpiar filtros
+                            </button>
+                            <span class="text-xs text-slate-400 tabular-nums">{{ savedCyclesTotal }} de {{ savedCyclesGrandTotal }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="relative max-h-[420px] min-h-[200px] overflow-y-auto bg-slate-50/30 px-6 py-2">
+                    <div v-if="savedCyclesLoading" class="absolute inset-0 z-10 flex items-center justify-center bg-white/60">
+                        <Loader2 class="h-6 w-6 animate-spin text-[#FF5A1F]" />
+                    </div>
+                    <ul class="divide-y divide-slate-200/60" v-if="savedCycles.length > 0">
                         <li
-                            v-for="cycle in props.savedCycles"
+                            v-for="cycle in savedCycles"
                             :key="cycle.id"
                             class="flex items-center justify-between gap-4 rounded px-2 py-4 transition-colors hover:bg-white"
                         >
@@ -1309,7 +1840,35 @@ const resetToNew = () => {
                             </div>
                         </li>
                     </ul>
-                    <div v-else class="py-8 text-center text-slate-500">No hay ciclos guardados en la base de datos aún.</div>
+                    <div v-else-if="!savedCyclesLoading" class="py-8 text-center text-sm text-slate-500">
+                        No se encontraron ciclos con los filtros aplicados.
+                    </div>
+                </div>
+
+                <div class="flex items-center justify-between gap-3 border-t border-slate-100 bg-white px-6 py-3">
+                    <span class="text-xs text-slate-500 tabular-nums">Página {{ savedCyclesPage }} de {{ savedCyclesLastPage }}</span>
+                    <div class="flex items-center gap-1">
+                        <Button
+                            size="icon"
+                            variant="outline"
+                            class="h-8 w-8 border-slate-200"
+                            title="Página anterior"
+                            :disabled="savedCyclesLoading || savedCyclesPage <= 1"
+                            @click="goToSavedCyclesPage(savedCyclesPage - 1)"
+                        >
+                            <ChevronLeft class="h-4 w-4" />
+                        </Button>
+                        <Button
+                            size="icon"
+                            variant="outline"
+                            class="h-8 w-8 border-slate-200"
+                            title="Página siguiente"
+                            :disabled="savedCyclesLoading || savedCyclesPage >= savedCyclesLastPage"
+                            @click="goToSavedCyclesPage(savedCyclesPage + 1)"
+                        >
+                            <ChevronRight class="h-4 w-4" />
+                        </Button>
+                    </div>
                 </div>
             </DialogContent>
         </Dialog>
@@ -1606,8 +2165,8 @@ const resetToNew = () => {
                             </TableHeader>
                             <TableBody>
                                 <TableRow
-                                    v-for="ingredient in quebradoRecipe.ingredients"
-                                    :key="ingredient.id"
+                                    v-for="(ingredient, index) in quebradoRecipe.ingredients"
+                                    :key="index"
                                     class="border-b-slate-100 transition-colors hover:bg-slate-50/50"
                                 >
                                     <TableCell class="py-2 font-semibold text-slate-800">{{ ingredient.name }}</TableCell>
@@ -1660,7 +2219,10 @@ const resetToNew = () => {
                                                 :totalCalories="quebradoRecipe.total_calories"
                                                 :totalCost="quebradoRecipe.total_cost"
                                                 :totalfinalProduct="quebradoRecipe.total_net_weight"
+                                                :cityId="cycleCityId"
+                                                allow-replace
                                                 @calcMassiveProperties="calcQuebradoMassiveProperties"
+                                                @substitute="replaceQuebradoIngredient"
                                             />
                                         </div>
                                     </TableCell>

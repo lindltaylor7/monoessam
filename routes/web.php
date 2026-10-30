@@ -221,6 +221,10 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
 
     Route::prefix('dish-recipes')->name('dish-recipes.')->group(function () {
         Route::get('lookup', [DishRecipeController::class, 'lookup'])->name('lookup');
+        // Sustitutos del popover de quebrado. Va bajo dish-recipes (food + cycles) y no bajo
+        // ingredients: desde Ciclos el usuario no suele tener el permiso de Ingredientes y la
+        // petición devolvía 403, dejando el selector vacío.
+        Route::get('substitutes/{id}', [IngredientController::class, 'substitutes'])->name('substitutes');
         Route::put('{id}', [DishRecipeController::class, 'update'])->name('update');
     });
 
@@ -305,6 +309,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::delete('assign/{id}', [ProviderController::class, 'deleteAssignment'])->name('assign.destroy');
         Route::post('import', [ProviderController::class, 'importAssignment'])->name('import');
         Route::post('import-ids', [ProviderController::class, 'importWithIds'])->name('import-ids');
+        Route::get('coverage', [ProviderController::class, 'coverage'])->name('coverage');
     });
 
     // ========================================================================
@@ -500,7 +505,9 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     Route::prefix('planning')->name('planning.')->group(function () {
         Route::get('/', [PlanningController::class, 'index'])->name('index');
         Route::post('/', [PlanningController::class, 'store'])->name('store');
+        Route::get('programs', [PlanningController::class, 'programs'])->name('programs');
         Route::post('{id}/generate-po', [PlanningController::class, 'generatePurchaseOrder'])->name('generate-po');
+        Route::post('generate-po', [PlanningController::class, 'generatePurchaseOrderMultiple'])->name('generate-po-multiple');
         // Todos los reportes operan sobre una o varias programaciones seleccionadas (program_ids[]),
         // igual que menu-excel.
         Route::get('quebrado-pdf', [PlanningController::class, 'quebradoPdf'])->name('quebrado-pdf');
@@ -511,13 +518,19 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('reporte-compras', [PlanningController::class, 'purchaseReport'])->name('reporte-compras');
         // Mismo detalle que cycles.show, pero bajo el segmento 'planning' para que un usuario de
         // Planificación pueda cargar un ciclo en la matriz sin tener el permiso 'cycles'.
+        Route::get('cycles', [PlanningController::class, 'cycles'])->name('cycles.index');
         Route::get('cycles/{id}', [MenuCycleController::class, 'show'])->name('cycles.show');
     });
 
     Route::prefix('purchase-orders')->name('purchase_orders.')->group(function () {
         Route::get('/', [PurchaseOrderController::class, 'index'])->name('index');
-        Route::get('{id}', [PurchaseOrderController::class, 'show'])->name('show');
-        Route::delete('{id}', [PurchaseOrderController::class, 'destroy'])->name('destroy');
+        // Buscador propio del módulo: el de `ingredients` exige el permiso de ese segmento
+        // también en lectura, así que un usuario de Órdenes de Compra no podría usarlo.
+        Route::get('search-ingredients', [PurchaseOrderController::class, 'searchIngredients'])->name('search-ingredients');
+        Route::get('{id}', [PurchaseOrderController::class, 'show'])->whereNumber('id')->name('show');
+        Route::post('{id}/items', [PurchaseOrderController::class, 'storeItem'])->name('items.store');
+        Route::delete('{id}/items/{itemId}', [PurchaseOrderController::class, 'destroyItem'])->name('items.destroy');
+        Route::delete('{id}', [PurchaseOrderController::class, 'destroy'])->whereNumber('id')->name('destroy');
     });
 
     Route::prefix('orders')->name('orders.')->group(function () {
@@ -540,6 +553,10 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('/', [MenuCycleController::class, 'index'])->name('index');
         Route::post('/', [MenuCycleController::class, 'store'])->name('store');
         Route::get('/export/{serviceable_id}', [MenuCycleController::class, 'export'])->name('export');
+        // Listado paginado/filtrado; debe ir antes de /{id}.
+        Route::get('/list', [MenuCycleController::class, 'list'])->name('list');
+        // Costos actuales de los platos de la grilla en la ciudad de abastecimiento del servicio.
+        Route::post('/prices', [MenuCycleController::class, 'prices'])->name('prices');
         // El detalle (cycle_data) se pide bajo demanda; el listado del índice ya no lo trae.
         Route::get('/{id}', [MenuCycleController::class, 'show'])->name('show');
     });
