@@ -1,4 +1,7 @@
 <script lang="ts" setup>
+import EmptyState from '@/components/shared/EmptyState.vue';
+import PageHeader from '@/components/shared/PageHeader.vue';
+import StatCard from '@/components/shared/StatCard.vue';
 import Icon from '@/components/Icon.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -7,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { Building2, Mountain, Plus, Search, Users, X } from 'lucide-vue-next';
 import { ref, watch } from 'vue';
 import ExcelDialog from '../sales/ExcelDialog.vue';
 import DinnerModal from './DinnerModal.vue';
@@ -139,58 +143,71 @@ const clearFilters = () => {
     <AppLayout :breadcrumbs="breadcrumbs">
         <Head title="Comensales - Ventas" />
 
-        <div class="min-h-screen space-y-6 bg-slate-50/50 p-4 md:p-8">
-            <!-- Professional Header -->
-            <div class="flex flex-col items-start justify-between gap-6 lg:flex-row lg:items-center">
-                <div class="flex items-center gap-4">
-                    <div
-                        class="flex h-14 w-14 rotate-3 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-200 transition-transform hover:rotate-0"
-                    >
-                        <Icon name="users" size="28" />
-                    </div>
-                    <div>
-                        <h1 class="text-2xl font-extrabold tracking-tight text-slate-900 uppercase md:text-3xl">Gestión de Comensales</h1>
-                        <p class="flex items-center gap-2 text-sm font-medium text-slate-500">
-                            <span class="flex h-2 w-2 animate-pulse rounded-full bg-blue-500"></span>
-                            Administración del Padrón y Asignaciones
-                        </p>
-                    </div>
-                </div>
-
-                <div class="flex w-full flex-col items-stretch gap-3 sm:flex-row sm:items-center lg:w-auto">
+        <div class="space-y-6 p-4 sm:p-6 lg:p-8">
+            <!-- Encabezado Unificado -->
+            <PageHeader
+                title="Gestión de Comensales"
+                description="Administración del padrón de usuarios, subconcesionarias y asignaciones mineras."
+                :icon="Users"
+                iconColor="from-red-600 to-rose-700 text-white"
+            >
+                <template #actions>
                     <div class="min-w-[200px]">
                         <ExcelDialog :subdealerships="subdealerships" :cafes="cafes" />
                     </div>
                     <Button
                         @click="openCreateModal"
-                        class="bg-primary hover:bg-primary/90 text-primary-foreground shadow-primary/20 flex h-11 items-center justify-center gap-2 rounded-xl px-8 text-xs font-bold tracking-wider uppercase shadow-lg transition-all active:scale-95"
+                        class="h-10 gap-2 rounded-xl bg-red-600 hover:bg-red-700 text-white shadow-sm shadow-red-600/20 px-4 text-xs font-semibold"
                     >
-                        <Icon name="plus" size="18" />
+                        <Plus class="h-4 w-4" />
                         Nuevo Comensal
                     </Button>
-                </div>
+                </template>
+            </PageHeader>
+
+            <!-- Métricas Rápidas -->
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <StatCard
+                    label="Padrón Total de Comensales"
+                    :value="dinners.total"
+                    subtext="Registros en base de datos"
+                    :icon="Users"
+                    variant="primary"
+                />
+                <StatCard
+                    label="Subconcesionarias"
+                    :value="subdealerships.length"
+                    subtext="Empresas y concesionarias"
+                    :icon="Building2"
+                    variant="info"
+                />
+                <StatCard
+                    label="Minas Vinculadas"
+                    :value="mines ? mines.length : 0"
+                    subtext="Unidades operativas"
+                    :icon="Mountain"
+                    variant="success"
+                />
             </div>
 
-            <!-- Stats Overview -->
-
-            <!-- Filters Section -->
-            <div class="rounded-2xl border border-slate-200/60 bg-white p-4 shadow-sm transition-all hover:shadow-md">
-                <div class="grid grid-cols-1 gap-4 md:grid-cols-4">
+            <!-- Sección de Filtros Unificada -->
+            <div class="rounded-2xl border border-border/70 bg-card p-4 shadow-2xs">
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <div class="relative">
-                        <Icon name="search" class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <Search class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
                             v-model="search"
-                            placeholder="Buscar por nombre, DNI o Carné de Extranjería..."
-                            class="focus:ring-primary/20 focus:border-primary h-11 rounded-xl border-slate-200 pl-10 transition-all"
+                            placeholder="Buscar por nombre, DNI..."
+                            class="h-10 rounded-xl border-border bg-muted/30 pl-9 text-sm transition-all focus:bg-background focus:ring-2 focus:ring-red-600/20"
                         />
                     </div>
 
                     <div>
                         <Select v-model="selectedSubdealership">
-                            <SelectTrigger class="h-11 rounded-xl border-slate-200 bg-white">
+                            <SelectTrigger class="h-10 rounded-xl border-border bg-card text-xs">
                                 <SelectValue placeholder="Todas las Subconcesionarias" />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent class="rounded-xl shadow-lg">
                                 <SelectItem value="all">Todas las Subconcesionarias</SelectItem>
                                 <SelectItem v-for="sd in subdealerships" :key="sd.id" :value="sd.id.toString()">
                                     {{ sd.name }}
@@ -201,10 +218,10 @@ const clearFilters = () => {
 
                     <div>
                         <Select v-model="selectedMine">
-                            <SelectTrigger class="h-11 rounded-xl border-slate-200 bg-white">
+                            <SelectTrigger class="h-10 rounded-xl border-border bg-card text-xs">
                                 <SelectValue placeholder="Todas las Minas" />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent class="rounded-xl shadow-lg">
                                 <SelectItem value="all">Todas las Minas</SelectItem>
                                 <SelectItem v-for="m in mines" :key="m.id" :value="m.id.toString()">
                                     {{ m.name }}
@@ -213,8 +230,8 @@ const clearFilters = () => {
                         </Select>
                     </div>
 
-                    <Button variant="outline" @click="clearFilters" class="h-11 rounded-xl border-slate-200 text-slate-500 hover:text-slate-900">
-                        <Icon name="x" class="mr-2 h-4 w-4" />
+                    <Button variant="outline" @click="clearFilters" class="h-10 rounded-xl border-border text-xs text-muted-foreground hover:text-foreground">
+                        <X class="mr-1.5 h-3.5 w-3.5" />
                         Limpiar Filtros
                     </Button>
                 </div>
@@ -308,19 +325,14 @@ const clearFilters = () => {
                                 </TableCell>
                             </TableRow>
                             <TableRow v-if="dinners.data.length === 0">
-                                <TableCell colspan="4" class="h-[400px] text-center">
-                                    <div class="mx-auto flex max-w-sm flex-col items-center justify-center gap-4">
-                                        <div class="flex h-24 w-24 items-center justify-center rounded-full bg-slate-50 text-slate-200">
-                                            <Icon name="users" size="48" strokeWidth="1.5" />
-                                        </div>
-                                        <div class="space-y-1">
-                                            <p class="text-lg font-bold text-slate-900">No se encontraron resultados</p>
-                                            <p class="text-sm text-slate-500">
-                                                No hay comensales que coincidan con los criterios de búsqueda actuales.
-                                            </p>
-                                        </div>
-                                        <Button variant="outline" @click="clearFilters" class="mt-2">Ver todos los comensales</Button>
-                                    </div>
+                                <TableCell colspan="5" class="p-0">
+                                    <EmptyState
+                                        title="No se encontraron comensales"
+                                        description="No hay comensales que coincidan con los criterios de búsqueda o filtros seleccionados."
+                                        :icon="Users"
+                                    >
+                                        <Button variant="outline" size="sm" @click="clearFilters">Ver todos los comensales</Button>
+                                    </EmptyState>
                                 </TableCell>
                             </TableRow>
                         </TableBody>

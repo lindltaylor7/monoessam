@@ -33,11 +33,11 @@ const footerNavItems: NavItem[] = [];
 </script>
 
 <template>
-    <Sidebar collapsible="icon" variant="inset" class="bg-red-700">
-        <SidebarHeader class="bg-red-700 text-white">
+    <Sidebar collapsible="icon" variant="inset" class="border-r border-red-950/20 bg-gradient-to-b from-red-800 via-red-900 to-rose-950 text-white shadow-xl">
+        <SidebarHeader class="border-b border-white/10 px-3 py-2 text-white">
             <SidebarMenu>
                 <SidebarMenuItem>
-                    <SidebarMenuButton size="lg" as-child>
+                    <SidebarMenuButton size="lg" as-child class="hover:bg-white/10 hover:text-white transition-colors rounded-xl">
                         <Link :href="route('dashboard')">
                             <AppLogo />
                         </Link>
@@ -46,13 +46,13 @@ const footerNavItems: NavItem[] = [];
             </SidebarMenu>
         </SidebarHeader>
 
-        <SidebarContent class="sidebar-scroll bg-red-700 text-white">
+        <SidebarContent class="sidebar-scroll py-2 text-white">
             <NavMain :items="mainNavItems" />
         </SidebarContent>
 
-        <SidebarFooter class="bg-red-700 text-white">
+        <SidebarFooter class="border-t border-white/10 px-2 py-2 text-white">
             <NavFooter :items="footerNavItems" />
-            <NavUser />
+            <NavUser class="hover:bg-white/10 text-white rounded-xl" />
         </SidebarFooter>
     </Sidebar>
     <slot />

@@ -15,6 +15,9 @@ import { AlertTriangle, ChartBar, Check, ChevronDown, Loader2, Trash2 } from 'lu
 import { computed, ref, watch } from 'vue';
 import SalesReportTable from './SalesReportTable.vue';
 import Swal from 'sweetalert2';
+import PageHeader from '@/components/shared/PageHeader.vue';
+import StatCard from '@/components/shared/StatCard.vue';
+import { DollarSign, FileSpreadsheet, ShoppingCart, TrendingUp } from 'lucide-vue-next';
 
 interface Cafe {
     id: number;
@@ -303,89 +306,67 @@ const deleteDuplicateSale = (saleId: number) => {
 <template>
     <Head title="Reporte de ventas" />
     <AppLayout>
-        <div class="flex h-full flex-1 flex-col gap-6 rounded-xl p-6">
-            <!-- Header -->
-            <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div class="flex items-center gap-3">
-                    <div
-                        class="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/30"
-                    >
-                        <ChartBar class="text-white" />
-                    </div>
-                    <div>
-                        <h1 class="text-2xl font-bold tracking-tight text-slate-900">
-                            Reporte de Ventas {{ businessName ? ` - ${businessName}` : '' }}
-                        </h1>
-                        <p class="text-sm text-slate-500">Consulta y gestiona las ventas registradas</p>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <!-- <Button @click="exportToExcel" variant="outline" class="gap-2">
-                        <Icon name="download" size="16" />
-                        Resumen por empresa
-                    </Button>
-                    <Button @click="exportValorizacion" class="gap-2 bg-emerald-600 hover:bg-emerald-700">
-                        <Icon name="table-2" size="16" />
-                        Valorización
-                    </Button> -->
+        <div class="flex flex-1 flex-col gap-6 p-4 md:p-6">
+            <!-- Header Unificado -->
+            <PageHeader
+                :title="`Reporte de Ventas${businessName ? ' - ' + businessName : ''}`"
+                subtitle="Consulta consolidada de ventas, control de consumos y conciliación diaria"
+                badge="Ventas & Facturación"
+            >
+                <template #actions>
                     <Button
                         @click="exportDetail"
                         variant="outline"
-                        class="gap-2 border-violet-300 text-violet-700 hover:border-violet-400 hover:bg-violet-50"
+                        class="gap-2 shadow-xs hover:bg-violet-50 hover:text-violet-700 hover:border-violet-300"
                     >
-                        <Icon name="list-details" size="16" />
-                        Detalle de consumo
+                        <FileSpreadsheet class="h-4 w-4 text-violet-600" />
+                        <span>Detalle de Consumo</span>
                     </Button>
                     <Button
                         @click="openDuplicatesModal"
                         variant="outline"
-                        class="gap-2 border-amber-300 text-amber-700 hover:border-amber-400 hover:bg-amber-50"
+                        class="gap-2 shadow-xs hover:bg-amber-50 hover:text-amber-700 hover:border-amber-300"
                     >
-                        <AlertTriangle class="h-4 w-4" />
-                        Ver Duplicados
+                        <AlertTriangle class="h-4 w-4 text-amber-600" />
+                        <span>Ver Duplicados</span>
                     </Button>
-                </div>
-            </div>
+                </template>
+            </PageHeader>
 
             <!-- Statistics Cards -->
-            <div class="grid gap-4 md:grid-cols-3">
-                <Card class="border-slate-200 bg-gradient-to-br from-white to-slate-50">
-                    <CardHeader class="pb-3">
-                        <CardDescription class="flex items-center gap-2 text-xs font-semibold tracking-wider text-slate-500 uppercase">
-                            <Icon name="currency-dollar" size="14" />
-                            Total sin IGV
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div class="text-3xl font-black text-emerald-600">S/{{ Number(statistics.total_amount).toFixed(2) }}</div>
-                    </CardContent>
-                </Card>
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <StatCard
+                    title="Total sin IGV"
+                    :value="`S/ ${Number(statistics.total_amount).toFixed(2)}`"
+                    subtitle="Monto consolidado facturable"
+                    color="success"
+                >
+                    <template #icon>
+                        <DollarSign class="h-5 w-5" />
+                    </template>
+                </StatCard>
 
-                <Card class="border-slate-200 bg-gradient-to-br from-white to-slate-50">
-                    <CardHeader class="pb-3">
-                        <CardDescription class="flex items-center gap-2 text-xs font-semibold tracking-wider text-slate-500 uppercase">
-                            <Icon name="shopping-cart" size="14" />
-                            Total de Ventas
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div class="text-3xl font-black text-blue-600">
-                            {{ statistics.total_sales }}
-                        </div>
-                    </CardContent>
-                </Card>
+                <StatCard
+                    title="Total de Ventas"
+                    :value="statistics.total_sales"
+                    subtitle="Transacciones registradas en periodo"
+                    color="primary"
+                >
+                    <template #icon>
+                        <ShoppingCart class="h-5 w-5" />
+                    </template>
+                </StatCard>
 
-                <Card class="border-slate-200 bg-gradient-to-br from-white to-slate-50">
-                    <CardHeader class="pb-3">
-                        <CardDescription class="flex items-center gap-2 text-xs font-semibold tracking-wider text-slate-500 uppercase">
-                            <Icon name="chart-line" size="14" />
-                            Promedio por Venta
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div class="text-3xl font-black text-purple-600">S/{{ Number(statistics.average_sale).toFixed(2) }}</div>
-                    </CardContent>
-                </Card>
+                <StatCard
+                    title="Promedio por Venta"
+                    :value="`S/ ${Number(statistics.average_sale).toFixed(2)}`"
+                    subtitle="Ticket promedio por servicio"
+                    color="purple"
+                >
+                    <template #icon>
+                        <TrendingUp class="h-5 w-5" />
+                    </template>
+                </StatCard>
             </div>
 
             <!-- Filters -->
