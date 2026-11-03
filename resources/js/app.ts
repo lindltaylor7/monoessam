@@ -9,6 +9,7 @@ import type { DefineComponent } from 'vue';
 import { createApp, h } from 'vue';
 import VueSweetalert2 from 'vue-sweetalert2';
 import { ZiggyVue } from 'ziggy-js';
+import PageLoader from './components/PageLoader.vue';
 import { initializeTheme } from './composables/useAppearance';
 
 configureEcho({
@@ -34,7 +35,8 @@ createInertiaApp({
     title: (title) => `${title} - ${appName}`,
     resolve: (name) => resolvePageComponent(`./pages/${name}.vue`, import.meta.glob<DefineComponent>('./pages/**/*.vue')),
     setup({ el, App, props, plugin }) {
-        createApp({ render: () => h(App, props) })
+        // PageLoader va junto a la app (no dentro de un layout) para sobrevivir al cambio de página.
+        createApp({ render: () => [h(App, props), h(PageLoader)] })
             .use(plugin)
             .use(ZiggyVue)
             .use(VueDnDKitPlugin)
@@ -42,7 +44,7 @@ createInertiaApp({
             .mount(el);
     },
     progress: {
-        color: '#4B5563',
+        color: '#B91C1C',
     },
 });
 
