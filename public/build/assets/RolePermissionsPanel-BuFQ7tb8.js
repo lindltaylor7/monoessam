@@ -1,1 +1,0 @@
-import{_ as o}from"./RolePermissionsPanel.vue_vue_type_script_setup_true_lang-C-pZ2KVi.js";import"./index-NmRcpLTC.js";import"./Primitive-BXXz8W-m.js";import"./app-CGwiVSuE.js";import"./utils-bRKmu4jq.js";import"./index-dkW4UkYo.js";import"./x-DzDpY1os.js";import"./createLucideIcon-BqX9OynH.js";import"./shield-check-CpnAf6WA.js";export{o as default};

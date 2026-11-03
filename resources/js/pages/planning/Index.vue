@@ -26,9 +26,12 @@ import {
     Loader2,
     Minus,
     Mountain,
+    Pencil,
     Plus,
     Search,
     Settings2,
+    Trash2,
+    X,
 } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
 import { computed, onMounted, ref, watch } from 'vue';
@@ -151,14 +154,25 @@ watch(
             resolveMineAndUnitFromCafe(newCafeId);
         }
         setTimeout(() => {
-            if (availableServices.value && availableServices.value.length > 0) {
-                selectedServiceId.value = String(availableServices.value[0].id);
-            } else {
-                selectedServiceId.value = '';
+            // Al reabrir una programación se respeta su servicio; si no, el primero del comedor.
+            if (!applyPendingService()) {
+                selectedServiceId.value = availableServices.value?.length ? String(availableServices.value[0].id) : '';
             }
         }, 50);
     },
 );
+
+// Servicio a seleccionar cuando cambie el comedor (lo fija editProgram antes de cambiarlo).
+let pendingServiceName: string | null = null;
+const applyPendingService = (): boolean => {
+    if (!pendingServiceName) return false;
+    const wanted = pendingServiceName.toLowerCase();
+    pendingServiceName = null;
+    const srv = (availableServices.value || []).find((s: any) => String(s.name).toLowerCase() === wanted);
+    if (!srv) return false;
+    selectedServiceId.value = String(srv.id);
+    return true;
+};
 
 // Local reactive state for the grid to avoid find() in template
 const portionsGrid = ref<Record<string, number>>({});
@@ -316,6 +330,37 @@ const submit = async () => {
         if (!result.isConfirmed) return;
     }
 
+    const onError = (errors: Record<string, string>) => {
+        const msg = Object.values(errors).flat().join('\n') || 'Revise los datos ingresados.';
+        Swal.fire({
+            icon: 'error',
+            title: 'No se pudo guardar',
+            text: msg,
+            confirmButtonColor: '#FF5A1F',
+        });
+    };
+
+    // Editando una programación existente: se actualiza esa misma, sin crear otra.
+    if (editingProgram.value) {
+        const editingId = editingProgram.value.id;
+        form.put(route('planning.update', editingId), {
+            preserveState: true,
+            preserveScroll: true,
+            onSuccess: () => {
+                if (programsLoaded.value) loadPrograms(programsMeta.value.current_page);
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Programación actualizada',
+                    text: `Se actualizó la programación #${editingId} con ${assignedDishes} platos asignados.`,
+                    timer: 2000,
+                    showConfirmButton: false,
+                });
+            },
+            onError,
+        });
+        return;
+    }
+
     form.post(route('planning.store'), {
         onSuccess: () => {
             Swal.fire({
@@ -326,15 +371,7 @@ const submit = async () => {
                 showConfirmButton: false,
             });
         },
-        onError: (errors) => {
-            const msg = Object.values(errors).flat().join('\n') || 'Revise los datos ingresados.';
-            Swal.fire({
-                icon: 'error',
-                title: 'No se pudo guardar',
-                text: msg,
-                confirmButtonColor: '#FF5A1F',
-            });
-        },
+        onError,
     });
 };
 
@@ -461,6 +498,8 @@ const programFilters = ref({
     cafe: '',
     savedFrom: '',
     savedTo: '',
+    periodFrom: '',
+    periodTo: '',
 });
 
 const programRow = (p: any) => ({
@@ -527,6 +566,8 @@ const loadPrograms = async (page = 1) => {
                 cafe_id: f.cafe || undefined,
                 saved_from: f.savedFrom || undefined,
                 saved_to: f.savedTo || undefined,
+                period_from: f.periodFrom || undefined,
+                period_to: f.periodTo || undefined,
             },
         });
         // Una respuesta vieja (filtros cambiados mientras cargaba) no pisa la más reciente.
@@ -579,7 +620,7 @@ watch(
 
 const hasProgramFilters = computed(() => Object.values(programFilters.value).some(Boolean));
 const clearProgramFilters = () => {
-    programFilters.value = { mine: '', unit: '', cafe: '', savedFrom: '', savedTo: '' };
+    programFilters.value = { mine: '', unit: '', cafe: '', savedFrom: '', savedTo: '', periodFrom: '', periodTo: '' };
 };
 
 // La selección se conserva al cambiar de página, así se pueden combinar programaciones de varias.
@@ -993,6 +1034,209 @@ const loadMenuCycle = async (cycle: CycleOption) => {
         showConfirmButton: false,
     });
 };
+
+// --- Programaciones guardadas: editar / eliminar -------------------------------------------
+interface EditingProgram {
+    id: number;
+    cafe: string | null;
+    service: string | null;
+    start_date: string;
+    end_date: string;
+    purchase_orders_count: number;
+}
+
+const editingProgram = ref<EditingProgram | null>(null);
+const loadingProgramId = ref<number | null>(null);
+
+const gridHasDishes = () => Object.values(itemsGrid.value).some(Boolean);
+
+const cloneDefaultStructure = (): MenuStructure[] => JSON.parse(JSON.stringify(props.menu_structure));
+
+// Matriz en blanco con la estructura por defecto (al salir del modo edición).
+const resetPlanningGrid = () => {
+    localMenuStructure.value = cloneDefaultStructure();
+    portionsGrid.value = {};
+    itemsGrid.value = {};
+    percentagesGrid.value = {};
+    loadedCycleId.value = null;
+    initializeGrid();
+};
+
+const exitEditing = async (skipConfirm = false) => {
+    if (!editingProgram.value) return;
+    if (!skipConfirm) {
+        const result = await Swal.fire({
+            icon: 'question',
+            title: 'Salir de la edición',
+            text: 'Se limpiará la matriz. Los cambios no guardados de esta programación se perderán.',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, salir',
+            cancelButtonText: 'Seguir editando',
+            confirmButtonColor: '#FF5A1F',
+        });
+        if (!result.isConfirmed) return;
+    }
+    editingProgram.value = null;
+    resetPlanningGrid();
+};
+
+// Reabre una programación guardada en la matriz de "Planificar". Las filas se reconstruyen desde
+// sus platos: una por categoría, repetida tantas veces como esa categoría aparezca en un mismo día.
+const editProgram = async (program: any) => {
+    if (editingProgram.value?.id === program.id) {
+        activeTab.value = 'planificar';
+        return;
+    }
+    if (gridHasDishes()) {
+        const result = await Swal.fire({
+            icon: 'question',
+            title: `¿Editar la programación #${program.id}?`,
+            text: 'La matriz actual se reemplazará por la de esta programación.',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, editar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#FF5A1F',
+        });
+        if (!result.isConfirmed) return;
+    }
+
+    loadingProgramId.value = program.id;
+    let data: any;
+    try {
+        ({ data } = await axios.get(route('planning.show', program.id)));
+    } catch {
+        Swal.fire('Error', 'No se pudo cargar la programación.', 'error');
+        return;
+    } finally {
+        loadingProgramId.value = null;
+    }
+
+    // 1. Comedor y servicio
+    selectedMineId.value = data.mine_id ? String(data.mine_id) : '';
+    selectedUnitId.value = data.unit_id ? String(data.unit_id) : '';
+    pendingServiceName = data.service ?? null;
+    if (String(form.cafe_id) === String(data.cafe_id)) {
+        applyPendingService();
+    } else {
+        form.cafe_id = String(data.cafe_id);
+    }
+
+    // 2. Periodo
+    form.start_date = data.start_date;
+    daysCount.value = Math.min(31, Math.max(1, dayjs(data.end_date).diff(dayjs(data.start_date), 'day') + 1));
+    form.end_date = dayjs(form.start_date)
+        .add(daysCount.value - 1, 'days')
+        .format('YYYY-MM-DD');
+
+    // 3. Filas de la matriz
+    const items: any[] = data.items || [];
+    const programMeals = [...new Set<string>(items.map((i) => i.meal_type))];
+    const rowIds: Record<string, Record<number, number[]>> = {};
+    const rows: MenuStructure[] = [];
+    let seq = 0;
+
+    programMeals.forEach((meal) => {
+        const mealItems = items.filter((i) => i.meal_type === meal);
+        const categoryOrder: number[] = [];
+        const maxPerDay = new Map<number, number>();
+        const byDate = new Map<string, any[]>();
+        mealItems.forEach((item) => byDate.set(item.date, [...(byDate.get(item.date) || []), item]));
+        byDate.forEach((dayItems) => {
+            const counts = new Map<number, number>();
+            dayItems.forEach((item) => {
+                const catId = Number(item.dish_category_id);
+                if (!categoryOrder.includes(catId)) categoryOrder.push(catId);
+                counts.set(catId, (counts.get(catId) || 0) + 1);
+            });
+            counts.forEach((count, catId) => maxPerDay.set(catId, Math.max(maxPerDay.get(catId) || 0, count)));
+        });
+
+        rowIds[meal] = {};
+        categoryOrder.forEach((catId) => {
+            const name = mealItems.find((i) => Number(i.dish_category_id) === catId)?.dish_category;
+            const category = props.dish_categories?.find((c) => c.id === catId) || ({ id: catId, name } as DishCategory);
+            rowIds[meal][catId] = [];
+            for (let k = 0; k < (maxPerDay.get(catId) || 1); k++) {
+                const id = 30000 + seq++;
+                rowIds[meal][catId].push(id);
+                rows.push({
+                    id,
+                    meal_type: meal as MealType,
+                    dish_category_id: catId,
+                    dish_category: category,
+                    sort_order: rows.length,
+                } as MenuStructure);
+            }
+        });
+    });
+
+    localMenuStructure.value = [...cloneDefaultStructure().filter((s) => !programMeals.includes(s.meal_type)), ...rows];
+
+    // 4. Grilla: raciones, platos y % de comensales
+    portionsGrid.value = {};
+    itemsGrid.value = {};
+    percentagesGrid.value = {};
+    initializeGrid();
+
+    (data.portions || []).forEach((p: any) => {
+        if (dates.value.includes(p.date)) portionsGrid.value[`${p.date}_${p.meal_type}`] = Number(p.portions_count) || 0;
+    });
+
+    const used = new Map<string, number>();
+    items.forEach((item) => {
+        const catId = Number(item.dish_category_id);
+        const usedKey = `${item.date}_${item.meal_type}_${catId}`;
+        const k = used.get(usedKey) || 0;
+        used.set(usedKey, k + 1);
+        const rowId = rowIds[item.meal_type]?.[catId]?.[k];
+        if (!rowId || !dates.value.includes(item.date)) return;
+        const cellKey = `${item.date}_${item.meal_type}_${rowId}`;
+        itemsGrid.value[cellKey] = String(item.dish_id);
+        percentagesGrid.value[cellKey] = clampPct(item.percentage ?? 100);
+        if (item.dish) knownDishNames.value[item.dish_id] = item.dish;
+    });
+
+    loadedCycleId.value = null;
+    editingProgram.value = {
+        id: data.id,
+        cafe: data.cafe,
+        service: data.service,
+        start_date: data.start_date,
+        end_date: data.end_date,
+        purchase_orders_count: data.purchase_orders_count || 0,
+    };
+    activeTab.value = 'planificar';
+};
+
+const deleteProgram = async (program: any) => {
+    const period = `${dayjs(program.start_date).format('DD/MM')} – ${dayjs(program.end_date).format('DD/MM/YYYY')}`;
+    const result = await Swal.fire({
+        icon: 'warning',
+        title: `¿Eliminar la programación #${program.id}?`,
+        text: `${programRow(program).cafe} · ${programRow(program).service ?? 'sin servicio'} · ${period}. Esta acción no se puede deshacer.`,
+        showCancelButton: true,
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#dc2626',
+    });
+    if (!result.isConfirmed) return;
+
+    try {
+        await axios.delete(route('planning.destroy', program.id));
+    } catch (err: any) {
+        Swal.fire('No se pudo eliminar', err?.response?.data?.message || 'Ocurrió un error al eliminar la programación.', 'error');
+        return;
+    }
+
+    selectedProgramIds.value = selectedProgramIds.value.filter((id) => id !== program.id);
+    if (editingProgram.value?.id === program.id) {
+        editingProgram.value = null;
+        resetPlanningGrid();
+    }
+    // Recarga el total; su watch refresca la página actual de la tabla.
+    router.reload({ only: ['programs_total'] });
+    Swal.fire({ icon: 'success', title: 'Programación eliminada', timer: 1500, showConfirmButton: false });
+};
 </script>
 
 <template>
@@ -1013,7 +1257,13 @@ const loadMenuCycle = async (cycle: CycleOption) => {
                         :disabled="form.processing"
                         class="w-full rounded-xl bg-[#FF5A1F] text-white shadow-sm shadow-orange-500/20 hover:bg-[#e04a17] sm:w-auto"
                     >
-                        {{ form.processing ? 'Guardando...' : 'Guardar Planificación' }}
+                        {{
+                            form.processing
+                                ? 'Guardando...'
+                                : editingProgram
+                                  ? `Actualizar Programación #${editingProgram.id}`
+                                  : 'Guardar Planificación'
+                        }}
                     </Button>
                 </div>
             </div>
@@ -1306,6 +1556,45 @@ const loadMenuCycle = async (cycle: CycleOption) => {
 
                 <!-- Área principal de Planificación -->
                 <div class="flex flex-col gap-4 sm:gap-6" :class="configOpen ? 'lg:col-span-3' : 'lg:col-span-4'">
+                    <!-- Modo edición de una programación guardada -->
+                    <div
+                        v-if="editingProgram"
+                        class="flex flex-col gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                        <div class="flex min-w-0 items-start gap-2.5">
+                            <Pencil class="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+                            <div class="min-w-0 text-sm">
+                                <p class="font-semibold text-sky-900">
+                                    Editando programación #{{ editingProgram.id }}
+                                    <span class="font-normal text-sky-700">
+                                        · {{ editingProgram.cafe
+                                        }}<template v-if="editingProgram.service"> · {{ editingProgram.service }}</template> ·
+                                        {{ dayjs(editingProgram.start_date).format('DD/MM') }}–{{
+                                            dayjs(editingProgram.end_date).format('DD/MM/YYYY')
+                                        }}
+                                    </span>
+                                </p>
+                                <p class="text-xs text-sky-700">
+                                    Al guardar se actualiza esta misma programación, sin crear una nueva.
+                                    <template v-if="editingProgram.purchase_orders_count">
+                                        Ya tiene {{ editingProgram.purchase_orders_count }} orden(es) de compra: vuelva a generarlas si cambia platos
+                                        o raciones.
+                                    </template>
+                                </p>
+                            </div>
+                        </div>
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            class="shrink-0 rounded-lg border-sky-200 bg-white text-sky-700 hover:bg-sky-100"
+                            @click="exitEditing()"
+                        >
+                            <X class="mr-1 h-3.5 w-3.5" />
+                            Salir de edición
+                        </Button>
+                    </div>
+
                     <!-- Cabecera de la Matriz y Acciones de Importación -->
                     <div
                         class="flex flex-col gap-3 rounded-2xl border border-l-4 border-slate-100 border-l-[#FF5A1F] bg-white p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-6"
@@ -1593,6 +1882,30 @@ const loadMenuCycle = async (cycle: CycleOption) => {
                                 class="h-9 w-full rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F] sm:w-[150px]"
                             />
                         </div>
+                        <div class="flex flex-col gap-1">
+                            <label
+                                class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase"
+                                title="Programaciones cuyo periodo planificado cruza este rango"
+                                >Periodo desde</label
+                            >
+                            <Input
+                                type="date"
+                                v-model="programFilters.periodFrom"
+                                class="h-9 w-full rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F] sm:w-[150px]"
+                            />
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label
+                                class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase"
+                                title="Programaciones cuyo periodo planificado cruza este rango"
+                                >Periodo hasta</label
+                            >
+                            <Input
+                                type="date"
+                                v-model="programFilters.periodTo"
+                                class="h-9 w-full rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F] sm:w-[150px]"
+                            />
+                        </div>
                         <button
                             v-if="hasProgramFilters"
                             type="button"
@@ -1766,7 +2079,7 @@ const loadMenuCycle = async (cycle: CycleOption) => {
                                             </Badge>
                                         </TableCell>
                                         <TableCell>
-                                            <div class="flex items-center justify-end">
+                                            <div class="flex items-center justify-end gap-1.5">
                                                 <Button
                                                     size="sm"
                                                     @click="generatePO(program)"
@@ -1774,6 +2087,28 @@ const loadMenuCycle = async (cycle: CycleOption) => {
                                                     class="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50"
                                                 >
                                                     Orden de Compra
+                                                </Button>
+                                                <Button
+                                                    size="icon"
+                                                    variant="outline"
+                                                    class="h-8 w-8 rounded-lg border-slate-200 text-sky-600 hover:bg-sky-50"
+                                                    :disabled="loadingProgramId !== null"
+                                                    :title="`Editar programación #${program.id}`"
+                                                    :aria-label="`Editar programación ${program.id}`"
+                                                    @click="editProgram(program)"
+                                                >
+                                                    <Loader2 v-if="loadingProgramId === program.id" class="h-4 w-4 animate-spin" />
+                                                    <Pencil v-else class="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    size="icon"
+                                                    variant="outline"
+                                                    class="h-8 w-8 rounded-lg border-slate-200 text-rose-600 hover:bg-rose-50"
+                                                    :title="`Eliminar programación #${program.id}`"
+                                                    :aria-label="`Eliminar programación ${program.id}`"
+                                                    @click="deleteProgram(program)"
+                                                >
+                                                    <Trash2 class="h-4 w-4" />
                                                 </Button>
                                             </div>
                                         </TableCell>

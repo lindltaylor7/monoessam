@@ -506,6 +506,9 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('/', [PlanningController::class, 'index'])->name('index');
         Route::post('/', [PlanningController::class, 'store'])->name('store');
         Route::get('programs', [PlanningController::class, 'programs'])->name('programs');
+        Route::get('programs/{id}', [PlanningController::class, 'show'])->whereNumber('id')->name('show');
+        Route::put('{id}', [PlanningController::class, 'update'])->whereNumber('id')->name('update');
+        Route::delete('{id}', [PlanningController::class, 'destroy'])->whereNumber('id')->name('destroy');
         Route::post('{id}/generate-po', [PlanningController::class, 'generatePurchaseOrder'])->name('generate-po');
         Route::post('generate-po', [PlanningController::class, 'generatePurchaseOrderMultiple'])->name('generate-po-multiple');
         // Todos los reportes operan sobre una o varias programaciones seleccionadas (program_ids[]),

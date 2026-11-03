@@ -264,6 +264,29 @@ class MenuCycleController extends Controller
             return $row;
         }, $validated['cycle_data']);
 
+        // Un ciclo nuevo con el mismo nombre que otro del mismo servicio es casi siempre un segundo
+        // "Guardar" del mismo trabajo. No se crea la copia: se informa cuál existe para que el
+        // usuario decida si lo reemplaza o usa otro nombre.
+        $name = trim((string) ($validated['name'] ?? ''));
+        $validated['name'] = $name === '' ? null : $name;
+
+        if (!$request->id && $name !== '' && !$request->boolean('allow_duplicate_name')) {
+            $existing = MenuCycle::select(self::LIST_COLUMNS)
+                ->where('serviceable_id', $validated['serviceable_id'])
+                ->whereRaw('LOWER(TRIM(name)) = ?', [mb_strtolower($name)])
+                ->orderByDesc('id')
+                ->first();
+
+            if ($existing) {
+                $message = "Ya existe un ciclo llamado \"{$existing->name}\" para este servicio.";
+                if ($request->wantsJson()) {
+                    return response()->json(['message' => $message, 'existing_id' => $existing->id], 409);
+                }
+
+                return redirect()->back()->withErrors(['name' => $message]);
+            }
+        }
+
         try {
             DB::beginTransaction();
 
@@ -286,9 +309,18 @@ class MenuCycleController extends Controller
 
             DB::commit();
 
+            // La pantalla de Ciclos guarda por axios y necesita el id para que el siguiente
+            // "Guardar" actualice este ciclo en vez de crear otro.
+            if ($request->wantsJson()) {
+                return response()->json(['id' => $menuCycle->id, 'name' => $menuCycle->name, 'days' => $menuCycle->days]);
+            }
+
             return redirect()->back()->with('success', 'Ciclo guardado correctamente');
         } catch (\Exception $e) {
             DB::rollBack();
+            if ($request->wantsJson()) {
+                return response()->json(['message' => 'Error al guardar el ciclo: ' . $e->getMessage()], 500);
+            }
             return redirect()->back()->withErrors(['error' => 'Error al guardar el ciclo: ' . $e->getMessage()]);
         }
     }
