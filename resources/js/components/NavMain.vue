@@ -2,19 +2,30 @@
 import { SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type SharedData } from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
 
-defineProps<{
+const props = defineProps<{
     items: NavItem[];
 }>();
 
 const page = usePage<SharedData>();
 
-const isItemActive = (href: string) => {
+const matches = (href: string) => {
     if (href === '/dashboard') {
         return page.url === '/dashboard';
     }
     return page.url === href || page.url.startsWith(href + '/') || page.url.startsWith(href + '?');
 };
+
+// Solo un ítem activo: el de ruta más específica (p. ej. /food/structure-menu gana sobre /food).
+const activeHref = computed(() =>
+    props.items
+        .map((item) => item.href)
+        .filter(matches)
+        .sort((a, b) => b.length - a.length)[0] ?? null,
+);
+
+const isItemActive = (href: string) => href === activeHref.value;
 </script>
 
 <template>
