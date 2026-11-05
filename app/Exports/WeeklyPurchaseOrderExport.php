@@ -19,7 +19,8 @@ class WeeklyPurchaseOrderExport implements FromArray, ShouldAutoSize, WithStyles
 {
     /** @var Collection<int,\App\Models\WeeklyProgram> */
     protected Collection $programs;
-    protected Level $level;
+    /** Solo se usa ->name (un nivel, o "Según programación" si los platos traen niveles distintos). */
+    protected object $level;
     protected City $city;
     protected Collection $categories;
     protected float $grandTotal;
@@ -29,7 +30,7 @@ class WeeklyPurchaseOrderExport implements FromArray, ShouldAutoSize, WithStyles
     protected array $categoryRows = [];
     protected int $lastRow = 0;
 
-    public function __construct(Collection $programs, Level $level, City $city, Collection $categories, float $grandTotal, int $missingPriceCount)
+    public function __construct(Collection $programs, object $level, City $city, Collection $categories, float $grandTotal, int $missingPriceCount)
     {
         $this->programs = $programs;
         $this->level = $level;

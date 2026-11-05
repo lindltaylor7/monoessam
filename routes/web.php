@@ -225,6 +225,8 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         // ingredients: desde Ciclos el usuario no suele tener el permiso de Ingredientes y la
         // petición devolvía 403, dejando el selector vacío.
         Route::get('substitutes/{id}', [IngredientController::class, 'substitutes'])->name('substitutes');
+        // Cuántos ciclos/programaciones heredan un cambio a esta receta (aviso del editor de Ciclos).
+        Route::get('{id}/usage', [DishRecipeController::class, 'usage'])->whereNumber('id')->name('usage');
         Route::put('{id}', [DishRecipeController::class, 'update'])->name('update');
     });
 
@@ -507,6 +509,8 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('/', [PlanningController::class, 'store'])->name('store');
         Route::get('programs', [PlanningController::class, 'programs'])->name('programs');
         Route::get('programs/{id}', [PlanningController::class, 'show'])->whereNumber('id')->name('show');
+        // Costo/kcal de los platos de la matriz y límites de la estructura del servicio.
+        Route::post('prices', [PlanningController::class, 'prices'])->name('prices');
         Route::put('{id}', [PlanningController::class, 'update'])->whereNumber('id')->name('update');
         Route::delete('{id}', [PlanningController::class, 'destroy'])->whereNumber('id')->name('destroy');
         Route::post('{id}/generate-po', [PlanningController::class, 'generatePurchaseOrder'])->name('generate-po');

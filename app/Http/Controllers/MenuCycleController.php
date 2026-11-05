@@ -11,6 +11,7 @@ use App\Models\MenuCycle;
 use App\Models\Mine;
 use App\Models\Serviceable;
 use App\Models\Structure;
+use App\Services\RecipeCosting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -191,32 +192,7 @@ class MenuCycleController extends Controller
      */
     private function recipeTotals(array $pairs, ?int $cityId)
     {
-        $wanted = collect($pairs)->mapWithKeys(fn ($p) => [$p[0] . '-' . $p[1] => true]);
-
-        return DishRecipe::whereIn('dish_id', array_unique(array_column($pairs, 0)))
-            ->whereIn('level_id', array_unique(array_column($pairs, 1)))
-            ->with([
-                'ingredients.assignments',
-                'ingredients.dosification',
-                'ingredients.atwaterFactor',
-                'ingredients.nutritionalFactors',
-            ])
-            ->get()
-            ->filter(fn ($recipe) => isset($wanted[$recipe->dish_id . '-' . $recipe->level_id]))
-            ->mapWithKeys(function ($recipe) use ($cityId) {
-                foreach ($recipe->ingredients as $ingredient) {
-                    $ingredient->gross_weight = $ingredient->pivot->gross_weight;
-                    $ingredient->final_product = $ingredient->pivot->net_weight;
-                }
-                $recipe->applyLiveTotals($cityId);
-
-                return [$recipe->dish_id . '-' . $recipe->level_id => [
-                    'price'           => round($recipe->total_cost, 2),
-                    'calories'        => round($recipe->total_calories, 2),
-                    'missing_prices'  => $recipe->missing_prices,
-                    'borrowed_prices' => $recipe->borrowed_prices,
-                ]];
-            });
+        return app(RecipeCosting::class)->totals($pairs, $cityId);
     }
 
     /**

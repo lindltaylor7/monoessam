@@ -1010,8 +1010,48 @@ const replaceQuebradoIngredient = (id: number, substitute: any) => {
     onQuebradoWeightInput(ing);
 };
 
+// El quebrado que se edita aquí es la receta maestra del plato en ese nivel: el cambio lo heredan
+// todos los ciclos y programaciones que la usan, no solo este ciclo. Se avisa cuántos antes de guardar.
+const confirmQuebradoImpact = async (recipeId: number): Promise<boolean> => {
+    let usage: { other_cycles: number; services: number; active_programs: number } | null = null;
+    try {
+        ({ data: usage } = await axios.get(route('dish-recipes.usage', recipeId), {
+            params: { except_cycle_id: activeCycleId.value || undefined },
+        }));
+    } catch {
+        usage = null;
+    }
+
+    const parts: string[] = [];
+    if (usage?.other_cycles) {
+        parts.push(`<b>${usage.other_cycles}</b> ciclo(s) más${usage.services > 1 ? ` de <b>${usage.services}</b> servicios` : ''}`);
+    }
+    if (usage?.active_programs) parts.push(`<b>${usage.active_programs}</b> programación(es) vigente(s)`);
+
+    const impact = usage
+        ? parts.length
+            ? `Esta receta también se usa en ${parts.join(' y ')}. El cambio se aplicará en todos ellos.`
+            : 'Ningún otro ciclo ni programación vigente usa esta receta.'
+        : 'No se pudo comprobar en qué otros ciclos se usa esta receta.';
+
+    const dishName = document.createElement('span');
+    dishName.textContent = quebradoDishName.value;
+
+    const result = await Swal.fire({
+        icon: parts.length || !usage ? 'warning' : 'question',
+        title: '¿Guardar cambios en la receta maestra?',
+        html: `<p class="text-sm">Se modificará el quebrado de <b>${dishName.innerHTML}</b> para todos los que lo usan, no solo para este ciclo.</p><p class="mt-3 text-sm">${impact}</p>`,
+        showCancelButton: true,
+        confirmButtonText: 'Sí, guardar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#FF5A1F',
+    });
+    return result.isConfirmed;
+};
+
 const saveQuebrado = async () => {
     if (!quebradoRecipeId.value || !quebradoRecipe.value) return;
+    if (!(await confirmQuebradoImpact(quebradoRecipeId.value))) return;
 
     isQuebradoSaving.value = true;
     try {
