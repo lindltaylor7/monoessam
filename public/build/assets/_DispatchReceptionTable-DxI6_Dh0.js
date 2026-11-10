@@ -1,1 +1,0 @@
-import{_ as o}from"./_DispatchReceptionTable.vue_vue_type_script_setup_true_lang-Cl7mv7Rm.js";import"./utensils-crossed-CR6cqFpg.js";import"./createLucideIcon-CYfFoZIR.js";import"./app-0qSAar8F.js";import"./circle-check-HY0DeEqM.js";import"./clock-CcwYIuqJ.js";export{o as default};

@@ -248,20 +248,84 @@ const initializeGrid = () => {
     });
 };
 
-// Reset grid when date changes
-const handleDateChange = () => {
+// Periodo con el que está armada la matriz. Las claves de la matriz llevan la fecha, así que al
+// cambiar el inicio hay que mover los platos (antes se perdían todos sin avisar).
+let gridStartDate = form.start_date;
+let gridDaysCount = daysCount.value;
+const syncGridPeriod = () => {
+    gridStartDate = form.start_date;
+    gridDaysCount = daysCount.value;
+};
+
+const updateEndDate = () => {
     form.end_date = dayjs(form.start_date)
         .add(daysCount.value - 1, 'days')
         .format('YYYY-MM-DD');
+};
+
+// Mueve cada celda el mismo número de días que se movió el inicio: el día 1 sigue siendo el día 1.
+const shiftGridDates = (fromStart: string, toStart: string) => {
+    const offset = dayjs(toStart).diff(dayjs(fromStart), 'day');
+    if (!offset) return;
+    const shift = <T,>(grid: Record<string, T>): Record<string, T> =>
+        Object.fromEntries(
+            Object.entries(grid).map(([key, value]) => {
+                const [date, ...rest] = key.split('_');
+                return [[dayjs(date).add(offset, 'day').format('YYYY-MM-DD'), ...rest].join('_'), value];
+            }),
+        );
+    portionsGrid.value = shift(portionsGrid.value);
+    itemsGrid.value = shift(itemsGrid.value);
+    percentagesGrid.value = shift(percentagesGrid.value);
+    levelsGrid.value = shift(levelsGrid.value);
+};
+
+const handleDateChange = () => {
+    if (!form.start_date || !dayjs(form.start_date).isValid()) {
+        form.start_date = gridStartDate;
+        return;
+    }
+    shiftGridDates(gridStartDate, form.start_date);
+    syncGridPeriod();
+    updateEndDate();
     initializeGrid();
 };
 
-const handleDaysCountChange = () => {
-    if (daysCount.value < 1) daysCount.value = 1;
-    if (daysCount.value > 31) daysCount.value = 31;
-    form.end_date = dayjs(form.start_date)
-        .add(daysCount.value - 1, 'days')
-        .format('YYYY-MM-DD');
+const handleDaysCountChange = async () => {
+    let count = Math.round(Number(daysCount.value));
+    if (!Number.isFinite(count) || count < 1) count = 1;
+    if (count > 31) count = 31;
+    daysCount.value = count;
+
+    // Al acortar el periodo se pierden los platos de los días que quedan fuera: se confirma.
+    if (count < gridDaysCount) {
+        const dropped = new Set(
+            Array.from({ length: gridDaysCount - count }, (_, i) =>
+                dayjs(gridStartDate)
+                    .add(count + i, 'day')
+                    .format('YYYY-MM-DD'),
+            ),
+        );
+        const lost = Object.entries(itemsGrid.value).filter(([key, dish]) => dish && dropped.has(key.split('_')[0])).length;
+        if (lost > 0) {
+            const result = await Swal.fire({
+                icon: 'warning',
+                title: `¿Reducir a ${count} día${count === 1 ? '' : 's'}?`,
+                text: `Se quitarán ${lost} plato(s) programados en los días que quedan fuera del periodo.`,
+                showCancelButton: true,
+                confirmButtonText: 'Sí, reducir',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#FF5A1F',
+            });
+            if (!result.isConfirmed) {
+                daysCount.value = gridDaysCount;
+                return;
+            }
+        }
+    }
+
+    syncGridPeriod();
+    updateEndDate();
     initializeGrid();
 };
 
@@ -388,12 +452,27 @@ const submit = async () => {
         return;
     }
 
+    // Se conserva la matriz y se pasa a editar la programación recién creada: antes la pantalla se
+    // remontaba en blanco y un segundo "Guardar" creaba otra programación.
     form.post(route('planning.store'), {
-        onSuccess: () => {
+        preserveState: true,
+        preserveScroll: true,
+        onSuccess: (page: any) => {
+            const createdId = Number(page?.props?.flash?.created_program_id) || null;
+            if (createdId) {
+                editingProgram.value = {
+                    id: createdId,
+                    cafe: selectedCafeName.value,
+                    service: (activeMealType.value as string | null) ?? null,
+                    start_date: form.start_date,
+                    end_date: form.end_date,
+                    purchase_orders_count: 0,
+                };
+            }
             Swal.fire({
                 icon: 'success',
-                title: 'Planificación guardada',
-                text: `Se guardó el plan con ${assignedDishes} platos asignados.`,
+                title: createdId ? `Programación #${createdId} guardada` : 'Planificación guardada',
+                text: `Se guardó el plan con ${assignedDishes} platos asignados. Los siguientes cambios actualizarán esta misma programación.`,
                 timer: 2000,
                 showConfirmButton: false,
             });
@@ -986,9 +1065,8 @@ const loadMenuCycle = async (cycle: CycleOption) => {
     // La planificación cubre al menos los días del ciclo.
     if (daysCount.value < cycle.days) {
         daysCount.value = Math.min(cycle.days, 31);
-        form.end_date = dayjs(form.start_date)
-            .add(daysCount.value - 1, 'days')
-            .format('YYYY-MM-DD');
+        updateEndDate();
+        syncGridPeriod();
     }
 
     // 1. Las filas de la matriz son las del ciclo, con sus techos de costo (L.Inf/L.Sup).
@@ -1295,9 +1373,8 @@ const editProgram = async (program: any) => {
     // 2. Periodo
     form.start_date = data.start_date;
     daysCount.value = Math.min(31, Math.max(1, dayjs(data.end_date).diff(dayjs(data.start_date), 'day') + 1));
-    form.end_date = dayjs(form.start_date)
-        .add(daysCount.value - 1, 'days')
-        .format('YYYY-MM-DD');
+    updateEndDate();
+    syncGridPeriod();
 
     // 3. Filas de la matriz
     const items: any[] = data.items || [];

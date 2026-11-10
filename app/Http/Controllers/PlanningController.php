@@ -115,7 +115,7 @@ class PlanningController extends Controller
     {
         $validated = $this->validateProgram($request);
 
-        DB::transaction(function () use ($validated) {
+        $program = DB::transaction(function () use ($validated) {
             $program = WeeklyProgram::create([
                 'cafe_id' => $validated['cafe_id'],
                 'structure_id' => $validated['structure_id'] ?? null,
@@ -127,9 +127,15 @@ class PlanningController extends Controller
             ]);
 
             $this->syncProgramLines($program, $validated);
+
+            return $program;
         });
 
-        return redirect()->route('planning.index')->with('success', 'Plan guardado correctamente');
+        // La pantalla usa el id para quedarse editando esta programación: así un segundo "Guardar"
+        // la actualiza en vez de crear otra.
+        return redirect()->route('planning.index')
+            ->with('success', 'Plan guardado correctamente')
+            ->with('created_program_id', $program->id);
     }
 
     /**

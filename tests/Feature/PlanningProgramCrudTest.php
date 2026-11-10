@@ -129,7 +129,7 @@ it('guarda los platos al crear una programación', function () {
         'end_date'   => '2026-03-08',
         'items'      => [['date' => '2026-03-02', 'meal_type' => 'Cena', 'dish_category_id' => $category->id, 'dish_id' => $dish->id, 'percentage' => 75]],
         'portions'   => [['date' => '2026-03-02', 'meal_type' => 'Cena', 'portions_count' => 50]],
-    ])->assertRedirect();
+    ])->assertRedirect()->assertSessionHas('created_program_id', fn ($id) => $id === WeeklyProgram::latest('id')->value('id'));
 
     $program = WeeklyProgram::latest('id')->first();
     expect($program->items()->count())->toBe(1)

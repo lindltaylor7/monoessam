@@ -103,10 +103,44 @@ watch(serviceCyclesToSelect, () => {
 const inputDays = ref<number>(7);
 const generatedDays = ref<number>(7);
 
-const generateColumns = () => {
-    if (inputDays.value > 0 && inputDays.value <= 31) {
-        generatedDays.value = inputDays.value;
+// Quita de las filas los días posteriores a `maxDay`: si quedaran, se guardarían ocultos en
+// cycle_data y seguirían contando en el promedio del semáforo.
+const dropDaysAfter = (maxDay: number) => {
+    menuStructureData.value.forEach((row: any) => {
+        Object.keys(row.days || {}).forEach((key) => {
+            if (Number(key) > maxDay) delete row.days[key];
+        });
+    });
+};
+
+const generateColumns = async () => {
+    const days = Number(inputDays.value);
+    if (!(days > 0 && days <= 31)) return;
+
+    if (days < generatedDays.value) {
+        const lost = menuStructureData.value.reduce(
+            (sum: number, row: any) => sum + Object.keys(row.days || {}).filter((key) => Number(key) > days && row.days[key]).length,
+            0,
+        );
+        if (lost > 0) {
+            const result = await Swal.fire({
+                icon: 'warning',
+                title: `¿Reducir a ${days} días?`,
+                text: `Se quitarán ${lost} plato(s) asignados del día ${days + 1} en adelante.`,
+                showCancelButton: true,
+                confirmButtonText: 'Sí, reducir',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#FF5A1F',
+            });
+            if (!result.isConfirmed) {
+                inputDays.value = generatedDays.value;
+                return;
+            }
+        }
+        dropDaysAfter(days);
     }
+
+    generatedDays.value = days;
 };
 
 const daysColumns = computed(() => {
@@ -435,8 +469,11 @@ const copyCycle = async (cycle: any) => {
     const cycleData = await fetchCycleData(cycle);
     if (!cycleData) return;
 
-    activeCycleId.value = cycle.id;
-    activeCycleName.value = cycle.name || '';
+    // Un ciclo de otro servicio se trae como copia: si se conservara su id, "Guardar Cambios" lo
+    // sobrescribiría (y antes lo movía a este servicio, dejando al de origen sin él).
+    const fromOtherService = String(cycle.serviceable_id) !== String(selectedServiceableId.value);
+    activeCycleId.value = fromOtherService ? null : cycle.id;
+    activeCycleName.value = fromOtherService ? `${cycle.name || 'Ciclo'} (copia)` : cycle.name || '';
     inputDays.value = cycle.days;
     generatedDays.value = cycle.days;
     menuStructureData.value = normalizeCycleRows(JSON.parse(JSON.stringify(cycleData)));
@@ -446,7 +483,9 @@ const copyCycle = async (cycle: any) => {
     Swal.fire({
         icon: 'success',
         title: 'Ciclo copiado',
-        text: 'La estructura se ha cargado tal como se guardó.',
+        text: fromOtherService
+            ? 'Se cargó como un ciclo nuevo de este servicio; el original no se modificará al guardar.'
+            : 'La estructura se ha cargado tal como se guardó.',
         timer: 1500,
         showConfirmButton: false,
     });
@@ -485,7 +524,11 @@ const menuStructureData = ref<any[]>([]);
 
 // Once a single structure is settled on for this service, load its matching cycle (if there's exactly
 // one) or fall back to blank defaults from the structure's costs.
+// Estructura con la que está armada la grilla (la elegida o la vigente del servicio).
+const activeStructure = ref<any>(null);
+
 const applyStructure = async (structure: any, newId: string) => {
+    activeStructure.value = structure;
     let serviceCycles: any[] = [];
     try {
         const { data } = await axios.get('/cycles/list', { params: { serviceable_id: newId, all: 1 } });
@@ -556,13 +599,18 @@ watch(selectedServiceableId, (newId) => {
     isStructureSelectModalOpen.value = false;
     structuresToSelect.value = [];
 
+    activeStructure.value = null;
+
     if (!newId) {
         menuStructureData.value = [];
         return;
     }
 
     // Never auto-pick a structure when several are saved for the same service: let the user choose.
-    const matchingStructures = props.structures?.filter((s) => String(s.serviceable_id) === String(newId)) || [];
+    // La vigente (más reciente) va primero: es la que usa Programación para los límites de costo.
+    const matchingStructures = (props.structures?.filter((s) => String(s.serviceable_id) === String(newId)) || []).sort(
+        (a: any, b: any) => b.id - a.id,
+    );
 
     if (matchingStructures.length === 0) {
         menuStructureData.value = [];
@@ -624,6 +672,12 @@ const searchDish = async () => {
 };
 
 const assignDish = (dish: any, recipe: any, action: 'single' | 'all') => {
+    // Sin receta (nivel) el plato queda sin costo ni insumos, y luego falla en Programación y en la
+    // orden de compra.
+    if (!recipe?.level_id) {
+        Swal.fire('Plato sin quebrado', `"${dish.name}" no tiene receta. Créela en Quebrados antes de asignarlo.`, 'warning');
+        return;
+    }
     const { rowIndex, dayIndex } = currentSearchTarget.value;
     if (rowIndex >= 0) {
         const dishData = {
@@ -718,8 +772,14 @@ const getSemaphoreTextClass = (status: string) => {
     }
 };
 
+// Solo los días visibles del ciclo (un ciclo antiguo puede traer días por encima de `days`).
+const visibleDays = (row: any): any[] =>
+    Object.entries(row?.days || {})
+        .filter(([key, day]) => day && Number(key) <= generatedDays.value)
+        .map(([, day]) => day);
+
 const getRowStatus = (row: any) => {
-    const days = Object.values(row.days || {}) as any[];
+    const days = visibleDays(row);
     if (days.length === 0) return 'desconocido';
 
     let totalAssignedCost = 0;
@@ -746,7 +806,7 @@ const chartRow = ref<any>(null);
 const chartDayIndex = ref<number | null>(null);
 
 const openRowChartModal = (row: any) => {
-    if (Object.keys(row.days || {}).length === 0) return;
+    if (visibleDays(row).length === 0) return;
     chartRow.value = row;
     chartDayIndex.value = null;
     isChartModalOpen.value = true;
@@ -783,7 +843,7 @@ const chartStats = computed(() => {
         const day = chartRow.value.days[chartDayIndex.value];
         value = day ? parseFloat(day.price || 0) : 0;
     } else {
-        const days = Object.values(chartRow.value.days || {}) as any[];
+        const days = visibleDays(chartRow.value);
         const total = days.reduce((sum: number, d: any) => sum + parseFloat(d?.price || 0), 0);
         value = days.length ? total / days.length : 0;
     }
@@ -1204,7 +1264,11 @@ const persistCycle = async (id: number | null, name: string): Promise<void> => {
             serviceable_id: selectedServiceableId.value,
             name,
             days: generatedDays.value,
-            cycle_data: normalizeCycleRows(menuStructureData.value),
+            // Nunca se guardan días por encima del número de días del ciclo.
+            cycle_data: normalizeCycleRows(menuStructureData.value).map((row: any) => ({
+                ...row,
+                days: Object.fromEntries(Object.entries(row.days).filter(([key]) => Number(key) <= generatedDays.value)),
+            })),
         });
 
         activeCycleId.value = data.id;
@@ -1270,12 +1334,18 @@ const exportCycleWithoutKcal = () => {
     window.location.href = `/cycles/export/${activeCycleId.value}?hide_kcal=true`;
 };
 
+const currentStructureFor = (serviceableId: string | null) =>
+    (props.structures || [])
+        .filter((s: any) => String(s.serviceable_id) === String(serviceableId))
+        .reduce((latest: any, s: any) => (!latest || s.id > latest.id ? s : latest), null);
+
 const resetToNew = () => {
     if (!selectedServiceableId.value) {
         Swal.fire('Atención', 'Seleccione un servicio primero', 'warning');
         return;
     }
-    const structure = props.structures?.find((s) => String(s.serviceable_id) === String(selectedServiceableId.value));
+    // La misma estructura con la que se armó la grilla; no "la primera" del servicio.
+    const structure = activeStructure.value ?? currentStructureFor(selectedServiceableId.value);
     if (!structure) return;
 
     activeCycleId.value = null;
@@ -1523,7 +1593,7 @@ const resetToNew = () => {
                                     class="sticky left-[296px] z-10 w-28 max-w-28 min-w-28 border-r border-b border-slate-200 border-b-slate-100 p-2 text-center shadow-[6px_0_8px_-6px_rgba(15,23,42,0.18)] transition-colors"
                                     :class="[
                                         getSemaphoreCellClass(getRowStatus(row)),
-                                        Object.keys(row.days || {}).length > 0 ? 'cursor-pointer' : '',
+                                        visibleDays(row).length > 0 ? 'cursor-pointer' : '',
                                     ]"
                                     @click="openRowChartModal(row)"
                                 >
@@ -1536,7 +1606,7 @@ const resetToNew = () => {
                                             getSemaphoreText(getRowStatus(row))
                                         }}</span>
                                         <span
-                                            v-if="Object.keys(row.days || {}).length > 0"
+                                            v-if="visibleDays(row).length > 0"
                                             class="flex items-center gap-1 text-[9px] font-medium text-slate-400 opacity-0 transition-opacity group-hover/semaphore:opacity-100"
                                         >
                                             <LineChart class="h-2.5 w-2.5" />
@@ -1759,24 +1829,16 @@ const resetToNew = () => {
                                                 }}</span>
                                                 &bull; Nivel: <span class="font-medium text-slate-400">Sin Nivel</span>
                                             </p>
-                                            <p class="mt-1 text-[11px] text-slate-500">Costo: S/ 0.00 &bull; Calorías: 0 kcal</p>
+                                            <p class="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-700">
+                                                <AlertTriangle class="h-3 w-3 shrink-0" />
+                                                Sin quebrado: créelo en Quebrados para poder asignarlo.
+                                            </p>
                                         </div>
                                         <div class="flex shrink-0 items-center gap-2">
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                class="border-slate-200 text-slate-600 hover:bg-slate-100"
-                                                @click="assignDish(dish, {}, 'all')"
-                                            >
+                                            <Button size="sm" variant="outline" class="border-slate-200 text-slate-400" disabled>
                                                 Replicar para todos los días
                                             </Button>
-                                            <Button
-                                                size="sm"
-                                                class="bg-[#FF5A1F] text-white hover:bg-[#e04a17]"
-                                                @click="assignDish(dish, {}, 'single')"
-                                            >
-                                                Asignar
-                                            </Button>
+                                            <Button size="sm" class="bg-[#FF5A1F] text-white" disabled>Asignar</Button>
                                         </div>
                                     </li>
                                 </template>
@@ -2068,7 +2130,8 @@ const resetToNew = () => {
                         Seleccionar Estructura
                     </DialogTitle>
                     <p class="mt-1 text-sm text-slate-500">
-                        Este servicio tiene {{ structuresToSelect.length }} estructuras guardadas. Seleccione cuál desea usar para el ciclo.
+                        Este servicio tiene {{ structuresToSelect.length }} estructuras guardadas. Seleccione cuál desea usar para el ciclo. La
+                        <b>vigente</b> es la que usa Programación para los límites de costo.
                     </p>
                 </DialogHeader>
                 <div class="max-h-[400px] overflow-y-auto bg-slate-50/30 p-6">
@@ -2084,7 +2147,14 @@ const resetToNew = () => {
                                     <FolderOpen class="h-5 w-5" />
                                 </div>
                                 <div>
-                                    <p class="text-sm font-bold text-slate-800">{{ structure.name || 'Estructura sin nombre' }}</p>
+                                    <p class="flex items-center gap-1.5 text-sm font-bold text-slate-800">
+                                        {{ structure.name || 'Estructura sin nombre' }}
+                                        <span
+                                            v-if="structure.id === structuresToSelect[0]?.id"
+                                            class="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700"
+                                            >Vigente</span
+                                        >
+                                    </p>
                                     <p class="mt-0.5 text-[11px] text-slate-500">
                                         {{ structure.costs?.length || 0 }} categorías
                                         <template v-if="structure.selling_price">

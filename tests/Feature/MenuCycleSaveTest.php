@@ -64,3 +64,16 @@ it('permite el mismo nombre en otro servicio', function () {
 
     expect(MenuCycle::count())->toBe(2);
 });
+
+it('no mueve un ciclo a otro servicio al actualizarlo', function () {
+    [$user, $almuerzo, $cena] = seedCycleSaveBase();
+    $original = MenuCycle::create(['serviceable_id' => $almuerzo->id, 'name' => 'Ciclo 1', 'days' => 7, 'cycle_data' => []]);
+
+    // Ciclo copiado desde Almuerzo y guardado estando en Cena sin marcar "como nuevo".
+    $this->actingAs($user)
+        ->postJson('/cycles', cyclePayload($cena, 'Ciclo 1', $original->id))
+        ->assertStatus(422);
+
+    expect($original->fresh()->serviceable_id)->toBe($almuerzo->id)
+        ->and(MenuCycle::count())->toBe(1);
+});

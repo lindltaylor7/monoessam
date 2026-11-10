@@ -268,6 +268,19 @@ class MenuCycleController extends Controller
 
             if ($request->id) {
                 $menuCycle = MenuCycle::findOrFail($request->id);
+
+                // Un ciclo nunca cambia de servicio al actualizarse: si se copió de otro servicio y se
+                // "guardó cambios", se movía el original y su servicio se quedaba sin él.
+                if ((string) $menuCycle->serviceable_id !== (string) $validated['serviceable_id']) {
+                    DB::rollBack();
+                    $message = 'Este ciclo pertenece a otro servicio. Guárdelo como un ciclo nuevo.';
+                    if ($request->wantsJson()) {
+                        return response()->json(['message' => $message], 422);
+                    }
+
+                    return redirect()->back()->withErrors(['id' => $message]);
+                }
+
                 $menuCycle->update([
                     'serviceable_id' => $validated['serviceable_id'],
                     'name' => $validated['name'],
