@@ -184,3 +184,29 @@ test('exportar excel descarga el pedido con sus lineas, incluidas las agregadas 
 
     expect($response->headers->get('content-disposition'))->toContain('Pedido_' . $order->id);
 });
+
+test('el excel lleva el precio del proveedor activo, igual que la pantalla', function () {
+    \Maatwebsite\Excel\Facades\Excel::fake();
+    $this->travelTo(now()->startOfMinute());
+
+    $order      = ordenDeCompra();
+    $ingredient = Ingredient::create(['name' => 'Papa amarilla', 'code' => 'PAP-01']);
+    $city       = \App\Models\City::create(['name' => 'HUANCAYO']);
+    $provider   = \App\Models\Provider::create(['name' => 'Proveedor Activo']);
+
+    \App\Models\Ingredient_city_provider::create(['ingredient_id' => $ingredient->id, 'provider_id' => $provider->id, 'city_id' => $city->id, 'cost_price' => 5.50, 'is_active' => true]);
+    PurchaseOrderItem::create(['purchase_order_id' => $order->id, 'ingredient_id' => $ingredient->id, 'total_amount' => 10, 'unit' => 'Kg.']);
+
+    $this->actingAs(usuarioDeCompras())
+        ->get(route('purchase_orders.export', ['id' => $order->id, 'city_id' => $city->id]))
+        ->assertOk();
+
+    \Maatwebsite\Excel\Facades\Excel::assertDownloaded(
+        'Pedido_' . $order->id . '_' . now()->format('Ymd_His') . '.xlsx',
+        function ($export) {
+            $line = collect($export->array())->first(fn ($row) => $row[1] === 'Papa amarilla');
+
+            return $line !== null && $line[3] === '5.50' && $line[5] === '55.00';
+        }
+    );
+});

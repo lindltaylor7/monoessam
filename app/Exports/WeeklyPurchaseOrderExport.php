@@ -95,7 +95,8 @@ class WeeklyPurchaseOrderExport implements FromArray, ShouldAutoSize, WithStyles
         $rowNumber = 6; // 1-indexed, matches PhpSpreadsheet rows (array is 0-indexed, +1 for the header row already counted)
 
         foreach ($this->categories as $category) {
-            $rows[] = [0, strtoupper($category['name']), '', '', '', ''];
+            // El nombre va en A: la fila se fusiona A:F y Excel solo conserva el valor de la primera celda.
+            $rows[] = [strtoupper($category['name']), '', '', '', '', ''];
             $this->categoryRows[] = $rowNumber;
             $rowNumber++;
 

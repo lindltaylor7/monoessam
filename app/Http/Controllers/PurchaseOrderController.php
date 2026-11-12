@@ -65,7 +65,9 @@ class PurchaseOrderController extends Controller
     public function export(Request $request, $id)
     {
         [$order, $cityId] = $this->loadPricedOrder($request, $id);
-        $order->load('items.ingredient.ingredient_category');
+        // Sobre la colección ya cargada: $order->load('items...') la reemplazaría por modelos
+        // nuevos y se perderían los precios activos calculados en loadPricedOrder().
+        $order->items->loadMissing('ingredient.ingredient_category');
 
         $city = City::find($cityId) ?? new City(['name' => 'Sin ciudad']);
 
