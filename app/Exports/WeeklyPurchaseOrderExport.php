@@ -9,13 +9,14 @@ use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithDrawings;
+use Maatwebsite\Excel\Concerns\WithTitle;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 
-class WeeklyPurchaseOrderExport implements FromArray, ShouldAutoSize, WithStyles, WithDrawings
+class WeeklyPurchaseOrderExport implements FromArray, ShouldAutoSize, WithStyles, WithDrawings, WithTitle
 {
     /** @var Collection<int,\App\Models\WeeklyProgram> */
     protected Collection $programs;
@@ -38,6 +39,11 @@ class WeeklyPurchaseOrderExport implements FromArray, ShouldAutoSize, WithStyles
         $this->categories = $categories;
         $this->grandTotal = $grandTotal;
         $this->missingPriceCount = $missingPriceCount;
+    }
+
+    public function title(): string
+    {
+        return 'Orden de pedido';
     }
 
     public function drawings()

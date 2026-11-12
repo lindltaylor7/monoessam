@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\PurchaseOrderExport;
+use App\Exports\Sheets\PurchaseOrderByProviderSheet;
 use App\Exports\WeeklyPurchaseOrderExport;
 use App\Models\City;
 use App\Models\Ingredient;
@@ -85,6 +87,7 @@ class PurchaseOrderController extends Controller
                 'price' => $price,
                 'quantity' => $quantity,
                 'subtotal' => $subtotal,
+                'provider' => $item->active_provider,
             ];
         });
 
@@ -97,13 +100,16 @@ class PurchaseOrderController extends Controller
             ? $order->programs
             : collect([$order->program])->filter();
 
-        $export = new WeeklyPurchaseOrderExport(
-            $programs,
-            (object) ['name' => 'Según programación'],
-            $city,
-            $categories,
-            (float) $rows->sum('subtotal'),
-            $rows->whereNull('subtotal')->count(),
+        $export = new PurchaseOrderExport(
+            new WeeklyPurchaseOrderExport(
+                $programs,
+                (object) ['name' => 'Según programación'],
+                $city,
+                $categories,
+                (float) $rows->sum('subtotal'),
+                $rows->whereNull('subtotal')->count(),
+            ),
+            new PurchaseOrderByProviderSheet($rows, "PEDIDO #{$order->id} — POR PROVEEDOR", $city->name),
         );
 
         return Excel::download($export, 'Pedido_' . $order->id . '_' . now()->format('Ymd_His') . '.xlsx');
