@@ -535,6 +535,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         // también en lectura, así que un usuario de Órdenes de Compra no podría usarlo.
         Route::get('search-ingredients', [PurchaseOrderController::class, 'searchIngredients'])->name('search-ingredients');
         Route::get('{id}', [PurchaseOrderController::class, 'show'])->whereNumber('id')->name('show');
+        Route::get('{id}/export', [PurchaseOrderController::class, 'export'])->whereNumber('id')->name('export');
         Route::post('{id}/items', [PurchaseOrderController::class, 'storeItem'])->name('items.store');
         Route::delete('{id}/items/{itemId}', [PurchaseOrderController::class, 'destroyItem'])->name('items.destroy');
         Route::delete('{id}', [PurchaseOrderController::class, 'destroy'])->whereNumber('id')->name('destroy');

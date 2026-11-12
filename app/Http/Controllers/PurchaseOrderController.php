@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exports\WeeklyPurchaseOrderExport;
 use App\Models\City;
 use App\Models\Ingredient;
 use App\Models\Ingredient_city_provider;
@@ -10,6 +11,7 @@ use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderItem;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Maatwebsite\Excel\Facades\Excel;
 
 class PurchaseOrderController extends Controller
 {
@@ -45,6 +47,76 @@ class PurchaseOrderController extends Controller
      */
     public function show(Request $request, $id)
     {
+        [$order, $cityId, $supplyCityId] = $this->loadPricedOrder($request, $id);
+
+        return Inertia::render('purchase-orders/Show', [
+            'order' => $order,
+            'cities' => City::orderBy('name')->get(['id', 'name']),
+            'cityId' => $cityId,
+            'supplyCityId' => $supplyCityId,
+        ]);
+    }
+
+    /**
+     * Mismo formato que la "Orden de Pedido Semanal" de Planificación, pero con las líneas del
+     * pedido tal como quedaron (incluidos los insumos agregados a mano) y los precios de la
+     * ciudad elegida en la pantalla.
+     */
+    public function export(Request $request, $id)
+    {
+        [$order, $cityId] = $this->loadPricedOrder($request, $id);
+        $order->load('items.ingredient.ingredient_category');
+
+        $city = City::find($cityId) ?? new City(['name' => 'Sin ciudad']);
+
+        $rows = $order->items->map(function ($item) {
+            $quantity = (float) $item->total_amount;
+            $subtotal = $item->active_cost ?? ($item->estimated_cost !== null ? (float) $item->estimated_cost : null);
+            $price = $item->active_unit_price
+                ?? ($subtotal !== null && $quantity > 0 ? $subtotal / $quantity : null);
+
+            return [
+                'code' => $item->ingredient?->code ?: $item->ingredient_id,
+                'name' => ($item->ingredient?->name ?? 'Insumo eliminado') . ($item->is_manual ? ' (agregado)' : ''),
+                'category' => $item->ingredient?->ingredient_category?->name ?? 'Sin Categoría',
+                'unit' => $item->unit,
+                'price' => $price,
+                'quantity' => $quantity,
+                'subtotal' => $subtotal,
+            ];
+        });
+
+        $categories = $rows->groupBy('category')->sortKeys()->map(fn ($group, $name) => [
+            'name' => $name,
+            'rows' => $group->sortBy('name')->values(),
+        ])->values();
+
+        $programs = $order->programs->isNotEmpty()
+            ? $order->programs
+            : collect([$order->program])->filter();
+
+        $export = new WeeklyPurchaseOrderExport(
+            $programs,
+            (object) ['name' => 'Según programación'],
+            $city,
+            $categories,
+            (float) $rows->sum('subtotal'),
+            $rows->whereNull('subtotal')->count(),
+        );
+
+        return Excel::download($export, 'Pedido_' . $order->id . '_' . now()->format('Ymd_His') . '.xlsx');
+    }
+
+    /**
+     * El costo estimado se calcula con el proveedor marcado como activo en Proveedores, que es
+     * por (insumo, ciudad). La ciudad es la de abastecimiento con la que se generó la orden (la
+     * del comedor); se puede cambiar en la pantalla para comparar, y las órdenes anteriores a
+     * la ciudad de abastecimiento usan la del comedor de su primera programación.
+     *
+     * @return array{0: PurchaseOrder, 1: ?int, 2: ?int}
+     */
+    private function loadPricedOrder(Request $request, $id): array
+    {
         $order = PurchaseOrder::with([
             'program.cafe.unit.mine',
             'programs.cafe.unit.mine',
@@ -72,12 +144,7 @@ class PurchaseOrderController extends Controller
             $item->setAttribute('active_cost', $unitPrice !== null ? round($unitPrice * (float) $item->total_amount, 2) : null);
         }
 
-        return Inertia::render('purchase-orders/Show', [
-            'order' => $order,
-            'cities' => City::orderBy('name')->get(['id', 'name']),
-            'cityId' => $cityId,
-            'supplyCityId' => $supplyCityId,
-        ]);
+        return [$order, $cityId, $supplyCityId];
     }
 
     /**

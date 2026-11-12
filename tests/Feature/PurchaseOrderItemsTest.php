@@ -164,3 +164,23 @@ test('el costo estimado usa el precio del proveedor activo de la ciudad elegida'
             ->where('order.items.0.active_cost', 55)
         );
 });
+
+test('exportar excel descarga el pedido con sus lineas, incluidas las agregadas a mano', function () {
+    $order      = ordenDeCompra();
+    $ingredient = Ingredient::create(['name' => 'Aji Lima', 'code' => 'AJI-01']);
+
+    PurchaseOrderItem::create([
+        'purchase_order_id' => $order->id,
+        'ingredient_id'     => $ingredient->id,
+        'total_amount'      => 8.254,
+        'unit'              => 'Kg.',
+        'estimated_cost'    => 26,
+        'is_manual'         => true,
+    ]);
+
+    $response = $this->actingAs(usuarioDeCompras())
+        ->get(route('purchase_orders.export', $order->id))
+        ->assertOk();
+
+    expect($response->headers->get('content-disposition'))->toContain('Pedido_' . $order->id);
+});
