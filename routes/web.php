@@ -45,6 +45,7 @@ use App\Http\Controllers\ServiceDesk\AuditController as ServiceDeskAuditControll
 use App\Http\Controllers\ServiceDesk\ConfigController as ServiceDeskConfigController;
 use App\Http\Controllers\ServiceDesk\IndicatorController as ServiceDeskIndicatorController;
 use App\Http\Controllers\ServiceDesk\KedbController as ServiceDeskKedbController;
+use App\Http\Controllers\ServiceDesk\PortalController as ServiceDeskPortalController;
 use App\Http\Controllers\ServiceDesk\SurveyController as ServiceDeskSurveyController;
 use App\Http\Controllers\ServiceDesk\TicketController as ServiceDeskTicketController;
 use App\Http\Controllers\ServiceController;
@@ -621,6 +622,19 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('config/questions', [ServiceDeskConfigController::class, 'storeQuestion'])->name('config.questions.store');
         Route::put('config/questions/{id}', [ServiceDeskConfigController::class, 'updateQuestion'])->name('config.questions.update');
         Route::delete('config/questions/{id}', [ServiceDeskConfigController::class, 'destroyQuestion'])->name('config.questions.destroy');
+    });
+
+    // Canal de entrada de incidencias (portal de autoservicio). Va en un segmento propio,
+    // `soporte`, SIN fila en `permissions`: tiene que estar abierto a todo usuario
+    // autenticado, mientras que `service-desk` (la bandeja de TI) exige su permiso. No lo
+    // muevan bajo `service-desk`. El control por registro (solo tickets propios) lo hace
+    // PortalController.
+    Route::prefix('soporte')->name('soporte.')->group(function () {
+        Route::get('/', [ServiceDeskPortalController::class, 'index'])->name('index');
+        Route::post('tickets', [ServiceDeskPortalController::class, 'store'])->middleware('throttle:10,1')->name('tickets.store');
+        Route::post('tickets/{id}/comment', [ServiceDeskPortalController::class, 'comment'])->middleware('throttle:30,1')->name('tickets.comment');
+        Route::post('tickets/{id}/reopen', [ServiceDeskPortalController::class, 'reopen'])->name('tickets.reopen');
+        Route::post('tickets/{id}/rate', [ServiceDeskPortalController::class, 'rate'])->name('tickets.rate');
     });
 
     // ========================================================================

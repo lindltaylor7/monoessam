@@ -6,7 +6,7 @@ import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, Sid
 import { type NavItem } from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
 import * as LucideIcons from 'lucide-vue-next';
-import { House } from 'lucide-vue-next';
+import { House, LifeBuoy } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 
 const page = usePage();
@@ -21,6 +21,10 @@ const mainNavItems: NavItem[] = [
     },
 ];
 
+// El portal de soporte no tiene fila en `permissions` (está abierto a todo usuario
+// autenticado), así que no saldría en el bucle de abajo: se agrega fijo.
+const supportNavItem: NavItem = { title: 'Soporte TI', href: '/soporte', icon: LifeBuoy };
+
 permissions.forEach((permission: any) => {
     const IconComponent = (LucideIcons as Record<string, any>)[permission.icon_class] ?? House;
 
@@ -28,6 +32,8 @@ permissions.forEach((permission: any) => {
         mainNavItems.push({ title: permission.sidebar_name, href: '/' + permission.route_name, icon: IconComponent });
     }
 });
+
+mainNavItems.push(supportNavItem);
 
 const footerNavItems: NavItem[] = [];
 </script>
