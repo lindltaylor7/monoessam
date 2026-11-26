@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { playErrorSound } from '@/composables/useErrorSound';
 import { AlertTriangle, X } from 'lucide-vue-next';
 import { onBeforeUnmount, watch } from 'vue';
 
@@ -54,6 +55,9 @@ watch(
     (show) => {
         stopListening();
         if (show) {
+            // Aviso sonoro al detectar el duplicado: el cajero suele estar
+            // mirando al comensal, no a la pantalla.
+            playErrorSound();
             document.addEventListener('keydown', handleKeydown, true);
             document.addEventListener('keyup', handleKeyup, true);
         }
