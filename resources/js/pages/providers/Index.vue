@@ -12,12 +12,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
+import EmptyState from '@/components/shared/EmptyState.vue';
+import PageHeader from '@/components/shared/PageHeader.vue';
+import StatCard from '@/components/shared/StatCard.vue';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import {
     AlertTriangle,
     Building2,
+    ChevronDown,
     ChevronLeft,
     ChevronRight,
+    FileSpreadsheet,
     Filter,
+    Layers,
     Loader2,
     MapPin,
     PackagePlus,
@@ -25,6 +32,7 @@ import {
     Plus,
     Search,
     Trash2,
+    Truck,
     Upload,
 } from 'lucide-vue-next';
 import { computed, inject, ref, watch } from 'vue';
@@ -417,77 +425,105 @@ const onFileIdsChange = (e: any) => {
 <template>
     <Head title="Proveedores" />
     <AppLayout>
-        <div class="p-6">
-            <div class="mb-8 flex flex-wrap items-center justify-between gap-4">
-                <div>
-                    <h1 class="text-3xl font-bold text-gray-900">Gestión de Proveedores</h1>
-                    <p class="text-gray-500">Administra tus proveedores y los productos que ofrecen por ciudad.</p>
-                </div>
-                <div class="flex gap-3">
-                    <Button @click="openCreateProviderModal" variant="outline" class="flex gap-2">
-                        <Building2 class="h-4 w-4" />
-                        Nuevo Proveedor
-                    </Button>
+        <div class="space-y-6 p-4 sm:p-6 lg:p-8">
+            <!-- Encabezado Unificado -->
+            <PageHeader
+                title="Gestión de Proveedores"
+                description="Administración de proveedores, catálogo de insumos y costos por ciudad."
+                :icon="Truck"
+                iconColor="from-red-600 to-rose-700 text-white"
+            >
+                <template #actions>
                     <input type="file" ref="fileInput" class="hidden" @change="onFileChange" accept=".xlsx, .xls, .csv" />
-                    <Button @click="triggerImport" variant="outline" class="flex gap-2">
-                        <Upload class="h-4 w-4" />
-                        Importar Excel (Nombres)
-                    </Button>
                     <input type="file" ref="fileInputIds" class="hidden" @change="onFileIdsChange" accept=".xlsx, .xls, .csv" />
-                    <Button
-                        @click="triggerImportIds"
-                        variant="outline"
-                        class="flex gap-2 border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
-                    >
-                        <Upload class="h-4 w-4" />
-                        Importar Excel (IDs)
+
+                    <!-- Menú desplegable para acciones secundarias / importaciones -->
+                    <DropdownMenu>
+                        <DropdownMenuTrigger as-child>
+                            <Button variant="outline" class="gap-2 rounded-xl border-border/80 shadow-2xs">
+                                <Upload class="h-4 w-4" />
+                                <span>Importar / Opciones</span>
+                                <ChevronDown class="h-3.5 w-3.5 opacity-60" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" class="w-56 rounded-xl">
+                            <DropdownMenuItem @click="triggerImport" class="cursor-pointer gap-2 py-2">
+                                <FileSpreadsheet class="h-4 w-4 text-emerald-600" />
+                                <span>Importar Excel (Nombres)</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem @click="triggerImportIds" class="cursor-pointer gap-2 py-2">
+                                <FileSpreadsheet class="h-4 w-4 text-indigo-600" />
+                                <span>Importar Excel (IDs)</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem @click="openCoverageModal" class="cursor-pointer gap-2 py-2">
+                                <AlertTriangle class="h-4 w-4 text-amber-600" />
+                                <span>Cobertura por ciudad</span>
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    <Button variant="outline" @click="openCreateAssignmentModal()" class="gap-2 rounded-xl border-border/80 shadow-2xs">
+                        <PackagePlus class="h-4 w-4" />
+                        <span>Asignar Insumo</span>
                     </Button>
-                    <Button
-                        @click="openCoverageModal"
-                        variant="outline"
-                        class="flex gap-2 border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
-                    >
-                        <AlertTriangle class="h-4 w-4" />
-                        Cobertura por ciudad
+
+                    <Button @click="openCreateProviderModal" class="gap-2 rounded-xl bg-red-600 hover:bg-red-700 text-white shadow-sm shadow-red-600/20">
+                        <Plus class="h-4 w-4" />
+                        <span>Nuevo Proveedor</span>
                     </Button>
-                    <Button @click="openCreateAssignmentModal()">
-                        <Plus class="mr-2 h-4 w-4" />
-                        Asignar Producto
-                    </Button>
-                </div>
+                </template>
+            </PageHeader>
+
+            <!-- Métricas Clave -->
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <StatCard
+                    label="Proveedores Registrados"
+                    :value="providers.length"
+                    subtext="Proveedores comerciales activos"
+                    :icon="Building2"
+                    variant="primary"
+                />
+                <StatCard
+                    label="Insumos Asignados"
+                    :value="ingredient_city_providers.length"
+                    subtext="Relaciones insumo-proveedor"
+                    :icon="Layers"
+                    variant="info"
+                />
+                <StatCard
+                    label="Ciudades de Abastecimiento"
+                    :value="cities.length"
+                    subtext="Zonas de distribución y precios"
+                    :icon="MapPin"
+                    variant="success"
+                />
             </div>
 
-            <div
-                class="mb-6 flex flex-col items-center gap-4 rounded-2xl border border-gray-200 bg-white/80 p-4 shadow-sm backdrop-blur-sm xl:flex-row"
-            >
+            <!-- Barra de Filtros Unificada -->
+            <div class="flex flex-col gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-2xs md:flex-row md:items-center md:justify-between">
                 <!-- Barra de Búsqueda -->
-                <div class="group relative w-full xl:max-w-md">
-                    <Search
-                        class="absolute top-1/2 left-3.5 h-4.5 w-4.5 -translate-y-1/2 text-gray-400 transition-colors group-focus-within:text-blue-500"
-                    />
+                <div class="relative w-full md:max-w-md">
+                    <Search class="absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                         v-model="globalSearch"
-                        placeholder="Buscar ingredientes, proveedores..."
-                        class="h-11 rounded-xl border-gray-200 bg-gray-50/50 pl-11 transition-all focus:bg-white focus:ring-4 focus:ring-blue-500/10"
+                        placeholder="Buscar por ingrediente, proveedor..."
+                        class="h-10 rounded-xl border-border bg-muted/40 pl-10 text-sm transition-all focus:bg-background focus:ring-2 focus:ring-red-600/20"
                     />
                 </div>
 
                 <!-- Filtros Selectores -->
-                <div class="flex w-full flex-wrap items-center gap-3 xl:w-auto">
+                <div class="flex flex-wrap items-center gap-2.5">
                     <!-- Filtro Ciudad -->
-                    <div
-                        class="flex items-center gap-2.5 rounded-xl border border-gray-200 bg-gray-50/50 px-3 transition-all focus-within:ring-4 focus-within:ring-blue-500/10 hover:border-blue-300 hover:bg-white"
-                    >
-                        <MapPin class="h-4 w-4 shrink-0 text-blue-500" />
-                        <span class="text-xs font-semibold tracking-wider text-gray-400 uppercase">Ciudad</span>
-                        <Separator orientation="vertical" class="h-4 bg-gray-200" />
+                    <div class="flex items-center gap-2 rounded-xl border border-border bg-muted/30 px-3 py-1">
+                        <MapPin class="h-3.5 w-3.5 text-muted-foreground" />
+                        <span class="text-xs font-semibold text-muted-foreground uppercase">Ciudad</span>
+                        <Separator orientation="vertical" class="h-3.5" />
                         <Select v-model="selectedCityId">
-                            <SelectTrigger class="h-10 w-[140px] border-0 bg-transparent p-0 font-medium text-gray-700 shadow-none focus:ring-0">
-                                <SelectValue placeholder="Seleccionar" />
+                            <SelectTrigger class="h-8 w-[130px] border-0 bg-transparent p-0 text-xs font-medium shadow-none focus:ring-0">
+                                <SelectValue placeholder="Todas" />
                             </SelectTrigger>
-                            <SelectContent class="rounded-xl border-gray-200 shadow-xl">
-                                <SelectItem value="all" class="font-medium text-blue-600">Todas las ciudades</SelectItem>
-                                <Separator class="my-1" />
+                            <SelectContent class="rounded-xl shadow-lg">
+                                <SelectItem value="all">Todas las ciudades</SelectItem>
                                 <SelectItem v-for="city in cities" :key="city.id" :value="city.id.toString()">
                                     {{ city.name }}
                                 </SelectItem>
@@ -496,19 +532,16 @@ const onFileIdsChange = (e: any) => {
                     </div>
 
                     <!-- Filtro Proveedor -->
-                    <div
-                        class="flex items-center gap-2.5 rounded-xl border border-gray-200 bg-gray-50/50 px-3 transition-all focus-within:ring-4 focus-within:ring-indigo-500/10 hover:border-indigo-300 hover:bg-white"
-                    >
-                        <Building2 class="h-4 w-4 shrink-0 text-indigo-500" />
-                        <span class="text-xs font-semibold tracking-wider text-gray-400 uppercase">Prov</span>
-                        <Separator orientation="vertical" class="h-4 bg-gray-200" />
+                    <div class="flex items-center gap-2 rounded-xl border border-border bg-muted/30 px-3 py-1">
+                        <Building2 class="h-3.5 w-3.5 text-muted-foreground" />
+                        <span class="text-xs font-semibold text-muted-foreground uppercase">Prov</span>
+                        <Separator orientation="vertical" class="h-3.5" />
                         <Select v-model="selectedProviderId">
-                            <SelectTrigger class="h-10 w-[160px] border-0 bg-transparent p-0 font-medium text-gray-700 shadow-none focus:ring-0">
-                                <SelectValue placeholder="Seleccionar" />
+                            <SelectTrigger class="h-8 w-[140px] border-0 bg-transparent p-0 text-xs font-medium shadow-none focus:ring-0">
+                                <SelectValue placeholder="Todos" />
                             </SelectTrigger>
-                            <SelectContent class="rounded-xl border-gray-200 shadow-xl">
-                                <SelectItem value="all" class="font-medium text-indigo-600">Todos proveedores</SelectItem>
-                                <Separator class="my-1" />
+                            <SelectContent class="rounded-xl shadow-lg">
+                                <SelectItem value="all">Todos proveedores</SelectItem>
                                 <SelectItem v-for="provider in providers" :key="provider.id" :value="provider.id.toString()">
                                     {{ provider.name }}
                                 </SelectItem>
@@ -528,22 +561,20 @@ const onFileIdsChange = (e: any) => {
                                 selectedProviderId = 'all';
                             }
                         "
-                        class="rounded-lg text-xs text-gray-400 hover:bg-red-50 hover:text-red-500"
+                        class="h-8 rounded-lg text-xs text-muted-foreground hover:text-red-600"
                     >
                         Limpiar filtros
                     </Button>
-                </div>
 
-                <div class="hidden flex-1 xl:block"></div>
-
-                <div class="flex items-center gap-3 rounded-xl border border-blue-100 bg-blue-50/50 px-4 py-2 whitespace-nowrap">
-                    <Filter class="h-4 w-4 text-blue-500" />
-                    <span class="text-sm font-semibold text-blue-700">{{ filteredAssignments.length }}</span>
-                    <span class="text-xs font-medium tracking-tighter text-blue-600/70 uppercase">Resultados</span>
+                    <div class="ml-auto inline-flex items-center gap-1.5 rounded-lg bg-muted px-2.5 py-1 text-xs font-semibold text-foreground">
+                        <span>{{ filteredAssignments.length }}</span>
+                        <span class="text-muted-foreground font-normal">registros</span>
+                    </div>
                 </div>
             </div>
 
-            <Card class="overflow-hidden border-gray-200 shadow-xl">
+            <!-- Tabla de Asignaciones -->
+            <Card class="overflow-hidden border-border/80 shadow-2xs">
                 <CardContent class="p-0">
                     <Table>
                         <TableHeader class="border-b border-gray-200 bg-gray-50">
@@ -617,12 +648,12 @@ const onFileIdsChange = (e: any) => {
                                 </TableCell>
                             </TableRow>
                             <TableRow v-if="filteredAssignments.length === 0">
-                                <TableCell colspan="7" class="h-64 text-center">
-                                    <div class="flex flex-col items-center justify-center text-gray-400">
-                                        <Search class="mb-2 h-12 w-12 opacity-20" />
-                                        <p class="text-lg font-medium">No se encontraron resultados</p>
-                                        <p class="text-sm">Intenta ajustar tu búsqueda o filtros</p>
-                                    </div>
+                                <TableCell colspan="7" class="p-0">
+                                    <EmptyState
+                                        title="No se encontraron asignaciones"
+                                        description="Intenta ajustar los términos de búsqueda o cambiar los filtros de ciudad y proveedor."
+                                        :icon="Search"
+                                    />
                                 </TableCell>
                             </TableRow>
                         </TableBody>

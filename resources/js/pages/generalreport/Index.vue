@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '@/components/shared/PageHeader.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -774,31 +775,27 @@ const unitStackSeries = computed(() => [
     <Head title="Dashboard Gerencial" />
     <AppLayout>
         <div class="min-h-screen space-y-5 bg-slate-50 p-6">
-            <!-- ══ Header ══ -->
-            <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div class="flex items-center gap-4">
-                    <div
-                        class="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/30"
-                    >
-                        <BarChart3 class="h-6 w-6 text-white" />
+            <!-- ══ Header Unificado ══ -->
+            <PageHeader
+                title="Dashboard Gerencial"
+                :subtitle="`Inteligencia de negocio, conciliación y control operacional · ${filters.start_date} → ${filters.end_date}`"
+                badge="Métricas & BI"
+            >
+                <template #actions>
+                    <div class="flex flex-wrap gap-1.5">
+                        <Button
+                            v-for="p in presets"
+                            :key="p.key"
+                            variant="outline"
+                            size="sm"
+                            class="h-8 text-xs font-semibold hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 shadow-xs"
+                            @click="setRange(p.key)"
+                        >
+                            {{ p.label }}
+                        </Button>
                     </div>
-                    <div>
-                        <h1 class="text-2xl font-extrabold tracking-tight text-slate-900">Dashboard Gerencial</h1>
-                        <p class="text-sm text-slate-500">Inteligencia de negocio · {{ filters.start_date }} → {{ filters.end_date }}</p>
-                    </div>
-                </div>
-
-                <div class="flex flex-wrap gap-1.5">
-                    <button
-                        v-for="p in presets"
-                        :key="p.key"
-                        class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-600 transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700"
-                        @click="setRange(p.key)"
-                    >
-                        {{ p.label }}
-                    </button>
-                </div>
-            </div>
+                </template>
+            </PageHeader>
 
             <!-- ══ Barra de filtros ══ -->
             <Card class="border-slate-200 shadow-sm">

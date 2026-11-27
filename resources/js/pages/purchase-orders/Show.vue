@@ -143,9 +143,9 @@ const removeItem = (itemId: number, name?: string) => {
     });
 };
 
+// Descarga directa (no Inertia): exporta con la ciudad de precios elegida en la pantalla.
 const exportExcel = () => {
-    // Logic for excel export could be added here later
-    alert('Función de exportación a Excel en desarrollo');
+    window.location.href = route('purchase_orders.export', { id: props.order.id, city_id: cityId.value ?? undefined });
 };
 </script>
 

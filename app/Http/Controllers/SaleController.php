@@ -57,7 +57,7 @@ class SaleController extends Controller
             'receipt_types' => Receipt_type::all(),
             'subdealerships' => Subdealership::all(),
             'dealerships' => Dealership::all(),
-            'mines' => Mine::all(),
+            'mines' => Mine::operational()->get(),
             'businesses' => Business::all(),
         ]);
     }

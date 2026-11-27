@@ -9,7 +9,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import CalcPopover from '@/pages/food/CalcPopover.vue';
 import MenuDisplay from '@/pages/structure-menu/MenuDisplay.vue';
 import { Mine } from '@/types';
-import { Head, router } from '@inertiajs/vue3';
+import { Head } from '@inertiajs/vue3';
 import axios from 'axios';
 import {
     AlertTriangle,
@@ -23,8 +23,8 @@ import {
     LineChart,
     Loader2,
     MapPin,
-    RefreshCw,
     Plus,
+    RefreshCw,
     Save,
     Search,
     Settings2,
@@ -103,10 +103,44 @@ watch(serviceCyclesToSelect, () => {
 const inputDays = ref<number>(7);
 const generatedDays = ref<number>(7);
 
-const generateColumns = () => {
-    if (inputDays.value > 0 && inputDays.value <= 31) {
-        generatedDays.value = inputDays.value;
+// Quita de las filas los días posteriores a `maxDay`: si quedaran, se guardarían ocultos en
+// cycle_data y seguirían contando en el promedio del semáforo.
+const dropDaysAfter = (maxDay: number) => {
+    menuStructureData.value.forEach((row: any) => {
+        Object.keys(row.days || {}).forEach((key) => {
+            if (Number(key) > maxDay) delete row.days[key];
+        });
+    });
+};
+
+const generateColumns = async () => {
+    const days = Number(inputDays.value);
+    if (!(days > 0 && days <= 31)) return;
+
+    if (days < generatedDays.value) {
+        const lost = menuStructureData.value.reduce(
+            (sum: number, row: any) => sum + Object.keys(row.days || {}).filter((key) => Number(key) > days && row.days[key]).length,
+            0,
+        );
+        if (lost > 0) {
+            const result = await Swal.fire({
+                icon: 'warning',
+                title: `¿Reducir a ${days} días?`,
+                text: `Se quitarán ${lost} plato(s) asignados del día ${days + 1} en adelante.`,
+                showCancelButton: true,
+                confirmButtonText: 'Sí, reducir',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#FF5A1F',
+            });
+            if (!result.isConfirmed) {
+                inputDays.value = generatedDays.value;
+                return;
+            }
+        }
+        dropDaysAfter(days);
     }
+
+    generatedDays.value = days;
 };
 
 const daysColumns = computed(() => {
@@ -253,11 +287,15 @@ const savedCyclesUnitOptions = computed(() =>
     savedCyclesMineOptions.value.filter((m) => !savedCyclesMine.value || String(m.id) === savedCyclesMine.value).flatMap((m) => m.units || []),
 );
 const savedCyclesCafeOptions = computed(() =>
-    savedCyclesUnitOptions.value.filter((u: any) => !savedCyclesUnit.value || String(u.id) === savedCyclesUnit.value).flatMap((u: any) => u.cafes || []),
+    savedCyclesUnitOptions.value
+        .filter((u: any) => !savedCyclesUnit.value || String(u.id) === savedCyclesUnit.value)
+        .flatMap((u: any) => u.cafes || []),
 );
 const savedCyclesServiceOptions = computed(() =>
     savedCyclesCafe.value
-        ? (savedCyclesCafeOptions.value.find((c: any) => String(c.id) === savedCyclesCafe.value)?.services || []).filter((s: any) => s.pivot?.id != null)
+        ? (savedCyclesCafeOptions.value.find((c: any) => String(c.id) === savedCyclesCafe.value)?.services || []).filter(
+              (s: any) => s.pivot?.id != null,
+          )
         : [],
 );
 
@@ -431,8 +469,11 @@ const copyCycle = async (cycle: any) => {
     const cycleData = await fetchCycleData(cycle);
     if (!cycleData) return;
 
-    activeCycleId.value = cycle.id;
-    activeCycleName.value = cycle.name || '';
+    // Un ciclo de otro servicio se trae como copia: si se conservara su id, "Guardar Cambios" lo
+    // sobrescribiría (y antes lo movía a este servicio, dejando al de origen sin él).
+    const fromOtherService = String(cycle.serviceable_id) !== String(selectedServiceableId.value);
+    activeCycleId.value = fromOtherService ? null : cycle.id;
+    activeCycleName.value = fromOtherService ? `${cycle.name || 'Ciclo'} (copia)` : cycle.name || '';
     inputDays.value = cycle.days;
     generatedDays.value = cycle.days;
     menuStructureData.value = normalizeCycleRows(JSON.parse(JSON.stringify(cycleData)));
@@ -442,7 +483,9 @@ const copyCycle = async (cycle: any) => {
     Swal.fire({
         icon: 'success',
         title: 'Ciclo copiado',
-        text: 'La estructura se ha cargado tal como se guardó.',
+        text: fromOtherService
+            ? 'Se cargó como un ciclo nuevo de este servicio; el original no se modificará al guardar.'
+            : 'La estructura se ha cargado tal como se guardó.',
         timer: 1500,
         showConfirmButton: false,
     });
@@ -481,7 +524,11 @@ const menuStructureData = ref<any[]>([]);
 
 // Once a single structure is settled on for this service, load its matching cycle (if there's exactly
 // one) or fall back to blank defaults from the structure's costs.
+// Estructura con la que está armada la grilla (la elegida o la vigente del servicio).
+const activeStructure = ref<any>(null);
+
 const applyStructure = async (structure: any, newId: string) => {
+    activeStructure.value = structure;
     let serviceCycles: any[] = [];
     try {
         const { data } = await axios.get('/cycles/list', { params: { serviceable_id: newId, all: 1 } });
@@ -552,13 +599,18 @@ watch(selectedServiceableId, (newId) => {
     isStructureSelectModalOpen.value = false;
     structuresToSelect.value = [];
 
+    activeStructure.value = null;
+
     if (!newId) {
         menuStructureData.value = [];
         return;
     }
 
     // Never auto-pick a structure when several are saved for the same service: let the user choose.
-    const matchingStructures = props.structures?.filter((s) => String(s.serviceable_id) === String(newId)) || [];
+    // La vigente (más reciente) va primero: es la que usa Programación para los límites de costo.
+    const matchingStructures = (props.structures?.filter((s) => String(s.serviceable_id) === String(newId)) || []).sort(
+        (a: any, b: any) => b.id - a.id,
+    );
 
     if (matchingStructures.length === 0) {
         menuStructureData.value = [];
@@ -620,6 +672,12 @@ const searchDish = async () => {
 };
 
 const assignDish = (dish: any, recipe: any, action: 'single' | 'all') => {
+    // Sin receta (nivel) el plato queda sin costo ni insumos, y luego falla en Programación y en la
+    // orden de compra.
+    if (!recipe?.level_id) {
+        Swal.fire('Plato sin quebrado', `"${dish.name}" no tiene receta. Créela en Quebrados antes de asignarlo.`, 'warning');
+        return;
+    }
     const { rowIndex, dayIndex } = currentSearchTarget.value;
     if (rowIndex >= 0) {
         const dishData = {
@@ -714,8 +772,14 @@ const getSemaphoreTextClass = (status: string) => {
     }
 };
 
+// Solo los días visibles del ciclo (un ciclo antiguo puede traer días por encima de `days`).
+const visibleDays = (row: any): any[] =>
+    Object.entries(row?.days || {})
+        .filter(([key, day]) => day && Number(key) <= generatedDays.value)
+        .map(([, day]) => day);
+
 const getRowStatus = (row: any) => {
-    const days = Object.values(row.days || {}) as any[];
+    const days = visibleDays(row);
     if (days.length === 0) return 'desconocido';
 
     let totalAssignedCost = 0;
@@ -742,7 +806,7 @@ const chartRow = ref<any>(null);
 const chartDayIndex = ref<number | null>(null);
 
 const openRowChartModal = (row: any) => {
-    if (Object.keys(row.days || {}).length === 0) return;
+    if (visibleDays(row).length === 0) return;
     chartRow.value = row;
     chartDayIndex.value = null;
     isChartModalOpen.value = true;
@@ -779,7 +843,7 @@ const chartStats = computed(() => {
         const day = chartRow.value.days[chartDayIndex.value];
         value = day ? parseFloat(day.price || 0) : 0;
     } else {
-        const days = Object.values(chartRow.value.days || {}) as any[];
+        const days = visibleDays(chartRow.value);
         const total = days.reduce((sum: number, d: any) => sum + parseFloat(d?.price || 0), 0);
         value = days.length ? total / days.length : 0;
     }
@@ -1006,8 +1070,48 @@ const replaceQuebradoIngredient = (id: number, substitute: any) => {
     onQuebradoWeightInput(ing);
 };
 
+// El quebrado que se edita aquí es la receta maestra del plato en ese nivel: el cambio lo heredan
+// todos los ciclos y programaciones que la usan, no solo este ciclo. Se avisa cuántos antes de guardar.
+const confirmQuebradoImpact = async (recipeId: number): Promise<boolean> => {
+    let usage: { other_cycles: number; services: number; active_programs: number } | null = null;
+    try {
+        ({ data: usage } = await axios.get(route('dish-recipes.usage', recipeId), {
+            params: { except_cycle_id: activeCycleId.value || undefined },
+        }));
+    } catch {
+        usage = null;
+    }
+
+    const parts: string[] = [];
+    if (usage?.other_cycles) {
+        parts.push(`<b>${usage.other_cycles}</b> ciclo(s) más${usage.services > 1 ? ` de <b>${usage.services}</b> servicios` : ''}`);
+    }
+    if (usage?.active_programs) parts.push(`<b>${usage.active_programs}</b> programación(es) vigente(s)`);
+
+    const impact = usage
+        ? parts.length
+            ? `Esta receta también se usa en ${parts.join(' y ')}. El cambio se aplicará en todos ellos.`
+            : 'Ningún otro ciclo ni programación vigente usa esta receta.'
+        : 'No se pudo comprobar en qué otros ciclos se usa esta receta.';
+
+    const dishName = document.createElement('span');
+    dishName.textContent = quebradoDishName.value;
+
+    const result = await Swal.fire({
+        icon: parts.length || !usage ? 'warning' : 'question',
+        title: '¿Guardar cambios en la receta maestra?',
+        html: `<p class="text-sm">Se modificará el quebrado de <b>${dishName.innerHTML}</b> para todos los que lo usan, no solo para este ciclo.</p><p class="mt-3 text-sm">${impact}</p>`,
+        showCancelButton: true,
+        confirmButtonText: 'Sí, guardar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#FF5A1F',
+    });
+    return result.isConfirmed;
+};
+
 const saveQuebrado = async () => {
     if (!quebradoRecipeId.value || !quebradoRecipe.value) return;
+    if (!(await confirmQuebradoImpact(quebradoRecipeId.value))) return;
 
     isQuebradoSaving.value = true;
     try {
@@ -1144,36 +1248,73 @@ const saveCycle = async () => {
 
     if (formValues) {
         const { name, asNew } = formValues;
+        await persistCycle(asNew ? null : activeCycleId.value, name.trim());
+    }
+};
 
-        router.post(
-            '/cycles',
-            {
-                id: asNew ? null : activeCycleId.value,
-                serviceable_id: selectedServiceableId.value,
-                name: name,
-                days: generatedDays.value,
-                cycle_data: normalizeCycleRows(menuStructureData.value),
-            },
-            {
-                preserveScroll: true,
-                onSuccess: (page) => {
-                    activeCycleName.value = name;
-                    // If it was saved as new, we should update the activeCycleId with the new one
-                    // This might require the backend to return the new ID or we find it in props
-                    Swal.fire({
-                        icon: 'success',
-                        title: '¡Guardado!',
-                        text: 'El ciclo de menú se ha guardado correctamente.',
-                        timer: 2000,
-                        showConfirmButton: false,
-                    });
-                },
-                onError: (errors) => {
-                    console.error(errors);
-                    Swal.fire('Error', 'Hubo un problema al guardar el ciclo', 'error');
-                },
-            },
-        );
+// Se guarda por axios para recibir el id del ciclo: así el siguiente "Guardar" actualiza este
+// mismo ciclo en vez de crear otro (antes cada guardado de un ciclo nuevo dejaba una copia).
+const isSavingCycle = ref(false);
+const persistCycle = async (id: number | null, name: string): Promise<void> => {
+    if (isSavingCycle.value) return;
+    isSavingCycle.value = true;
+    try {
+        const { data } = await axios.post('/cycles', {
+            id,
+            serviceable_id: selectedServiceableId.value,
+            name,
+            days: generatedDays.value,
+            // Nunca se guardan días por encima del número de días del ciclo.
+            cycle_data: normalizeCycleRows(menuStructureData.value).map((row: any) => ({
+                ...row,
+                days: Object.fromEntries(Object.entries(row.days).filter(([key]) => Number(key) <= generatedDays.value)),
+            })),
+        });
+
+        activeCycleId.value = data.id;
+        activeCycleName.value = data.name ?? name;
+        // El detalle cacheado de este ciclo quedó viejo.
+        [...cycleDataCache.keys()].filter((key) => key.startsWith(`${data.id}-`)).forEach((key) => cycleDataCache.delete(key));
+
+        Swal.fire({
+            icon: 'success',
+            title: '¡Guardado!',
+            text: id ? 'El ciclo de menú se actualizó correctamente.' : 'El ciclo de menú se creó correctamente.',
+            timer: 2000,
+            showConfirmButton: false,
+        });
+    } catch (err: any) {
+        const status = err?.response?.status;
+        const payload = err?.response?.data;
+
+        // Ya hay un ciclo con ese nombre en el servicio: reemplazarlo o elegir otro nombre.
+        if (status === 409 && payload?.existing_id) {
+            isSavingCycle.value = false;
+            const result = await Swal.fire({
+                icon: 'warning',
+                title: 'Ciclo ya existente',
+                text: `${payload.message} ¿Desea reemplazarlo con la grilla actual?`,
+                showCancelButton: true,
+                showDenyButton: true,
+                confirmButtonText: 'Sí, reemplazar',
+                denyButtonText: 'Usar otro nombre',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#FF5A1F',
+                denyButtonColor: '#64748b',
+            });
+            if (result.isConfirmed) {
+                await persistCycle(payload.existing_id, name);
+            } else if (result.isDenied) {
+                await saveCycle();
+            }
+            return;
+        }
+
+        const message =
+            payload?.message || (payload?.errors ? Object.values(payload.errors).flat().join('\n') : null) || 'Hubo un problema al guardar el ciclo';
+        Swal.fire('Error', message, 'error');
+    } finally {
+        isSavingCycle.value = false;
     }
 };
 
@@ -1193,12 +1334,18 @@ const exportCycleWithoutKcal = () => {
     window.location.href = `/cycles/export/${activeCycleId.value}?hide_kcal=true`;
 };
 
+const currentStructureFor = (serviceableId: string | null) =>
+    (props.structures || [])
+        .filter((s: any) => String(s.serviceable_id) === String(serviceableId))
+        .reduce((latest: any, s: any) => (!latest || s.id > latest.id ? s : latest), null);
+
 const resetToNew = () => {
     if (!selectedServiceableId.value) {
         Swal.fire('Atención', 'Seleccione un servicio primero', 'warning');
         return;
     }
-    const structure = props.structures?.find((s) => String(s.serviceable_id) === String(selectedServiceableId.value));
+    // La misma estructura con la que se armó la grilla; no "la primera" del servicio.
+    const structure = activeStructure.value ?? currentStructureFor(selectedServiceableId.value);
     if (!structure) return;
 
     activeCycleId.value = null;
@@ -1232,7 +1379,11 @@ const resetToNew = () => {
                     <p class="mt-1 text-sm text-slate-500">Gestione la programación de platos por día para cada servicio.</p>
                 </div>
                 <div class="flex items-center gap-2">
-                    <Button variant="outline" class="flex items-center gap-2 border-slate-200 bg-white text-slate-600 hover:bg-slate-50" @click="resetToNew">
+                    <Button
+                        variant="outline"
+                        class="flex items-center gap-2 border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                        @click="resetToNew"
+                    >
                         <Plus class="h-4 w-4" />
                         Nuevo Ciclo
                     </Button>
@@ -1251,16 +1402,21 @@ const resetToNew = () => {
                         </DropdownMenuContent>
                     </DropdownMenu>
 
-                    <Button variant="outline" class="flex items-center gap-2 border-slate-200 bg-white text-slate-600 hover:bg-slate-50" @click="isSavedCyclesModalOpen = true">
+                    <Button
+                        variant="outline"
+                        class="flex items-center gap-2 border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                        @click="isSavedCyclesModalOpen = true"
+                    >
                         <Settings2 class="h-4 w-4" />
                         Ajustes
                     </Button>
                     <Button
                         @click="saveCycle"
+                        :disabled="isSavingCycle"
                         class="flex items-center gap-2 bg-[#FF5A1F] text-white shadow-sm shadow-orange-500/20 hover:bg-[#e04a17]"
                     >
                         <Save class="h-4 w-4" />
-                        Guardar Ciclo
+                        {{ isSavingCycle ? 'Guardando…' : activeCycleId ? 'Guardar Cambios' : 'Guardar Ciclo' }}
                     </Button>
                 </div>
             </div>
@@ -1300,7 +1456,7 @@ const resetToNew = () => {
                             >
                                 <ChevronLeft class="h-4 w-4" />
                             </Button>
-                            <span class="min-w-[110px] text-center text-sm font-medium tabular-nums text-slate-600">
+                            <span class="min-w-[110px] text-center text-sm font-medium text-slate-600 tabular-nums">
                                 Días {{ visibleDayRange.first }}–{{ visibleDayRange.last }} de {{ generatedDays }}
                             </span>
                             <Button
@@ -1382,60 +1538,62 @@ const resetToNew = () => {
                         <thead>
                             <tr>
                                 <th
-                                    class="sticky top-0 left-0 z-30 h-11 w-14 min-w-14 max-w-14 border-b border-slate-200 bg-slate-50 px-2 text-center font-semibold text-slate-600"
+                                    class="sticky top-0 left-0 z-30 h-11 w-14 max-w-14 min-w-14 border-b border-slate-200 bg-slate-50 px-2 text-center font-semibold text-slate-600"
                                 >
                                     Ord
                                 </th>
                                 <th
-                                    class="sticky top-0 left-14 z-30 h-11 w-[240px] min-w-[240px] max-w-[240px] border-b border-slate-200 bg-slate-50 px-3 text-left font-semibold text-slate-600"
+                                    class="sticky top-0 left-14 z-30 h-11 w-[240px] max-w-[240px] min-w-[240px] border-b border-slate-200 bg-slate-50 px-3 text-left font-semibold text-slate-600"
                                 >
                                     Estructura del Menú
                                 </th>
                                 <th
-                                    class="sticky top-0 left-[296px] z-30 h-11 w-28 min-w-28 max-w-28 border-r border-b border-slate-200 bg-slate-50 px-2 text-center font-semibold text-slate-600 shadow-[6px_0_8px_-6px_rgba(15,23,42,0.18)]"
+                                    class="sticky top-0 left-[296px] z-30 h-11 w-28 max-w-28 min-w-28 border-r border-b border-slate-200 bg-slate-50 px-2 text-center font-semibold text-slate-600 shadow-[6px_0_8px_-6px_rgba(15,23,42,0.18)]"
                                 >
                                     Semáforo
                                 </th>
                                 <th
                                     v-for="(day, index) in daysColumns"
                                     :key="index"
-                                    :ref="(el) => { if (el) dayHeaderRefs[index] = el as HTMLElement; }"
-                                    class="sticky top-0 z-20 h-11 w-[200px] min-w-[200px] max-w-[200px] border-b border-l border-slate-200 bg-slate-50 px-2 text-center font-semibold text-slate-600"
+                                    :ref="
+                                        (el) => {
+                                            if (el) dayHeaderRefs[index] = el as HTMLElement;
+                                        }
+                                    "
+                                    class="sticky top-0 z-20 h-11 w-[200px] max-w-[200px] min-w-[200px] border-b border-l border-slate-200 bg-slate-50 px-2 text-center font-semibold text-slate-600"
                                 >
                                     {{ day }}
                                 </th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr
-                                v-for="(row, rowIndex) in menuStructureData"
-                                :key="row.id"
-                                class="group/row transition-colors hover:bg-slate-50/50"
-                            >
+                            <tr v-for="(row, rowIndex) in menuStructureData" :key="row.id" class="group/row transition-colors hover:bg-slate-50/50">
                                 <td
-                                    class="sticky left-0 z-10 w-14 min-w-14 max-w-14 border-b border-slate-100 bg-white p-2 text-center font-medium text-slate-500 group-hover/row:bg-slate-50"
+                                    class="sticky left-0 z-10 w-14 max-w-14 min-w-14 border-b border-slate-100 bg-white p-2 text-center font-medium text-slate-500 group-hover/row:bg-slate-50"
                                 >
                                     {{ rowIndex + 1 }}
                                 </td>
 
                                 <td
-                                    class="sticky left-14 z-10 w-[240px] min-w-[240px] max-w-[240px] border-b border-slate-100 bg-white px-3 py-2 group-hover/row:bg-slate-50"
+                                    class="sticky left-14 z-10 w-[240px] max-w-[240px] min-w-[240px] border-b border-slate-100 bg-white px-3 py-2 group-hover/row:bg-slate-50"
                                 >
                                     <div class="flex flex-col gap-1.5 py-1">
                                         <Badge variant="outline" class="w-max border-slate-200 bg-slate-50 font-semibold text-slate-600">
                                             S/ {{ row.costValue.toFixed(2) }}
                                         </Badge>
-                                        <span class="line-clamp-2 text-[13px] leading-snug font-bold tracking-tight break-words text-slate-800" :title="row.category">{{
-                                            row.category
-                                        }}</span>
+                                        <span
+                                            class="line-clamp-2 text-[13px] leading-snug font-bold tracking-tight break-words text-slate-800"
+                                            :title="row.category"
+                                            >{{ row.category }}</span
+                                        >
                                     </div>
                                 </td>
 
                                 <td
-                                    class="sticky left-[296px] z-10 w-28 min-w-28 max-w-28 border-r border-b border-slate-200 border-b-slate-100 p-2 text-center shadow-[6px_0_8px_-6px_rgba(15,23,42,0.18)] transition-colors"
+                                    class="sticky left-[296px] z-10 w-28 max-w-28 min-w-28 border-r border-b border-slate-200 border-b-slate-100 p-2 text-center shadow-[6px_0_8px_-6px_rgba(15,23,42,0.18)] transition-colors"
                                     :class="[
                                         getSemaphoreCellClass(getRowStatus(row)),
-                                        Object.keys(row.days || {}).length > 0 ? 'cursor-pointer' : '',
+                                        visibleDays(row).length > 0 ? 'cursor-pointer' : '',
                                     ]"
                                     @click="openRowChartModal(row)"
                                 >
@@ -1444,13 +1602,11 @@ const resetToNew = () => {
                                             class="h-3 w-3 rounded-full shadow-sm ring-2 ring-white"
                                             :class="getSemaphoreColor(getRowStatus(row))"
                                         ></div>
+                                        <span class="text-[10px] leading-tight font-bold" :class="getSemaphoreTextClass(getRowStatus(row))">{{
+                                            getSemaphoreText(getRowStatus(row))
+                                        }}</span>
                                         <span
-                                            class="text-[10px] leading-tight font-bold"
-                                            :class="getSemaphoreTextClass(getRowStatus(row))"
-                                            >{{ getSemaphoreText(getRowStatus(row)) }}</span
-                                        >
-                                        <span
-                                            v-if="Object.keys(row.days || {}).length > 0"
+                                            v-if="visibleDays(row).length > 0"
                                             class="flex items-center gap-1 text-[9px] font-medium text-slate-400 opacity-0 transition-opacity group-hover/semaphore:opacity-100"
                                         >
                                             <LineChart class="h-2.5 w-2.5" />
@@ -1463,7 +1619,7 @@ const resetToNew = () => {
                                 <td
                                     v-for="dayIndex in generatedDays"
                                     :key="dayIndex"
-                                    class="group/cell relative w-[200px] min-w-[200px] max-w-[200px] border-b border-l border-slate-100 p-2 align-top"
+                                    class="group/cell relative w-[200px] max-w-[200px] min-w-[200px] border-b border-l border-slate-100 p-2 align-top"
                                 >
                                     <div
                                         class="flex h-full flex-col overflow-hidden border bg-white transition-all"
@@ -1523,7 +1679,7 @@ const resetToNew = () => {
                                                     {{ row.days[dayIndex].dish_name }}
                                                 </span>
                                                 <div class="mt-2 flex items-center justify-between gap-1">
-                                                    <span class="flex items-center gap-1 text-[12px] font-bold tabular-nums text-slate-900">
+                                                    <span class="flex items-center gap-1 text-[12px] font-bold text-slate-900 tabular-nums">
                                                         S/ {{ Number(row.days[dayIndex].price).toFixed(2) }}
                                                         <AlertTriangle
                                                             v-if="dayPriceWarning(row.days[dayIndex])"
@@ -1619,7 +1775,10 @@ const resetToNew = () => {
                                             <p class="mt-1 text-[11px] text-slate-600">
                                                 Categoría:
                                                 <span class="font-medium text-slate-800">{{
-                                                    (searchCategory && dish.dish_categories?.find((c: any) => String(c.id) === String(searchCategory))?.name) || dish.dish_categories?.[0]?.name || 'Sin Categoría'
+                                                    (searchCategory &&
+                                                        dish.dish_categories?.find((c: any) => String(c.id) === String(searchCategory))?.name) ||
+                                                    dish.dish_categories?.[0]?.name ||
+                                                    'Sin Categoría'
                                                 }}</span>
                                                 &bull; Nivel: <span class="font-medium text-slate-800">{{ recipe.level?.name || 'Sin Nivel' }}</span>
                                             </p>
@@ -1627,7 +1786,10 @@ const resetToNew = () => {
                                                 Costo: S/ {{ Number(recipe.total_cost || 0).toFixed(2) }} &bull; Calorías:
                                                 {{ Number(recipe.total_calories || 0).toFixed(2) }} kcal
                                             </p>
-                                            <p v-if="dayPriceWarning(recipe)" class="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-700">
+                                            <p
+                                                v-if="dayPriceWarning(recipe)"
+                                                class="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-700"
+                                            >
                                                 <AlertTriangle class="h-3 w-3 shrink-0" />
                                                 {{ dayPriceWarning(recipe) }}
                                             </p>
@@ -1660,37 +1822,29 @@ const resetToNew = () => {
                                             <p class="mt-1 text-xs text-slate-600">
                                                 Categoría:
                                                 <span class="font-medium text-slate-800">{{
-                                                    (searchCategory && dish.dish_categories?.find((c: any) => String(c.id) === String(searchCategory))?.name) || dish.dish_categories?.[0]?.name || 'Sin Categoría'
+                                                    (searchCategory &&
+                                                        dish.dish_categories?.find((c: any) => String(c.id) === String(searchCategory))?.name) ||
+                                                    dish.dish_categories?.[0]?.name ||
+                                                    'Sin Categoría'
                                                 }}</span>
                                                 &bull; Nivel: <span class="font-medium text-slate-400">Sin Nivel</span>
                                             </p>
-                                            <p class="mt-1 text-[11px] text-slate-500">Costo: S/ 0.00 &bull; Calorías: 0 kcal</p>
+                                            <p class="mt-1 flex items-center gap-1 text-[11px] font-medium text-amber-700">
+                                                <AlertTriangle class="h-3 w-3 shrink-0" />
+                                                Sin quebrado: créelo en Quebrados para poder asignarlo.
+                                            </p>
                                         </div>
                                         <div class="flex shrink-0 items-center gap-2">
-                                            <Button
-                                                size="sm"
-                                                variant="outline"
-                                                class="border-slate-200 text-slate-600 hover:bg-slate-100"
-                                                @click="assignDish(dish, {}, 'all')"
-                                            >
+                                            <Button size="sm" variant="outline" class="border-slate-200 text-slate-400" disabled>
                                                 Replicar para todos los días
                                             </Button>
-                                            <Button
-                                                size="sm"
-                                                class="bg-[#FF5A1F] text-white hover:bg-[#e04a17]"
-                                                @click="assignDish(dish, {}, 'single')"
-                                            >
-                                                Asignar
-                                            </Button>
+                                            <Button size="sm" class="bg-[#FF5A1F] text-white" disabled>Asignar</Button>
                                         </div>
                                     </li>
                                 </template>
                             </template>
                         </ul>
-                        <div
-                            v-else-if="!searchQuery && !searchCategory && !searchLevel"
-                            class="p-8 text-center text-sm font-medium text-slate-600"
-                        >
+                        <div v-else-if="!searchQuery && !searchCategory && !searchLevel" class="p-8 text-center text-sm font-medium text-slate-600">
                             Ingrese el nombre de un plato para buscar...
                         </div>
                         <div v-else class="p-8 text-center text-sm font-medium text-slate-600">
@@ -1708,7 +1862,9 @@ const resetToNew = () => {
                     <DialogTitle class="flex items-center gap-2 text-xl font-bold text-slate-800">
                         <Settings2 class="h-5 w-5 text-[#FF5A1F]" />
                         Ajustes de Ciclos
-                        <span class="text-sm font-medium text-slate-400">({{ savedCyclesTotal }} {{ savedCyclesTotal === 1 ? 'resultado' : 'resultados' }})</span>
+                        <span class="text-sm font-medium text-slate-400"
+                            >({{ savedCyclesTotal }} {{ savedCyclesTotal === 1 ? 'resultado' : 'resultados' }})</span
+                        >
                     </DialogTitle>
                 </DialogHeader>
 
@@ -1974,7 +2130,8 @@ const resetToNew = () => {
                         Seleccionar Estructura
                     </DialogTitle>
                     <p class="mt-1 text-sm text-slate-500">
-                        Este servicio tiene {{ structuresToSelect.length }} estructuras guardadas. Seleccione cuál desea usar para el ciclo.
+                        Este servicio tiene {{ structuresToSelect.length }} estructuras guardadas. Seleccione cuál desea usar para el ciclo. La
+                        <b>vigente</b> es la que usa Programación para los límites de costo.
                     </p>
                 </DialogHeader>
                 <div class="max-h-[400px] overflow-y-auto bg-slate-50/30 p-6">
@@ -1990,7 +2147,14 @@ const resetToNew = () => {
                                     <FolderOpen class="h-5 w-5" />
                                 </div>
                                 <div>
-                                    <p class="text-sm font-bold text-slate-800">{{ structure.name || 'Estructura sin nombre' }}</p>
+                                    <p class="flex items-center gap-1.5 text-sm font-bold text-slate-800">
+                                        {{ structure.name || 'Estructura sin nombre' }}
+                                        <span
+                                            v-if="structure.id === structuresToSelect[0]?.id"
+                                            class="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700"
+                                            >Vigente</span
+                                        >
+                                    </p>
                                     <p class="mt-0.5 text-[11px] text-slate-500">
                                         {{ structure.costs?.length || 0 }} categorías
                                         <template v-if="structure.selling_price">
@@ -2019,10 +2183,7 @@ const resetToNew = () => {
                     <DialogTitle class="flex items-center gap-2 text-xl font-bold text-slate-800">
                         <LineChart class="h-5 w-5 text-[#FF5A1F]" />
                         {{ chartRow?.category }}
-                        <span
-                            v-if="chartDayIndex !== null"
-                            class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500"
-                        >
+                        <span v-if="chartDayIndex !== null" class="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">
                             Día {{ chartDayIndex }}
                         </span>
                     </DialogTitle>
@@ -2051,7 +2212,7 @@ const resetToNew = () => {
                         <!-- floating value callout, tracks the needle -->
                         <div class="relative mb-2 h-4">
                             <span
-                                class="absolute -translate-x-1/2 text-[11px] font-bold tabular-nums whitespace-nowrap"
+                                class="absolute -translate-x-1/2 text-[11px] font-bold whitespace-nowrap tabular-nums"
                                 :class="getSemaphoreTextClass(chartStats.status)"
                                 :style="{ left: chartStats.labelPct + '%' }"
                             >
@@ -2096,11 +2257,11 @@ const resetToNew = () => {
                         <div class="mt-4 flex items-start justify-between">
                             <div class="flex flex-col">
                                 <span class="text-[10px] font-semibold tracking-wide text-slate-400 uppercase">Mínimo</span>
-                                <span class="mt-0.5 text-xs font-semibold tabular-nums text-slate-600">S/ {{ chartStats.min.toFixed(2) }}</span>
+                                <span class="mt-0.5 text-xs font-semibold text-slate-600 tabular-nums">S/ {{ chartStats.min.toFixed(2) }}</span>
                             </div>
                             <div class="flex flex-col items-end">
                                 <span class="text-[10px] font-semibold tracking-wide text-slate-400 uppercase">Máximo</span>
-                                <span class="mt-0.5 text-xs font-semibold tabular-nums text-slate-600">S/ {{ chartStats.max.toFixed(2) }}</span>
+                                <span class="mt-0.5 text-xs font-semibold text-slate-600 tabular-nums">S/ {{ chartStats.max.toFixed(2) }}</span>
                             </div>
                         </div>
                     </div>
@@ -2142,7 +2303,9 @@ const resetToNew = () => {
                                     <TableHead class="h-9 text-center text-[10px] font-semibold tracking-wider text-slate-600 uppercase"
                                         >Cantidad</TableHead
                                     >
-                                    <TableHead class="h-9 text-center text-[10px] font-semibold tracking-wider text-slate-600 uppercase">Und</TableHead>
+                                    <TableHead class="h-9 text-center text-[10px] font-semibold tracking-wider text-slate-600 uppercase"
+                                        >Und</TableHead
+                                    >
                                     <TableHead class="h-9 text-center text-[10px] font-semibold tracking-wider text-slate-600 uppercase"
                                         >Costo Base</TableHead
                                     >
@@ -2195,7 +2358,7 @@ const resetToNew = () => {
                                             <option value="g">Gr</option>
                                         </select>
                                     </TableCell>
-                                    <TableCell class="py-2 text-center font-mono font-bold tabular-nums text-slate-900">
+                                    <TableCell class="py-2 text-center font-mono font-bold text-slate-900 tabular-nums">
                                         S/ {{ Number(ingredient.cost).toFixed(2) }}
                                     </TableCell>
                                     <TableCell class="py-2 text-center font-mono text-slate-500">

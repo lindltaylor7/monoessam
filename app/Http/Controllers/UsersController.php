@@ -28,8 +28,8 @@ class UsersController extends Controller
             'users' => User::with(['roles.permissions', 'areas', 'units', 'permissions', 'mine'])->paginate(20),
             'roles' => Role::all(),
             'areas' => Area::all(),
-            'units' => Unit::all(),
-            'mines' => Mine::all(),
+            'units' => Unit::operational()->get(),
+            'mines' => Mine::operational()->get(),
             'businesses' => Business::all(),
             'permissions' => Permission::all(),
         ]);

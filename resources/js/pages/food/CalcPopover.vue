@@ -237,7 +237,8 @@ const loadSubstitutes = async (isOpen: boolean) => {
 
                     <p v-if="allowReplace" class="text-[10px] leading-snug text-zinc-400">
                         Elegir un sustituto reemplaza este insumo en la receta al guardar. Solo se listan productos con proveedor activo
-                        en la ciudad de abastecimiento.
+                        en la ciudad de abastecimiento. Elegir otro proveedor del mismo insumo solo simula el costo: el quebrado se costea
+                        con el proveedor activo en Proveedores.
                     </p>
                     <p v-else class="text-[10px] leading-snug text-zinc-400">
                         Elegir otro proveedor aquí solo simula el costo. El quebrado no guarda precios: se costea con el proveedor activo

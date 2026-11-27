@@ -26,7 +26,7 @@ class QuebradosService
      *
      * @param  WeeklyProgram|Collection<int, WeeklyProgram>  $programs
      */
-    public function generatePurchaseOrder(WeeklyProgram|Collection $programs, Level $level, ?int $cityId = null): PurchaseOrder
+    public function generatePurchaseOrder(WeeklyProgram|Collection $programs, ?Level $level, ?int $cityId = null): PurchaseOrder
     {
         $programs = new EloquentCollection($programs instanceof WeeklyProgram ? [$programs] : $programs->values()->all());
         $programs->loadMissing(['portions', 'cafe.unit']);
@@ -45,11 +45,8 @@ class QuebradosService
                 ->get()
                 ->groupBy('weekly_program_id');
 
-            $recipes = DishRecipe::where('level_id', $level->id)
-                ->whereIn('dish_id', $itemsByProgram->flatten()->pluck('dish_id')->unique()->values())
-                ->with('ingredients')
-                ->get()
-                ->keyBy('dish_id');
+            // Cada plato con la receta de su propio nivel; $level solo cubre a los que no lo tienen.
+            $recipes = ProgramRecipes::load($itemsByProgram->flatten(), $level, ['ingredients']);
 
             // [ingredient_id => grams] acumulado en todas las programaciones.
             $requirements = [];
@@ -58,7 +55,7 @@ class QuebradosService
                 $portions = $program->portions->groupBy(fn ($p) => $p->date . '_' . $p->meal_type);
 
                 foreach ($itemsByProgram->get($program->id, collect()) as $item) {
-                    $recipe = $recipes->get($item->dish_id);
+                    $recipe = $recipes->for($item);
                     if (!$recipe) {
                         continue;
                     }
@@ -106,7 +103,7 @@ class QuebradosService
      * @param  Collection<int, WeeklyProgram>  $programs
      * @return EloquentCollection<int, PurchaseOrder>
      */
-    public function generatePurchaseOrdersByCity(Collection $programs, Level $level): EloquentCollection
+    public function generatePurchaseOrdersByCity(Collection $programs, ?Level $level): EloquentCollection
     {
         $programs = new EloquentCollection($programs->values()->all());
         $programs->loadMissing('cafe.unit');

@@ -792,6 +792,38 @@ const calcMassiveProperties = (id: number, calcArray: number[]) => {
     }
 };
 
+// Sustituto elegido en Ajustes: la fila pasa a ser ese insumo (se guarda con su id), con su merma,
+// calorías y proveedores. Antes solo se simulaba su precio y al guardar volvía el insumo original,
+// que podía no tener proveedor ("Sin precio"). Mismo comportamiento que el editor de Ciclos.
+const replaceIngredient = (id: number, substitute: any) => {
+    if (!activeLevelTab.value || !substitute) return;
+    const recipe = form.recipes[activeLevelTab.value];
+    const ing = recipe.ingredients.find((i: any) => i.id == id);
+    if (!ing) return;
+    if (recipe.ingredients.some((i: any) => i.id == substitute.id)) {
+        Swal.fire('Atención', `"${substitute.name}" ya está en esta receta.`, 'warning');
+        return;
+    }
+
+    Object.assign(ing, {
+        id: substitute.id,
+        name: substitute.name,
+        waste: substitute.waste,
+        energy: substitute.energy,
+        nutritional_factors: substitute.nutritional_factors,
+        dosification: substitute.dosification,
+        atwater_factor: substitute.atwater_factor,
+        assignments: substitute.assignments,
+        originalValues: {
+            waste: substitute.waste || 0,
+            calories: calculateIngredientCalories(substitute),
+        },
+    });
+    // Precio del proveedor activo del sustituto en la ciudad elegida (quita el "Sin precio").
+    applyCityPrice(ing, priceCityId.value);
+    onWeightInput(ing);
+};
+
 const onWeightInput = (ingredient: any) => {
     const inputVal = parseFloat(ingredient.input_quantity) || 0;
 
@@ -1526,7 +1558,9 @@ onUnmounted(() => {
                                                             :totalCost="form.recipes[activeLevelTab].total_cost"
                                                             :totalfinalProduct="form.recipes[activeLevelTab].total_net_weight"
                                                             :cityId="priceCityId"
+                                                            allow-replace
                                                             @calcMassiveProperties="calcMassiveProperties"
+                                                            @substitute="replaceIngredient"
                                                         />
                                                         <Button
                                                             variant="ghost"

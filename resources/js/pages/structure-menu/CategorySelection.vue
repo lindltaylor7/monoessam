@@ -35,11 +35,20 @@ const filteredStructures = computed(() => {
     );
 });
 
+// Estructura vigente de un servicio: la más reciente. Es la misma regla que usan Ciclos (por
+// defecto) y Programación (límites de costo), para que las tres pantallas hablen de la misma.
+const currentStructureFor = (serviceableId: string | number | null | undefined) =>
+    (props.structures || [])
+        .filter((s: any) => String(s.serviceable_id) === String(serviceableId))
+        .reduce((latest: any, s: any) => (!latest || s.id > latest.id ? s : latest), null);
+
+const isCurrentStructure = (struct: any) => currentStructureFor(struct.serviceable_id)?.id === struct.id;
+
 watch(
     () => props.serviceableId,
     async (newId) => {
         if (!newId) return;
-        const structure = props.structures?.find((s) => String(s.serviceable_id) === String(newId));
+        const structure = currentStructureFor(newId);
 
         // Don't silently wipe work in progress when switching service, whether the new service has
         // a saved structure to load or not.
@@ -248,7 +257,7 @@ const confirmClearStructure = () => {
     });
 };
 
-const saveStructure = () => {
+const saveStructure = async () => {
     if (!props.serviceableId) {
         Swal.fire({
             title: 'Atención',
@@ -277,6 +286,21 @@ const saveStructure = () => {
             confirmButtonText: 'Entendido',
         });
         return;
+    }
+
+    // El servicio ya tiene estructura: la nueva pasará a ser la vigente en Ciclos y Programación.
+    const current = currentStructureFor(props.serviceableId);
+    if (current) {
+        const result = await Swal.fire({
+            icon: 'question',
+            title: '¿Crear otra estructura para este servicio?',
+            text: `El servicio ya tiene la estructura "${current.name}". La nueva pasará a ser la vigente: Ciclos y Programación usarán sus costos. Si solo quiere cambiar la actual, cárguela y use "Actualizar".`,
+            showCancelButton: true,
+            confirmButtonText: 'Sí, crear nueva',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#4f46e5',
+        });
+        if (!result.isConfirmed) return;
     }
 
     const categoriesToSave = categoriesSelected.value.map((cat, index) => ({
@@ -528,7 +552,15 @@ const updateStructure = () => {
                             :title="`Cargar estructura (${struct.costs?.length || 0} categorías)`"
                         >
                             <span class="min-w-0">
-                                <span class="block truncate text-sm font-semibold">{{ struct.name }}</span>
+                                <span class="flex items-center gap-1.5 truncate text-sm font-semibold">
+                                    <span class="truncate">{{ struct.name }}</span>
+                                    <span
+                                        v-if="isCurrentStructure(struct)"
+                                        class="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700"
+                                        title="La más reciente del servicio: la que usan Ciclos y Programación"
+                                        >Vigente</span
+                                    >
+                                </span>
                                 <span
                                     v-if="struct.unit_name || struct.cafe_name"
                                     class="block truncate text-[11px] font-normal opacity-70"

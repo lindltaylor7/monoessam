@@ -26,10 +26,10 @@ useEcho(`EndSession.${user.id}`, 'SessionEnded', (e) => {
                 <DropdownMenuTrigger as-child>
                     <SidebarMenuButton
                         size="lg"
-                        class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground cursor-pointer"
+                        class="data-[state=open]:bg-white/20 hover:bg-white/10 text-white cursor-pointer transition-colors"
                     >
                         <UserInfo :user="user" />
-                        <ChevronsUpDown class="ml-auto size-4" />
+                        <ChevronsUpDown class="ml-auto size-4 text-white/70" />
                     </SidebarMenuButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent

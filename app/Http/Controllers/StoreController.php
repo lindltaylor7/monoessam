@@ -30,7 +30,7 @@ class StoreController extends Controller
     {
         $mineId = Auth::user()?->mine_id;
 
-        $cafes = Cafe::with('unit:id,name,mine_id', 'unit.mine:id,name')
+        $cafes = Cafe::operational()->with('unit:id,name,mine_id', 'unit.mine:id,name')
             ->when($mineId, fn($q) => $q->whereHas('unit', fn($q) => $q->where('mine_id', $mineId)))
             ->orderBy('name')
             ->get(['id', 'name', 'unit_id']);
@@ -39,7 +39,7 @@ class StoreController extends Controller
 
         // Unidades a las que se le puede enviar de forma general (sin especificar un café),
         // p. ej. una guía dirigida a "Southern" en vez de a un comedor puntual de esa unidad.
-        $units = Unit::with('mine:id,name')
+        $units = Unit::operational()->with('mine:id,name')
             ->when($mineId, fn($q) => $q->where('mine_id', $mineId))
             ->orderBy('name')
             ->get(['id', 'name', 'mine_id']);
@@ -47,7 +47,7 @@ class StoreController extends Controller
         $unitIds = $units->pluck('id');
 
         // Destinations for the send modal
-        $allCafes = Cafe::with('unit:id,name,mine_id', 'unit.mine:id,name')
+        $allCafes = Cafe::operational()->with('unit:id,name,mine_id', 'unit.mine:id,name')
             ->orderBy('name')
             ->get(['id', 'name', 'unit_id']);
 

@@ -218,7 +218,7 @@ class CafeController extends Controller
     public function rolesIndex()
     {
         return Inertia::render('cafes/Roles', [
-            'cafes' => Cafe::with(['roles', 'unit.mine'])->get(),
+            'cafes' => Cafe::operational()->with(['roles', 'unit.mine'])->get(),
             'roles' => \Spatie\Permission\Models\Role::all()
         ]);
     }

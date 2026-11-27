@@ -9,17 +9,19 @@ use Maatwebsite\Excel\Concerns\FromArray;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithDrawings;
+use Maatwebsite\Excel\Concerns\WithTitle;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Alignment;
 
-class WeeklyPurchaseOrderExport implements FromArray, ShouldAutoSize, WithStyles, WithDrawings
+class WeeklyPurchaseOrderExport implements FromArray, ShouldAutoSize, WithStyles, WithDrawings, WithTitle
 {
     /** @var Collection<int,\App\Models\WeeklyProgram> */
     protected Collection $programs;
-    protected Level $level;
+    /** Solo se usa ->name (un nivel, o "Según programación" si los platos traen niveles distintos). */
+    protected object $level;
     protected City $city;
     protected Collection $categories;
     protected float $grandTotal;
@@ -29,7 +31,7 @@ class WeeklyPurchaseOrderExport implements FromArray, ShouldAutoSize, WithStyles
     protected array $categoryRows = [];
     protected int $lastRow = 0;
 
-    public function __construct(Collection $programs, Level $level, City $city, Collection $categories, float $grandTotal, int $missingPriceCount)
+    public function __construct(Collection $programs, object $level, City $city, Collection $categories, float $grandTotal, int $missingPriceCount)
     {
         $this->programs = $programs;
         $this->level = $level;
@@ -37,6 +39,11 @@ class WeeklyPurchaseOrderExport implements FromArray, ShouldAutoSize, WithStyles
         $this->categories = $categories;
         $this->grandTotal = $grandTotal;
         $this->missingPriceCount = $missingPriceCount;
+    }
+
+    public function title(): string
+    {
+        return 'Orden de pedido';
     }
 
     public function drawings()
@@ -94,7 +101,8 @@ class WeeklyPurchaseOrderExport implements FromArray, ShouldAutoSize, WithStyles
         $rowNumber = 6; // 1-indexed, matches PhpSpreadsheet rows (array is 0-indexed, +1 for the header row already counted)
 
         foreach ($this->categories as $category) {
-            $rows[] = [0, strtoupper($category['name']), '', '', '', ''];
+            // El nombre va en A: la fila se fusiona A:F y Excel solo conserva el valor de la primera celda.
+            $rows[] = [strtoupper($category['name']), '', '', '', '', ''];
             $this->categoryRows[] = $rowNumber;
             $rowNumber++;
 

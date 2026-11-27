@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\DishRecipe;
+use App\Models\MenuCycle;
+use App\Models\WeeklyProgramItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -51,6 +53,56 @@ class DishRecipeController extends Controller
         $recipe->applyLiveTotals($validated['city_id'] ?? null);
 
         return response()->json($recipe);
+    }
+
+    /**
+     * Dónde se usa esta receta (plato + nivel), para avisar antes de modificarla desde el editor
+     * rápido de Ciclos: el cambio es sobre la receta maestra y lo heredan todos los ciclos y
+     * programaciones con ese plato y nivel, no solo el ciclo abierto.
+     *
+     * `cycle_data` es JSON: se filtra por texto (dish_id) y se confirma decodificando cada candidato.
+     */
+    public function usage(Request $request, string $id)
+    {
+        $recipe = DishRecipe::findOrFail($id);
+        $dishId = (int) $recipe->dish_id;
+        $levelId = (int) $recipe->level_id;
+        $exceptCycleId = $request->integer('except_cycle_id') ?: null;
+
+        $cycles = 0;
+        $services = [];
+        MenuCycle::select(['id', 'serviceable_id', 'cycle_data'])
+            ->where(fn ($q) => $q->where('cycle_data', 'like', '%"dish_id":' . $dishId . '%')
+                ->orWhere('cycle_data', 'like', '%"dish_id":"' . $dishId . '"%'))
+            ->when($exceptCycleId, fn ($q, $cid) => $q->where('id', '!=', $cid))
+            ->orderBy('id')
+            ->chunk(200, function ($chunk) use ($dishId, $levelId, &$cycles, &$services) {
+                foreach ($chunk as $cycle) {
+                    $uses = collect(is_array($cycle->cycle_data) ? $cycle->cycle_data : [])
+                        ->flatMap(fn ($row) => is_array($row['days'] ?? null) ? $row['days'] : [])
+                        ->contains(fn ($day) => is_array($day)
+                            && (int) ($day['dish_id'] ?? 0) === $dishId
+                            && (int) ($day['level_id'] ?? 0) === $levelId);
+                    if ($uses) {
+                        $cycles++;
+                        $services[$cycle->serviceable_id] = true;
+                    }
+                }
+            });
+
+        // Programaciones vigentes o futuras: las pasadas ya no se compran.
+        $programs = WeeklyProgramItem::where('dish_id', $dishId)
+            ->where('level_id', $levelId)
+            ->whereHas('program', fn ($q) => $q->whereDate('end_date', '>=', now()->toDateString()))
+            ->distinct()
+            ->count('weekly_program_id');
+
+        return response()->json([
+            'recipe_id' => $recipe->id,
+            'other_cycles' => $cycles,
+            'services' => count($services),
+            'active_programs' => $programs,
+        ]);
     }
 
     /**

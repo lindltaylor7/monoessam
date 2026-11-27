@@ -28,6 +28,7 @@ use App\Http\Controllers\LogisticController;
 use App\Http\Controllers\ManagementController;
 use App\Http\Controllers\MercantilController;
 use App\Http\Controllers\MineController;
+use App\Http\Controllers\OrgArchiveController;
 use App\Http\Controllers\PeriodController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\ProviderController;
@@ -45,6 +46,7 @@ use App\Http\Controllers\ServiceDesk\AuditController as ServiceDeskAuditControll
 use App\Http\Controllers\ServiceDesk\ConfigController as ServiceDeskConfigController;
 use App\Http\Controllers\ServiceDesk\IndicatorController as ServiceDeskIndicatorController;
 use App\Http\Controllers\ServiceDesk\KedbController as ServiceDeskKedbController;
+use App\Http\Controllers\ServiceDesk\PortalController as ServiceDeskPortalController;
 use App\Http\Controllers\ServiceDesk\SurveyController as ServiceDeskSurveyController;
 use App\Http\Controllers\ServiceDesk\TicketController as ServiceDeskTicketController;
 use App\Http\Controllers\ServiceController;
@@ -157,6 +159,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     Route::prefix('mines')->name('mines.')->group(function () {
         Route::post('/', [MineController::class, 'store'])->name('store');
         Route::patch('{mine}', [MineController::class, 'update'])->name('update');
+        Route::patch('{mine}/archive', [OrgArchiveController::class, 'mine'])->name('archive');
         Route::get('search/{word?}', [MineController::class, 'search'])->name('search');
         Route::post('serviceables', [MineController::class, 'mineServiceables'])->name('serviceables');
     });
@@ -164,6 +167,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     Route::prefix('units')->name('units.')->group(function () {
         Route::post('/', [UnitController::class, 'store'])->name('store');
         Route::patch('{unit}', [UnitController::class, 'update'])->name('update');
+        Route::patch('{unit}/archive', [OrgArchiveController::class, 'unit'])->name('archive');
         Route::get('search/{mineId}/{word?}', [UnitController::class, 'search'])->name('search');
         Route::post('serviceables', [UnitController::class, 'unitServiceables'])->name('serviceables');
     });
@@ -173,6 +177,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('/roles/{id}', [CafeController::class, 'syncRoles'])->name('roles.sync');
         Route::post('/', [CafeController::class, 'store'])->name('store');
         Route::patch('{cafe}', [CafeController::class, 'update'])->name('update');
+        Route::patch('{cafe}/archive', [OrgArchiveController::class, 'cafe'])->name('archive');
         Route::get('{id}', [CafeController::class, 'show'])->name('show');
         Route::get('search/{unitId}/{word?}', [CafeController::class, 'search'])->name('search');
         Route::post('serviceables', [CafeController::class, 'cafeServiceables'])->name('serviceables');
@@ -225,6 +230,8 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         // ingredients: desde Ciclos el usuario no suele tener el permiso de Ingredientes y la
         // petición devolvía 403, dejando el selector vacío.
         Route::get('substitutes/{id}', [IngredientController::class, 'substitutes'])->name('substitutes');
+        // Cuántos ciclos/programaciones heredan un cambio a esta receta (aviso del editor de Ciclos).
+        Route::get('{id}/usage', [DishRecipeController::class, 'usage'])->whereNumber('id')->name('usage');
         Route::put('{id}', [DishRecipeController::class, 'update'])->name('update');
     });
 
@@ -506,6 +513,11 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::get('/', [PlanningController::class, 'index'])->name('index');
         Route::post('/', [PlanningController::class, 'store'])->name('store');
         Route::get('programs', [PlanningController::class, 'programs'])->name('programs');
+        Route::get('programs/{id}', [PlanningController::class, 'show'])->whereNumber('id')->name('show');
+        // Costo/kcal de los platos de la matriz y límites de la estructura del servicio.
+        Route::post('prices', [PlanningController::class, 'prices'])->name('prices');
+        Route::put('{id}', [PlanningController::class, 'update'])->whereNumber('id')->name('update');
+        Route::delete('{id}', [PlanningController::class, 'destroy'])->whereNumber('id')->name('destroy');
         Route::post('{id}/generate-po', [PlanningController::class, 'generatePurchaseOrder'])->name('generate-po');
         Route::post('generate-po', [PlanningController::class, 'generatePurchaseOrderMultiple'])->name('generate-po-multiple');
         // Todos los reportes operan sobre una o varias programaciones seleccionadas (program_ids[]),
@@ -528,6 +540,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         // también en lectura, así que un usuario de Órdenes de Compra no podría usarlo.
         Route::get('search-ingredients', [PurchaseOrderController::class, 'searchIngredients'])->name('search-ingredients');
         Route::get('{id}', [PurchaseOrderController::class, 'show'])->whereNumber('id')->name('show');
+        Route::get('{id}/export', [PurchaseOrderController::class, 'export'])->whereNumber('id')->name('export');
         Route::post('{id}/items', [PurchaseOrderController::class, 'storeItem'])->name('items.store');
         Route::delete('{id}/items/{itemId}', [PurchaseOrderController::class, 'destroyItem'])->name('items.destroy');
         Route::delete('{id}', [PurchaseOrderController::class, 'destroy'])->whereNumber('id')->name('destroy');
@@ -613,6 +626,19 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('config/questions', [ServiceDeskConfigController::class, 'storeQuestion'])->name('config.questions.store');
         Route::put('config/questions/{id}', [ServiceDeskConfigController::class, 'updateQuestion'])->name('config.questions.update');
         Route::delete('config/questions/{id}', [ServiceDeskConfigController::class, 'destroyQuestion'])->name('config.questions.destroy');
+    });
+
+    // Canal de entrada de incidencias (portal de autoservicio). Va en un segmento propio,
+    // `soporte`, SIN fila en `permissions`: tiene que estar abierto a todo usuario
+    // autenticado, mientras que `service-desk` (la bandeja de TI) exige su permiso. No lo
+    // muevan bajo `service-desk`. El control por registro (solo tickets propios) lo hace
+    // PortalController.
+    Route::prefix('soporte')->name('soporte.')->group(function () {
+        Route::get('/', [ServiceDeskPortalController::class, 'index'])->name('index');
+        Route::post('tickets', [ServiceDeskPortalController::class, 'store'])->middleware('throttle:10,1')->name('tickets.store');
+        Route::post('tickets/{id}/comment', [ServiceDeskPortalController::class, 'comment'])->middleware('throttle:30,1')->name('tickets.comment');
+        Route::post('tickets/{id}/reopen', [ServiceDeskPortalController::class, 'reopen'])->name('tickets.reopen');
+        Route::post('tickets/{id}/rate', [ServiceDeskPortalController::class, 'rate'])->name('tickets.rate');
     });
 
     // ========================================================================

@@ -145,7 +145,7 @@
                     @elseif($dish['has_recipe'])
                         <div class="empty-note">Este plato no tiene ingredientes registrados en su quebrado.</div>
                     @else
-                        <div class="empty-note">Sin receta configurada para el nivel "{{ $level->name }}".</div>
+                        <div class="empty-note">Sin receta configurada para el nivel "{{ $dish['level_name'] ?? $level->name }}".</div>
                     @endif
                 </div>
             @endforeach

@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class WeeklyProgramItem extends Model
 {
-    protected $fillable = ['weekly_program_id', 'date', 'meal_type', 'dish_category_id', 'dish_id', 'percentage'];
+    protected $fillable = ['weekly_program_id', 'date', 'meal_type', 'dish_category_id', 'dish_id', 'level_id', 'percentage'];
 
     protected $casts = [
         'percentage' => 'float',
@@ -32,6 +32,11 @@ class WeeklyProgramItem extends Model
     public function dish()
     {
         return $this->belongsTo(Dish::class);
+    }
+
+    public function level()
+    {
+        return $this->belongsTo(Level::class);
     }
 
     public function dish_category()

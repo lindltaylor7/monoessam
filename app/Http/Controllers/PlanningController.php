@@ -17,7 +17,9 @@ use App\Models\MenuStructure;
 use App\Models\Serviceable;
 use App\Models\Service;
 use App\Models\Unit;
+use App\Services\ProgramRecipes;
 use App\Services\QuebradosService;
+use App\Services\RecipeCosting;
 use App\Exports\WeeklyPurchaseOrderExport;
 use App\Exports\WeeklyMenuExport;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -25,6 +27,7 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Maatwebsite\Excel\Facades\Excel;
 
 class PlanningController extends Controller
@@ -63,10 +66,16 @@ class PlanningController extends Controller
             'cafe_id' => 'nullable|integer',
             'saved_from' => 'nullable|date',
             'saved_to' => 'nullable|date',
+            // Periodo planificado: programaciones cuyo rango [start_date, end_date] se cruza con él.
+            'period_from' => 'nullable|date',
+            'period_to' => 'nullable|date',
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
         $programs = WeeklyProgram::with(['cafe.unit.mine', 'structure'])
+            // Platos sin nivel de receta (programaciones anteriores): solo para ellos el front pide
+            // un nivel al generar reportes.
+            ->withCount(['items as items_without_level' => fn ($q) => $q->whereNull('level_id')])
             ->when($validated['cafe_id'] ?? null, fn($q, $id) => $q->where('cafe_id', $id))
             ->when($validated['unit_id'] ?? null, fn($q, $id) => $q->whereIn('cafe_id', Cafe::where('unit_id', $id)->select('id')))
             ->when($validated['mine_id'] ?? null, fn($q, $id) => $q->whereIn(
@@ -75,6 +84,8 @@ class PlanningController extends Controller
             ))
             ->when($validated['saved_from'] ?? null, fn($q, $d) => $q->whereDate('created_at', '>=', $d))
             ->when($validated['saved_to'] ?? null, fn($q, $d) => $q->whereDate('created_at', '<=', $d))
+            ->when($validated['period_from'] ?? null, fn($q, $d) => $q->whereDate('end_date', '>=', $d))
+            ->when($validated['period_to'] ?? null, fn($q, $d) => $q->whereDate('start_date', '<=', $d))
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->paginate($validated['per_page'] ?? 25);
@@ -102,33 +113,168 @@ class PlanningController extends Controller
 
     public function store(Request $request)
     {
-        $validated = $request->validate([
+        $validated = $this->validateProgram($request);
+
+        $program = DB::transaction(function () use ($validated) {
+            $program = WeeklyProgram::create([
+                'cafe_id' => $validated['cafe_id'],
+                'structure_id' => $validated['structure_id'] ?? null,
+                'meal_type' => $this->resolveMealType($validated),
+                'start_date' => $validated['start_date'],
+                'end_date' => $validated['end_date'],
+                'user_id' => Auth::id(),
+                'status' => 'borrador',
+            ]);
+
+            $this->syncProgramLines($program, $validated);
+
+            return $program;
+        });
+
+        // La pantalla usa el id para quedarse editando esta programación: así un segundo "Guardar"
+        // la actualiza en vez de crear otra.
+        return redirect()->route('planning.index')
+            ->with('success', 'Plan guardado correctamente')
+            ->with('created_program_id', $program->id);
+    }
+
+    /**
+     * Detalle de una programación para reabrirla en la matriz (pestaña Planificar).
+     */
+    public function show($id)
+    {
+        $program = WeeklyProgram::with([
+            'cafe.unit.mine',
+            'items' => fn ($q) => $q->orderBy('id'),
+            'items.dish:id,name',
+            'items.dish_category:id,name',
+            'portions',
+        ])->findOrFail($id);
+
+        // Programaciones antiguas sin meal_type: el servicio predominante de sus items.
+        $service = $program->meal_type
+            ?: $program->items->groupBy('meal_type')->sortByDesc(fn ($rows) => $rows->count())->keys()->first();
+
+        return response()->json([
+            'id' => $program->id,
+            'cafe_id' => $program->cafe_id,
+            'cafe' => $program->cafe?->name,
+            'unit_id' => $program->cafe?->unit_id,
+            'mine_id' => $program->cafe?->unit?->mine_id,
+            'service' => $service,
+            'start_date' => \Carbon\Carbon::parse($program->start_date)->toDateString(),
+            'end_date' => \Carbon\Carbon::parse($program->end_date)->toDateString(),
+            'status' => $program->status,
+            'purchase_orders_count' => $this->purchaseOrdersCount($program),
+            'items' => $program->items->map(fn ($item) => [
+                'date' => \Carbon\Carbon::parse($item->date)->toDateString(),
+                'meal_type' => $item->meal_type,
+                'dish_category_id' => $item->dish_category_id,
+                'dish_category' => $item->dish_category?->name,
+                'dish_id' => $item->dish_id,
+                'dish' => $item->dish?->name,
+                'level_id' => $item->level_id,
+                'percentage' => $item->percentage ?? 100,
+            ])->values(),
+            'portions' => $program->portions->map(fn ($portion) => [
+                'date' => \Carbon\Carbon::parse($portion->date)->toDateString(),
+                'meal_type' => $portion->meal_type,
+                'portions_count' => (int) $portion->portions_count,
+            ])->values(),
+        ]);
+    }
+
+    /**
+     * Reemplaza la cabecera, los platos y las raciones de una programación existente. Conserva su
+     * id, autor y estado, así que no deja una copia duplicada en "Programaciones Guardadas".
+     */
+    public function update(Request $request, $id)
+    {
+        $program = WeeklyProgram::findOrFail($id);
+        $validated = $this->validateProgram($request);
+
+        DB::transaction(function () use ($program, $validated) {
+            $program->update([
+                'cafe_id' => $validated['cafe_id'],
+                'structure_id' => $validated['structure_id'] ?? $program->structure_id,
+                'meal_type' => $this->resolveMealType($validated),
+                'start_date' => $validated['start_date'],
+                'end_date' => $validated['end_date'],
+            ]);
+
+            $program->items()->delete();
+            $program->portions()->delete();
+            $this->syncProgramLines($program, $validated);
+        });
+
+        return back()->with('success', 'Programación actualizada correctamente');
+    }
+
+    /**
+     * Elimina una programación. Si ya generó órdenes de compra no se borra: la FK en cascada se
+     * llevaría esas órdenes sin aviso, así que primero hay que eliminarlas en Órdenes de Compra.
+     */
+    public function destroy($id)
+    {
+        $program = WeeklyProgram::findOrFail($id);
+
+        $orders = $this->purchaseOrdersCount($program);
+        if ($orders > 0) {
+            return response()->json([
+                'message' => "Esta programación tiene {$orders} orden(es) de compra generada(s). Elimínelas primero en Órdenes de Compra.",
+            ], 422);
+        }
+
+        $program->delete();
+
+        return response()->json(['deleted' => true]);
+    }
+
+    private function purchaseOrdersCount(WeeklyProgram $program): int
+    {
+        return \App\Models\PurchaseOrder::where('weekly_program_id', $program->id)
+            ->orWhereHas('programs', fn ($q) => $q->where('weekly_programs.id', $program->id))
+            ->count();
+    }
+
+    private function validateProgram(Request $request): array
+    {
+        return $request->validate([
             'cafe_id' => 'required|exists:cafes,id',
             'structure_id' => 'nullable|exists:structures,id',
             'meal_type' => 'nullable|string|max:255',
             'start_date' => 'required|date',
-            'end_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+            // Cada campo anidado necesita su regla: con una regla `items.*.x`, validated() solo
+            // devuelve las claves anidadas declaradas. Con solo `percentage` se perdían dish_id,
+            // date y categoría, y la programación se guardaba sin ningún plato.
             'items' => 'required|array',
+            'items.*.date' => 'required|date',
+            'items.*.meal_type' => 'required|string|max:255',
+            'items.*.dish_category_id' => 'nullable|integer|exists:dish_categories,id',
+            'items.*.dish_id' => 'nullable|integer|exists:dishes,id',
+            'items.*.level_id' => 'nullable|integer|exists:levels,id',
             'items.*.percentage' => 'nullable|numeric|min:0|max:100',
             'portions' => 'required|array',
+            'portions.*.date' => 'required|date',
+            'portions.*.meal_type' => 'required|string|max:255',
+            'portions.*.portions_count' => 'nullable|integer|min:0',
         ]);
+    }
 
-        // Una programación pertenece a un único servicio (el activo en la matriz). Si el front no
-        // lo envía, se infiere del meal_type de los items con plato asignado.
-        $mealType = $validated['meal_type']
+    /**
+     * Una programación pertenece a un único servicio (el activo en la matriz). Si el front no lo
+     * envía, se infiere del meal_type de los items con plato asignado.
+     */
+    private function resolveMealType(array $validated): ?string
+    {
+        return $validated['meal_type']
             ?? collect($validated['items'])->firstWhere(fn($i) => !empty($i['dish_id']))['meal_type']
             ?? null;
+    }
 
-        $program = WeeklyProgram::create([
-            'cafe_id' => $validated['cafe_id'],
-            'structure_id' => $validated['structure_id'] ?? null,
-            'meal_type' => $mealType,
-            'start_date' => $validated['start_date'],
-            'end_date' => $validated['end_date'],
-            'user_id' => Auth::id(),
-            'status' => 'borrador',
-        ]);
-
+    private function syncProgramLines(WeeklyProgram $program, array $validated): void
+    {
         foreach ($validated['items'] as $item) {
             // Empty grid cells (no dish assigned yet) are sent too, since the form allows
             // saving a plan before every cell is filled in — skip them rather than inserting
@@ -143,6 +289,7 @@ class PlanningController extends Controller
                 'meal_type' => $item['meal_type'],
                 'dish_category_id' => $item['dish_category_id'],
                 'dish_id' => $item['dish_id'],
+                'level_id' => $item['level_id'] ?? null,
                 'percentage' => $item['percentage'] ?? 100,
             ]);
         }
@@ -152,11 +299,9 @@ class PlanningController extends Controller
                 'weekly_program_id' => $program->id,
                 'date' => $portion['date'],
                 'meal_type' => $portion['meal_type'],
-                'portions_count' => $portion['portions_count'],
+                'portions_count' => (int) ($portion['portions_count'] ?? 0),
             ]);
         }
-
-        return redirect()->route('planning.index')->with('success', 'Plan guardado correctamente');
     }
 
     /**
@@ -181,15 +326,62 @@ class PlanningController extends Controller
         );
     }
 
+    /**
+     * Costo y calorías de los platos de la matriz (por plato + nivel) en la ciudad de abastecimiento
+     * del comedor, más los límites L.Inf/L.Sup por categoría de la estructura del servicio. Mismo
+     * cálculo que "Recalcular costos" de Ciclos, bajo el segmento `planning` para que un usuario de
+     * Planificación lo use sin el permiso de Ciclos.
+     */
+    public function prices(Request $request, RecipeCosting $costing)
+    {
+        $validated = $request->validate([
+            'cafe_id'           => 'required|integer|exists:cafes,id',
+            'serviceable_id'    => 'nullable|integer',
+            'items'             => 'present|array|max:2000',
+            'items.*.dish_id'   => 'required|integer',
+            'items.*.level_id'  => 'required|integer',
+        ]);
+
+        $cityId = Cafe::with('unit')->find($validated['cafe_id'])?->supplyCityId() ?: City::defaultSupplyCityId();
+
+        $pairs = collect($validated['items'])
+            ->map(fn ($item) => [(int) $item['dish_id'], (int) $item['level_id']])
+            ->unique(fn ($p) => $p[0] . '-' . $p[1])
+            ->values()
+            ->all();
+
+        // La estructura más reciente del servicio: sus techos de costo por categoría.
+        $structure = empty($validated['serviceable_id']) ? null : \App\Models\Structure::with('costs')
+            ->where('serviceable_id', $validated['serviceable_id'])
+            ->orderByDesc('id')
+            ->first();
+
+        return response()->json([
+            'city_id' => $cityId,
+            'totals'  => $costing->totals($pairs, $cityId),
+            'structure' => $structure ? [
+                'id' => $structure->id,
+                'name' => $structure->name,
+                'selling_price' => $structure->selling_price !== null ? (float) $structure->selling_price : null,
+                'limits' => $structure->costs
+                    ->filter(fn ($cost) => $cost->dish_category_id)
+                    ->mapWithKeys(fn ($cost) => [$cost->dish_category_id => [
+                        'min' => $cost->total_cost !== null ? (float) $cost->total_cost : null,
+                        'max' => $cost->total_cost_superior !== null ? (float) $cost->total_cost_superior : null,
+                    ]]),
+            ] : null,
+        ]);
+    }
+
     public function generatePurchaseOrder(Request $request, $id)
     {
         $validated = $request->validate([
-            'level_id' => 'required|exists:levels,id',
+            'level_id' => 'nullable|exists:levels,id',
         ]);
 
         $program = WeeklyProgram::with('portions')->findOrFail($id);
 
-        return $this->purchaseOrderResponse(collect([$program]), Level::findOrFail($validated['level_id']));
+        return $this->purchaseOrderResponse(collect([$program]), $this->fallbackLevel($validated, [$program->id]));
     }
 
     /**
@@ -199,7 +391,7 @@ class PlanningController extends Controller
     public function generatePurchaseOrderMultiple(Request $request)
     {
         $validated = $request->validate([
-            'level_id' => 'required|exists:levels,id',
+            'level_id' => 'nullable|exists:levels,id',
             'program_ids' => 'required|array|min:1',
             'program_ids.*' => 'integer|exists:weekly_programs,id',
         ]);
@@ -210,10 +402,10 @@ class PlanningController extends Controller
             ->orderBy('id')
             ->get();
 
-        return $this->purchaseOrderResponse($programs, Level::findOrFail($validated['level_id']));
+        return $this->purchaseOrderResponse($programs, $this->fallbackLevel($validated, $programs->pluck('id')->all()));
     }
 
-    private function purchaseOrderResponse($programs, Level $level)
+    private function purchaseOrderResponse($programs, ?Level $level)
     {
         $orders = $this->quebradosService->generatePurchaseOrdersByCity($programs, $level);
 
@@ -231,7 +423,7 @@ class PlanningController extends Controller
             $which = $programs->count() > 1 ? 'estas programaciones' : 'esta programación';
 
             return redirect()->route('purchase_orders.show', $order->id)
-                ->with('error', "La orden se creó sin ítems: los platos de {$which} no tienen receta en el nivel elegido, o no hay raciones cargadas.");
+                ->with('error', "La orden se creó sin ítems: los platos de {$which} no tienen receta en su nivel, o no hay raciones cargadas.");
         }
 
         $message = $programs->count() > 1
@@ -244,12 +436,12 @@ class PlanningController extends Controller
     /**
      * Todos los reportes de este módulo se generan sobre una o varias programaciones marcadas en
      * la pestaña "Programaciones Guardadas" (program_ids[]), igual que el Menú Semanal. Este helper
-     * resuelve esas programaciones y precarga en un solo golpe sus items y las recetas del nivel
-     * elegido para todos los platos involucrados.
+     * resuelve esas programaciones, sus items y la receta de cada item: la de su propio nivel
+     * (heredado del ciclo), o la del nivel de respaldo elegido en el reporte si el item no lo tiene.
      *
-     * @return array{0: \Illuminate\Database\Eloquent\Collection, 1: \Illuminate\Support\Collection, 2: \Illuminate\Support\Collection}
+     * @return array{0: \Illuminate\Database\Eloquent\Collection, 1: \Illuminate\Support\Collection, 2: ProgramRecipes, 3: object}
      */
-    private function loadReportData(array $programIds, Level $level, array $recipeWith): array
+    private function loadReportData(array $programIds, ?Level $fallback, array $recipeWith): array
     {
         $programs = WeeklyProgram::with(['cafe.unit.mine', 'portions'])
             ->whereIn('id', $programIds)
@@ -263,13 +455,32 @@ class PlanningController extends Controller
             ->orderBy('meal_type')
             ->get();
 
-        $recipes = DishRecipe::where('level_id', $level->id)
-            ->whereIn('dish_id', $items->pluck('dish_id')->unique()->values())
-            ->with($recipeWith)
-            ->get()
-            ->keyBy('dish_id');
+        $recipes = ProgramRecipes::load($items, $fallback, $recipeWith);
 
-        return [$programs, $items->groupBy('weekly_program_id'), $recipes];
+        // Las vistas PDF solo leen ->name para la cabecera "Nivel:".
+        $levelLabel = (object) ['name' => $recipes->label($items)];
+
+        return [$programs, $items->groupBy('weekly_program_id'), $recipes, $levelLabel];
+    }
+
+    /**
+     * Nivel de respaldo para los items sin nivel propio. Solo es obligatorio cuando alguno de los
+     * items de las programaciones elegidas no lo tiene: si no, cada plato usa el suyo.
+     */
+    private function fallbackLevel(array $validated, array $programIds): ?Level
+    {
+        if (!empty($validated['level_id'])) {
+            return Level::findOrFail($validated['level_id']);
+        }
+
+        $withoutLevel = WeeklyProgramItem::whereIn('weekly_program_id', $programIds)->whereNull('level_id')->exists();
+        if ($withoutLevel) {
+            throw ValidationException::withMessages([
+                'level_id' => 'Hay platos programados sin nivel de receta: elija un nivel para ellos.',
+            ]);
+        }
+
+        return null;
     }
 
     /** Cadena "Mina - Unidad - Comedor" de una programación, como se muestra en el resto de la app. */
@@ -297,11 +508,14 @@ class PlanningController extends Controller
         $validated = $request->validate([
             'program_ids' => 'required|array|min:1',
             'program_ids.*' => 'integer|exists:weekly_programs,id',
-            'level_id' => 'required|exists:levels,id',
+            'level_id' => 'nullable|exists:levels,id',
         ]);
 
-        $level = Level::findOrFail($validated['level_id']);
-        [$programs, $itemsByProgram, $recipes] = $this->loadReportData($validated['program_ids'], $level, ['ingredients']);
+        [$programs, $itemsByProgram, $recipes, $level] = $this->loadReportData(
+            $validated['program_ids'],
+            $this->fallbackLevel($validated, $validated['program_ids']),
+            ['ingredients']
+        );
 
         // The original paper "Quebrado" is printed one sheet per date+servicio, so that's the
         // page unit here too — a flat list rather than nested days→meals, so each page carries
@@ -319,7 +533,7 @@ class PlanningController extends Controller
                     $portionsCount = optional($portions->get($date . '_' . $mealType))->portions_count ?? 0;
 
                     $dishes = $mealItems->values()->map(function ($item) use ($portionsCount, $recipes) {
-                        $recipe = $recipes->get($item->dish_id);
+                        $recipe = $recipes->for($item);
                         // Raciones del plato = raciones del servicio * % de comensales que lo toman.
                         $dishPortions = $item->effectivePortions($portionsCount);
 
@@ -346,6 +560,7 @@ class PlanningController extends Controller
                             'percentage' => (float) ($item->percentage ?? 100),
                             'ingredients' => $ingredients,
                             'has_recipe' => (bool) $recipe,
+                            'level_name' => $recipes->levelNameFor($item),
                         ];
                     });
 
@@ -384,13 +599,12 @@ class PlanningController extends Controller
         $validated = $request->validate([
             'program_ids' => 'required|array|min:1',
             'program_ids.*' => 'integer|exists:weekly_programs,id',
-            'level_id' => 'required|exists:levels,id',
+            'level_id' => 'nullable|exists:levels,id',
         ]);
 
-        $level = Level::findOrFail($validated['level_id']);
-        [$programs, $itemsByProgram, $recipes] = $this->loadReportData(
+        [$programs, $itemsByProgram, $recipes, $level] = $this->loadReportData(
             $validated['program_ids'],
-            $level,
+            $this->fallbackLevel($validated, $validated['program_ids']),
             ['ingredients.ingredient_category']
         );
 
@@ -402,7 +616,7 @@ class PlanningController extends Controller
             $portions = $program->portions->keyBy(fn($p) => $p->date . '_' . $p->meal_type);
 
             foreach ($itemsByProgram->get($program->id) ?? collect() as $item) {
-                $recipe = $recipes->get($item->dish_id);
+                $recipe = $recipes->for($item);
                 if ($recipe) {
                     $hasMatchingRecipes = true;
                 }
@@ -498,13 +712,12 @@ class PlanningController extends Controller
         $validated = $request->validate([
             'program_ids' => 'required|array|min:1',
             'program_ids.*' => 'integer|exists:weekly_programs,id',
-            'level_id' => 'required|exists:levels,id',
+            'level_id' => 'nullable|exists:levels,id',
         ]);
 
-        $level = Level::findOrFail($validated['level_id']);
-        [$programs, $itemsByProgram, $recipes] = $this->loadReportData(
+        [$programs, $itemsByProgram, $recipes, $level] = $this->loadReportData(
             $validated['program_ids'],
-            $level,
+            $this->fallbackLevel($validated, $validated['program_ids']),
             ['ingredients.dosification']
         );
 
@@ -551,7 +764,7 @@ class PlanningController extends Controller
                     $categoryCounters = [];
 
                     $dishes = $mealItems->values()->map(function ($item, $idx) use ($portionsCount, $recipes, $nutrients, &$categoryCounters) {
-                        $recipe = $recipes->get($item->dish_id);
+                        $recipe = $recipes->for($item);
                         // Raciones del plato = raciones del servicio * % de comensales que lo toman.
                         $dishPortions = $item->effectivePortions($portionsCount);
 
@@ -609,6 +822,7 @@ class PlanningController extends Controller
                             'ingredients'    => $ingredients,
                             'totals'         => $totals,
                             'has_recipe'     => (bool) $recipe,
+                            'level_name'     => $recipes->levelNameFor($item),
                         ];
                     });
 
@@ -682,15 +896,14 @@ class PlanningController extends Controller
         $validated = $request->validate([
             'program_ids' => 'required|array|min:1',
             'program_ids.*' => 'integer|exists:weekly_programs,id',
-            'level_id' => 'required|exists:levels,id',
+            'level_id' => 'nullable|exists:levels,id',
             'city_id' => 'required|exists:cities,id',
         ]);
 
-        $level = Level::findOrFail($validated['level_id']);
         $city = City::findOrFail($validated['city_id']);
-        [$programs, $itemsByProgram, $recipes] = $this->loadReportData(
+        [$programs, $itemsByProgram, $recipes, $level] = $this->loadReportData(
             $validated['program_ids'],
-            $level,
+            $this->fallbackLevel($validated, $validated['program_ids']),
             ['ingredients.ingredient_category']
         );
 
@@ -701,7 +914,7 @@ class PlanningController extends Controller
             $portions = $program->portions->keyBy(fn($p) => $p->date . '_' . $p->meal_type);
 
             foreach ($itemsByProgram->get($program->id) ?? collect() as $item) {
-                $recipe = $recipes->get($item->dish_id);
+                $recipe = $recipes->for($item);
                 if (!$recipe) {
                     continue;
                 }
@@ -789,15 +1002,14 @@ class PlanningController extends Controller
         $validated = $request->validate([
             'program_ids' => 'required|array|min:1',
             'program_ids.*' => 'integer|exists:weekly_programs,id',
-            'level_id' => 'required|exists:levels,id',
+            'level_id' => 'nullable|exists:levels,id',
             'city_id' => 'required|exists:cities,id',
         ]);
 
-        $level = Level::findOrFail($validated['level_id']);
         $city = City::findOrFail($validated['city_id']);
-        [$programs, $itemsByProgram, $recipes] = $this->loadReportData(
+        [$programs, $itemsByProgram, $recipes, $level] = $this->loadReportData(
             $validated['program_ids'],
-            $level,
+            $this->fallbackLevel($validated, $validated['program_ids']),
             ['ingredients.ingredient_category']
         );
 
@@ -811,7 +1023,7 @@ class PlanningController extends Controller
             $portions = $program->portions->keyBy(fn($p) => $p->date . '_' . $p->meal_type);
 
             foreach ($itemsByProgram->get($program->id) ?? collect() as $item) {
-                $recipe = $recipes->get($item->dish_id);
+                $recipe = $recipes->for($item);
                 if (!$recipe) {
                     continue;
                 }
@@ -903,7 +1115,7 @@ class PlanningController extends Controller
                 'end_date' => $p->end_date,
             ])->values(),
             'destinations' => $destinations->map(fn($c) => ['id' => $c->id, 'name' => $c->name])->values(),
-            'level' => ['id' => $level->id, 'name' => $level->name],
+            'level' => ['name' => $level->name],
             'city' => ['id' => $city->id, 'name' => $city->name],
             'categories' => $categories,
             'max_providers' => (int) ($rows->map(fn($r) => $r['providers']->count())->max() ?? 0),

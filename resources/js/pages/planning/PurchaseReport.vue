@@ -49,7 +49,7 @@ interface Destination {
 interface Props {
     programs: ProgramSummary[];
     destinations: Destination[];
-    level: { id: number; name: string };
+    level: { name: string };
     city: { id: number; name: string };
     categories: Category[];
     max_providers: number;

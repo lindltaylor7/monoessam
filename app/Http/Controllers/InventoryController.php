@@ -41,13 +41,13 @@ class InventoryController extends Controller
     public function index()
     {
         $colors = Color::all();
-        $cafes = Cafe::with(['unit', 'unit.mine'])->get();
+        $cafes = Cafe::operational()->with(['unit', 'unit.mine'])->get();
         $headquarters = Headquarter::with('business')->get();
         $businesses = Business::all();
         $providers = Provider::all();
         $clothes = Cloth::all();
         $epps = Epp::all();
-        $units = Unit::with('mine')->get();
+        $units = Unit::operational()->with('mine')->get();
 
         // New polymorphic stocks
         $stocks = InventoryStock::with(['stockable', 'cafe', 'headquarter', 'unit.mine', 'color'])->get();
@@ -594,7 +594,7 @@ class InventoryController extends Controller
             'equipmentProviders' => Provider::where('type', 'equipment')->select('id', 'name', 'ruc', 'email', 'phone')->orderBy('name')->get(),
             'businesses' => Business::all(),
             'headquarters' => Headquarter::with('business')->get(),
-            'cafes' => Cafe::with('unit')->get(),
+            'cafes' => Cafe::operational()->with('unit')->get(),
             'clothes' => Cloth::all(),
             'colors' => Color::all(),
             'epps' => Epp::with(['sizes', 'cityProviders.city', 'cityProviders.provider', 'availableSizes', 'category'])->get(),
@@ -759,7 +759,7 @@ class InventoryController extends Controller
 
     public function unitsStockIndex()
     {
-        $units = Unit::with('mine')->get();
+        $units = Unit::operational()->with('mine')->get();
         $epps = Epp::with('category')->get();
         $colors = Color::all();
         $stocks = InventoryStock::with(['stockable', 'unit.mine', 'color'])

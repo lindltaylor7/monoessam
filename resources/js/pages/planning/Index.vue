@@ -26,11 +26,15 @@ import {
     Loader2,
     Minus,
     Mountain,
+    Pencil,
     Plus,
     Search,
     Settings2,
+    Trash2,
+    X,
 } from 'lucide-vue-next';
 import Swal from 'sweetalert2';
+import { useDebounceFn } from '@vueuse/core';
 import { computed, onMounted, ref, watch } from 'vue';
 
 dayjs.locale('es');
@@ -151,14 +155,25 @@ watch(
             resolveMineAndUnitFromCafe(newCafeId);
         }
         setTimeout(() => {
-            if (availableServices.value && availableServices.value.length > 0) {
-                selectedServiceId.value = String(availableServices.value[0].id);
-            } else {
-                selectedServiceId.value = '';
+            // Al reabrir una programación se respeta su servicio; si no, el primero del comedor.
+            if (!applyPendingService()) {
+                selectedServiceId.value = availableServices.value?.length ? String(availableServices.value[0].id) : '';
             }
         }, 50);
     },
 );
+
+// Servicio a seleccionar cuando cambie el comedor (lo fija editProgram antes de cambiarlo).
+let pendingServiceName: string | null = null;
+const applyPendingService = (): boolean => {
+    if (!pendingServiceName) return false;
+    const wanted = pendingServiceName.toLowerCase();
+    pendingServiceName = null;
+    const srv = (availableServices.value || []).find((s: any) => String(s.name).toLowerCase() === wanted);
+    if (!srv) return false;
+    selectedServiceId.value = String(srv.id);
+    return true;
+};
 
 // Local reactive state for the grid to avoid find() in template
 const portionsGrid = ref<Record<string, number>>({});
@@ -166,6 +181,18 @@ const itemsGrid = ref<Record<string, string>>({});
 // Percentage of diners that take each dish (per date + meal + structure row). 100 = every
 // diner of that day's service. Effective rations of a dish = portions * percentage / 100.
 const percentagesGrid = ref<Record<string, number>>({});
+// Nivel de receta (Master/Staff/Empleado/Obrero) de cada celda. Viene del ciclo, que costea cada
+// plato con la receta de su nivel; los platos elegidos a mano usan el nivel por defecto. Se guarda
+// por plato para que el quebrado, el requerimiento y la orden de compra usen esa misma receta.
+const levelsGrid = ref<Record<string, number | null>>({});
+const defaultLevelId = ref<number | null>(null);
+const cellLevel = (key: string): number | null => levelsGrid.value[key] ?? defaultLevelId.value;
+const levelName = (id: number | null | undefined) => props.levels?.find((l: any) => l.id === Number(id))?.name ?? '—';
+const mostCommonLevel = (ids: (number | null | undefined)[]): number | null => {
+    const counts = new Map<number, number>();
+    ids.forEach((id) => id && counts.set(Number(id), (counts.get(Number(id)) || 0) + 1));
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+};
 
 const clampPct = (val: unknown): number => {
     const n = Number(val);
@@ -199,9 +226,11 @@ const initializeGrid = () => {
     const oldPortions = { ...portionsGrid.value };
     const oldItems = { ...itemsGrid.value };
     const oldPercentages = { ...percentagesGrid.value };
+    const oldLevels = { ...levelsGrid.value };
     portionsGrid.value = {};
     itemsGrid.value = {};
     percentagesGrid.value = {};
+    levelsGrid.value = {};
 
     dates.value.forEach((date) => {
         meals.forEach((meal) => {
@@ -213,25 +242,90 @@ const initializeGrid = () => {
                 const itemKey = `${date}_${meal}_${s.id}`;
                 itemsGrid.value[itemKey] = oldItems[itemKey] || '';
                 percentagesGrid.value[itemKey] = oldPercentages[itemKey] !== undefined ? oldPercentages[itemKey] : 100;
+                if (oldLevels[itemKey] != null) levelsGrid.value[itemKey] = oldLevels[itemKey];
             });
         });
     });
 };
 
-// Reset grid when date changes
-const handleDateChange = () => {
+// Periodo con el que está armada la matriz. Las claves de la matriz llevan la fecha, así que al
+// cambiar el inicio hay que mover los platos (antes se perdían todos sin avisar).
+let gridStartDate = form.start_date;
+let gridDaysCount = daysCount.value;
+const syncGridPeriod = () => {
+    gridStartDate = form.start_date;
+    gridDaysCount = daysCount.value;
+};
+
+const updateEndDate = () => {
     form.end_date = dayjs(form.start_date)
         .add(daysCount.value - 1, 'days')
         .format('YYYY-MM-DD');
+};
+
+// Mueve cada celda el mismo número de días que se movió el inicio: el día 1 sigue siendo el día 1.
+const shiftGridDates = (fromStart: string, toStart: string) => {
+    const offset = dayjs(toStart).diff(dayjs(fromStart), 'day');
+    if (!offset) return;
+    const shift = <T,>(grid: Record<string, T>): Record<string, T> =>
+        Object.fromEntries(
+            Object.entries(grid).map(([key, value]) => {
+                const [date, ...rest] = key.split('_');
+                return [[dayjs(date).add(offset, 'day').format('YYYY-MM-DD'), ...rest].join('_'), value];
+            }),
+        );
+    portionsGrid.value = shift(portionsGrid.value);
+    itemsGrid.value = shift(itemsGrid.value);
+    percentagesGrid.value = shift(percentagesGrid.value);
+    levelsGrid.value = shift(levelsGrid.value);
+};
+
+const handleDateChange = () => {
+    if (!form.start_date || !dayjs(form.start_date).isValid()) {
+        form.start_date = gridStartDate;
+        return;
+    }
+    shiftGridDates(gridStartDate, form.start_date);
+    syncGridPeriod();
+    updateEndDate();
     initializeGrid();
 };
 
-const handleDaysCountChange = () => {
-    if (daysCount.value < 1) daysCount.value = 1;
-    if (daysCount.value > 31) daysCount.value = 31;
-    form.end_date = dayjs(form.start_date)
-        .add(daysCount.value - 1, 'days')
-        .format('YYYY-MM-DD');
+const handleDaysCountChange = async () => {
+    let count = Math.round(Number(daysCount.value));
+    if (!Number.isFinite(count) || count < 1) count = 1;
+    if (count > 31) count = 31;
+    daysCount.value = count;
+
+    // Al acortar el periodo se pierden los platos de los días que quedan fuera: se confirma.
+    if (count < gridDaysCount) {
+        const dropped = new Set(
+            Array.from({ length: gridDaysCount - count }, (_, i) =>
+                dayjs(gridStartDate)
+                    .add(count + i, 'day')
+                    .format('YYYY-MM-DD'),
+            ),
+        );
+        const lost = Object.entries(itemsGrid.value).filter(([key, dish]) => dish && dropped.has(key.split('_')[0])).length;
+        if (lost > 0) {
+            const result = await Swal.fire({
+                icon: 'warning',
+                title: `¿Reducir a ${count} día${count === 1 ? '' : 's'}?`,
+                text: `Se quitarán ${lost} plato(s) programados en los días que quedan fuera del periodo.`,
+                showCancelButton: true,
+                confirmButtonText: 'Sí, reducir',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#FF5A1F',
+            });
+            if (!result.isConfirmed) {
+                daysCount.value = gridDaysCount;
+                return;
+            }
+        }
+    }
+
+    syncGridPeriod();
+    updateEndDate();
     initializeGrid();
 };
 
@@ -288,8 +382,19 @@ const submit = async () => {
             meal_type: meal as MealType,
             dish_category_id: struct ? struct.dish_category_id : null,
             dish_id: val || null,
+            level_id: val ? cellLevel(key) : null,
             percentage: clampPct(percentagesGrid.value[key] ?? 100),
         });
+    }
+
+    if (form.items.some((i) => i.dish_id && !i.level_id)) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Falta el nivel de receta',
+            text: 'Hay platos sin nivel de receta. Elija el "Nivel de receta" por defecto en el panel de configuración (o el de cada plato en la matriz).',
+            confirmButtonColor: '#FF5A1F',
+        });
+        return;
     }
 
     if (form.items.length === 0) {
@@ -316,25 +421,63 @@ const submit = async () => {
         if (!result.isConfirmed) return;
     }
 
+    const onError = (errors: Record<string, string>) => {
+        const msg = Object.values(errors).flat().join('\n') || 'Revise los datos ingresados.';
+        Swal.fire({
+            icon: 'error',
+            title: 'No se pudo guardar',
+            text: msg,
+            confirmButtonColor: '#FF5A1F',
+        });
+    };
+
+    // Editando una programación existente: se actualiza esa misma, sin crear otra.
+    if (editingProgram.value) {
+        const editingId = editingProgram.value.id;
+        form.put(route('planning.update', editingId), {
+            preserveState: true,
+            preserveScroll: true,
+            onSuccess: () => {
+                if (programsLoaded.value) loadPrograms(programsMeta.value.current_page);
+                Swal.fire({
+                    icon: 'success',
+                    title: 'Programación actualizada',
+                    text: `Se actualizó la programación #${editingId} con ${assignedDishes} platos asignados.`,
+                    timer: 2000,
+                    showConfirmButton: false,
+                });
+            },
+            onError,
+        });
+        return;
+    }
+
+    // Se conserva la matriz y se pasa a editar la programación recién creada: antes la pantalla se
+    // remontaba en blanco y un segundo "Guardar" creaba otra programación.
     form.post(route('planning.store'), {
-        onSuccess: () => {
+        preserveState: true,
+        preserveScroll: true,
+        onSuccess: (page: any) => {
+            const createdId = Number(page?.props?.flash?.created_program_id) || null;
+            if (createdId) {
+                editingProgram.value = {
+                    id: createdId,
+                    cafe: selectedCafeName.value,
+                    service: (activeMealType.value as string | null) ?? null,
+                    start_date: form.start_date,
+                    end_date: form.end_date,
+                    purchase_orders_count: 0,
+                };
+            }
             Swal.fire({
                 icon: 'success',
-                title: 'Planificación guardada',
-                text: `Se guardó el plan con ${assignedDishes} platos asignados.`,
+                title: createdId ? `Programación #${createdId} guardada` : 'Planificación guardada',
+                text: `Se guardó el plan con ${assignedDishes} platos asignados. Los siguientes cambios actualizarán esta misma programación.`,
                 timer: 2000,
                 showConfirmButton: false,
             });
         },
-        onError: (errors) => {
-            const msg = Object.values(errors).flat().join('\n') || 'Revise los datos ingresados.';
-            Swal.fire({
-                icon: 'error',
-                title: 'No se pudo guardar',
-                text: msg,
-                confirmButtonColor: '#FF5A1F',
-            });
-        },
+        onError,
     });
 };
 
@@ -398,53 +541,68 @@ const handleRelFileImport = (event: Event) => {
 const generatePO = async (program: WeeklyProgram) => {
     // El quebrado resuelve la receta de cada plato por nivel (igual que los PDF del módulo),
     // así que se pide el nivel antes de generar la orden.
-    const levelId = await promptForLevel(
+    const level = await resolveLevel(
+        [program.id],
         '¿Generar Quebrado (PO)?',
-        `Se generará la orden de compra para "${program.cafe?.name}" del ${dayjs(program.start_date).format('DD/MM')} al ${dayjs(program.end_date).format('DD/MM')}. Elija el nivel de receta:`,
+        `Se generará la orden de compra para "${program.cafe?.name}" del ${dayjs(program.start_date).format('DD/MM')} al ${dayjs(program.end_date).format('DD/MM')}.`,
+        'Generar',
     );
-    if (!levelId) return;
+    if (level === false) return;
 
-    router.post(route('planning.generate-po', program.id), { level_id: levelId });
+    router.post(route('planning.generate-po', program.id), levelParam(level));
 };
 
 // Un solo quebrado (PO) que consolida los insumos de todas las programaciones marcadas.
 const generatePOForSelection = async () => {
     const ids = requireSelection();
     if (!ids) return;
-    const levelId = await promptForLevel(
+    const level = await resolveLevel(
+        ids,
         '¿Generar Quebrado (PO) consolidado?',
-        `Se generará una sola orden de compra con los insumos de las ${ids.length} programación${ids.length === 1 ? '' : 'es'} seleccionada${ids.length === 1 ? '' : 's'}. Elija el nivel de receta:`,
+        `Se generará una sola orden de compra con los insumos de las ${ids.length} programación${ids.length === 1 ? '' : 'es'} seleccionada${ids.length === 1 ? '' : 's'}.`,
+        'Generar',
     );
-    if (!levelId) return;
+    if (level === false) return;
 
-    router.post(route('planning.generate-po-multiple'), { program_ids: ids, level_id: levelId });
+    router.post(route('planning.generate-po-multiple'), { program_ids: ids, ...levelParam(level) });
 };
 
-// The planning grid never records which recipe "nivel" (Master/Staff/Empleado/Obrero) a dish
-// was assigned under — only dish_id — so it's asked here and applied uniformly to every dish
-// in the week's PDF. Shared by both PDF reports below.
-const promptForLevel = async (title: string, prompt: string): Promise<string | null> => {
-    if (!props.levels || props.levels.length === 0) {
+// Cada plato programado guarda su nivel de receta (heredado del ciclo), y los reportes usan el
+// de cada uno. Solo las programaciones anteriores a ese cambio tienen platos sin nivel: para
+// ellas se pide un nivel de respaldo. Devuelve false si se cancela, null si no hace falta nivel.
+const programWithoutLevel = new Map<number, number>();
+const needsFallbackLevel = (ids: number[]) => ids.some((id) => (programWithoutLevel.get(id) ?? 1) > 0);
+const levelParam = (level: string | null | undefined) => (level ? { level_id: level } : {});
+const levelSelectHtml = (id: string) =>
+    '<label class="mb-1 block text-left text-xs font-semibold text-gray-500">Nivel de receta (platos sin nivel)</label>' +
+    `<select id="${id}" class="swal2-select" style="display:block;width:100%;margin-bottom:12px;">` +
+    (props.levels ?? []).map((l: any) => `<option value="${l.id}">${l.name}</option>`).join('') +
+    '</select>';
+
+const resolveLevel = async (ids: number[], title: string, prompt: string, confirmText = 'Generar PDF'): Promise<string | null | false> => {
+    const needsLevel = needsFallbackLevel(ids);
+    if (needsLevel && !props.levels?.length) {
         Swal.fire('Atención', 'No hay niveles de receta configurados en el sistema.', 'warning');
-        return null;
+        return false;
     }
 
-    const { value: levelId } = await Swal.fire({
+    const { isConfirmed, value } = await Swal.fire({
         title,
         html:
-            `<p class="mb-3 text-left text-sm text-gray-600">${prompt}</p>` +
-            '<select id="swal-level" class="swal2-select" style="display:block;width:100%;">' +
-            props.levels.map((l: any) => `<option value="${l.id}">${l.name}</option>`).join('') +
-            '</select>',
+            `<p class="mb-3 text-left text-sm text-gray-600">${prompt} ${
+                needsLevel
+                    ? 'Algunos platos se programaron sin nivel de receta: elija el nivel a usar para ellos (los demás usan el suyo).'
+                    : 'Cada plato usa el nivel de receta con que se programó.'
+            }</p>` + (needsLevel ? levelSelectHtml('swal-level') : ''),
         focusConfirm: false,
         showCancelButton: true,
-        confirmButtonText: 'Generar PDF',
+        confirmButtonText: confirmText,
         cancelButtonText: 'Cancelar',
         confirmButtonColor: '#FF5A1F',
-        preConfirm: () => (document.getElementById('swal-level') as HTMLSelectElement)?.value,
+        preConfirm: () => (needsLevel ? (document.getElementById('swal-level') as HTMLSelectElement)?.value || null : null),
     });
 
-    return levelId || null;
+    return isConfirmed ? (value ?? null) : false;
 };
 
 // ── Programaciones guardadas: selección múltiple + filtros ───────────────────────────────
@@ -461,6 +619,8 @@ const programFilters = ref({
     cafe: '',
     savedFrom: '',
     savedTo: '',
+    periodFrom: '',
+    periodTo: '',
 });
 
 const programRow = (p: any) => ({
@@ -527,12 +687,17 @@ const loadPrograms = async (page = 1) => {
                 cafe_id: f.cafe || undefined,
                 saved_from: f.savedFrom || undefined,
                 saved_to: f.savedTo || undefined,
+                period_from: f.periodFrom || undefined,
+                period_to: f.periodTo || undefined,
             },
         });
         // Una respuesta vieja (filtros cambiados mientras cargaba) no pisa la más reciente.
         if (requestId !== programsRequest) return;
         programsPage.value = data.data;
-        data.data.forEach((p: any) => programSupplyCity.set(p.id, p.supply_city_id ?? null));
+        data.data.forEach((p: any) => {
+            programSupplyCity.set(p.id, p.supply_city_id ?? null);
+            programWithoutLevel.set(p.id, Number(p.items_without_level ?? 0));
+        });
         programsMeta.value = {
             current_page: data.current_page,
             last_page: data.last_page,
@@ -579,7 +744,7 @@ watch(
 
 const hasProgramFilters = computed(() => Object.values(programFilters.value).some(Boolean));
 const clearProgramFilters = () => {
-    programFilters.value = { mine: '', unit: '', cafe: '', savedFrom: '', savedTo: '' };
+    programFilters.value = { mine: '', unit: '', cafe: '', savedFrom: '', savedTo: '', periodFrom: '', periodTo: '' };
 };
 
 // La selección se conserva al cambiar de página, así se pueden combinar programaciones de varias.
@@ -617,31 +782,22 @@ const openReport = (routeName: string, params: Record<string, unknown>) => {
 const generateWeeklyQuebradoPdf = async () => {
     const ids = requireSelection();
     if (!ids) return;
-    const levelId = await promptForLevel(
-        'Quebrado Semanal (PDF)',
-        `Seleccione el nivel de receta a usar para calcular los ingredientes de cada plato (${ids.length} programación/es).`,
-    );
-    if (levelId) openReport('planning.quebrado-pdf', { program_ids: ids, level_id: levelId });
+    const level = await resolveLevel(ids, 'Quebrado Semanal (PDF)', `Se calcularán los ingredientes de cada plato (${ids.length} programación/es).`);
+    if (level !== false) openReport('planning.quebrado-pdf', { program_ids: ids, ...levelParam(level) });
 };
 
 const generateWeeklyRequirementPdf = async () => {
     const ids = requireSelection();
     if (!ids) return;
-    const levelId = await promptForLevel(
-        'Requerimiento x Producto (PDF)',
-        `Seleccione el nivel de receta a usar para consolidar cuánto de cada insumo se necesita (${ids.length} programación/es).`,
-    );
-    if (levelId) openReport('planning.requerimiento-pdf', { program_ids: ids, level_id: levelId });
+    const level = await resolveLevel(ids, 'Requerimiento x Producto (PDF)', `Se consolidará cuánto de cada insumo se necesita (${ids.length} programación/es).`);
+    if (level !== false) openReport('planning.requerimiento-pdf', { program_ids: ids, ...levelParam(level) });
 };
 
 const generateWeeklyDosificacionPdf = async () => {
     const ids = requireSelection();
     if (!ids) return;
-    const levelId = await promptForLevel(
-        'Dosificación Nutricional (PDF)',
-        `Seleccione el nivel de receta a usar para calcular los valores nutricionales de cada plato (${ids.length} programación/es).`,
-    );
-    if (levelId) openReport('planning.dosificacion-pdf', { program_ids: ids, level_id: levelId });
+    const level = await resolveLevel(ids, 'Dosificación Nutricional (PDF)', `Se calcularán los valores nutricionales de cada plato (${ids.length} programación/es).`);
+    if (level !== false) openReport('planning.dosificacion-pdf', { program_ids: ids, ...levelParam(level) });
 };
 
 // Una hoja por programación seleccionada.
@@ -672,7 +828,8 @@ const cityOptions = (ids: number[]) => {
 const generateWeeklyPurchaseOrderExcel = async () => {
     const ids = requireSelection();
     if (!ids) return;
-    if (!props.levels?.length || !props.cities?.length) {
+    const needsLevel = needsFallbackLevel(ids);
+    if ((needsLevel && !props.levels?.length) || !props.cities?.length) {
         Swal.fire('Atención', 'Faltan niveles o ciudades configuradas en el sistema.', 'warning');
         return;
     }
@@ -680,11 +837,8 @@ const generateWeeklyPurchaseOrderExcel = async () => {
     const { value: formValues } = await Swal.fire({
         title: 'Orden de Pedido Semanal (Excel)',
         html:
-            `<p class="mb-3 text-left text-sm text-gray-600">Se consolidará el pedido de ${ids.length} programación/es. Seleccione el nivel de receta y la ciudad de precios.</p>` +
-            '<label class="mb-1 block text-left text-xs font-semibold text-gray-500">Nivel de receta</label>' +
-            '<select id="swal-level" class="swal2-select" style="display:block;width:100%;margin-bottom:12px;">' +
-            props.levels.map((l: any) => `<option value="${l.id}">${l.name}</option>`).join('') +
-            '</select>' +
+            `<p class="mb-3 text-left text-sm text-gray-600">Se consolidará el pedido de ${ids.length} programación/es. Seleccione la ciudad de precios.</p>` +
+            (needsLevel ? levelSelectHtml('swal-level') : '') +
             '<label class="mb-1 block text-left text-xs font-semibold text-gray-500">Ciudad (precios)</label>' +
             '<select id="swal-city" class="swal2-select" style="display:block;width:100%;">' +
             cityOptions(ids) +
@@ -695,13 +849,13 @@ const generateWeeklyPurchaseOrderExcel = async () => {
         cancelButtonText: 'Cancelar',
         confirmButtonColor: '#FF5A1F',
         preConfirm: () => ({
-            levelId: (document.getElementById('swal-level') as HTMLSelectElement)?.value,
+            levelId: needsLevel ? (document.getElementById('swal-level') as HTMLSelectElement)?.value || null : null,
             cityId: (document.getElementById('swal-city') as HTMLSelectElement)?.value,
         }),
     });
 
-    if (formValues?.levelId && formValues?.cityId) {
-        openReport('planning.orden-pedido-excel', { program_ids: ids, level_id: formValues.levelId, city_id: formValues.cityId });
+    if (formValues?.cityId) {
+        openReport('planning.orden-pedido-excel', { program_ids: ids, ...levelParam(formValues.levelId), city_id: formValues.cityId });
     }
 };
 
@@ -710,7 +864,8 @@ const generateWeeklyPurchaseOrderExcel = async () => {
 const generatePurchaseReport = async () => {
     const ids = requireSelection();
     if (!ids) return;
-    if (!props.levels?.length || !props.cities?.length) {
+    const needsLevel = needsFallbackLevel(ids);
+    if ((needsLevel && !props.levels?.length) || !props.cities?.length) {
         Swal.fire('Atención', 'Faltan niveles o ciudades configuradas en el sistema.', 'warning');
         return;
     }
@@ -718,11 +873,8 @@ const generatePurchaseReport = async () => {
     const { value: formValues } = await Swal.fire({
         title: 'Reporte de Compras Semanales',
         html:
-            `<p class="mb-3 text-left text-sm text-gray-600">Se consolidará el requerimiento de ${ids.length} programación/es por comedor de destino, con los precios de todos los proveedores disponibles. Seleccione el nivel de receta y la ciudad de precios.</p>` +
-            '<label class="mb-1 block text-left text-xs font-semibold text-gray-500">Nivel de receta</label>' +
-            '<select id="swal-report-level" class="swal2-select" style="display:block;width:100%;margin-bottom:12px;">' +
-            props.levels.map((l: any) => `<option value="${l.id}">${l.name}</option>`).join('') +
-            '</select>' +
+            `<p class="mb-3 text-left text-sm text-gray-600">Se consolidará el requerimiento de ${ids.length} programación/es por comedor de destino, con los precios de todos los proveedores disponibles. Seleccione la ciudad de precios.</p>` +
+            (needsLevel ? levelSelectHtml('swal-report-level') : '') +
             '<label class="mb-1 block text-left text-xs font-semibold text-gray-500">Ciudad (precios)</label>' +
             '<select id="swal-report-city" class="swal2-select" style="display:block;width:100%;">' +
             cityOptions(ids) +
@@ -733,15 +885,15 @@ const generatePurchaseReport = async () => {
         cancelButtonText: 'Cancelar',
         confirmButtonColor: '#FF5A1F',
         preConfirm: () => ({
-            levelId: (document.getElementById('swal-report-level') as HTMLSelectElement)?.value,
+            levelId: needsLevel ? (document.getElementById('swal-report-level') as HTMLSelectElement)?.value || null : null,
             cityId: (document.getElementById('swal-report-city') as HTMLSelectElement)?.value,
         }),
     });
 
-    if (formValues?.levelId && formValues?.cityId) {
+    if (formValues?.cityId) {
         router.get(route('planning.reporte-compras'), {
             program_ids: ids,
-            level_id: formValues.levelId,
+            ...levelParam(formValues.levelId),
             city_id: formValues.cityId,
         });
     }
@@ -913,9 +1065,8 @@ const loadMenuCycle = async (cycle: CycleOption) => {
     // La planificación cubre al menos los días del ciclo.
     if (daysCount.value < cycle.days) {
         daysCount.value = Math.min(cycle.days, 31);
-        form.end_date = dayjs(form.start_date)
-            .add(daysCount.value - 1, 'days')
-            .format('YYYY-MM-DD');
+        updateEndDate();
+        syncGridPeriod();
     }
 
     // 1. Las filas de la matriz son las del ciclo, con sus techos de costo (L.Inf/L.Sup).
@@ -938,10 +1089,12 @@ const loadMenuCycle = async (cycle: CycleOption) => {
     const oldPortions = { ...portionsGrid.value };
     const oldItems = { ...itemsGrid.value };
     const oldPercentages = { ...percentagesGrid.value };
+    const oldLevels = { ...levelsGrid.value };
 
     portionsGrid.value = {};
     itemsGrid.value = {};
     percentagesGrid.value = {};
+    levelsGrid.value = {};
 
     dates.value.forEach((date) => {
         meals.forEach((meal) => {
@@ -957,6 +1110,7 @@ const loadMenuCycle = async (cycle: CycleOption) => {
                 } else {
                     itemsGrid.value[itemKey] = oldItems[itemKey] || '';
                     percentagesGrid.value[itemKey] = oldPercentages[itemKey] !== undefined ? oldPercentages[itemKey] : 100;
+                    if (oldLevels[itemKey] != null) levelsGrid.value[itemKey] = oldLevels[itemKey];
                 }
             });
         });
@@ -974,6 +1128,8 @@ const loadMenuCycle = async (cycle: CycleOption) => {
                 if (dayData && dayData.dish_id) {
                     const itemKey = `${date}_${mealType}_${tempId}`;
                     itemsGrid.value[itemKey] = String(dayData.dish_id);
+                    // El nivel con el que el ciclo costeó el plato.
+                    if (dayData.level_id) levelsGrid.value[itemKey] = Number(dayData.level_id);
                     if (dayData.dish_name) {
                         knownDishNames.value[dayData.dish_id] = dayData.dish_name;
                     }
@@ -984,6 +1140,9 @@ const loadMenuCycle = async (cycle: CycleOption) => {
     });
 
     loadedCycleId.value = cycle.id;
+    if (!defaultLevelId.value) {
+        defaultLevelId.value = mostCommonLevel(cycleData.flatMap((row: any) => Object.values(row.days || {}).map((d: any) => d?.level_id)));
+    }
 
     Swal.fire({
         icon: 'success',
@@ -992,6 +1151,342 @@ const loadMenuCycle = async (cycle: CycleOption) => {
         timer: 1800,
         showConfirmButton: false,
     });
+};
+
+// --- Costo de la matriz ----------------------------------------------------------------------
+// Costo y kcal de cada plato con la receta de su nivel, en la ciudad de abastecimiento del comedor
+// (mismo cálculo que Ciclos), comparado con los límites L.Inf/L.Sup de su categoría: los del ciclo
+// cargado o, si no hay, los de la estructura del servicio.
+type CostTotal = { price: number; calories: number; missing_prices: number; borrowed_prices: number };
+type Limits = { min: number | null; max: number | null };
+const costTotals = ref<Record<string, CostTotal>>({});
+const structureLimits = ref<Record<number, Limits>>({});
+const sellingPrice = ref<number | null>(null);
+const costCityId = ref<number | null>(null);
+const costsLoading = ref(false);
+let costsContext = '';
+
+const activeCellKeys = (meal: string) =>
+    dates.value.flatMap((date) => localMenuStructure.value.filter((s) => s.meal_type === meal).map((s) => `${date}_${meal}_${s.id}`));
+
+const pairKey = (key: string): string | null => {
+    const dishId = itemsGrid.value[key];
+    const levelId = cellLevel(key);
+    return dishId && levelId ? `${dishId}-${levelId}` : null;
+};
+
+const loadCosts = async () => {
+    const meal = activeMealType.value;
+    if (!form.cafe_id || !meal) return;
+
+    const context = `${form.cafe_id}|${selectedServiceableId.value ?? ''}`;
+    const contextChanged = context !== costsContext;
+    if (contextChanged) {
+        costsContext = context;
+        costTotals.value = {};
+    }
+
+    const pending = [...new Set(activeCellKeys(meal).map(pairKey).filter((k): k is string => !!k && !costTotals.value[k]))];
+    if (!pending.length && !contextChanged) return;
+
+    costsLoading.value = true;
+    try {
+        const { data } = await axios.post(route('planning.prices'), {
+            cafe_id: form.cafe_id,
+            serviceable_id: selectedServiceableId.value || undefined,
+            items: pending.map((k) => {
+                const [dish_id, level_id] = k.split('-').map(Number);
+                return { dish_id, level_id };
+            }),
+        });
+        if (context !== costsContext) return; // cambió el comedor/servicio mientras cargaba
+        costTotals.value = { ...costTotals.value, ...(data.totals || {}) };
+        costCityId.value = data.city_id ?? null;
+        structureLimits.value = data.structure?.limits || {};
+        sellingPrice.value = data.structure?.selling_price ?? null;
+    } catch {
+        // El costo es informativo: si falla, la matriz sigue funcionando sin él.
+    } finally {
+        costsLoading.value = false;
+    }
+};
+const scheduleCosts = useDebounceFn(loadCosts, 400);
+watch([itemsGrid, levelsGrid, defaultLevelId, () => form.cafe_id, selectedServiceableId], () => scheduleCosts(), { deep: true });
+
+const limitsFor = (struct: any): Limits | null => {
+    if (struct.total_cost != null) return { min: Number(struct.total_cost), max: struct.total_cost_superior != null ? Number(struct.total_cost_superior) : null };
+    return structureLimits.value[struct.dish_category_id] ?? null;
+};
+
+type CostStatus = 'bueno' | 'pesimo' | 'gravisimo' | 'neutral';
+const costStatus = (price: number, limits: Limits | null): CostStatus => {
+    if (!limits || (limits.min == null && limits.max == null)) return 'neutral';
+    if (limits.min != null && price < limits.min) return 'pesimo';
+    if (limits.max != null && price > limits.max) return 'gravisimo';
+    return 'bueno';
+};
+const costStatusClass: Record<CostStatus, string> = {
+    bueno: 'bg-green-50 text-green-700 ring-green-200',
+    pesimo: 'bg-yellow-50 text-yellow-700 ring-yellow-200',
+    gravisimo: 'bg-red-50 text-red-700 ring-red-200',
+    neutral: 'bg-slate-50 text-slate-600 ring-slate-200',
+};
+const costStatusText: Record<CostStatus, string> = {
+    bueno: 'Dentro de los límites',
+    pesimo: 'Por debajo del L.Inf',
+    gravisimo: 'Por encima del L.Sup',
+    neutral: 'Sin límites en la estructura',
+};
+
+const cellCost = (date: string, meal: string, struct: any) => {
+    const key = pairKey(`${date}_${meal}_${struct.id}`);
+    const total = key ? costTotals.value[key] : null;
+    if (!total) return null;
+    return { ...total, status: costStatus(Number(total.price), limitsFor(struct)) };
+};
+
+// Totales del día: costo y kcal por comensal (cada plato ponderado por su % de comensales) y costo
+// total (plato x raciones efectivas). Se comparan con la suma de límites de las filas con plato.
+const dayCost = (date: string, meal: string) => {
+    let perDiner = 0;
+    let kcal = 0;
+    let total = 0;
+    let min = 0;
+    let max = 0;
+    let hasLimits = false;
+    let priced = 0;
+    let assigned = 0;
+    localMenuStructure.value
+        .filter((s) => s.meal_type === meal)
+        .forEach((struct) => {
+            if (!itemsGrid.value[`${date}_${meal}_${struct.id}`]) return;
+            assigned++;
+            const cost = cellCost(date, meal, struct);
+            if (!cost) return;
+            priced++;
+            const pct = clampPct(percentagesGrid.value[`${date}_${meal}_${struct.id}`] ?? 100) / 100;
+            perDiner += Number(cost.price) * pct;
+            kcal += Number(cost.calories) * pct;
+            total += Number(cost.price) * effectiveRations(date, meal, struct.id);
+            const limits = limitsFor(struct);
+            if (limits && (limits.min != null || limits.max != null)) {
+                hasLimits = true;
+                min += Number(limits.min ?? 0) * pct;
+                max += Number(limits.max ?? limits.min ?? 0) * pct;
+            }
+        });
+    if (!assigned) return null;
+    const status = hasLimits ? costStatus(perDiner, { min, max }) : 'neutral';
+    return { perDiner, kcal, total, min, max, hasLimits, status, priced, assigned };
+};
+
+const money = (n: number) => `S/ ${n.toLocaleString('es-PE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const cityLabel = computed(() => props.cities?.find((c: any) => c.id === costCityId.value)?.name ?? null);
+
+// --- Programaciones guardadas: editar / eliminar -------------------------------------------
+interface EditingProgram {
+    id: number;
+    cafe: string | null;
+    service: string | null;
+    start_date: string;
+    end_date: string;
+    purchase_orders_count: number;
+}
+
+const editingProgram = ref<EditingProgram | null>(null);
+const loadingProgramId = ref<number | null>(null);
+
+const gridHasDishes = () => Object.values(itemsGrid.value).some(Boolean);
+
+const cloneDefaultStructure = (): MenuStructure[] => JSON.parse(JSON.stringify(props.menu_structure));
+
+// Matriz en blanco con la estructura por defecto (al salir del modo edición).
+const resetPlanningGrid = () => {
+    localMenuStructure.value = cloneDefaultStructure();
+    portionsGrid.value = {};
+    itemsGrid.value = {};
+    percentagesGrid.value = {};
+    levelsGrid.value = {};
+    loadedCycleId.value = null;
+    initializeGrid();
+};
+
+const exitEditing = async (skipConfirm = false) => {
+    if (!editingProgram.value) return;
+    if (!skipConfirm) {
+        const result = await Swal.fire({
+            icon: 'question',
+            title: 'Salir de la edición',
+            text: 'Se limpiará la matriz. Los cambios no guardados de esta programación se perderán.',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, salir',
+            cancelButtonText: 'Seguir editando',
+            confirmButtonColor: '#FF5A1F',
+        });
+        if (!result.isConfirmed) return;
+    }
+    editingProgram.value = null;
+    resetPlanningGrid();
+};
+
+// Reabre una programación guardada en la matriz de "Planificar". Las filas se reconstruyen desde
+// sus platos: una por categoría, repetida tantas veces como esa categoría aparezca en un mismo día.
+const editProgram = async (program: any) => {
+    if (editingProgram.value?.id === program.id) {
+        activeTab.value = 'planificar';
+        return;
+    }
+    if (gridHasDishes()) {
+        const result = await Swal.fire({
+            icon: 'question',
+            title: `¿Editar la programación #${program.id}?`,
+            text: 'La matriz actual se reemplazará por la de esta programación.',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, editar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#FF5A1F',
+        });
+        if (!result.isConfirmed) return;
+    }
+
+    loadingProgramId.value = program.id;
+    let data: any;
+    try {
+        ({ data } = await axios.get(route('planning.show', program.id)));
+    } catch {
+        Swal.fire('Error', 'No se pudo cargar la programación.', 'error');
+        return;
+    } finally {
+        loadingProgramId.value = null;
+    }
+
+    // 1. Comedor y servicio
+    selectedMineId.value = data.mine_id ? String(data.mine_id) : '';
+    selectedUnitId.value = data.unit_id ? String(data.unit_id) : '';
+    pendingServiceName = data.service ?? null;
+    if (String(form.cafe_id) === String(data.cafe_id)) {
+        applyPendingService();
+    } else {
+        form.cafe_id = String(data.cafe_id);
+    }
+
+    // 2. Periodo
+    form.start_date = data.start_date;
+    daysCount.value = Math.min(31, Math.max(1, dayjs(data.end_date).diff(dayjs(data.start_date), 'day') + 1));
+    updateEndDate();
+    syncGridPeriod();
+
+    // 3. Filas de la matriz
+    const items: any[] = data.items || [];
+    const programMeals = [...new Set<string>(items.map((i) => i.meal_type))];
+    const rowIds: Record<string, Record<number, number[]>> = {};
+    const rows: MenuStructure[] = [];
+    let seq = 0;
+
+    programMeals.forEach((meal) => {
+        const mealItems = items.filter((i) => i.meal_type === meal);
+        const categoryOrder: number[] = [];
+        const maxPerDay = new Map<number, number>();
+        const byDate = new Map<string, any[]>();
+        mealItems.forEach((item) => byDate.set(item.date, [...(byDate.get(item.date) || []), item]));
+        byDate.forEach((dayItems) => {
+            const counts = new Map<number, number>();
+            dayItems.forEach((item) => {
+                const catId = Number(item.dish_category_id);
+                if (!categoryOrder.includes(catId)) categoryOrder.push(catId);
+                counts.set(catId, (counts.get(catId) || 0) + 1);
+            });
+            counts.forEach((count, catId) => maxPerDay.set(catId, Math.max(maxPerDay.get(catId) || 0, count)));
+        });
+
+        rowIds[meal] = {};
+        categoryOrder.forEach((catId) => {
+            const name = mealItems.find((i) => Number(i.dish_category_id) === catId)?.dish_category;
+            const category = props.dish_categories?.find((c) => c.id === catId) || ({ id: catId, name } as DishCategory);
+            rowIds[meal][catId] = [];
+            for (let k = 0; k < (maxPerDay.get(catId) || 1); k++) {
+                const id = 30000 + seq++;
+                rowIds[meal][catId].push(id);
+                rows.push({
+                    id,
+                    meal_type: meal as MealType,
+                    dish_category_id: catId,
+                    dish_category: category,
+                    sort_order: rows.length,
+                } as MenuStructure);
+            }
+        });
+    });
+
+    localMenuStructure.value = [...cloneDefaultStructure().filter((s) => !programMeals.includes(s.meal_type)), ...rows];
+
+    // 4. Grilla: raciones, platos y % de comensales
+    portionsGrid.value = {};
+    itemsGrid.value = {};
+    percentagesGrid.value = {};
+    levelsGrid.value = {};
+    initializeGrid();
+    defaultLevelId.value = mostCommonLevel(items.map((i) => i.level_id)) ?? defaultLevelId.value;
+
+    (data.portions || []).forEach((p: any) => {
+        if (dates.value.includes(p.date)) portionsGrid.value[`${p.date}_${p.meal_type}`] = Number(p.portions_count) || 0;
+    });
+
+    const used = new Map<string, number>();
+    items.forEach((item) => {
+        const catId = Number(item.dish_category_id);
+        const usedKey = `${item.date}_${item.meal_type}_${catId}`;
+        const k = used.get(usedKey) || 0;
+        used.set(usedKey, k + 1);
+        const rowId = rowIds[item.meal_type]?.[catId]?.[k];
+        if (!rowId || !dates.value.includes(item.date)) return;
+        const cellKey = `${item.date}_${item.meal_type}_${rowId}`;
+        itemsGrid.value[cellKey] = String(item.dish_id);
+        percentagesGrid.value[cellKey] = clampPct(item.percentage ?? 100);
+        if (item.level_id) levelsGrid.value[cellKey] = Number(item.level_id);
+        if (item.dish) knownDishNames.value[item.dish_id] = item.dish;
+    });
+
+    loadedCycleId.value = null;
+    editingProgram.value = {
+        id: data.id,
+        cafe: data.cafe,
+        service: data.service,
+        start_date: data.start_date,
+        end_date: data.end_date,
+        purchase_orders_count: data.purchase_orders_count || 0,
+    };
+    activeTab.value = 'planificar';
+};
+
+const deleteProgram = async (program: any) => {
+    const period = `${dayjs(program.start_date).format('DD/MM')} – ${dayjs(program.end_date).format('DD/MM/YYYY')}`;
+    const result = await Swal.fire({
+        icon: 'warning',
+        title: `¿Eliminar la programación #${program.id}?`,
+        text: `${programRow(program).cafe} · ${programRow(program).service ?? 'sin servicio'} · ${period}. Esta acción no se puede deshacer.`,
+        showCancelButton: true,
+        confirmButtonText: 'Sí, eliminar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#dc2626',
+    });
+    if (!result.isConfirmed) return;
+
+    try {
+        await axios.delete(route('planning.destroy', program.id));
+    } catch (err: any) {
+        Swal.fire('No se pudo eliminar', err?.response?.data?.message || 'Ocurrió un error al eliminar la programación.', 'error');
+        return;
+    }
+
+    selectedProgramIds.value = selectedProgramIds.value.filter((id) => id !== program.id);
+    if (editingProgram.value?.id === program.id) {
+        editingProgram.value = null;
+        resetPlanningGrid();
+    }
+    // Recarga el total; su watch refresca la página actual de la tabla.
+    router.reload({ only: ['programs_total'] });
+    Swal.fire({ icon: 'success', title: 'Programación eliminada', timer: 1500, showConfirmButton: false });
 };
 </script>
 
@@ -1013,7 +1508,13 @@ const loadMenuCycle = async (cycle: CycleOption) => {
                         :disabled="form.processing"
                         class="w-full rounded-xl bg-[#FF5A1F] text-white shadow-sm shadow-orange-500/20 hover:bg-[#e04a17] sm:w-auto"
                     >
-                        {{ form.processing ? 'Guardando...' : 'Guardar Planificación' }}
+                        {{
+                            form.processing
+                                ? 'Guardando...'
+                                : editingProgram
+                                  ? `Actualizar Programación #${editingProgram.id}`
+                                  : 'Guardar Planificación'
+                        }}
                     </Button>
                 </div>
             </div>
@@ -1211,6 +1712,21 @@ const loadMenuCycle = async (cycle: CycleOption) => {
                                 Del <span class="font-semibold text-slate-600">{{ dayjs(dates[0]).format('ddd DD/MM') }}</span> al
                                 <span class="font-semibold text-slate-600">{{ dayjs(dates[dates.length - 1]).format('ddd DD/MM/YYYY') }}</span>
                             </p>
+                            <div class="flex flex-col gap-1.5">
+                                <label class="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                                    <Settings2 class="h-3.5 w-3.5 text-[#FF5A1F]" /> Nivel de receta
+                                </label>
+                                <select
+                                    v-model.number="defaultLevelId"
+                                    class="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:border-[#FF5A1F] focus:ring-1 focus:ring-[#FF5A1F]/25 focus:outline-none"
+                                >
+                                    <option :value="null" disabled>Seleccionar nivel</option>
+                                    <option v-for="level in levels" :key="level.id" :value="level.id">{{ level.name }}</option>
+                                </select>
+                                <p class="text-[11px] text-slate-400">
+                                    Se usa para los platos elegidos a mano. Los que vienen de un ciclo conservan su nivel; puede cambiarse en cada celda.
+                                </p>
+                            </div>
                         </section>
 
                         <!-- Paso 3: ciclo de menú (filtrado por comedor + servicio) -->
@@ -1306,6 +1822,45 @@ const loadMenuCycle = async (cycle: CycleOption) => {
 
                 <!-- Área principal de Planificación -->
                 <div class="flex flex-col gap-4 sm:gap-6" :class="configOpen ? 'lg:col-span-3' : 'lg:col-span-4'">
+                    <!-- Modo edición de una programación guardada -->
+                    <div
+                        v-if="editingProgram"
+                        class="flex flex-col gap-2 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                        <div class="flex min-w-0 items-start gap-2.5">
+                            <Pencil class="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+                            <div class="min-w-0 text-sm">
+                                <p class="font-semibold text-sky-900">
+                                    Editando programación #{{ editingProgram.id }}
+                                    <span class="font-normal text-sky-700">
+                                        · {{ editingProgram.cafe
+                                        }}<template v-if="editingProgram.service"> · {{ editingProgram.service }}</template> ·
+                                        {{ dayjs(editingProgram.start_date).format('DD/MM') }}–{{
+                                            dayjs(editingProgram.end_date).format('DD/MM/YYYY')
+                                        }}
+                                    </span>
+                                </p>
+                                <p class="text-xs text-sky-700">
+                                    Al guardar se actualiza esta misma programación, sin crear una nueva.
+                                    <template v-if="editingProgram.purchase_orders_count">
+                                        Ya tiene {{ editingProgram.purchase_orders_count }} orden(es) de compra: vuelva a generarlas si cambia platos
+                                        o raciones.
+                                    </template>
+                                </p>
+                            </div>
+                        </div>
+                        <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            class="shrink-0 rounded-lg border-sky-200 bg-white text-sky-700 hover:bg-sky-100"
+                            @click="exitEditing()"
+                        >
+                            <X class="mr-1 h-3.5 w-3.5" />
+                            Salir de edición
+                        </Button>
+                    </div>
+
                     <!-- Cabecera de la Matriz y Acciones de Importación -->
                     <div
                         class="flex flex-col gap-3 rounded-2xl border border-l-4 border-slate-100 border-l-[#FF5A1F] bg-white p-4 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-6"
@@ -1451,9 +2006,9 @@ const loadMenuCycle = async (cycle: CycleOption) => {
                                                     </SelectItem>
                                                 </SelectContent>
                                             </Select>
-                                            <p v-if="struct.total_cost != null" class="mt-1 text-[10px] font-normal text-slate-400">
-                                                L.Inf S/ {{ Number(struct.total_cost).toFixed(2) }} · L.Sup S/
-                                                {{ Number(struct.total_cost_superior).toFixed(2) }}
+                                            <p v-if="limitsFor(struct)" class="mt-1 text-[10px] font-normal text-slate-400">
+                                                L.Inf S/ {{ Number(limitsFor(struct)?.min ?? 0).toFixed(2) }} · L.Sup S/
+                                                {{ Number(limitsFor(struct)?.max ?? 0).toFixed(2) }}
                                             </p>
                                             <button
                                                 type="button"
@@ -1519,7 +2074,78 @@ const loadMenuCycle = async (cycle: CycleOption) => {
                                                         {{ effectiveRations(date, meal, struct.id).toLocaleString('es-PE') }} rac.
                                                     </span>
                                                 </div>
+                                                <div v-if="itemsGrid[`${date}_${meal}_${struct.id}`]" class="flex items-center justify-between gap-1.5 pl-0.5">
+                                                    <select
+                                                        :value="cellLevel(`${date}_${meal}_${struct.id}`)"
+                                                        @change="
+                                                            levelsGrid[`${date}_${meal}_${struct.id}`] = Number(($event.target as HTMLSelectElement).value) || null
+                                                        "
+                                                        title="Nivel de receta con que se costea y se compra este plato"
+                                                        class="h-6 max-w-[88px] rounded-md border border-slate-200 bg-slate-50 px-1 text-[10px] font-semibold text-slate-600 focus:border-[#FF5A1F] focus:outline-none"
+                                                        :class="cellLevel(`${date}_${meal}_${struct.id}`) ? '' : 'border-red-300 text-red-600'"
+                                                    >
+                                                        <option :value="null" disabled>Nivel…</option>
+                                                        <option v-for="level in levels" :key="level.id" :value="level.id">{{ level.name }}</option>
+                                                    </select>
+                                                    <span
+                                                        v-if="cellCost(date, meal, struct)"
+                                                        class="rounded-md px-1.5 py-0.5 text-[10px] font-bold tabular-nums ring-1"
+                                                        :class="costStatusClass[cellCost(date, meal, struct)!.status]"
+                                                        :title="`${costStatusText[cellCost(date, meal, struct)!.status]} · ${Math.round(cellCost(date, meal, struct)!.calories)} kcal${
+                                                            cellCost(date, meal, struct)!.missing_prices
+                                                                ? ` · ${cellCost(date, meal, struct)!.missing_prices} insumo(s) sin precio`
+                                                                : ''
+                                                        }`"
+                                                    >
+                                                        <template v-if="cellCost(date, meal, struct)!.missing_prices">⚠ </template>S/
+                                                        {{ Number(cellCost(date, meal, struct)!.price).toFixed(2) }}
+                                                    </span>
+                                                    <span v-else-if="costsLoading" class="text-[10px] text-slate-300">…</span>
+                                                    <span v-else-if="cellLevel(`${date}_${meal}_${struct.id}`)" class="text-[10px] text-slate-400" title="El plato no tiene receta en este nivel">
+                                                        sin receta
+                                                    </span>
+                                                </div>
                                             </div>
+                                        </TableCell>
+                                    </TableRow>
+                                    <TableRow class="bg-slate-50/80 hover:bg-slate-50/80">
+                                        <TableCell
+                                            class="sticky left-0 z-10 bg-slate-50 pl-3 text-xs font-bold text-slate-700 shadow-[1px_0_0_0_rgb(226,232,240)] sm:pl-6"
+                                        >
+                                            Costo del día
+                                            <p class="mt-0.5 text-[10px] font-normal text-slate-400">
+                                                Por comensal{{ cityLabel ? ` · precios ${cityLabel}` : '' }}
+                                            </p>
+                                            <p v-if="sellingPrice != null" class="text-[10px] font-normal text-slate-400">Precio venta {{ money(sellingPrice) }}</p>
+                                        </TableCell>
+                                        <TableCell v-for="date in dates" :key="date" class="border-l border-slate-100/55 p-2 align-top">
+                                            <div v-if="dayCost(date, meal)" class="flex flex-col gap-1 text-[11px]">
+                                                <span
+                                                    class="w-fit rounded-md px-1.5 py-0.5 font-bold tabular-nums ring-1"
+                                                    :class="costStatusClass[dayCost(date, meal)!.status]"
+                                                    :title="
+                                                        dayCost(date, meal)!.hasLimits
+                                                            ? `${costStatusText[dayCost(date, meal)!.status]} (L.Inf ${money(dayCost(date, meal)!.min)} · L.Sup ${money(dayCost(date, meal)!.max)})`
+                                                            : costStatusText.neutral
+                                                    "
+                                                >
+                                                    {{ money(dayCost(date, meal)!.perDiner) }}
+                                                </span>
+                                                <span class="text-slate-500 tabular-nums">{{ Math.round(dayCost(date, meal)!.kcal) }} kcal</span>
+                                                <span class="text-slate-500 tabular-nums" title="Costo x raciones efectivas de cada plato">
+                                                    Total {{ money(dayCost(date, meal)!.total) }}
+                                                </span>
+                                                <span
+                                                    v-if="sellingPrice != null && dayCost(date, meal)!.perDiner > sellingPrice"
+                                                    class="font-semibold text-red-600"
+                                                >
+                                                    Supera el precio de venta
+                                                </span>
+                                                <span v-if="dayCost(date, meal)!.priced < dayCost(date, meal)!.assigned" class="text-amber-600">
+                                                    {{ dayCost(date, meal)!.assigned - dayCost(date, meal)!.priced }} plato(s) sin costo
+                                                </span>
+                                            </div>
+                                            <span v-else class="text-[10px] text-slate-300">—</span>
                                         </TableCell>
                                     </TableRow>
                                 </template>
@@ -1590,6 +2216,30 @@ const loadMenuCycle = async (cycle: CycleOption) => {
                             <Input
                                 type="date"
                                 v-model="programFilters.savedTo"
+                                class="h-9 w-full rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F] sm:w-[150px]"
+                            />
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label
+                                class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase"
+                                title="Programaciones cuyo periodo planificado cruza este rango"
+                                >Periodo desde</label
+                            >
+                            <Input
+                                type="date"
+                                v-model="programFilters.periodFrom"
+                                class="h-9 w-full rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F] sm:w-[150px]"
+                            />
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <label
+                                class="text-[10px] font-bold tracking-wider text-[#FF5A1F]/75 uppercase"
+                                title="Programaciones cuyo periodo planificado cruza este rango"
+                                >Periodo hasta</label
+                            >
+                            <Input
+                                type="date"
+                                v-model="programFilters.periodTo"
                                 class="h-9 w-full rounded-lg border-slate-200 text-xs focus-visible:ring-[#FF5A1F] sm:w-[150px]"
                             />
                         </div>
@@ -1766,7 +2416,7 @@ const loadMenuCycle = async (cycle: CycleOption) => {
                                             </Badge>
                                         </TableCell>
                                         <TableCell>
-                                            <div class="flex items-center justify-end">
+                                            <div class="flex items-center justify-end gap-1.5">
                                                 <Button
                                                     size="sm"
                                                     @click="generatePO(program)"
@@ -1774,6 +2424,28 @@ const loadMenuCycle = async (cycle: CycleOption) => {
                                                     class="rounded-lg border-slate-200 text-slate-600 hover:bg-slate-50"
                                                 >
                                                     Orden de Compra
+                                                </Button>
+                                                <Button
+                                                    size="icon"
+                                                    variant="outline"
+                                                    class="h-8 w-8 rounded-lg border-slate-200 text-sky-600 hover:bg-sky-50"
+                                                    :disabled="loadingProgramId !== null"
+                                                    :title="`Editar programación #${program.id}`"
+                                                    :aria-label="`Editar programación ${program.id}`"
+                                                    @click="editProgram(program)"
+                                                >
+                                                    <Loader2 v-if="loadingProgramId === program.id" class="h-4 w-4 animate-spin" />
+                                                    <Pencil v-else class="h-4 w-4" />
+                                                </Button>
+                                                <Button
+                                                    size="icon"
+                                                    variant="outline"
+                                                    class="h-8 w-8 rounded-lg border-slate-200 text-rose-600 hover:bg-rose-50"
+                                                    :title="`Eliminar programación #${program.id}`"
+                                                    :aria-label="`Eliminar programación ${program.id}`"
+                                                    @click="deleteProgram(program)"
+                                                >
+                                                    <Trash2 class="h-4 w-4" />
                                                 </Button>
                                             </div>
                                         </TableCell>

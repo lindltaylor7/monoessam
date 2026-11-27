@@ -20,7 +20,7 @@ class HeadcountController extends Controller
     public function index()
     {
         return Inertia::render('headcount/Index', [
-            'mines' => Mine::with(['units', 'services', 'units.cafes', 'units.cafes.users', 'units.cafes.guards', 'units.cafes.guards.roles', 'units.cafes.staffs', 'units.cafes.staffs.staff_files'])->get(),
+            'mines' => Mine::operational()->with(['units' => fn ($q) => $q->operational(), 'services', 'units.cafes' => fn ($q) => $q->operational(), 'units.cafes.users', 'units.cafes.guards', 'units.cafes.guards.roles', 'units.cafes.staffs', 'units.cafes.staffs.staff_files'])->get(),
             'roles' => Role::with(['permissions', 'users'])->get(),
         ]);
     }

@@ -164,3 +164,99 @@ test('el costo estimado usa el precio del proveedor activo de la ciudad elegida'
             ->where('order.items.0.active_cost', 55)
         );
 });
+
+test('exportar excel descarga el pedido con sus lineas, incluidas las agregadas a mano', function () {
+    $order      = ordenDeCompra();
+    $ingredient = Ingredient::create(['name' => 'Aji Lima', 'code' => 'AJI-01']);
+
+    PurchaseOrderItem::create([
+        'purchase_order_id' => $order->id,
+        'ingredient_id'     => $ingredient->id,
+        'total_amount'      => 8.254,
+        'unit'              => 'Kg.',
+        'estimated_cost'    => 26,
+        'is_manual'         => true,
+    ]);
+
+    $response = $this->actingAs(usuarioDeCompras())
+        ->get(route('purchase_orders.export', $order->id))
+        ->assertOk();
+
+    expect($response->headers->get('content-disposition'))->toContain('Pedido_' . $order->id);
+});
+
+test('el excel lleva el precio del proveedor activo, igual que la pantalla', function () {
+    \Maatwebsite\Excel\Facades\Excel::fake();
+    $this->travelTo(now()->startOfMinute());
+
+    $order      = ordenDeCompra();
+    $ingredient = Ingredient::create(['name' => 'Papa amarilla', 'code' => 'PAP-01']);
+    $city       = \App\Models\City::create(['name' => 'HUANCAYO']);
+    $provider   = \App\Models\Provider::create(['name' => 'Proveedor Activo']);
+
+    \App\Models\Ingredient_city_provider::create(['ingredient_id' => $ingredient->id, 'provider_id' => $provider->id, 'city_id' => $city->id, 'cost_price' => 5.50, 'is_active' => true]);
+    PurchaseOrderItem::create(['purchase_order_id' => $order->id, 'ingredient_id' => $ingredient->id, 'total_amount' => 10, 'unit' => 'Kg.']);
+
+    $this->actingAs(usuarioDeCompras())
+        ->get(route('purchase_orders.export', ['id' => $order->id, 'city_id' => $city->id]))
+        ->assertOk();
+
+    \Maatwebsite\Excel\Facades\Excel::assertDownloaded(
+        'Pedido_' . $order->id . '_' . now()->format('Ymd_His') . '.xlsx',
+        function ($export) {
+            $line = collect($export->sheets()[0]->array())->first(fn ($row) => $row[1] === 'Papa amarilla');
+
+            return $line !== null && $line[3] === '5.50' && $line[5] === '55.00';
+        }
+    );
+});
+
+test('la pestana por proveedor arma un cuadro por proveedor activo con su total y un resumen', function () {
+    \Maatwebsite\Excel\Facades\Excel::fake();
+    $this->travelTo(now()->startOfMinute());
+
+    $order = ordenDeCompra();
+    $city  = \App\Models\City::create(['name' => 'HUANCAYO']);
+    $carlos = \App\Models\Provider::create(['name' => 'Carlos']);
+    $jose   = \App\Models\Provider::create(['name' => 'Jose']);
+
+    $item = function (string $name, ?\App\Models\Provider $provider, float $price, float $qty) use ($order, $city) {
+        $ingredient = Ingredient::create(['name' => $name]);
+        if ($provider) {
+            \App\Models\Ingredient_city_provider::create(['ingredient_id' => $ingredient->id, 'provider_id' => $provider->id, 'city_id' => $city->id, 'cost_price' => $price, 'is_active' => true]);
+        }
+        PurchaseOrderItem::create(['purchase_order_id' => $order->id, 'ingredient_id' => $ingredient->id, 'total_amount' => $qty, 'unit' => 'Kg.']);
+    };
+    $item('Ajo', $carlos, 10, 2);
+    $item('Cebolla', $carlos, 4, 5);
+    $item('Guiso de res', $jose, 20, 3);
+    $item('Agua', null, 0, 100);
+
+    $this->actingAs(usuarioDeCompras())
+        ->get(route('purchase_orders.export', ['id' => $order->id, 'city_id' => $city->id]))
+        ->assertOk();
+
+    \Maatwebsite\Excel\Facades\Excel::assertDownloaded(
+        'Pedido_' . $order->id . '_' . now()->format('Ymd_His') . '.xlsx',
+        function ($export) {
+            $sheet = $export->sheets()[1];
+            $rows  = collect($sheet->array());
+            $col   = fn ($i) => $rows->pluck($i)->filter()->values()->all();
+
+            expect($sheet->title())->toBe('Por proveedor');
+            // Cuadros en orden, el de sin proveedor al final.
+            expect(collect($col(0))->filter(fn ($v) => str_starts_with($v, 'PROVEEDOR:'))->values()->all())
+                ->toBe(['PROVEEDOR: Carlos', 'PROVEEDOR: Jose', 'PROVEEDOR: SIN PROVEEDOR ACTIVO']);
+
+            $carlosTotal = $rows->first(fn ($r) => $r[4] === 'TOTAL Carlos');
+            $ajo = $rows->search(fn ($r) => $r[1] === 'Ajo') + 1;
+            $cebolla = $rows->search(fn ($r) => $r[1] === 'Cebolla') + 1;
+            expect($carlosTotal[5])->toBe("=SUM(F{$ajo}:F{$cebolla})");
+            expect($rows->first(fn ($r) => $r[1] === 'Ajo')[5])->toBe(20.0);
+
+            expect($rows->last()[1])->toBe('TOTAL GENERAL');
+
+            return true;
+        }
+    );
+});

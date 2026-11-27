@@ -13,6 +13,7 @@ class Mine extends Model
 {
     /** @use HasFactory<\Database\Factories\MineFactory> */
     use HasFactory;
+    use Concerns\Archivable;
 
     protected $fillable = ['name', 'dealership_id', 'latitude', 'longitude', 'address'];
 

@@ -15,7 +15,7 @@ class SatisfactionController extends Controller
         $user = $request->user();
 
         // El usuario solo ve la mina que tiene asignada; sin asignación ve todas (perfil administrador)
-        $mines = Mine::with(['units.cafes.services'])
+        $mines = Mine::operational()->with(['units' => fn ($q) => $q->operational(), 'units.cafes' => fn ($q) => $q->operational(), 'units.cafes.services'])
             ->when($user->mine_id, fn($q) => $q->where('id', $user->mine_id))
             ->get();
 

@@ -18,8 +18,8 @@ class MercantilController extends Controller
     {
         $user = Auth::user();
 
-        $mines = Mine::with(['units:id,name,mine_id'])->orderBy('name')->get(['id', 'name']);
-        $units = Unit::with('mine:id,name')->orderBy('name')->get(['id', 'name', 'mine_id']);
+        $mines = Mine::operational()->with(['units' => fn ($q) => $q->operational()->select('id', 'name', 'mine_id')])->orderBy('name')->get(['id', 'name']);
+        $units = Unit::operational()->with('mine:id,name')->orderBy('name')->get(['id', 'name', 'mine_id']);
 
         $mercantiles = Mercantil::with([
             'unit:id,name,mine_id',

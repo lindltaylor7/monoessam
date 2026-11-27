@@ -25,7 +25,7 @@ class StaffController extends Controller
     public function index()
     {
         return Inertia::render('staff/Index', [
-            'cafes'       => Cafe::with('unit')->get(),
+            'cafes'       => Cafe::operational()->with('unit')->get(),
             'staff'       => Staff::with([
                 'photo',
                 'staff_files',
@@ -40,7 +40,7 @@ class StaffController extends Controller
                 'guardRole.guardSelected',
             ])->orderBy('id', 'desc')->get(),
             'roles'       => Role::all(),
-            'units'       => Unit::with(['cafes', 'mine'])->get(),
+            'units'       => Unit::operational()->with(['cafes' => fn ($q) => $q->operational(), 'mine'])->get(),
             'businneses'  => Business::with(['headquarters', 'headquarters.areas'])->get(),
             'roleClothes' => $this->buildRoleClothesMap(),
         ]);

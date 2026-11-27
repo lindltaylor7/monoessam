@@ -61,7 +61,7 @@ class TicketController extends Controller
             'categories' => ServiceDeskCategory::where('is_active', true)->orderBy('name')->get(['id', 'code', 'name']),
             'slas'       => ServiceDeskSla::orderBy('priority')->get(),
             'agents'     => User::orderBy('name')->get(['id', 'name']),
-            'units'      => Unit::orderBy('name')->get(['id', 'name']),
+            'units'      => Unit::operational()->orderBy('name')->get(['id', 'name']),
             'articles'   => ServiceDeskKedbArticle::where('status', ServiceDeskKedbArticle::STATUS_PUBLICADO)
                 ->orderBy('code')
                 ->get(['id', 'code', 'title']),

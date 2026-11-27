@@ -2,6 +2,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Unit } from '@/types';
 import { ref, watch } from 'vue';
+import ArchiveToggle from './ArchiveToggle.vue';
 import CoordEditor from './CoordEditor.vue';
 import SupplyCityEditor from './SupplyCityEditor.vue';
 
@@ -11,6 +12,7 @@ interface UnitWithCoords extends Unit {
     longitude: number | null;
     address: string | null;
     supply_city_id?: number | null;
+    archived_at?: string | null;
 }
 
 const props = defineProps<{
@@ -23,10 +25,13 @@ const emit = defineEmits<{
     (e: 'selectUnit', id: number): void;
 }>();
 
-const localUnits = ref<UnitWithCoords[]>(props.units.map(u => ({ ...u })));
+// Activas primero; las archivadas (solo alimentación) al final.
+const sorted = (v: UnitWithCoords[]) => v.map((u) => ({ ...u })).sort((a, b) => Number(!!a.archived_at) - Number(!!b.archived_at));
+
+const localUnits = ref<UnitWithCoords[]>(sorted(props.units));
 
 watch(() => props.units, (v) => {
-    localUnits.value = v.map(u => ({ ...u }));
+    localUnits.value = sorted(v);
 }, { deep: true });
 
 function onCoordUpdated(unitId: number, lat: number | null, lng: number | null, address: string | null) {
@@ -54,9 +59,13 @@ const selectUnit = (unitId: number) => {
                     :class="{
                         'bg-yellow-500 text-white shadow-lg': unit.id === selectedUnitId,
                         'border-gray-200 hover:bg-gray-100': unit.id !== selectedUnitId,
+                        'opacity-60': unit.archived_at && unit.id !== selectedUnitId,
                     }"
                 >
-                    <div class="font-semibold">{{ unit.name }}</div>
+                    <div class="font-semibold">
+                        {{ unit.name }}
+                        <span v-if="unit.archived_at" class="ml-1 rounded bg-slate-200 px-1 text-[10px] font-normal text-slate-600">archivada</span>
+                    </div>
                     <CoordEditor
                         :latitude="unit.latitude"
                         :longitude="unit.longitude"
@@ -70,6 +79,7 @@ const selectUnit = (unitId: number) => {
                         :patch-url="`/units/${unit.id}`"
                         @updated="(cityId) => (unit.supply_city_id = cityId)"
                     />
+                    <ArchiveToggle :archived="!!unit.archived_at" :patch-url="`/units/${unit.id}/archive`" :label="unit.name" />
                 </div>
             </div>
             <div v-else class="p-4 text-center text-gray-500">No hay unidades asociadas a esta Mina.</div>
