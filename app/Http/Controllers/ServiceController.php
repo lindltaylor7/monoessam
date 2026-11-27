@@ -109,9 +109,9 @@ class ServiceController extends Controller
 
     public function cafesData()
     {
-        $mines = Mine::with([
-            'units',
-            'units.cafes',
+        $mines = Mine::operational()->with([
+            'units' => fn ($q) => $q->operational(),
+            'units.cafes' => fn ($q) => $q->operational(),
             'units.cafes.services',
         ])->get();
 

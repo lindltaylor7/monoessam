@@ -12,6 +12,7 @@ class Unit extends Model
 {
     /** @use HasFactory<\Database\Factories\UnitFactory> */
     use \Illuminate\Database\Eloquent\Factories\HasFactory;
+    use Concerns\Archivable;
 
     protected $fillable = ['name', 'mine_id', 'supply_city_id', 'latitude', 'longitude', 'address'];
 

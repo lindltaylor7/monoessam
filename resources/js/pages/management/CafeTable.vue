@@ -5,6 +5,7 @@ import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, Tabl
 import { Service } from '@/types';
 import { ShieldCheck } from 'lucide-vue-next';
 import { ref, watch } from 'vue';
+import ArchiveToggle from './ArchiveToggle.vue';
 import CafeRolesModal from './CafeRolesModal.vue';
 import CoordEditor from './CoordEditor.vue';
 import SupplyCityEditor from './SupplyCityEditor.vue';
@@ -16,6 +17,7 @@ interface CafeItem {
     longitude: number | null;
     address: string | null;
     supply_city_id?: number | null;
+    archived_at?: string | null;
     unit: {
         name: string;
         mine: { name: string };
@@ -31,10 +33,13 @@ const props = defineProps<{
     unitSupplyCityId: number | null;
 }>();
 
-const localCafes = ref<CafeItem[]>(props.cafes.map(c => ({ ...c })));
+// Activos primero; los archivados (solo alimentación) al final.
+const sorted = (v: CafeItem[]) => v.map((c) => ({ ...c })).sort((a, b) => Number(!!a.archived_at) - Number(!!b.archived_at));
+
+const localCafes = ref<CafeItem[]>(sorted(props.cafes));
 
 watch(() => props.cafes, (v) => {
-    localCafes.value = v.map(c => ({ ...c }));
+    localCafes.value = sorted(v);
 }, { deep: true });
 
 function onCoordUpdated(cafeId: number, lat: number | null, lng: number | null, address: string | null) {
@@ -67,9 +72,12 @@ const openRolesModal = (cafe: any) => {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        <TableRow v-for="cafe in localCafes" :key="cafe.id">
+                        <TableRow v-for="cafe in localCafes" :key="cafe.id" :class="{ 'opacity-60': cafe.archived_at }">
                             <TableCell class="font-medium">
-                                <div>{{ cafe.name }}</div>
+                                <div>
+                                    {{ cafe.name }}
+                                    <span v-if="cafe.archived_at" class="ml-1 rounded bg-slate-200 px-1 text-[10px] font-normal text-slate-600">archivado</span>
+                                </div>
                                 <CoordEditor
                                     :latitude="cafe.latitude"
                                     :longitude="cafe.longitude"
@@ -84,6 +92,7 @@ const openRolesModal = (cafe: any) => {
                                     :patch-url="`/cafes/${cafe.id}`"
                                     @updated="(cityId) => (cafe.supply_city_id = cityId)"
                                 />
+                                <ArchiveToggle :archived="!!cafe.archived_at" :patch-url="`/cafes/${cafe.id}/archive`" :label="cafe.name" />
                             </TableCell>
                             <TableCell class="flex flex-row justify-end gap-2 text-right">
                                 <Button size="icon" variant="outline" @click="openRolesModal(cafe)">

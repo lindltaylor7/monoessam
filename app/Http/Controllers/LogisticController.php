@@ -52,13 +52,13 @@ class LogisticController extends Controller
                     'storage_headquarter_id' => $s->headquarter_id,
                 ])
                 ->values(),
-            'cafes'              => Cafe::with('unit:id,name,mine_id', 'unit.mine:id,name')
+            'cafes'              => Cafe::operational()->with('unit:id,name,mine_id', 'unit.mine:id,name')
                 ->select('id', 'name', 'unit_id')
                 ->get(),
-            'units'              => Unit::with('mine:id,name')
+            'units'              => Unit::operational()->with('mine:id,name')
                 ->select('id', 'name', 'mine_id')
                 ->get(),
-            'mines'              => Mine::with(['units.cafes'])->orderBy('name')->get(),
+            'mines'              => Mine::operational()->with(['units' => fn ($q) => $q->operational(), 'units.cafes' => fn ($q) => $q->operational()])->orderBy('name')->get(),
             // Se agrega cafe_id/unit_id (derivados de la relación polimórfica `staffable`) para
             // poder filtrar el buscador de "Encargado de Recepción" según el destino elegido.
             'staff'              => Staff::where('status', '!=', 0)

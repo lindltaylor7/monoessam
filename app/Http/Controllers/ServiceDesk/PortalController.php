@@ -50,7 +50,7 @@ class PortalController extends Controller
         return Inertia::render('service-desk/Portal', [
             'tickets'    => $tickets,
             'categories' => ServiceDeskCategory::where('is_active', true)->orderBy('name')->get(['id', 'code', 'name', 'description']),
-            'units'      => Unit::orderBy('name')->get(['id', 'name']),
+            'units'      => Unit::operational()->orderBy('name')->get(['id', 'name']),
             'defaults'   => [
                 'unit_id' => $user->unit_id,
             ],

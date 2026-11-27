@@ -39,13 +39,13 @@ class EquipmentDispatchController extends Controller
                 ->select('id', 'name', 'brand', 'model', 'code', 'series', 'status', 'quantity', 'storage_headquarter_id', 'responsible_id')
                 ->get(),
             'headquarters'       => Headquarter::with('business:id,name')->select('id', 'name', 'business_id')->get(),
-            'cafes'              => Cafe::with('unit:id,name,mine_id', 'unit.mine:id,name')
+            'cafes'              => Cafe::operational()->with('unit:id,name,mine_id', 'unit.mine:id,name')
                 ->select('id', 'name', 'unit_id')
                 ->get(),
-            'units'              => Unit::with('mine:id,name')
+            'units'              => Unit::operational()->with('mine:id,name')
                 ->select('id', 'name', 'mine_id')
                 ->get(),
-            'mines'              => Mine::select('id', 'name')->get(),
+            'mines'              => Mine::operational()->select('id', 'name')->get(),
             'staff'              => Staff::where('status', '!=', 0)->select('id', 'name')->orderBy('name')->get(),
         ]);
     }
@@ -175,7 +175,7 @@ class EquipmentDispatchController extends Controller
 
         return Inertia::render('equipments/Receptions', [
             'dispatches'  => $dispatches,
-            'mines'       => Mine::with(['units.cafes'])->orderBy('name')->get(),
+            'mines'       => Mine::operational()->with(['units' => fn ($q) => $q->operational(), 'units.cafes' => fn ($q) => $q->operational()])->orderBy('name')->get(),
             'headquarters'=> Headquarter::with('business:id,name')->select('id', 'name', 'business_id')->orderBy('name')->get(),
         ]);
     }

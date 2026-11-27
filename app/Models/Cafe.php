@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 class Cafe extends Model
 {
     use HasFactory;
+    use Concerns\Archivable;
     protected $fillable = ['name', 'unit_id', 'supply_city_id', 'latitude', 'longitude', 'address'];
 
 

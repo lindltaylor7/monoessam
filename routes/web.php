@@ -28,6 +28,7 @@ use App\Http\Controllers\LogisticController;
 use App\Http\Controllers\ManagementController;
 use App\Http\Controllers\MercantilController;
 use App\Http\Controllers\MineController;
+use App\Http\Controllers\OrgArchiveController;
 use App\Http\Controllers\PeriodController;
 use App\Http\Controllers\PermissionController;
 use App\Http\Controllers\ProviderController;
@@ -158,6 +159,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     Route::prefix('mines')->name('mines.')->group(function () {
         Route::post('/', [MineController::class, 'store'])->name('store');
         Route::patch('{mine}', [MineController::class, 'update'])->name('update');
+        Route::patch('{mine}/archive', [OrgArchiveController::class, 'mine'])->name('archive');
         Route::get('search/{word?}', [MineController::class, 'search'])->name('search');
         Route::post('serviceables', [MineController::class, 'mineServiceables'])->name('serviceables');
     });
@@ -165,6 +167,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
     Route::prefix('units')->name('units.')->group(function () {
         Route::post('/', [UnitController::class, 'store'])->name('store');
         Route::patch('{unit}', [UnitController::class, 'update'])->name('update');
+        Route::patch('{unit}/archive', [OrgArchiveController::class, 'unit'])->name('archive');
         Route::get('search/{mineId}/{word?}', [UnitController::class, 'search'])->name('search');
         Route::post('serviceables', [UnitController::class, 'unitServiceables'])->name('serviceables');
     });
@@ -174,6 +177,7 @@ Route::middleware(['auth', 'verified', 'check.permission'])->group(function () {
         Route::post('/roles/{id}', [CafeController::class, 'syncRoles'])->name('roles.sync');
         Route::post('/', [CafeController::class, 'store'])->name('store');
         Route::patch('{cafe}', [CafeController::class, 'update'])->name('update');
+        Route::patch('{cafe}/archive', [OrgArchiveController::class, 'cafe'])->name('archive');
         Route::get('{id}', [CafeController::class, 'show'])->name('show');
         Route::get('search/{unitId}/{word?}', [CafeController::class, 'search'])->name('search');
         Route::post('serviceables', [CafeController::class, 'cafeServiceables'])->name('serviceables');

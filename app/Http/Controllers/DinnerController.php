@@ -56,12 +56,12 @@ class DinnerController extends Controller
             $subdealershipsQuery->whereHas('mines', fn($q) => $q->where('mines.id', $mineId));
         }
 
-        $minesQuery = Mine::query();
+        $minesQuery = Mine::operational();
         if ($mineId) {
             $minesQuery->where('id', $mineId);
         }
 
-        $user->load(['units.cafes']);
+        $user->load(['units.cafes' => fn ($q) => $q->operational()]);
         $cafes = $user->units->flatMap->cafes->unique('id')->values();
 
         return Inertia::render('dinners/Index', [

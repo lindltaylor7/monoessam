@@ -85,7 +85,7 @@ class ClothController extends Controller
             'staff' => $staff,
             'roleClothes' => $roleClothes,
             'roleEpps' => $roleEpps,
-            'units' => Unit::with(['cafes', 'mine'])->get(),
+            'units' => Unit::operational()->with(['cafes' => fn ($q) => $q->operational(), 'mine'])->get(),
             'colors' => Color::all(),
             'headquarters' => Headquarter::with('business')->get(),
             // Registro de envíos a Unidad (InventoryTransfer) — para poder ver qué se envió y
@@ -104,7 +104,7 @@ class ClothController extends Controller
     {
         $roles = Role::all();
         $epps = \App\Models\Epp::with('roles')->get();
-        $cafes = Cafe::with(['roles', 'unit.mine'])->get();
+        $cafes = Cafe::operational()->with(['roles', 'unit.mine'])->get();
 
         return Inertia::render('clothes/Manage', [
             'roles' => $roles,
